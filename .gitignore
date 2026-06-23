@@ -1,0 +1,11 @@
+.env
+budget.db
+uploads/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.jpg
+*.jpeg
+*.png
+*.url

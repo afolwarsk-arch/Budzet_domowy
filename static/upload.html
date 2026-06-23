@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dodaj wydatek — Budżet domowy</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">🏠 Budżet</a>
+  <a href="/">Dashboard</a>
+  <a href="/upload" class="active">Dodaj wydatek</a>
+</nav>
+
+<main style="max-width:720px">
+  <h1 id="page-title">Dodaj wydatek</h1>
+
+  <div id="alert" class="hidden"></div>
+
+  <div class="card" style="margin-bottom:18px">
+    <div class="form-group" style="margin-bottom:0">
+      <label>Czyje wydatki?</label>
+      <select id="osoba" style="width:200px">
+        <option value="Adam">Adam</option>
+        <option value="Ola">Ola</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:18px">
+    <div class="tabs">
+      <button class="tab-btn active" id="tab-image">Zdjęcie paragonu</button>
+      <button class="tab-btn" id="tab-text">Notatka tekstowa</button>
+    </div>
+
+    <div id="panel-image">
+      <div class="drop-zone" id="drop-zone">
+        <div class="icon">📷</div>
+        <p>Przeciągnij zdjęcie lub kliknij, by wybrać plik</p>
+        <input type="file" id="file-input" accept="image/*" multiple style="display:none">
+      </div>
+      <div id="preview-thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px"></div>
+    </div>
+
+    <div id="panel-text" class="hidden">
+      <div class="form-group">
+        <label>Wpisz wydatki (każda linia to osobny wpis)</label>
+        <textarea id="text-input" placeholder="18.06 bułka w automacie 7,80&#10;18.06 Avonlea dla Oli 45&#10;19.06 bułka 7,80"></textarea>
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-top:12px;margin-bottom:4px">
+      <label>Wskazówka dla AI <span style="font-weight:400;color:var(--muted)">(opcjonalnie)</span></label>
+      <input type="text" id="kontekst-input" placeholder="np. meble na Gałczyńskiego, zakupy dla dziecka..." style="width:100%">
+    </div>
+    <button class="btn btn-primary" id="btn-analyze" disabled>Analizuj z Claude AI</button>
+  </div>
+
+  <div id="result-section" class="hidden">
+    <div id="paragony-cards"></div>
+
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-primary" id="btn-save-all">Zapisz wszystkie</button>
+      <a href="/" class="btn btn-outline">Anuluj</a>
+    </div>
+  </div>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
