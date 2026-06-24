@@ -145,6 +145,11 @@ tr:hover td { background: #fafbff; }
 .btn-sm { padding: 5px 11px; font-size: 13px; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
+.toggle-group { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.toggle-btn { padding: 5px 14px; font-size: 13px; border: none; background: transparent; color: var(--muted); cursor: pointer; transition: background .15s, color .15s; }
+.toggle-btn:hover { background: var(--bg); color: var(--text); }
+.toggle-btn.active { background: var(--primary); color: #fff; }
+
 /* upload page */
 .drop-zone {
   border: 2px dashed var(--border);

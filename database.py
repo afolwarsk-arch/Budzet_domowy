@@ -266,13 +266,16 @@ def stats_kategorie(month=None, osoba=None) -> list[dict]:
         return [dict(r) for r in conn.execute(query, params).fetchall()]
 
 
-def stats_pozycje_subkat(kategoria: str, month=None, osoba=None) -> list[dict]:
+def stats_pozycje_subkat(kategoria: str, month=None, osoba=None, kategoria_glowna=None) -> list[dict]:
     where, params = _where_params(month, osoba)
+    extra = f"{'AND' if where else 'WHERE'} p.kategoria = ?"
     params.append(kategoria)
+    if kategoria_glowna:
+        extra += " AND p.kategoria_glowna = ?"; params.append(kategoria_glowna)
     query = f"""
-        SELECT p.nazwa, p.cena, p.ilosc, ROUND(p.cena * p.ilosc, 2) AS suma, w.sklep, w.data
+        SELECT p.id, p.nazwa, p.cena, p.ilosc, ROUND(p.cena * p.ilosc, 2) AS suma, w.sklep, w.data
         FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
-        {where} {'AND' if where else 'WHERE'} p.kategoria = ?
+        {where} {extra}
         ORDER BY suma DESC"""
     with get_db() as conn:
         return [dict(r) for r in conn.execute(query, params).fetchall()]
@@ -290,33 +293,83 @@ def stats_subkategorie(kategoria_glowna: str, month=None, osoba=None) -> list[di
         return [dict(r) for r in conn.execute(query, params).fetchall()]
 
 
-def stats_miesiace(n=6, osoba=None) -> list[dict]:
-    params = []
-    osoba_filter = ""
-    if osoba:
-        osoba_filter = "AND w.osoba = ?"; params.append(osoba)
+def stats_subkategorie_all(month=None, osoba=None) -> list[dict]:
+    where, params = _where_params(month, osoba)
     query = f"""
-        SELECT strftime('%Y-%m', w.data) AS miesiac, w.osoba,
-               ROUND(SUM(w.suma), 2) AS suma
-        FROM wydatki w
-        WHERE w.data >= date('now', '-{n} months') {osoba_filter}
-        GROUP BY miesiac, w.osoba ORDER BY miesiac"""
+        SELECT p.kategoria_glowna, p.kategoria, ROUND(SUM(p.cena * p.ilosc), 2) AS suma
+        FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
+        {where} GROUP BY p.kategoria_glowna, p.kategoria ORDER BY p.kategoria_glowna, suma DESC"""
     with get_db() as conn:
         return [dict(r) for r in conn.execute(query, params).fetchall()]
 
 
-def stats_sklepy(month=None, osoba=None, limit=10) -> list[dict]:
-    conditions = ["w.sklep IS NOT NULL"]
+def stats_miesiace(n=6, osoba=None, kategoria=None) -> list[dict]:
     params = []
-    if month:
-        conditions.append("strftime('%Y-%m', w.data) = ?"); params.append(month)
-    if osoba:
-        conditions.append("w.osoba = ?"); params.append(osoba)
-    where = "WHERE " + " AND ".join(conditions)
-    params.append(limit)
-    query = f"""
-        SELECT w.sklep, ROUND(SUM(w.suma), 2) AS suma, COUNT(*) AS liczba
-        FROM wydatki w {where}
-        GROUP BY w.sklep ORDER BY suma DESC LIMIT ?"""
+    if kategoria:
+        conditions = [f"w.data >= date('now', '-{n} months')", "p.kategoria_glowna = ?"]
+        if osoba:
+            conditions.append("w.osoba = ?"); params.append(kategoria); params.append(osoba)
+        else:
+            params.append(kategoria)
+        where = "WHERE " + " AND ".join(conditions)
+        query = f"""
+            SELECT strftime('%Y-%m', w.data) AS miesiac, w.osoba,
+                   ROUND(SUM(p.cena * p.ilosc), 2) AS suma
+            FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
+            {where} GROUP BY miesiac, w.osoba ORDER BY miesiac"""
+    else:
+        osoba_filter = ""
+        if osoba:
+            osoba_filter = "AND w.osoba = ?"; params.append(osoba)
+        query = f"""
+            SELECT strftime('%Y-%m', w.data) AS miesiac, w.osoba,
+                   ROUND(SUM(w.suma), 2) AS suma
+            FROM wydatki w
+            WHERE w.data >= date('now', '-{n} months') {osoba_filter}
+            GROUP BY miesiac, w.osoba ORDER BY miesiac"""
     with get_db() as conn:
         return [dict(r) for r in conn.execute(query, params).fetchall()]
+
+
+def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None) -> list[dict]:
+    params = []
+    if kategoria:
+        conditions = ["w.sklep IS NOT NULL", "p.kategoria_glowna = ?"]
+        params.append(kategoria)
+        if month:
+            conditions.append("strftime('%Y-%m', w.data) = ?"); params.append(month)
+        if osoba:
+            conditions.append("w.osoba = ?"); params.append(osoba)
+        where = "WHERE " + " AND ".join(conditions)
+        params.append(limit)
+        query = f"""
+            SELECT w.sklep, ROUND(SUM(p.cena * p.ilosc), 2) AS suma, COUNT(DISTINCT w.id) AS liczba
+            FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
+            {where} GROUP BY w.sklep ORDER BY suma DESC LIMIT ?"""
+    else:
+        conditions = ["w.sklep IS NOT NULL"]
+        if month:
+            conditions.append("strftime('%Y-%m', w.data) = ?"); params.append(month)
+        if osoba:
+            conditions.append("w.osoba = ?"); params.append(osoba)
+        where = "WHERE " + " AND ".join(conditions)
+        params.append(limit)
+        query = f"""
+            SELECT w.sklep, ROUND(SUM(w.suma), 2) AS suma, COUNT(*) AS liczba
+            FROM wydatki w {where}
+            GROUP BY w.sklep ORDER BY suma DESC LIMIT ?"""
+    with get_db() as conn:
+        return [dict(r) for r in conn.execute(query, params).fetchall()]
+
+
+def stats_top_produkt(kategoria: str, month=None, osoba=None) -> dict | None:
+    where, params = _where_params(month, osoba)
+    params.append(kategoria)
+    query = f"""
+        SELECT p.nazwa, COUNT(*) AS ile_razy, ROUND(SUM(p.cena * p.ilosc), 2) AS suma_total
+        FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
+        {where} {'AND' if where else 'WHERE'} p.kategoria_glowna = ?
+        GROUP BY p.nazwa ORDER BY suma_total DESC LIMIT 1"""
+    with get_db() as conn:
+        row = conn.execute(query, params).fetchone()
+        return dict(row) if row else None

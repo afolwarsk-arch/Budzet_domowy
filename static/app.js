@@ -17,11 +17,21 @@ function esc(s) {
 if (document.getElementById('chart-kategorie')) {
   let chartKat = null;
   let chartMies = null;
+  let miesiaceLacznie = false;
+  let lastMiesData = null;
+  let lastMiesKat = null;
 
   const monthInput = document.getElementById('filter-month');
   const osobaSelect = document.getElementById('filter-osoba');
   const katSelect = document.getElementById('filter-kategoria');
   monthInput.value = currentMonth();
+
+  // Załaduj kategorie dynamicznie z backendu
+  fetch('/api/kategorie').then(r => r.json()).then(hier => {
+    const current = katSelect.value;
+    katSelect.innerHTML = '<option value="">Wszystkie</option>' +
+      Object.keys(hier).map(k => `<option value="${esc(k)}" ${k === current ? 'selected' : ''}>${esc(k)}</option>`).join('');
+  });
 
   async function loadDashboard() {
     const month = monthInput.value;
@@ -32,55 +42,114 @@ if (document.getElementById('chart-kategorie')) {
     if (osoba) q.set('osoba', osoba);
     if (kategoria) q.set('kategoria', kategoria);
 
-    const [statKat, statMies, statSklepy, wydatki] = await Promise.all([
+    const qMies = new URLSearchParams();
+    if (osoba) qMies.set('osoba', osoba);
+    if (kategoria) qMies.set('kategoria', kategoria);
+    qMies.set('n', '6');
+
+    const fetches = [
       fetch('/api/stats/kategorie?' + q).then(r => r.json()),
-      fetch('/api/stats/miesiace?n=6' + (osoba ? '&osoba=' + osoba : '')).then(r => r.json()),
+      fetch('/api/stats/miesiace?' + qMies).then(r => r.json()),
       fetch('/api/stats/sklepy?' + q).then(r => r.json()),
       fetch('/api/wydatki?' + q).then(r => r.json()),
-    ]);
+    ];
+    if (kategoria) {
+      fetches.push(fetch('/api/stats/subkategorie?' + new URLSearchParams({ kategoria_glowna: kategoria, ...Object.fromEntries(q) })).then(r => r.json()));
+      fetches.push(fetch('/api/stats/top-produkt?' + q).then(r => r.json()));
+    }
 
-    renderStats(wydatki, statKat);
-    renderKategorieChart(statKat);
-    renderMiesiaceChart(statMies);
+    const results = await Promise.all(fetches);
+    const [statKat, statMies, statSklepy, wydatki] = results;
+    const statSub = kategoria ? results[4] : null;
+    const topProdukt = kategoria ? results[5] : null;
+
+    lastMiesData = statMies;
+    lastMiesKat = kategoria;
+    renderStats(wydatki, statKat, kategoria, topProdukt);
+    renderKategorieChart(statKat, kategoria, statSub);
+    renderMiesiaceChart(statMies, kategoria);
     renderSklepy(statSklepy);
     renderTable(wydatki);
   }
 
-  function renderStats(wydatki, statKat) {
+  function renderStats(wydatki, statKat, kategoria, topProdukt) {
     const suma = wydatki.reduce((s, w) => s + w.suma, 0);
     document.getElementById('stat-suma').textContent = fmt(suma);
     document.getElementById('stat-paragony').textContent = wydatki.length;
-    const topKat = statKat[0];
-    document.getElementById('stat-topkat').textContent = topKat ? `${topKat.kategoria_glowna} (${fmt(topKat.suma)})` : '—';
+    const labelEl = document.querySelector('[for-stat="topkat"], .stat-card:last-child .label');
+    const statLabel = document.getElementById('stat-topkat-label');
+    if (kategoria && topProdukt && topProdukt.nazwa) {
+      document.getElementById('stat-topkat').textContent = `${topProdukt.nazwa} (${fmt(topProdukt.suma_total)})`;
+      if (statLabel) statLabel.textContent = 'Najdroższy produkt';
+    } else {
+      const topKat = statKat[0];
+      document.getElementById('stat-topkat').textContent = topKat ? `${topKat.kategoria_glowna} (${fmt(topKat.suma)})` : '—';
+      if (statLabel) statLabel.textContent = 'Największa kategoria';
+    }
   }
 
   const COLORS = ['#4f7ef8','#f87e4f','#4fc8f8','#a04ff8','#f84f8a','#4ff87e','#f8d74f','#4ff8d7','#f84f4f','#8af84f'];
 
   let activeGlowna = null;
 
-  function renderKategorieChart(data) {
+  function renderKategorieChart(data, kategoria, statSub) {
     const ctx = document.getElementById('chart-kategorie').getContext('2d');
     if (chartKat) chartKat.destroy();
-    chartKat = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: data.map(d => d.kategoria_glowna),
-        datasets: [{ data: data.map(d => d.suma), backgroundColor: COLORS, borderWidth: 2 }],
-      },
-      options: {
-        plugins: {
-          legend: { position: 'right', labels: { boxWidth: 12, font: { size: 12 } } },
-          tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)}` } },
+    const hint = document.getElementById('chart-kategorie-hint');
+    const subPanel = document.getElementById('subkat-panel');
+
+    if (kategoria && statSub) {
+      // tryb kategorii — poziomy słupkowy rozkład podkategorii
+      subPanel.classList.add('hidden');
+      hint.style.display = 'none';
+      const max = statSub[0]?.suma || 1;
+      chartKat = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: statSub.map(s => s.kategoria),
+          datasets: [{ data: statSub.map(s => s.suma), backgroundColor: '#a04ff8', borderRadius: 4 }],
         },
-        cutout: '60%',
-        onClick: (_, els) => {
-          if (!els.length) return;
-          const glowna = data[els[0].index].kategoria_glowna;
-          showSubkategorie(glowna);
+        options: {
+          indexAxis: 'y',
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: c => ` ${fmt(c.raw)}` } },
+          },
+          scales: { x: { beginAtZero: true, ticks: { callback: v => fmt(v) } } },
+          onClick: (_, els) => {
+            if (!els.length) return;
+            const subkat = statSub[els[0].index].kategoria;
+            showDrill(subkat);
+          },
         },
-      },
-    });
-    document.getElementById('chart-kategorie-hint').style.display = '';
+      });
+    } else {
+      // tryb ogólny — kołowy
+      chartKat = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: data.map(d => d.kategoria_glowna),
+          datasets: [{ data: data.map(d => d.suma), backgroundColor: COLORS, borderWidth: 2 }],
+        },
+        options: {
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { boxWidth: 12, font: { size: 12 }, cursor: 'pointer' },
+              onClick: (e, legendItem) => showSubkategorie(legendItem.text),
+            },
+            tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)}` } },
+          },
+          cutout: '60%',
+          onClick: (_, els) => {
+            if (!els.length) return;
+            const glowna = data[els[0].index].kategoria_glowna;
+            showSubkategorie(glowna);
+          },
+        },
+      });
+      hint.style.display = '';
+    }
   }
 
   async function showSubkategorie(glowna) {
@@ -188,25 +257,79 @@ if (document.getElementById('chart-kategorie')) {
     activeGlowna = null;
   });
 
-  function renderMiesiaceChart(data) {
-    const miesiace = [...new Set(data.map(d => d.miesiac))].sort();
-    const adam = miesiace.map(m => data.find(d => d.miesiac === m && d.osoba === 'Adam')?.suma ?? 0);
-    const ola = miesiace.map(m => data.find(d => d.miesiac === m && d.osoba === 'Ola')?.suma ?? 0);
+  // toggle trendy: osobno / łącznie
+  document.getElementById('btn-osobno')?.addEventListener('click', () => {
+    miesiaceLacznie = false;
+    document.getElementById('btn-osobno').classList.add('active');
+    document.getElementById('btn-lacznie').classList.remove('active');
+    if (lastMiesData) renderMiesiaceChart(lastMiesData, lastMiesKat);
+  });
+  document.getElementById('btn-lacznie')?.addEventListener('click', () => {
+    miesiaceLacznie = true;
+    document.getElementById('btn-lacznie').classList.add('active');
+    document.getElementById('btn-osobno').classList.remove('active');
+    if (lastMiesData) renderMiesiaceChart(lastMiesData, lastMiesKat);
+  });
 
+  async function showDrill(subkat) {
+    const month = monthInput.value;
+    const osoba = osobaSelect.value;
+    const q = new URLSearchParams({ kategoria: subkat });
+    if (month) q.set('month', month);
+    if (osoba) q.set('osoba', osoba);
+    const data = await fetch('/api/stats/pozycje-subkat?' + q).then(r => r.json());
+    const panel = document.getElementById('drill-panel');
+    document.getElementById('drill-title').textContent = subkat;
+    const list = document.getElementById('drill-list');
+    if (!data.length) {
+      list.innerHTML = '<p style="color:var(--muted);font-size:13px">Brak danych</p>';
+    } else {
+      const rows = data.map(p => `<tr>
+        <td>${p.data}</td><td>${esc(p.sklep || '—')}</td>
+        <td>${esc(p.nazwa)}</td>
+        <td style="text-align:right">${fmt(p.cena)} × ${p.ilosc}</td>
+        <td style="text-align:right;font-weight:600">${fmt(p.suma)}</td>
+      </tr>`).join('');
+      list.innerHTML = `<div class="table-wrap" style="margin-top:10px"><table>
+        <thead><tr><th>Data</th><th>Sklep</th><th>Produkt</th><th>Cena×il.</th><th>Suma</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
+    }
+    panel.classList.remove('hidden');
+  }
+
+  document.getElementById('drill-close')?.addEventListener('click', () => {
+    document.getElementById('drill-panel').classList.add('hidden');
+  });
+
+  function renderMiesiaceChart(data, kategoria) {
+    const miesiace = [...new Set(data.map(d => d.miesiac))].sort();
     const ctx = document.getElementById('chart-miesiace').getContext('2d');
     if (chartMies) chartMies.destroy();
+
+    let datasets;
+    if (miesiaceLacznie) {
+      const lacznie = miesiace.map(m =>
+        data.filter(d => d.miesiac === m).reduce((s, d) => s + d.suma, 0)
+      );
+      datasets = [{ label: 'Łącznie', data: lacznie, backgroundColor: '#4fc8f8', borderRadius: 4 }];
+    } else {
+      const adam = miesiace.map(m => data.find(d => d.miesiac === m && d.osoba === 'Adam')?.suma ?? 0);
+      const ola  = miesiace.map(m => data.find(d => d.miesiac === m && d.osoba === 'Ola')?.suma ?? 0);
+      datasets = [
+        { label: 'Adam', data: adam, backgroundColor: '#4f7ef8', borderRadius: 4 },
+        { label: 'Ola',  data: ola,  backgroundColor: '#f84f8a', borderRadius: 4 },
+      ];
+    }
+
     chartMies = new Chart(ctx, {
       type: 'bar',
-      data: {
-        labels: miesiace,
-        datasets: [
-          { label: 'Adam', data: adam, backgroundColor: '#4f7ef8' },
-          { label: 'Ola', data: ola, backgroundColor: '#f84f8a' },
-        ],
-      },
+      data: { labels: miesiace, datasets },
       options: {
         scales: { x: { stacked: false }, y: { beginAtZero: true, ticks: { callback: v => fmt(v) } } },
-        plugins: { legend: { position: 'top' } },
+        plugins: {
+          legend: { position: 'top' },
+          title: kategoria ? { display: true, text: kategoria, font: { size: 13 }, color: '#a04ff8' } : { display: false },
+        },
       },
     });
   }
@@ -384,22 +507,8 @@ if (document.getElementById('chart-kategorie')) {
 // ── UPLOAD PAGE ──────────────────────────────────────────────────
 
 if (document.getElementById('drop-zone')) {
-  const HIERARCHIA = {
-    'Spożywcze':              ['Owoce','Warzywa','Nabiał i jaja','Mięso surowe i ryby','Wędliny i gotowe mięso','Pieczywo i wypieki','Produkty sypkie i przetwory','Napoje','Słodycze i przekąski','Mrożonki','Alkohol','Catering i obiady abonamentowe'],
-    'Higiena i kosmetyki':    ['Higiena osobista','Kosmetyki i pielęgnacja','Chemia domowa'],
-    'Wydatki na dziecko':     ['Pieluchy i chusteczki','Ubranka dziecięce','Zabawki i gry','Kosmetyki dziecięce','Żywność dla dziecka','Sale zabaw i atrakcje','Zdrowie dziecka','Edukacja dziecka'],
-    'Dom i wyposażenie':      ['AGD i RTV','Meble i dekoracje','Narzędzia i majsterkowanie','Artykuły do domu'],
-    'Transport i paliwo':     ['Paliwo','Parking i autostrady','Transport publiczny','Serwis i części'],
-    'Zdrowie':                ['Leki','Suplementy i witaminy','Badania i wizyty'],
-    'Odzież i obuwie':        ['Odzież dorosłych','Obuwie','Akcesoria'],
-    'Rozrywka i hobby':       ['Restauracje i kawiarnie','Kino, teatr i kultura','Sport i fitness','Subskrypcje','Hobby'],
-    'Edukacja':               ['Kursy i szkolenia','Książki i prasa','Artykuły szkolne'],
-    'Elektronika':            ['Sprzęt elektroniczny','Akcesoria elektroniczne'],
-    'Rachunki domowe':        ['Czynsz','Prąd','Gaz','Internet i TV','Woda i kanalizacja','Meble i wyposażenie','Remont i wykończenie'],
-    'Lokal Gałczyńskiego':    ['Czynsz do spółdzielni','Prąd','Gaz','Woda','Naprawy i remonty','Meble i wyposażenie'],
-    'Inne':                   ['Inne'],
-  };
-  const GLOWNE = Object.keys(HIERARCHIA);
+  let HIERARCHIA = {};
+  let GLOWNE = [];
 
   const dropZone = document.getElementById('drop-zone');
   const fileInput = document.getElementById('file-input');
@@ -419,10 +528,20 @@ if (document.getElementById('drop-zone')) {
   let receiptsData = [];
   let editId = null;
 
+  // Załaduj hierarchię kategorii z backendu (zawsze aktualna)
+  fetch('/api/kategorie').then(r => r.json()).then(hier => {
+    HIERARCHIA = hier;
+    GLOWNE = Object.keys(hier);
+    const params = new URLSearchParams(location.search);
+    if (params.get('edit')) {
+      editId = parseInt(params.get('edit'));
+      loadEdit(editId);
+    }
+  });
+
   const params = new URLSearchParams(location.search);
-  if (params.get('edit')) {
-    editId = parseInt(params.get('edit'));
-    loadEdit(editId);
+  if (!params.get('edit')) {
+    // nie ma edycji — init od razu (nie potrzebujemy HIERARCHIA przed akcją usera)
   }
 
   // tabs

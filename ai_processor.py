@@ -38,6 +38,7 @@ KATEGORIE_HIERARCHIA: dict[str, list[str]] = {
         "Sale zabaw i atrakcje",
         "Zdrowie dziecka",
         "Edukacja dziecka",
+        "Akcesoria dziecięce",
     ],
     "Dom i wyposażenie": [
         "AGD i RTV",

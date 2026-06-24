@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analiza — Budżet domowy</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .analiza-layout { display: grid; grid-template-columns: 1fr 290px; gap: 20px; align-items: start; }
+    .groups-area { display: flex; flex-direction: column; gap: 14px; }
+
+    .group-card { background: #fff; border: 2px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .group-card.drag-over { border-color: var(--primary); box-shadow: 0 0 0 3px #a04ff820; }
+    .group-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--primary); color: #fff; }
+    .group-name-input { background: transparent; border: none; color: #fff; font-size: 15px; font-weight: 600; flex: 1; outline: none; min-width: 0; }
+    .group-name-input::placeholder { color: rgba(255,255,255,.5); }
+    .group-del { background: none; border: none; color: rgba(255,255,255,.7); font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1; }
+    .group-del:hover { color: #fff; }
+    .group-items { min-height: 52px; padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; }
+    .group-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 10px 0; pointer-events: none; }
+    .group-footer { padding: 8px 14px; background: #f8f7ff; border-top: 1px solid var(--border); font-weight: 700; font-size: 14px; color: var(--primary); display: flex; justify-content: space-between; align-items: center; }
+    .group-footer-cnt { font-size: 12px; color: var(--muted); font-weight: 400; }
+
+    .kat-chip { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; background: #f0f4ff; border-radius: 8px; cursor: grab; font-size: 14px; user-select: none; gap: 6px; }
+    .kat-chip:hover { background: #e2ecff; }
+    .kat-chip.dragging { opacity: .3; cursor: grabbing; }
+    .kat-chip.sub-chip { background: #f5f5f5; font-size: 13px; margin-left: 18px; border-left: 3px solid #ddd; border-radius: 0 8px 8px 0; padding-left: 8px; }
+    .kat-chip.sub-chip:hover { background: #ebebeb; }
+    .kat-chip.poz-chip { background: #fafafa; font-size: 12px; margin-left: 36px; border-left: 3px solid #e5e7eb; border-radius: 0 6px 6px 0; padding: 5px 8px; color: #444; }
+    .kat-chip.poz-chip:hover { background: #f0f0f0; }
+    .kat-chip.child-view { border: 1px dashed #c7d2fe; background: #f5f3ff; }
+    .kat-chip.child-view.sub-chip { border: 1px dashed #ddd; background: #f9f9f9; }
+    .kat-chip.child-view.poz-chip { border: 1px dashed #e5e7eb; background: #fdfdfd; }
+    .kat-chip.partial { background: #fff7ed !important; border: 1px solid #fed7aa !important; }
+    .kat-chip.partial:hover { background: #ffedd5 !important; }
+
+    .chip-left { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+    .chip-tag { font-size: 10px; color: var(--muted); }
+    .chip-right { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+    .chip-sum { font-weight: 600; color: var(--primary); font-size: 12px; white-space: nowrap; }
+    .chip-sum.zero { color: var(--muted); font-weight: 400; }
+    .chip-partial-dot { width: 7px; height: 7px; border-radius: 50%; background: #f97316; flex-shrink: 0; }
+    .chip-rm { color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
+    .chip-rm:hover { color: var(--danger); }
+    .chip-expand { color: var(--muted); cursor: pointer; font-size: 10px; padding: 2px 5px; border-radius: 4px; border: 1px solid #ddd; background: #fff; line-height: 1.4; flex-shrink: 0; }
+    .chip-expand:hover { border-color: var(--primary); color: var(--primary); }
+    .chip-loading { font-size: 11px; color: var(--muted); padding: 3px 0 3px 36px; font-style: italic; }
+
+    .pool-card { background: #fff; border: 2px dashed var(--border); border-radius: 12px; padding: 14px; position: sticky; top: 20px; max-height: calc(100vh - 160px); overflow-y: auto; }
+    .pool-card.drag-over { border-color: var(--primary); background: #f8f5ff; }
+    .pool-title { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
+    .pool-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 16px 0; }
+    .pool-section { font-size: 11px; font-weight: 700; color: #f97316; text-transform: uppercase; letter-spacing: .05em; padding: 10px 0 5px; border-top: 1px solid #fed7aa; margin-top: 8px; }
+    .pool-partial-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; font-size: 14px; cursor: default; gap: 6px; margin-bottom: 3px; }
+
+    .new-group-btn { border: 2px dashed var(--border); background: transparent; border-radius: 12px; padding: 14px; width: 100%; font-size: 15px; color: var(--muted); cursor: pointer; }
+    .new-group-btn:hover { border-color: var(--primary); color: var(--primary); background: #faf8ff; }
+    .analiza-summary { font-size: 14px; color: var(--muted); margin-bottom: 4px; }
+    .analiza-summary strong { color: var(--text); }
+    #chart-card { margin-top: 20px; display: none; }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">&#127968; Budżet</a>
+  <a href="/">Dashboard</a>
+  <a href="/upload">Dodaj wydatek</a>
+  <a href="/analiza" class="active">Analiza</a>
+</nav>
+<main>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+    <h1>Analiza własna</h1>
+    <button class="btn btn-outline btn-sm" id="btn-reset">Wyczyść grupy</button>
+  </div>
+  <div class="filters" style="margin-bottom:20px">
+    <label style="font-size:13px;color:var(--muted)">Miesiąc:</label>
+    <input type="month" id="filter-month">
+    <label style="font-size:13px;color:var(--muted)">Osoba:</label>
+    <select id="filter-osoba">
+      <option value="">Oboje</option>
+      <option value="Adam">Adam</option>
+      <option value="Ola">Ola</option>
+    </select>
+  </div>
+  <div class="card" id="chart-card" style="margin-bottom:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h2 style="margin-bottom:0">Porównanie grup</h2>
+      <div id="chart-breadcrumb" style="font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"></div>
+    </div>
+    <p id="chart-drill-hint" style="font-size:12px;color:var(--muted);margin:0 0 10px;display:none">Kliknij segment lub słupek aby wejść głębiej ↓</p>
+    <div style="display:grid;grid-template-columns:220px 1fr;gap:24px;align-items:center">
+      <div id="chart-pie-wrap" style="position:relative;height:220px"><canvas id="chart-groups-pie"></canvas></div>
+      <div>
+        <div style="position:relative" id="chart-bar-wrap"><canvas id="chart-groups-bar"></canvas></div>
+        <div id="chart-legend" style="display:flex;flex-wrap:wrap;gap:10px 20px;margin-top:14px;font-size:13px"></div>
+      </div>
+    </div>
+  </div>
+  <div class="analiza-layout">
+    <div class="groups-area">
+      <div class="analiza-summary" id="analiza-summary"></div>
+      <div id="groups-container"></div>
+      <button class="new-group-btn" id="btn-new-group">+ Nowa grupa</button>
+    </div>
+    <div>
+      <div class="pool-card" id="pool-card">
+        <div class="pool-title">Nieprzypisane — przeciągnij do grupy</div>
+        <div id="pool-list"></div>
+        <div id="pool-total" style="font-size:13px;color:var(--muted);margin-top:10px;text-align:right;border-top:1px solid var(--border);padding-top:8px"></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+// Keys: "Spożywcze" (main), "Spożywcze::Napoje" (sub), "p::123" (pozycja)
+// poolItems stored as [{key, parentKey}] so parent survives page reload
+let groups = [];
+let poolItems = [];
+let allKat = [];
+let allSubKat = {};
+let sums = {};
+let subSums = {};
+let pozycjeLookup = {};
+let pozycjeBySubKey = {};
+let loadedSubs = new Set();
+
+let expandedKat = new Set();
+let expandedSubs = new Set();
+let expandedPoolParts = new Set();
+let groupExp = {};
+let dragData = null;
+let chartPie = null;
+let chartBar = null;
+let drillStack = [];
+const COLORS = ['#a04ff8','#4f7ef8','#f84f8a','#f8a04f','#22c55e','#06b6d4','#f59e0b','#8b5cf6','#ec4899','#ef4444'];
+
+function fmt(v) {
+  return new Intl.NumberFormat('pl-PL',{style:'currency',currency:'PLN',minimumFractionDigits:0}).format(v||0);
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function parseKey(key) {
+  if (key.startsWith('p::')) return { type:'poz', id: parseInt(key.slice(3)) };
+  const i = key.indexOf('::');
+  if (i===-1) return { type:'main', name: key };
+  return { type:'sub', parent: key.slice(0,i), name: key.slice(i+2) };
+}
+function itemSum(key) {
+  if (key.startsWith('p::')) {
+    const id = parseInt(key.slice(3));
+    if (pozycjeLookup[id]) return pozycjeLookup[id].suma || 0;
+    const pi = poolItems.find(i => i.key === key);
+    return pi?.suma || 0;
+  }
+  if (key.includes('::')) return subSums[key] || 0;
+  return sums[key] || 0;
+}
+function assignedSet() { return new Set(groups.flatMap(g => g.items)); }
+function poolSet() { return new Set(poolItems.map(i => i.key)); }
+
+function isPartial(key) {
+  const p = parseKey(key);
+  const ps = poolSet(); const as = assignedSet();
+  if (p.type === 'main') return (allSubKat[p.name]||[]).some(s => { const k=`${p.name}::${s}`; return ps.has(k)||as.has(k); });
+  if (p.type === 'sub' && loadedSubs.has(key)) return (pozycjeBySubKey[key]||[]).some(z => { const k=`p::${z.id}`; return ps.has(k)||as.has(k); });
+  return false;
+}
+
+// ── Persistence ───────────────────────────────────────────────────
+function saveState() {
+  localStorage.setItem('analiza-groups', JSON.stringify(groups));
+  localStorage.setItem('analiza-pool', JSON.stringify(poolItems));
+}
+function loadState() {
+  try {
+    groups = JSON.parse(localStorage.getItem('analiza-groups')||'[]');
+    groups.forEach(g => {
+      if (g.kategorie && !g.items) { g.items = g.kategorie; delete g.kategorie; }
+      if (!g.items) g.items = [];
+    });
+  } catch { groups = []; }
+  try {
+    const raw = JSON.parse(localStorage.getItem('analiza-pool')||'[]');
+    poolItems = raw.map(i => {
+      const item = typeof i === 'string' ? { key: i, parentKey: null } : { ...i };
+      // infer parentKey for subcategories when missing (sub keys contain '::')
+      if (!item.parentKey && item.key && item.key.includes('::') && !item.key.startsWith('p::')) {
+        item.parentKey = item.key.slice(0, item.key.indexOf('::'));
+      }
+      return item;
+    });
+  } catch { poolItems = []; }
+}
+
+// ── Move / pool operations ────────────────────────────────────────
+function moveItem(key, fromGroupId, toGroupId) {
+  if (fromGroupId) {
+    const g = groups.find(x => x.id === fromGroupId);
+    if (g) g.items = g.items.filter(k => k !== key);
+  }
+  poolItems = poolItems.filter(i => i.key !== key);
+  if (toGroupId) {
+    const g = groups.find(x => x.id === toGroupId);
+    if (g && !g.items.includes(key)) g.items.push(key);
+  }
+  saveState(); render();
+}
+function sendToPool(key, parentKey) {
+  if (!poolItems.some(i => i.key === key)) {
+    const item = { key, parentKey: parentKey || null };
+    if (key.startsWith('p::')) {
+      const z = pozycjeLookup[parseInt(key.slice(3))];
+      if (z) { item.label = z.nazwa; item.suma = z.suma; item.sklep = z.sklep; item.data = z.data; }
+    }
+    poolItems.push(item);
+  }
+  saveState(); render();
+}
+function removeFromPool(key) {
+  poolItems = poolItems.filter(i => i.key !== key);
+  saveState(); render();
+}
+
+// ── Drop zones ────────────────────────────────────────────────────
+function setupDrop(el, toGroupId) {
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag-over'); });
+  el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) el.classList.remove('drag-over'); });
+  el.addEventListener('drop', e => {
+    e.preventDefault(); el.classList.remove('drag-over');
+    if (!dragData) return;
+    if (dragData.isChild) {
+      if (toGroupId === null) {
+        sendToPool(dragData.key, dragData.parentKey);
+      } else {
+        if (dragData.fromGroupId === toGroupId) return;
+        moveItem(dragData.key, null, toGroupId);
+      }
+    } else {
+      if (dragData.fromGroupId === toGroupId) return;
+      moveItem(dragData.key, dragData.fromGroupId, toGroupId);
+    }
+  });
+}
+
+// ── Lazy load ─────────────────────────────────────────────────────
+async function loadSubPozycje(subKey) {
+  if (loadedSubs.has(subKey)) return;
+  const p = parseKey(subKey);
+  const q = new URLSearchParams({ kategoria: p.name, kategoria_glowna: p.parent });
+  const month = document.getElementById('filter-month').value;
+  const osoba = document.getElementById('filter-osoba').value;
+  if (month) q.set('month', month);
+  if (osoba) q.set('osoba', osoba);
+  const data = await fetch('/api/stats/pozycje-subkat?' + q).then(r => r.json());
+  pozycjeBySubKey[subKey] = data;
+  data.forEach(z => { pozycjeLookup[z.id] = { ...z, subKey }; });
+  loadedSubs.add(subKey);
+}
+
+// ── Chip builder ──────────────────────────────────────────────────
+function chipLabel(key) {
+  const p = parseKey(key);
+  if (p.type === 'poz') {
+    const z = pozycjeLookup[p.id];
+    if (z) return { label: z.nazwa, tag: `${z.sklep||'—'} · ${z.data}`, cls: 'poz-chip' };
+    const pi = poolItems.find(i => i.key === key);
+    if (pi?.label) return { label: pi.label, tag: `${pi.sklep||'—'} · ${pi.data}`, cls: 'poz-chip' };
+    return { label: `#${p.id}`, tag: '(nieznana — odśwież stronę)', cls: 'poz-chip' };
+  }
+  if (p.type === 'sub') return { label: p.name, tag: p.parent, cls: 'sub-chip' };
+  return { label: p.name, tag: null, cls: '' };
+}
+
+// poolExpand=true: expand button uses data-pool-part instead of data-exp-key
+function makeChip(key, opts={}) {
+  const { fromGroupId=null, isChild=false, showRemove=true, showExpand=false, expanded=false, partial=false, parentKey=null, poolExpand=false } = opts;
+  const s = itemSum(key);
+  const { label, tag, cls } = chipLabel(key);
+  const childCls = isChild ? ' child-view' : '';
+  const partialCls = partial ? ' partial' : '';
+  const partialDot = partial ? `<span class="chip-partial-dot" title="Część elementów wyciągnięta"></span>` : '';
+  const expAttr = poolExpand ? `data-pool-part="${esc(key)}"` : `data-exp-key="${esc(key)}"`;
+  const expandBtn = showExpand ? `<button class="chip-expand" ${expAttr}>${expanded?'▲':'▼'}</button>` : '';
+  const parentAttr = parentKey ? ` data-parent="${esc(parentKey)}"` : '';
+
+  return `<div class="kat-chip ${cls}${childCls}${partialCls}" draggable="true"
+      data-key="${esc(key)}" data-from="${esc(fromGroupId||'')}" data-is-child="${isChild?'1':''}"${parentAttr}>
+    <span class="chip-left">
+      ${tag?`<span class="chip-tag">${esc(tag)}</span>`:''}
+      <span>${esc(label)}</span>
+    </span>
+    <span class="chip-right">
+      <span class="chip-sum${s===0?' zero':''}">${fmt(s)}</span>
+      ${partialDot}
+      ${expandBtn}
+      ${showRemove?`<span class="chip-rm" data-key="${esc(key)}" data-from="${esc(fromGroupId||'')}">×</span>`:''}
+    </span>
+  </div>`;
+}
+
+// ── Recursive group item builder ──────────────────────────────────
+function buildItemHtml(key, g, expSet, assigned, isTopLevel, parentKey) {
+  const p = parseKey(key);
+  const canExpand = p.type === 'main' || p.type === 'sub';
+  const isExp = expSet.has(key);
+  const partial = isTopLevel && isPartial(key);
+
+  let html = makeChip(key, {
+    fromGroupId: g.id, isChild: !isTopLevel,
+    parentKey: isTopLevel ? null : (parentKey || null),
+    showRemove: isTopLevel, showExpand: canExpand, expanded: isExp, partial,
+  });
+  if (!isExp || !canExpand) return html;
+  if (p.type === 'sub' && !loadedSubs.has(key)) {
+    return html + `<div class="chip-loading">Ładowanie...</div>`;
+  }
+  const ps = poolSet();
+  const children = p.type === 'main'
+    ? (allSubKat[p.name]||[]).map(s => `${p.name}::${s}`)
+    : (pozycjeBySubKey[key]||[]).map(z => `p::${z.id}`);
+  const visible = children.filter(ck => !assigned.has(ck) && !ps.has(ck));
+  if (visible.length === 0) {
+    html += `<div class="chip-loading">Wszystkie elementy przypisane lub wyciągnięte</div>`;
+  } else {
+    visible.forEach(ck => { html += buildItemHtml(ck, g, expSet, assigned, false, key); });
+  }
+  return html;
+}
+
+// ── Render ────────────────────────────────────────────────────────
+function render() { renderGroups(); renderPool(); renderChart(); }
+
+function renderGroups() {
+  const container = document.getElementById('groups-container');
+  container.innerHTML = '';
+  const assigned = assignedSet();
+  let totalGrouped = 0;
+
+  groups.forEach(g => {
+    const sum = g.items.reduce((s,k) => s + itemSum(k), 0);
+    totalGrouped += sum;
+    if (!groupExp[g.id]) groupExp[g.id] = new Set();
+    const expSet = groupExp[g.id];
+
+    const itemsHtml = g.items.length === 0
+      ? '<div class="group-empty">Przeciągnij tutaj kategorie</div>'
+      : g.items.map(key => buildItemHtml(key, g, expSet, assigned, true, null)).join('');
+
+    const card = document.createElement('div');
+    card.className = 'group-card';
+    card.innerHTML = `
+      <div class="group-header">
+        <input class="group-name-input" type="text" value="${esc(g.name)}" placeholder="Nazwa grupy..." data-id="${g.id}">
+        <button class="group-del" data-id="${g.id}">×</button>
+      </div>
+      <div class="group-items">${itemsHtml}</div>
+      <div class="group-footer">
+        <span>Suma: ${fmt(sum)}</span>
+        <span class="group-footer-cnt">${g.items.length} ${g.items.length===1?'element':'elementów'}</span>
+      </div>`;
+
+    card.querySelector('.group-name-input').addEventListener('change', e => {
+      const gr = groups.find(x => x.id === e.target.dataset.id);
+      if (gr) { gr.name = e.target.value; saveState(); renderChart(); }
+    });
+    card.querySelector('.group-del').addEventListener('click', e => {
+      delete groupExp[e.target.dataset.id];
+      groups = groups.filter(x => x.id !== e.target.dataset.id);
+      saveState(); render();
+    });
+
+    // expand buttons (data-exp-key — group context)
+    card.querySelectorAll('[data-exp-key]').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation();
+        const key = btn.dataset.expKey;
+        if (expSet.has(key)) { expSet.delete(key); renderGroups(); }
+        else {
+          expSet.add(key); renderGroups();
+          if (parseKey(key).type === 'sub' && !loadedSubs.has(key)) {
+            await loadSubPozycje(key); renderGroups();
+          }
+        }
+      });
+    });
+
+    // drag: top-level chips
+    card.querySelectorAll('.kat-chip:not(.child-view)').forEach(chip => {
+      chip.addEventListener('dragstart', () => {
+        dragData = { key: chip.dataset.key, fromGroupId: g.id, isChild: false, parentKey: null };
+        setTimeout(() => chip.classList.add('dragging'), 0);
+      });
+      chip.addEventListener('dragend', () => { chip.classList.remove('dragging'); dragData = null; });
+    });
+    // drag: child-view chips — capture data-parent so pool knows parent on drop
+    card.querySelectorAll('.kat-chip.child-view').forEach(chip => {
+      chip.addEventListener('dragstart', () => {
+        dragData = { key: chip.dataset.key, fromGroupId: g.id, isChild: true, parentKey: chip.dataset.parent || null };
+        setTimeout(() => chip.classList.add('dragging'), 0);
+      });
+      chip.addEventListener('dragend', () => { chip.classList.remove('dragging'); dragData = null; });
+    });
+    // remove buttons
+    card.querySelectorAll('.chip-rm').forEach(btn => {
+      btn.addEventListener('click', () => moveItem(btn.dataset.key, btn.dataset.from, null));
+    });
+
+    setupDrop(card, g.id);
+    container.appendChild(card);
+  });
+
+  const summEl = document.getElementById('analiza-summary');
+  if (groups.length > 0) {
+    const totalAll = Object.values(sums).reduce((s,v) => s+v, 0);
+    summEl.innerHTML = `Zgrupowane: <strong>${fmt(totalGrouped)}</strong> z <strong>${fmt(totalAll)}</strong> łącznie`;
+  } else { summEl.innerHTML = ''; }
+}
+
+function renderPool() {
+  const assigned = assignedSet();
+  const ps = poolSet();
+  const chunks = [];
+  let unassignedTotal = 0;
+
+  // ── 1. Normal unassigned main categories ──
+  allKat.forEach(kat => {
+    if (assigned.has(kat) || ps.has(kat)) return;
+    const s = sums[kat] || 0;
+    unassignedTotal += s;
+    const subs = allSubKat[kat] || [];
+    const isExpKat = expandedKat.has(kat);
+    const partial = isPartial(kat);
+
+    chunks.push(makeChip(kat, { showRemove: false, showExpand: subs.length > 0, expanded: isExpKat, partial }));
+    if (isExpKat) {
+      subs.forEach(sub => {
+        const subKey = `${kat}::${sub}`;
+        if (assigned.has(subKey) || ps.has(subKey)) return;
+        const isExpSub = expandedSubs.has(subKey);
+        chunks.push(makeChip(subKey, { showRemove: false, showExpand: true, expanded: isExpSub, partial: isPartial(subKey) }));
+        if (isExpSub) {
+          if (!loadedSubs.has(subKey)) {
+            chunks.push(`<div class="chip-loading">Ładowanie...</div>`);
+          } else {
+            (pozycjeBySubKey[subKey]||[]).forEach(z => {
+              const pk = `p::${z.id}`;
+              if (assigned.has(pk) || ps.has(pk)) return;
+              chunks.push(makeChip(pk, { showRemove: false }));
+            });
+          }
+        }
+      });
+    }
+  });
+
+  // ── 2. Wyciągnięte elementy ──
+  if (poolItems.length > 0) {
+    // group by stored parentKey
+    const byParent = {};
+    poolItems.forEach(({ key, parentKey }) => {
+      const gk = parentKey || '__root__';
+      if (!byParent[gk]) byParent[gk] = [];
+      byParent[gk].push(key);
+    });
+
+    chunks.push(`<div class="pool-section">Wyciągnięte elementy</div>`);
+
+    Object.entries(byParent).forEach(([parentKey, childKeys]) => {
+      if (parentKey === '__root__') {
+        // orphans without parent info — show with × to return to pool
+        childKeys.forEach(k => {
+          const { label, tag, cls } = chipLabel(k);
+          const s = itemSum(k);
+          chunks.push(`<div class="kat-chip ${cls}" draggable="true" data-key="${esc(k)}" data-from="" data-is-child="0">
+            <span class="chip-left">
+              ${tag?`<span class="chip-tag">${esc(tag)}</span>`:''}
+              <span>${esc(label)}</span>
+            </span>
+            <span class="chip-right">
+              <span class="chip-sum${s===0?' zero':''}">${fmt(s)}</span>
+              <span class="chip-rm pool-rm" data-key="${esc(k)}" title="Usuń z wyciągniętych">×</span>
+            </span>
+          </div>`);
+        });
+        return;
+      }
+
+      const isExpPart = expandedPoolParts.has(parentKey);
+      const pp = parseKey(parentKey);
+      const parentLabel = pp.type === 'sub' ? pp.name : (pp.type === 'main' ? pp.name : parentKey);
+      const parentTag = pp.type === 'sub' ? pp.parent : null;
+      const partialSum = childKeys.reduce((s, k) => s + itemSum(k), 0);
+
+      chunks.push(`<div class="pool-partial-header">
+        <span class="chip-left">
+          ${parentTag?`<span class="chip-tag">${esc(parentTag)}</span>`:''}
+          <span>~${esc(parentLabel)}</span>
+        </span>
+        <span class="chip-right">
+          <span class="chip-sum">${fmt(partialSum)}</span>
+          <button class="chip-expand" data-pool-part="${esc(parentKey)}">${isExpPart?'▲':'▼'}</button>
+        </span>
+      </div>`);
+
+      if (isExpPart) {
+        childKeys.forEach(childKey => {
+          const cp = parseKey(childKey);
+          const isSub = cp.type === 'sub';
+          const isExpChild = expandedPoolParts.has(childKey);
+          const cs = itemSum(childKey);
+          const { label: cl, tag: ct, cls: cc } = chipLabel(childKey);
+
+          chunks.push(`<div class="kat-chip ${cc}" draggable="true" data-key="${esc(childKey)}" data-from="" data-is-child="0" style="margin-left:14px">
+            <span class="chip-left">
+              ${ct?`<span class="chip-tag">${esc(ct)}</span>`:''}
+              <span>${esc(cl)}</span>
+            </span>
+            <span class="chip-right">
+              <span class="chip-sum${cs===0?' zero':''}">${fmt(cs)}</span>
+              ${isSub?`<button class="chip-expand" data-pool-part="${esc(childKey)}">${isExpChild?'▲':'▼'}</button>`:''}
+              <span class="chip-rm pool-rm" data-key="${esc(childKey)}" title="Zwróć do kategorii">×</span>
+            </span>
+          </div>`);
+
+          if (isSub && isExpChild) {
+            if (!loadedSubs.has(childKey)) {
+              chunks.push(`<div class="chip-loading" style="padding-left:28px">Ładowanie...</div>`);
+              loadSubPozycje(childKey).then(() => renderPool());
+            } else {
+              (pozycjeBySubKey[childKey]||[]).forEach(z => {
+                const pk = `p::${z.id}`;
+                if (assigned.has(pk) || ps.has(pk)) return;
+                const zs = z.suma || 0;
+                chunks.push(`<div class="kat-chip poz-chip" draggable="true" data-key="${esc(pk)}" data-from="" data-is-child="0" style="margin-left:28px">
+                  <span class="chip-left">
+                    <span class="chip-tag">${esc(z.sklep||'—')} · ${esc(z.data)}</span>
+                    <span>${esc(z.nazwa)}</span>
+                  </span>
+                  <span class="chip-right">
+                    <span class="chip-sum${zs===0?' zero':''}">${fmt(zs)}</span>
+                  </span>
+                </div>`);
+              });
+            }
+          }
+        });
+      }
+    });
+  }
+
+  const poolList = document.getElementById('pool-list');
+  poolList.innerHTML = chunks.length ? chunks.join('') : '<div class="pool-empty">Wszystkie przypisane &#10003;</div>';
+
+  // expand: unassigned main/sub (data-exp-key)
+  poolList.querySelectorAll('[data-exp-key]').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const key = btn.dataset.expKey;
+      const p = parseKey(key);
+      if (p.type === 'main') {
+        if (expandedKat.has(key)) expandedKat.delete(key); else expandedKat.add(key);
+        renderPool();
+      } else if (p.type === 'sub') {
+        if (expandedSubs.has(key)) { expandedSubs.delete(key); renderPool(); }
+        else { expandedSubs.add(key); renderPool(); await loadSubPozycje(key); renderPool(); }
+      }
+    });
+  });
+
+  // expand: partial parent headers + expandable children in partial section (data-pool-part)
+  poolList.querySelectorAll('[data-pool-part]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const k = btn.dataset.poolPart;
+      if (expandedPoolParts.has(k)) expandedPoolParts.delete(k); else expandedPoolParts.add(k);
+      renderPool();
+    });
+  });
+
+  // × pool-rm: remove from poolItems (return child to "naturally unassigned")
+  poolList.querySelectorAll('.pool-rm').forEach(btn => {
+    btn.addEventListener('click', () => removeFromPool(btn.dataset.key));
+  });
+
+  // drag: all chips in pool list
+  poolList.querySelectorAll('.kat-chip[data-key]').forEach(chip => {
+    chip.addEventListener('dragstart', () => {
+      dragData = { key: chip.dataset.key, fromGroupId: null, isChild: false, parentKey: null };
+      setTimeout(() => chip.classList.add('dragging'), 0);
+    });
+    chip.addEventListener('dragend', () => { chip.classList.remove('dragging'); dragData = null; });
+  });
+
+  document.getElementById('pool-total').textContent =
+    unassignedTotal > 0 ? `Nieprzypisane: ${fmt(unassignedTotal)}` : '';
+}
+
+function getDrillData() {
+  const assigned = assignedSet();
+  const ps = poolSet();
+
+  if (drillStack.length === 0) {
+    const result = [];
+    groups.filter(g => g.items.length > 0).forEach((g, i) => {
+      result.push({
+        label: g.name || '(bez nazwy)',
+        value: g.items.reduce((s, k) => s + itemSum(k), 0),
+        color: COLORS[i % COLORS.length],
+        drillable: true,
+        onClick: () => { drillStack.push({ type: 'group', id: g.id, label: g.name || '(bez nazwy)' }); renderChart(); },
+      });
+    });
+    const unassignedTotal = allKat.filter(k => !assigned.has(k) && !ps.has(k)).reduce((s, k) => s + (sums[k] || 0), 0);
+    if (unassignedTotal > 0) {
+      result.push({ label: 'Nieprzypisane', value: unassignedTotal, color: '#9ca3af', drillable: true,
+        onClick: () => { drillStack.push({ type: 'unassigned', label: 'Nieprzypisane' }); renderChart(); },
+      });
+    }
+    return result;
+  }
+
+  const top = drillStack[drillStack.length - 1];
+
+  if (top.type === 'group') {
+    const g = groups.find(x => x.id === top.id);
+    if (!g) return [];
+    return g.items.map((key, i) => {
+      const p = parseKey(key);
+      const label = p.type === 'poz' ? (pozycjeLookup[p.id]?.nazwa || `#${p.id}`) : p.type === 'sub' ? `${p.parent} › ${p.name}` : p.name;
+      return {
+        label, value: itemSum(key), color: COLORS[i % COLORS.length],
+        drillable: p.type === 'main' || p.type === 'sub',
+        onClick: () => {
+          if (p.type === 'main') { drillStack.push({ type: 'main', key, label: p.name }); renderChart(); }
+          else if (p.type === 'sub') { drillStack.push({ type: 'sub', key, label: p.name }); if (!loadedSubs.has(key)) { loadSubPozycje(key).then(renderChart); } else renderChart(); }
+        },
+      };
+    });
+  }
+
+  if (top.type === 'unassigned') {
+    return allKat.filter(k => !assigned.has(k) && !ps.has(k)).map((kat, i) => ({
+      label: kat, value: sums[kat] || 0, color: COLORS[i % COLORS.length], drillable: true,
+      onClick: () => { drillStack.push({ type: 'main', key: kat, label: kat }); renderChart(); },
+    }));
+  }
+
+  if (top.type === 'main') {
+    const name = parseKey(top.key).name;
+    return (allSubKat[name] || []).map((sub, i) => {
+      const subKey = `${name}::${sub}`;
+      return {
+        label: sub, value: subSums[subKey] || 0, color: COLORS[i % COLORS.length], drillable: true,
+        onClick: () => {
+          drillStack.push({ type: 'sub', key: subKey, label: sub });
+          if (!loadedSubs.has(subKey)) { loadSubPozycje(subKey).then(renderChart); } else renderChart();
+        },
+      };
+    });
+  }
+
+  if (top.type === 'sub') {
+    if (!loadedSubs.has(top.key)) {
+      loadSubPozycje(top.key).then(renderChart);
+      return [{ label: 'Ładowanie…', value: 0, color: '#e5e7eb', drillable: false, onClick: () => {} }];
+    }
+    return (pozycjeBySubKey[top.key] || []).map((z, i) => ({
+      label: z.nazwa, value: z.suma || 0, color: COLORS[i % COLORS.length], drillable: false, onClick: () => {},
+    }));
+  }
+
+  return [];
+}
+
+function renderChart() {
+  const chartCard = document.getElementById('chart-card');
+  const active = groups.filter(g => g.items.length > 0);
+  if (active.length === 0 && drillStack.length === 0) {
+    chartCard.style.display = 'none';
+    if (chartPie) { chartPie.destroy(); chartPie = null; }
+    if (chartBar) { chartBar.destroy(); chartBar = null; }
+    return;
+  }
+  chartCard.style.display = 'block';
+
+  const drillItems = getDrillData();
+  const labels = drillItems.map(d => d.label);
+  const values = drillItems.map(d => d.value);
+  const colors = drillItems.map(d => d.color);
+  const total = values.reduce((s, v) => s + v, 0);
+  const anyDrillable = drillItems.some(d => d.drillable);
+
+  // breadcrumb
+  const bc = document.getElementById('chart-breadcrumb');
+  if (drillStack.length === 0) {
+    bc.innerHTML = '';
+  } else {
+    const crumbs = [{ label: 'Wszystkie grupy', idx: -1 }, ...drillStack.map((d, i) => ({ label: d.label, idx: i }))];
+    bc.innerHTML = crumbs.map((c, ci) =>
+      ci === crumbs.length - 1
+        ? `<span style="font-weight:600">${esc(c.label)}</span>`
+        : `<a href="#" class="drill-crumb" data-idx="${c.idx}" style="color:var(--primary);text-decoration:none">${esc(c.label)}</a> <span style="color:var(--muted)">›</span>`
+    ).join(' ');
+    bc.querySelectorAll('.drill-crumb').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        const idx = parseInt(a.dataset.idx);
+        drillStack = idx === -1 ? [] : drillStack.slice(0, idx + 1);
+        renderChart();
+      });
+    });
+  }
+
+  document.getElementById('chart-drill-hint').style.display = anyDrillable ? '' : 'none';
+
+  const barH = Math.max(100, drillItems.length * 44);
+  document.getElementById('chart-bar-wrap').style.height = barH + 'px';
+
+  const clickHandler = (evt, elements) => {
+    if (elements.length) drillItems[elements[0].index]?.onClick();
+  };
+
+  // pie only at root level
+  const showPie = drillStack.length === 0;
+  document.getElementById('chart-pie-wrap').style.display = showPie ? '' : 'none';
+  if (chartPie) { chartPie.destroy(); chartPie = null; }
+  if (showPie) {
+    chartPie = new Chart(document.getElementById('chart-groups-pie').getContext('2d'), {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#fff', hoverOffset: 8 }] },
+      options: {
+        cutout: '62%', onClick: clickHandler,
+        plugins: { legend: { display: false }, tooltip: { callbacks: {
+          label: c => ` ${fmt(c.raw)}`,
+          afterLabel: c => ` ${total > 0 ? Math.round(c.raw / total * 100) : 0}%`,
+        }}},
+      },
+    });
+  }
+
+  if (chartBar) { chartBar.destroy(); chartBar = null; }
+  chartBar = new Chart(document.getElementById('chart-groups-bar').getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 6, barThickness: 28 }] },
+    options: {
+      indexAxis: 'y', maintainAspectRatio: false, onClick: clickHandler,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        label: c => ` ${fmt(c.raw)} (${total > 0 ? Math.round(c.raw / total * 100) : 0}%)`,
+      }}},
+      scales: {
+        x: { beginAtZero: true, ticks: { callback: v => fmt(v), font: { size: 11 } }, grid: { color: '#f0f0f0' } },
+        y: { ticks: { font: { size: 13 } }, grid: { display: false } },
+      },
+    },
+  });
+
+  document.getElementById('chart-legend').innerHTML = drillItems.map((item, i) => {
+    const pct = total > 0 ? Math.round(item.value / total * 100) : 0;
+    const cursor = item.drillable ? 'pointer' : 'default';
+    return `<span style="display:flex;align-items:center;gap:5px;cursor:${cursor}" ${item.drillable ? `class="drill-leg" data-idx="${i}"` : ''}>
+      <span style="width:12px;height:12px;border-radius:3px;background:${item.color};flex-shrink:0"></span>
+      <span>${esc(item.label)}</span>
+      <strong style="color:${item.color}">${fmt(item.value)}</strong>
+      <span style="color:var(--muted)">${pct}%</span>
+      ${item.drillable ? '<span style="color:var(--muted);font-size:10px">↓</span>' : ''}
+    </span>`;
+  }).join('');
+  document.querySelectorAll('.drill-leg').forEach(el => {
+    el.addEventListener('click', () => drillItems[parseInt(el.dataset.idx)]?.onClick());
+  });
+}
+
+// ── Data loading ──────────────────────────────────────────────────
+async function loadData() {
+  loadedSubs.clear(); pozycjeBySubKey = {}; pozycjeLookup = {};
+  const month = document.getElementById('filter-month').value;
+  const osoba = document.getElementById('filter-osoba').value;
+  const q = new URLSearchParams();
+  if (month) q.set('month', month);
+  if (osoba) q.set('osoba', osoba);
+  const [hier, stats, subStats] = await Promise.all([
+    fetch('/api/kategorie').then(r => r.json()),
+    fetch('/api/stats/kategorie?' + q).then(r => r.json()),
+    fetch('/api/stats/subkategorie-all?' + q).then(r => r.json()),
+  ]);
+  allKat = Object.keys(hier); allSubKat = hier;
+  sums = {}; stats.forEach(s => { sums[s.kategoria_glowna] = s.suma; });
+  subSums = {}; subStats.forEach(s => { subSums[`${s.kategoria_glowna}::${s.kategoria}`] = s.suma; });
+  render();
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+loadState();
+document.getElementById('filter-month').value = new Date().toISOString().slice(0,7);
+document.getElementById('filter-month').addEventListener('change', loadData);
+document.getElementById('filter-osoba').addEventListener('change', loadData);
+document.getElementById('btn-new-group').addEventListener('click', () => {
+  groups.push({ id: Date.now().toString(), name: '', items: [] });
+  saveState(); render();
+});
+document.getElementById('btn-reset').addEventListener('click', () => {
+  if (!confirm('Wyczyścić wszystkie grupy i wyciągnięte elementy?')) return;
+  groups = []; poolItems = []; groupExp = {};
+  saveState(); render();
+});
+setupDrop(document.getElementById('pool-card'), null);
+loadData();
+</script>
+</body>
+</html>

@@ -34,6 +34,11 @@ def upload_page():
     return FileResponse(STATIC_DIR / "upload.html")
 
 
+@app.get("/analiza")
+def analiza_page():
+    return FileResponse(STATIC_DIR / "analiza.html")
+
+
 # --- AI processing ---
 
 @app.post("/api/process-image")
@@ -215,14 +220,21 @@ def delete_wydatek(wydatek_id: int):
 
 # --- statystyki ---
 
+@app.get("/api/kategorie")
+def get_kategorie():
+    return ai_processor.KATEGORIE_HIERARCHIA
+
+
 @app.get("/api/stats/kategorie")
 def stats_kategorie(month: str | None = None, osoba: str | None = None):
     return database.stats_kategorie(month=month, osoba=osoba)
 
 
 @app.get("/api/stats/pozycje-subkat")
-def stats_pozycje_subkat(kategoria: str, month: str | None = None, osoba: str | None = None):
-    return database.stats_pozycje_subkat(kategoria=kategoria, month=month, osoba=osoba)
+def stats_pozycje_subkat(kategoria: str, month: str | None = None, osoba: str | None = None,
+                         kategoria_glowna: str | None = None):
+    return database.stats_pozycje_subkat(kategoria=kategoria, month=month, osoba=osoba,
+                                         kategoria_glowna=kategoria_glowna)
 
 
 @app.get("/api/stats/subkategorie")
@@ -230,11 +242,23 @@ def stats_subkategorie(kategoria_glowna: str, month: str | None = None, osoba: s
     return database.stats_subkategorie(kategoria_glowna=kategoria_glowna, month=month, osoba=osoba)
 
 
+@app.get("/api/stats/subkategorie-all")
+def stats_subkategorie_all(month: str | None = None, osoba: str | None = None):
+    return database.stats_subkategorie_all(month=month, osoba=osoba)
+
+
 @app.get("/api/stats/miesiace")
-def stats_miesiace(n: int = 6, osoba: str | None = None):
-    return database.stats_miesiace(n=n, osoba=osoba)
+def stats_miesiace(n: int = 6, osoba: str | None = None, kategoria: str | None = None):
+    return database.stats_miesiace(n=n, osoba=osoba, kategoria=kategoria)
 
 
 @app.get("/api/stats/sklepy")
-def stats_sklepy(month: str | None = None, osoba: str | None = None, limit: int = 10):
-    return database.stats_sklepy(month=month, osoba=osoba, limit=limit)
+def stats_sklepy(month: str | None = None, osoba: str | None = None,
+                 limit: int = 10, kategoria: str | None = None):
+    return database.stats_sklepy(month=month, osoba=osoba, limit=limit, kategoria=kategoria)
+
+
+@app.get("/api/stats/top-produkt")
+def stats_top_produkt(kategoria: str, month: str | None = None, osoba: str | None = None):
+    result = database.stats_top_produkt(kategoria=kategoria, month=month, osoba=osoba)
+    return result or {}

@@ -11,6 +11,7 @@
   <a href="/" class="logo">🏠 Budżet</a>
   <a href="/" class="active">Dashboard</a>
   <a href="/upload">Dodaj wydatek</a>
+  <a href="/analiza">Analiza</a>
 </nav>
 
 <main>
@@ -58,7 +59,7 @@
     </div>
     <div class="card stat-card">
       <div class="value" style="font-size:16px" id="stat-topkat">—</div>
-      <div class="label">Największa kategoria</div>
+      <div class="label" id="stat-topkat-label">Największa kategoria</div>
     </div>
   </div>
 
@@ -78,9 +79,22 @@
         </div>
         <div class="sklepy-list" id="subkat-list"></div>
       </div>
+      <div id="drill-panel" class="subkat-panel hidden" style="background:#f0f4ff;border-color:#b8cef8;margin-top:14px">
+        <div class="subkat-header">
+          <h2 style="margin-bottom:0;font-size:15px" id="drill-title"></h2>
+          <button class="subkat-close" id="drill-close">×</button>
+        </div>
+        <div id="drill-list"></div>
+      </div>
     </div>
     <div class="card">
-      <h2>Trendy miesięczne</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h2 style="margin-bottom:0">Trendy miesięczne</h2>
+        <div class="toggle-group">
+          <button class="toggle-btn active" id="btn-osobno">Osobno</button>
+          <button class="toggle-btn" id="btn-lacznie">Łącznie</button>
+        </div>
+      </div>
       <div class="chart-wrap">
         <canvas id="chart-miesiace"></canvas>
       </div>
@@ -133,6 +147,6 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script src="/static/app.js?v=5"></script>
+<script src="/static/app.js?v=9"></script>
 </body>
 </html>
