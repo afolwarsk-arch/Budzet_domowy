@@ -115,6 +115,31 @@ def admin_list_households(admin: dict = Depends(require_admin)):
     return database.get_all_households()
 
 
+@app.post("/api/admin/import-data")
+def import_data(body: dict, admin: dict = Depends(require_admin)):
+    from collections import defaultdict
+    wydatki = body.get("wydatki", [])
+    pozycje_all = body.get("pozycje", [])
+    household_id = body.get("household_id", 1)
+    poz_by_wydatek = defaultdict(list)
+    for p in pozycje_all:
+        poz_by_wydatek[p["wydatek_id"]].append(p)
+    count_w = 0
+    count_p = 0
+    for w in wydatki:
+        pozycje = poz_by_wydatek.get(w["id"], [])
+        database.create_wydatek(
+            data=w["data"], sklep=w.get("sklep"), suma=w["suma"],
+            osoba=w.get("osoba", "Adam"), notatki=w.get("notatki"),
+            zdjecie=None, pozycje=pozycje,
+            waluta=w.get("waluta", "PLN"), kurs=w.get("kurs", 1.0),
+            household_id=household_id,
+        )
+        count_w += 1
+        count_p += len(pozycje)
+    return {"imported_wydatki": count_w, "imported_pozycje": count_p}
+
+
 @app.post("/api/admin/invite")
 def admin_create_invite(request: Request, body: dict, admin: dict = Depends(require_admin)):
     hid = body.get("household_id")
