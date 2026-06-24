@@ -2,8 +2,8 @@ import asyncio
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -12,6 +12,7 @@ load_dotenv(BASE_DIR / ".env")
 
 import ai_processor
 import database
+from auth import get_current_user, require_admin
 
 database.init_db()
 
@@ -37,6 +38,91 @@ def upload_page():
 @app.get("/analiza")
 def analiza_page():
     return FileResponse(STATIC_DIR / "analiza.html")
+
+
+@app.get("/login")
+def login_page():
+    return FileResponse(STATIC_DIR / "login.html")
+
+
+@app.get("/onboarding")
+def onboarding_page():
+    return FileResponse(STATIC_DIR / "onboarding.html")
+
+
+@app.get("/admin")
+def admin_page():
+    return FileResponse(STATIC_DIR / "admin.html")
+
+
+# --- Auth & Household routes ---
+
+@app.get("/api/me")
+def get_me(current_user: dict = Depends(get_current_user)):
+    household = None
+    if current_user["household_id"]:
+        h = database.get_household(current_user["household_id"])
+        if h:
+            household = {"id": h["id"], "name": h["name"], "role": current_user["role"]}
+    return {**current_user, "household": household}
+
+
+@app.post("/api/household", status_code=201)
+def create_household(body: dict, current_user: dict = Depends(get_current_user)):
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Podaj nazwę gospodarstwa")
+    if current_user["household_id"]:
+        raise HTTPException(status_code=409, detail="Jesteś już w gospodarstwie")
+    hid = database.create_household(name)
+    database.add_member(current_user["user_id"], hid, role="owner")
+    return {"household_id": hid}
+
+
+@app.get("/api/household")
+def get_household(current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(status_code=404, detail="Nie należysz do żadnego gospodarstwa")
+    h = database.get_household(hid)
+    members = database.get_household_members(hid)
+    return {**h, "role": current_user["role"], "members": members}
+
+
+@app.post("/api/household/invite")
+def create_invite(request: Request, current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(status_code=400, detail="Najpierw utwórz gospodarstwo")
+    code = database.create_invitation(hid, current_user["user_id"])
+    base_url = str(request.base_url).rstrip("/")
+    return {"link": f"{base_url}/join/{code}", "code": code}
+
+
+@app.get("/join/{code}")
+def join_household(code: str, current_user: dict = Depends(get_current_user)):
+    result = database.use_invitation(code)
+    if not result:
+        raise HTTPException(status_code=404, detail="Link wygasł lub jest nieprawidłowy")
+    if current_user["household_id"]:
+        return RedirectResponse(url="/", status_code=302)
+    database.add_member(current_user["user_id"], result["household_id"], role="member")
+    return RedirectResponse(url="/", status_code=302)
+
+
+@app.get("/api/admin/households")
+def admin_list_households(admin: dict = Depends(require_admin)):
+    return database.get_all_households()
+
+
+@app.post("/api/admin/invite")
+def admin_create_invite(request: Request, body: dict, admin: dict = Depends(require_admin)):
+    hid = body.get("household_id")
+    if not hid:
+        raise HTTPException(status_code=400, detail="Podaj household_id")
+    code = database.create_invitation(int(hid), admin["user_id"])
+    base_url = str(request.base_url).rstrip("/")
+    return {"link": f"{base_url}/join/{code}", "code": code}
 
 
 # --- AI processing ---
@@ -96,7 +182,7 @@ class WydatekIn(BaseModel):
 
 
 @app.post("/api/wydatki", status_code=201)
-def create_wydatek(body: WydatekIn):
+def create_wydatek(body: WydatekIn, current_user: dict = Depends(get_current_user)):
     wid = database.create_wydatek(
         data=body.data,
         sklep=body.sklep,
@@ -107,6 +193,7 @@ def create_wydatek(body: WydatekIn):
         pozycje=[p.model_dump() for p in body.pozycje],
         waluta=body.waluta,
         kurs=body.kurs,
+        household_id=current_user["household_id"],
     )
     return {"id": wid}
 
@@ -122,6 +209,7 @@ async def create_wydatek_z_plikiem(
     kurs: float = Form(1.0),
     pozycje_json: str = Form(...),
     file: UploadFile | None = File(None),
+    current_user: dict = Depends(get_current_user),
 ):
     import json as _json
 
@@ -142,14 +230,17 @@ async def create_wydatek_z_plikiem(
         pozycje=pozycje,
         waluta=waluta,
         kurs=kurs,
+        household_id=current_user["household_id"],
     )
     return {"id": wid}
 
 
 @app.get("/api/wydatki")
 def list_wydatki(month: str | None = None, osoba: str | None = None,
-                 kategoria: str | None = None):
-    return database.get_wydatki(month=month, osoba=osoba, kategoria=kategoria)
+                 kategoria: str | None = None,
+                 current_user: dict = Depends(get_current_user)):
+    return database.get_wydatki(month=month, osoba=osoba, kategoria=kategoria,
+                                household_id=current_user["household_id"])
 
 
 @app.get("/api/wydatki/{wydatek_id}")
@@ -226,39 +317,53 @@ def get_kategorie():
 
 
 @app.get("/api/stats/kategorie")
-def stats_kategorie(month: str | None = None, osoba: str | None = None):
-    return database.stats_kategorie(month=month, osoba=osoba)
+def stats_kategorie(month: str | None = None, osoba: str | None = None,
+                    current_user: dict = Depends(get_current_user)):
+    return database.stats_kategorie(month=month, osoba=osoba,
+                                    household_id=current_user["household_id"])
 
 
 @app.get("/api/stats/pozycje-subkat")
 def stats_pozycje_subkat(kategoria: str, month: str | None = None, osoba: str | None = None,
-                         kategoria_glowna: str | None = None):
+                         kategoria_glowna: str | None = None,
+                         current_user: dict = Depends(get_current_user)):
     return database.stats_pozycje_subkat(kategoria=kategoria, month=month, osoba=osoba,
-                                         kategoria_glowna=kategoria_glowna)
+                                         kategoria_glowna=kategoria_glowna,
+                                         household_id=current_user["household_id"])
 
 
 @app.get("/api/stats/subkategorie")
-def stats_subkategorie(kategoria_glowna: str, month: str | None = None, osoba: str | None = None):
-    return database.stats_subkategorie(kategoria_glowna=kategoria_glowna, month=month, osoba=osoba)
+def stats_subkategorie(kategoria_glowna: str, month: str | None = None, osoba: str | None = None,
+                       current_user: dict = Depends(get_current_user)):
+    return database.stats_subkategorie(kategoria_glowna=kategoria_glowna, month=month, osoba=osoba,
+                                       household_id=current_user["household_id"])
 
 
 @app.get("/api/stats/subkategorie-all")
-def stats_subkategorie_all(month: str | None = None, osoba: str | None = None):
-    return database.stats_subkategorie_all(month=month, osoba=osoba)
+def stats_subkategorie_all(month: str | None = None, osoba: str | None = None,
+                           current_user: dict = Depends(get_current_user)):
+    return database.stats_subkategorie_all(month=month, osoba=osoba,
+                                           household_id=current_user["household_id"])
 
 
 @app.get("/api/stats/miesiace")
-def stats_miesiace(n: int = 6, osoba: str | None = None, kategoria: str | None = None):
-    return database.stats_miesiace(n=n, osoba=osoba, kategoria=kategoria)
+def stats_miesiace(n: int = 6, osoba: str | None = None, kategoria: str | None = None,
+                   current_user: dict = Depends(get_current_user)):
+    return database.stats_miesiace(n=n, osoba=osoba, kategoria=kategoria,
+                                   household_id=current_user["household_id"])
 
 
 @app.get("/api/stats/sklepy")
 def stats_sklepy(month: str | None = None, osoba: str | None = None,
-                 limit: int = 10, kategoria: str | None = None):
-    return database.stats_sklepy(month=month, osoba=osoba, limit=limit, kategoria=kategoria)
+                 limit: int = 10, kategoria: str | None = None,
+                 current_user: dict = Depends(get_current_user)):
+    return database.stats_sklepy(month=month, osoba=osoba, limit=limit, kategoria=kategoria,
+                                 household_id=current_user["household_id"])
 
 
 @app.get("/api/stats/top-produkt")
-def stats_top_produkt(kategoria: str, month: str | None = None, osoba: str | None = None):
-    result = database.stats_top_produkt(kategoria=kategoria, month=month, osoba=osoba)
+def stats_top_produkt(kategoria: str, month: str | None = None, osoba: str | None = None,
+                      current_user: dict = Depends(get_current_user)):
+    result = database.stats_top_produkt(kategoria=kategoria, month=month, osoba=osoba,
+                                        household_id=current_user["household_id"])
     return result or {}

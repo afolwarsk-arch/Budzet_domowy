@@ -1,4 +1,4 @@
-// ── shared helpers ──────────────────────────────────────────────
+﻿// â”€â”€ shared helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function fmt(zl) {
   return Number(zl).toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' });
@@ -12,9 +12,9 @@ function esc(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/'/g, '&#39;');
 }
 
-// ── DASHBOARD ────────────────────────────────────────────────────
+// â”€â”€ DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-if (document.getElementById('chart-kategorie')) {
+if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(() => {
   let chartKat = null;
   let chartMies = null;
   let miesiaceLacznie = false;
@@ -26,8 +26,8 @@ if (document.getElementById('chart-kategorie')) {
   const katSelect = document.getElementById('filter-kategoria');
   monthInput.value = currentMonth();
 
-  // Załaduj kategorie dynamicznie z backendu
-  fetch('/api/kategorie').then(r => r.json()).then(hier => {
+  // ZaĹ‚aduj kategorie dynamicznie z backendu
+  authFetch('/api/kategorie').then(r => r.json()).then(hier => {
     const current = katSelect.value;
     katSelect.innerHTML = '<option value="">Wszystkie</option>' +
       Object.keys(hier).map(k => `<option value="${esc(k)}" ${k === current ? 'selected' : ''}>${esc(k)}</option>`).join('');
@@ -48,14 +48,14 @@ if (document.getElementById('chart-kategorie')) {
     qMies.set('n', '6');
 
     const fetches = [
-      fetch('/api/stats/kategorie?' + q).then(r => r.json()),
-      fetch('/api/stats/miesiace?' + qMies).then(r => r.json()),
-      fetch('/api/stats/sklepy?' + q).then(r => r.json()),
-      fetch('/api/wydatki?' + q).then(r => r.json()),
+      authFetch('/api/stats/kategorie?' + q).then(r => r.json()),
+      authFetch('/api/stats/miesiace?' + qMies).then(r => r.json()),
+      authFetch('/api/stats/sklepy?' + q).then(r => r.json()),
+      authFetch('/api/wydatki?' + q).then(r => r.json()),
     ];
     if (kategoria) {
-      fetches.push(fetch('/api/stats/subkategorie?' + new URLSearchParams({ kategoria_glowna: kategoria, ...Object.fromEntries(q) })).then(r => r.json()));
-      fetches.push(fetch('/api/stats/top-produkt?' + q).then(r => r.json()));
+      fetches.push(authFetch('/api/stats/subkategorie?' + new URLSearchParams({ kategoria_glowna: kategoria, ...Object.fromEntries(q) })).then(r => r.json()));
+      fetches.push(authFetch('/api/stats/top-produkt?' + q).then(r => r.json()));
     }
 
     const results = await Promise.all(fetches);
@@ -83,7 +83,7 @@ if (document.getElementById('chart-kategorie')) {
       if (statLabel) statLabel.textContent = 'Najdroższy produkt';
     } else {
       const topKat = statKat[0];
-      document.getElementById('stat-topkat').textContent = topKat ? `${topKat.kategoria_glowna} (${fmt(topKat.suma)})` : '—';
+      document.getElementById('stat-topkat').textContent = topKat ? `${topKat.kategoria_glowna} (${fmt(topKat.suma)})` : 'â€”';
       if (statLabel) statLabel.textContent = 'Największa kategoria';
     }
   }
@@ -99,7 +99,7 @@ if (document.getElementById('chart-kategorie')) {
     const subPanel = document.getElementById('subkat-panel');
 
     if (kategoria && statSub) {
-      // tryb kategorii — poziomy słupkowy rozkład podkategorii
+      // tryb kategorii â€” poziomy sĹ‚upkowy rozkĹ‚ad podkategorii
       subPanel.classList.add('hidden');
       hint.style.display = 'none';
       const max = statSub[0]?.suma || 1;
@@ -124,7 +124,7 @@ if (document.getElementById('chart-kategorie')) {
         },
       });
     } else {
-      // tryb ogólny — kołowy
+      // tryb ogĂłlny â€” koĹ‚owy
       chartKat = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -165,8 +165,8 @@ if (document.getElementById('chart-kategorie')) {
     if (osoba) qw.set('osoba', osoba);
 
     const [subs, wydatki] = await Promise.all([
-      fetch('/api/stats/subkategorie?' + q).then(r => r.json()),
-      fetch('/api/wydatki?' + qw).then(r => r.json()),
+      authFetch('/api/stats/subkategorie?' + q).then(r => r.json()),
+      authFetch('/api/wydatki?' + qw).then(r => r.json()),
     ]);
     const panel = document.getElementById('subkat-panel');
     const title = document.getElementById('subkat-title');
@@ -176,13 +176,13 @@ if (document.getElementById('chart-kategorie')) {
     const max = subs[0]?.suma || 1;
     const subHTML = subs.map((s, i) => `
       <div class="subkat-row" data-idx="${i}">
-        <span class="subkat-toggle">▶</span>
+        <span class="subkat-toggle">â–¶</span>
         <span style="min-width:160px;font-size:13px">${esc(s.kategoria)}</span>
         <div class="sklep-bar-wrap"><div class="sklep-bar" style="width:${(s.suma/max*100).toFixed(1)}%;background:#a04ff8"></div></div>
         <span style="white-space:nowrap;color:var(--muted);font-size:13px">${fmt(s.suma)}</span>
       </div>
       <div class="subkat-pozycje hidden" id="subkat-poz-${i}">
-        <div class="subkat-poz-loading">Ładowanie...</div>
+        <div class="subkat-poz-loading">Ĺadowanie...</div>
       </div>`).join('');
 
     const wydatkiHTML = wydatki.length ? `
@@ -195,7 +195,7 @@ if (document.getElementById('chart-kategorie')) {
           ${wydatki.map(w => `
             <tr>
               <td>${w.data}</td>
-              <td>${w.sklep || '—'}${w.notatki ? `<div class="notatka-hint">${w.notatki}</div>` : ''}</td>
+              <td>${w.sklep || 'â€”'}${w.notatki ? `<div class="notatka-hint">${w.notatki}</div>` : ''}</td>
               <td><span class="badge ${w.osoba==='Ola'?'ola':''}">${w.osoba}</span></td>
               <td style="text-align:right;font-weight:600">${fmt(w.suma)}</td>
               <td><button class="btn btn-outline btn-sm" onclick="editWydatek(${w.id})">Edytuj</button></td>
@@ -206,15 +206,15 @@ if (document.getElementById('chart-kategorie')) {
     list.innerHTML = subHTML + wydatkiHTML;
     panel.classList.remove('hidden');
 
-    // binduj kliknięcia po wyrenderowaniu
+    // binduj klikniÄ™cia po wyrenderowaniu
     list.querySelectorAll('.subkat-row').forEach((rowEl, i) => {
       rowEl.addEventListener('click', async () => {
         const poz = document.getElementById('subkat-poz-' + i);
         const toggle = rowEl.querySelector('.subkat-toggle');
         const isOpen = !poz.classList.contains('hidden');
-        if (isOpen) { poz.classList.add('hidden'); toggle.textContent = '▶'; return; }
+        if (isOpen) { poz.classList.add('hidden'); toggle.textContent = 'â–¶'; return; }
         poz.classList.remove('hidden');
-        toggle.textContent = '▼';
+        toggle.textContent = 'â–Ľ';
         if (!poz.querySelector('.subkat-poz-loading')) return;
 
         const kategoria = subs[i].kategoria;
@@ -224,7 +224,7 @@ if (document.getElementById('chart-kategorie')) {
         if (month) q.set('month', month);
         if (osoba) q.set('osoba', osoba);
 
-        const items = await fetch('/api/stats/pozycje-subkat?' + q).then(r => r.json());
+        const items = await authFetch('/api/stats/pozycje-subkat?' + q).then(r => r.json());
         if (!items.length) {
           poz.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:6px 8px">Brak pozycji</p>';
           return;
@@ -233,14 +233,14 @@ if (document.getElementById('chart-kategorie')) {
           <table class="pozycje-table" style="margin-left:20px">
             <thead><tr>
               <th>Produkt</th><th>Sklep</th><th>Data</th>
-              <th style="text-align:right">Ilość</th>
+              <th style="text-align:right">IloĹ›Ä‡</th>
               <th style="text-align:right">Cena</th>
               <th style="text-align:right">Suma</th>
             </tr></thead>
             <tbody>
               ${items.map(p => `<tr>
                 <td>${esc(p.nazwa)}</td>
-                <td style="color:var(--muted)">${esc(p.sklep || '—')}</td>
+                <td style="color:var(--muted)">${esc(p.sklep || 'â€”')}</td>
                 <td style="color:var(--muted)">${p.data}</td>
                 <td style="text-align:right;color:var(--muted)">${p.ilosc > 1 ? p.ilosc : ''}</td>
                 <td style="text-align:right;color:var(--muted)">${fmt(p.cena)}</td>
@@ -257,7 +257,7 @@ if (document.getElementById('chart-kategorie')) {
     activeGlowna = null;
   });
 
-  // toggle trendy: osobno / łącznie
+  // toggle trendy: osobno / Ĺ‚Ä…cznie
   document.getElementById('btn-osobno')?.addEventListener('click', () => {
     miesiaceLacznie = false;
     document.getElementById('btn-osobno').classList.add('active');
@@ -277,7 +277,7 @@ if (document.getElementById('chart-kategorie')) {
     const q = new URLSearchParams({ kategoria: subkat });
     if (month) q.set('month', month);
     if (osoba) q.set('osoba', osoba);
-    const data = await fetch('/api/stats/pozycje-subkat?' + q).then(r => r.json());
+    const data = await authFetch('/api/stats/pozycje-subkat?' + q).then(r => r.json());
     const panel = document.getElementById('drill-panel');
     document.getElementById('drill-title').textContent = subkat;
     const list = document.getElementById('drill-list');
@@ -285,13 +285,13 @@ if (document.getElementById('chart-kategorie')) {
       list.innerHTML = '<p style="color:var(--muted);font-size:13px">Brak danych</p>';
     } else {
       const rows = data.map(p => `<tr>
-        <td>${p.data}</td><td>${esc(p.sklep || '—')}</td>
+        <td>${p.data}</td><td>${esc(p.sklep || 'â€”')}</td>
         <td>${esc(p.nazwa)}</td>
-        <td style="text-align:right">${fmt(p.cena)} × ${p.ilosc}</td>
+        <td style="text-align:right">${fmt(p.cena)} Ă— ${p.ilosc}</td>
         <td style="text-align:right;font-weight:600">${fmt(p.suma)}</td>
       </tr>`).join('');
       list.innerHTML = `<div class="table-wrap" style="margin-top:10px"><table>
-        <thead><tr><th>Data</th><th>Sklep</th><th>Produkt</th><th>Cena×il.</th><th>Suma</th></tr></thead>
+        <thead><tr><th>Data</th><th>Sklep</th><th>Produkt</th><th>CenaĂ—il.</th><th>Suma</th></tr></thead>
         <tbody>${rows}</tbody></table></div>`;
     }
     panel.classList.remove('hidden');
@@ -311,7 +311,7 @@ if (document.getElementById('chart-kategorie')) {
       const lacznie = miesiace.map(m =>
         data.filter(d => d.miesiac === m).reduce((s, d) => s + d.suma, 0)
       );
-      datasets = [{ label: 'Łącznie', data: lacznie, backgroundColor: '#4fc8f8', borderRadius: 4 }];
+      datasets = [{ label: 'ĹÄ…cznie', data: lacznie, backgroundColor: '#4fc8f8', borderRadius: 4 }];
     } else {
       const adam = miesiace.map(m => data.find(d => d.miesiac === m && d.osoba === 'Adam')?.suma ?? 0);
       const ola  = miesiace.map(m => data.find(d => d.miesiac === m && d.osoba === 'Ola')?.suma ?? 0);
@@ -349,29 +349,29 @@ if (document.getElementById('chart-kategorie')) {
   function renderTable(data) {
     const tbody = document.querySelector('#wydatki-table tbody');
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Brak wydatków w tym okresie</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Brak wydatkĂłw w tym okresie</td></tr>';
       return;
     }
     tbody.innerHTML = data.map(w => `
       <tr class="wydatek-row" data-id="${w.id}">
         <td>
-          <button class="expand-btn" onclick="togglePozycje(${w.id}, this)" title="Rozwiń pozycje">▶</button>
+          <button class="expand-btn" onclick="togglePozycje(${w.id}, this)" title="RozwiĹ„ pozycje">â–¶</button>
         </td>
         <td>${w.data}</td>
         <td>
-          <span class="sklep-name">${w.sklep || '—'}</span>
+          <span class="sklep-name">${w.sklep || 'â€”'}</span>
           ${w.notatki ? `<div class="notatka-hint">${w.notatki}</div>` : ''}
         </td>
         <td style="font-weight:600">${fmt(w.suma)}</td>
         <td><span class="badge ${w.osoba === 'Ola' ? 'ola' : ''}">${w.osoba}</span></td>
         <td>
           <button class="btn btn-outline btn-sm" onclick="editWydatek(${w.id})">Edytuj</button>
-          <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteWydatek(${w.id})">Usuń</button>
+          <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteWydatek(${w.id})">UsuĹ„</button>
         </td>
       </tr>
       <tr class="pozycje-row hidden" id="pozycje-${w.id}">
         <td colspan="6" class="pozycje-detail">
-          <div class="pozycje-loading">Ładowanie...</div>
+          <div class="pozycje-loading">Ĺadowanie...</div>
         </td>
       </tr>`).join('');
   }
@@ -382,18 +382,18 @@ if (document.getElementById('chart-kategorie')) {
 
     if (expanded) {
       row.classList.add('hidden');
-      btn.textContent = '▶';
+      btn.textContent = 'â–¶';
       btn.classList.remove('expanded');
       return;
     }
 
     row.classList.remove('hidden');
-    btn.textContent = '▼';
+    btn.textContent = 'â–Ľ';
     btn.classList.add('expanded');
 
     const detail = row.querySelector('.pozycje-detail');
     if (detail.querySelector('.pozycje-loading')) {
-      const w = await fetch('/api/wydatki/' + id).then(r => r.json());
+      const w = await authFetch('/api/wydatki/' + id).then(r => r.json());
       if (!w.pozycje || !w.pozycje.length) {
         detail.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:8px 0">Brak pozycji</p>';
         return;
@@ -404,7 +404,7 @@ if (document.getElementById('chart-kategorie')) {
             <tr>
               <th>Produkt</th>
               <th>Kategoria</th>
-              <th style="text-align:right">Ilość</th>
+              <th style="text-align:right">IloĹ›Ä‡</th>
               <th style="text-align:right">Cena</th>
               <th style="text-align:right">Suma</th>
             </tr>
@@ -432,7 +432,7 @@ if (document.getElementById('chart-kategorie')) {
 
   window.saveNote = async function(id) {
     const notatki = document.getElementById('note-' + id).value;
-    await fetch('/api/wydatki/' + id + '/notatki', {
+    await authFetch('/api/wydatki/' + id + '/notatki', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ notatki }),
@@ -441,8 +441,8 @@ if (document.getElementById('chart-kategorie')) {
   };
 
   window.deleteWydatek = async function(id) {
-    if (!confirm('Usunąć ten wydatek?')) return;
-    await fetch('/api/wydatki/' + id, { method: 'DELETE' });
+    if (!confirm('UsunÄ…Ä‡ ten wydatek?')) return;
+    await authFetch('/api/wydatki/' + id, { method: 'DELETE' });
     loadDashboard();
   };
 
@@ -454,7 +454,7 @@ if (document.getElementById('chart-kategorie')) {
   osobaSelect.addEventListener('change', loadDashboard);
   katSelect.addEventListener('change', loadDashboard);
 
-  // ── Przelicz kategorie ──
+  // â”€â”€ Przelicz kategorie â”€â”€
   const btnPreview = document.getElementById('btn-rekat-preview');
   const btnRun = document.getElementById('btn-rekat-run');
   const rekatInfo = document.getElementById('rekat-info');
@@ -470,43 +470,43 @@ if (document.getElementById('chart-kategorie')) {
 
   btnPreview.addEventListener('click', async () => {
     const q = rekatParams();
-    const data = await fetch('/api/admin/rekat-preview?' + q).then(r => r.json());
+    const data = await authFetch('/api/admin/rekat-preview?' + q).then(r => r.json());
     if (data.liczba === 0) {
       rekatInfo.textContent = 'Brak pozycji w wybranym zakresie.';
       btnRun.disabled = true;
     } else {
-      rekatInfo.innerHTML = `<strong>${data.liczba} pozycji</strong> do przeliczenia — ${data.szacowane_paczki} zapytań do Claude AI.`;
+      rekatInfo.innerHTML = `<strong>${data.liczba} pozycji</strong> do przeliczenia â€” ${data.szacowane_paczki} zapytaĹ„ do Claude AI.`;
       btnRun.disabled = false;
     }
   });
 
   btnRun.addEventListener('click', async () => {
-    if (!confirm('Przelicz kategorie? Zostanie wysłanych kilka zapytań do Claude AI.')) return;
+    if (!confirm('Przelicz kategorie? Zostanie wysĹ‚anych kilka zapytaĹ„ do Claude AI.')) return;
     btnRun.disabled = true;
     btnRun.innerHTML = '<span class="loader"></span> Przeliczam...';
-    rekatInfo.textContent = 'Trwa przeliczanie — nie zamykaj strony...';
+    rekatInfo.textContent = 'Trwa przeliczanie â€” nie zamykaj strony...';
     try {
       const q = rekatParams();
       const body = Object.fromEntries(q.entries());
-      const data = await fetch('/api/admin/rekategoryzuj', {
+      const data = await authFetch('/api/admin/rekategoryzuj', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       }).then(r => r.json());
-      rekatInfo.innerHTML = `Gotowe — zaktualizowano <strong>${data.zaktualizowane} pozycji</strong>.`;
+      rekatInfo.innerHTML = `Gotowe â€” zaktualizowano <strong>${data.zaktualizowane} pozycji</strong>.`;
       loadDashboard();
     } catch (e) {
-      rekatInfo.textContent = 'Błąd: ' + e.message;
+      rekatInfo.textContent = 'BĹ‚Ä…d: ' + e.message;
     } finally {
       btnRun.textContent = 'Przelicz';
     }
   });
   loadDashboard();
-}
+}); }
 
-// ── UPLOAD PAGE ──────────────────────────────────────────────────
+// ── UPLOAD PAGE ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-if (document.getElementById('drop-zone')) {
+if (document.getElementById('drop-zone')) { authRequireHousehold().then(() => {
   let HIERARCHIA = {};
   let GLOWNE = [];
 
@@ -528,8 +528,8 @@ if (document.getElementById('drop-zone')) {
   let receiptsData = [];
   let editId = null;
 
-  // Załaduj hierarchię kategorii z backendu (zawsze aktualna)
-  fetch('/api/kategorie').then(r => r.json()).then(hier => {
+  // ZaĹ‚aduj hierarchiÄ™ kategorii z backendu (zawsze aktualna)
+  authFetch('/api/kategorie').then(r => r.json()).then(hier => {
     HIERARCHIA = hier;
     GLOWNE = Object.keys(hier);
     const params = new URLSearchParams(location.search);
@@ -541,7 +541,7 @@ if (document.getElementById('drop-zone')) {
 
   const params = new URLSearchParams(location.search);
   if (!params.get('edit')) {
-    // nie ma edycji — init od razu (nie potrzebujemy HIERARCHIA przed akcją usera)
+    // nie ma edycji â€” init od razu (nie potrzebujemy HIERARCHIA przed akcjÄ… usera)
   }
 
   // tabs
@@ -595,8 +595,8 @@ if (document.getElementById('drop-zone')) {
       let list;
       if (!panelText.classList.contains('hidden')) {
         const text = textInput.value.trim();
-        if (!text) { setAlert('Wpisz treść notatki', 'error'); return; }
-        const res = await fetch('/api/process-text', {
+        if (!text) { setAlert('Wpisz treĹ›Ä‡ notatki', 'error'); return; }
+        const res = await authFetch('/api/process-text', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text, osoba, kontekst }),
@@ -607,13 +607,13 @@ if (document.getElementById('drop-zone')) {
         const files = fileInput.files;
         if (!files.length) { setAlert('Wybierz plik', 'error'); return; }
 
-        // wyślij wszystkie zdjęcia równolegle
+        // wyĹ›lij wszystkie zdjÄ™cia rĂłwnolegle
         const requests = Array.from(files).map(file => {
           const fd = new FormData();
           fd.append('file', file);
           fd.append('osoba', osoba);
           if (kontekst) fd.append('kontekst', kontekst);
-          return fetch('/api/process-image', { method: 'POST', body: fd })
+          return authFetch('/api/process-image', { method: 'POST', body: fd })
             .then(r => r.json().then(data => ({ ok: r.ok, data })));
         });
 
@@ -627,14 +627,14 @@ if (document.getElementById('drop-zone')) {
       renderCards();
       resultSection.classList.remove('hidden');
     } catch (e) {
-      setAlert('Błąd: ' + e.message, 'error');
+      setAlert('BĹ‚Ä…d: ' + e.message, 'error');
     } finally {
       analyzeBtn.disabled = false;
       analyzeBtn.textContent = 'Analizuj';
     }
   });
 
-  // ── render all paragon cards ──
+  // â”€â”€ render all paragon cards â”€â”€
 
   function renderCards() {
     if (receiptsData.length === 0) { cardsContainer.innerHTML = ''; return; }
@@ -645,16 +645,16 @@ if (document.getElementById('drop-zone')) {
     cardsContainer.innerHTML = receiptsData.map((r, ri) => `
       <div class="paragon-card" id="card-${ri}">
         <div class="paragon-card-header" onclick="toggleCard(${ri})">
-          <span class="card-toggle" id="toggle-${ri}">▼</span>
+          <span class="card-toggle" id="toggle-${ri}">â–Ľ</span>
           <span class="card-title">
             <strong>${r.sklep || 'Nieznany sklep'}</strong>
             <span class="card-date">${r.data}</span>
           </span>
           <span class="card-suma">
             ${fmt(r.suma)}
-            ${r.waluta && r.waluta !== 'PLN' ? `<span class="badge" style="font-size:11px;margin-left:6px">${r.waluta} × ${r.kurs}</span>` : ''}
+            ${r.waluta && r.waluta !== 'PLN' ? `<span class="badge" style="font-size:11px;margin-left:6px">${r.waluta} Ă— ${r.kurs}</span>` : ''}
           </span>
-          ${receiptsData.length > 1 ? `<button class="remove-card-btn" onclick="removeCard(event,${ri})" title="Usuń ten paragon">×</button>` : ''}
+          ${receiptsData.length > 1 ? `<button class="remove-card-btn" onclick="removeCard(event,${ri})" title="UsuĹ„ ten paragon">Ă—</button>` : ''}
         </div>
         <div class="paragon-card-body" id="card-body-${ri}">
           <div class="form-row" style="margin-bottom:12px">
@@ -711,9 +711,9 @@ if (document.getElementById('drop-zone')) {
             oninput="updatePozycja(${ri},${pi},'nazwa',this.value)">
           <input type="number" step="0.01" value="${p.cena}" placeholder="Cena"
             oninput="updatePozycja(${ri},${pi},'cena',parseFloat(this.value))">
-          <input type="number" step="0.1" value="${p.ilosc||1}" placeholder="Ilość"
+          <input type="number" step="0.1" value="${p.ilosc||1}" placeholder="IloĹ›Ä‡"
             oninput="updatePozycja(${ri},${pi},'ilosc',parseFloat(this.value))">
-          <button class="remove-btn" onclick="removePozycja(${ri},${pi})" title="Usuń">×</button>
+          <button class="remove-btn" onclick="removePozycja(${ri},${pi})" title="UsuĹ„">Ă—</button>
         </div>
         <div class="pozycja-kat">
           <select id="glowna-${ri}-${pi}" onchange="onGlownaChange(${ri},${pi},this.value)">
@@ -740,7 +740,7 @@ if (document.getElementById('drop-zone')) {
     const tog = document.getElementById('toggle-' + ri);
     const hidden = body.style.display === 'none';
     body.style.display = hidden ? '' : 'none';
-    tog.textContent = hidden ? '▼' : '▶';
+    tog.textContent = hidden ? 'â–Ľ' : 'â–¶';
   };
 
   window.removeCard = function(e, ri) {
@@ -763,7 +763,7 @@ if (document.getElementById('drop-zone')) {
     document.getElementById('poz-' + ri).innerHTML = renderPozycjeHTML(ri, receiptsData[ri].pozycje);
   };
 
-  // ── save ──
+  // â”€â”€ save â”€â”€
 
   saveAllBtn.addEventListener('click', async () => {
     if (!receiptsData.length) return;
@@ -778,7 +778,7 @@ if (document.getElementById('drop-zone')) {
     try {
       if (editId) {
         const r = receiptsData[0];
-        const res = await fetch('/api/wydatki/' + editId, {
+        const res = await authFetch('/api/wydatki/' + editId, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(r),
@@ -786,7 +786,7 @@ if (document.getElementById('drop-zone')) {
         if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
       } else {
         for (const r of receiptsData) {
-          const res = await fetch('/api/wydatki', {
+          const res = await authFetch('/api/wydatki', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(r),
@@ -794,22 +794,22 @@ if (document.getElementById('drop-zone')) {
           if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
         }
       }
-      setAlert(`Zapisano ${receiptsData.length} paragon${receiptsData.length === 1 ? '' : receiptsData.length < 5 ? 'y' : 'ów'}!`, 'success');
+      setAlert(`Zapisano ${receiptsData.length} paragon${receiptsData.length === 1 ? '' : receiptsData.length < 5 ? 'y' : 'Ăłw'}!`, 'success');
       setTimeout(() => { window.location.href = '/'; }, 1000);
     } catch (e) {
-      setAlert('Błąd zapisu: ' + e.message, 'error');
+      setAlert('BĹ‚Ä…d zapisu: ' + e.message, 'error');
     } finally {
       saveAllBtn.disabled = false;
       saveAllBtn.textContent = editId ? 'Zapisz zmiany' : `Zapisz wszystkie (${receiptsData.length})`;
     }
   });
 
-  // ── edit mode ──
+  // â”€â”€ edit mode â”€â”€
 
   async function loadEdit(id) {
     document.getElementById('page-title').textContent = 'Edytuj wydatek';
     analyzeBtn.classList.add('hidden');
-    const w = await fetch('/api/wydatki/' + id).then(r => r.json());
+    const w = await authFetch('/api/wydatki/' + id).then(r => r.json());
     receiptsData = [{ ...w, notatki: w.notatki || '' }];
     renderCards();
     resultSection.classList.remove('hidden');
@@ -821,4 +821,5 @@ if (document.getElementById('drop-zone')) {
     alertEl.textContent = msg;
   }
 
-}
+}); }
+

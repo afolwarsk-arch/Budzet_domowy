@@ -9,3 +9,4 @@ venv/
 *.jpeg
 *.png
 *.url
+firebase-service-account.json

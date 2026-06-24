@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Logowanie — Budżet domowy</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f0f4f8;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.1);
+      padding: 48px 40px;
+      text-align: center;
+      max-width: 360px;
+      width: 100%;
+    }
+    .logo { font-size: 2.5rem; margin-bottom: 12px; }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; color: #1a1a1a; }
+    p { color: #666; margin-bottom: 32px; font-size: 0.9rem; line-height: 1.5; }
+    .btn-google {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 12px 20px;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: #3c4043;
+      justify-content: center;
+      transition: background .15s;
+    }
+    .btn-google:hover { background: #f8f9fa; }
+    .btn-google img { width: 20px; height: 20px; }
+    #error {
+      color: #d32f2f;
+      margin-top: 16px;
+      font-size: 0.85rem;
+      display: none;
+      background: #fdecea;
+      padding: 10px;
+      border-radius: 6px;
+    }
+    .spinner {
+      display: none;
+      margin-top: 16px;
+      color: #666;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🏠</div>
+    <h1>Budżet domowy</h1>
+    <p>Śledź wydatki swojego gospodarstwa domowego wspólnie z rodziną.</p>
+    <button class="btn-google" id="btn-google">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+      Zaloguj przez Google
+    </button>
+    <div id="error"></div>
+    <div class="spinner" id="spinner">Logowanie...</div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="/static/auth.js"></script>
+  <script>
+    firebase.auth().onAuthStateChanged(async (user) => {
+      if (!user) return;
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch("/api/me", { headers: { Authorization: "Bearer " + token } });
+        if (!res.ok) return;
+        const me = await res.json();
+        window.location.href = me.household_id ? "/" : "/onboarding";
+      } catch {}
+    });
+
+    document.getElementById("btn-google").addEventListener("click", async () => {
+      const errEl = document.getElementById("error");
+      const spinner = document.getElementById("spinner");
+      errEl.style.display = "none";
+      spinner.style.display = "block";
+      try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        await firebase.auth().signInWithPopup(provider);
+      } catch (e) {
+        spinner.style.display = "none";
+        errEl.textContent = "Błąd logowania: " + e.message;
+        errEl.style.display = "block";
+      }
+    });
+  </script>
+</body>
+</html>

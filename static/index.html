@@ -12,12 +12,33 @@
   <a href="/" class="active">Dashboard</a>
   <a href="/upload">Dodaj wydatek</a>
   <a href="/analiza">Analiza</a>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
 </nav>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="/static/auth.js"></script>
 
 <main>
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px">
     <h1>Dashboard</h1>
-    <a href="/upload" class="btn btn-primary">+ Dodaj wydatek</a>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="btn-invite" onclick="showInvite()" style="padding:8px 16px;border:1px solid #4f7ef8;border-radius:8px;background:white;color:#4f7ef8;cursor:pointer;font-size:0.9rem;">👥 Zaproś osobę</button>
+      <a href="/upload" class="btn btn-primary">+ Dodaj wydatek</a>
+    </div>
+  </div>
+
+  <div id="invite-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:white;border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <h2 style="margin-bottom:8px;font-size:1.1rem">Zaproś do gospodarstwa</h2>
+      <p style="color:#666;font-size:0.85rem;margin-bottom:20px">Wyślij ten link przez WhatsApp lub SMS. Link jest ważny 7 dni i jednorazowy.</p>
+      <div id="invite-link-box" style="background:#f8f9fa;border-radius:8px;padding:12px;font-size:0.8rem;word-break:break-all;color:#333;margin-bottom:16px;min-height:40px">Generowanie...</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="copyInvite()" style="flex:1;padding:10px;background:#4f7ef8;color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;">Kopiuj link</button>
+        <button onclick="document.getElementById('invite-modal').style.display='none'" style="padding:10px 16px;border:1px solid #ccc;border-radius:8px;background:white;cursor:pointer;font-size:0.9rem;">Zamknij</button>
+      </div>
+      <div id="invite-copied" style="color:green;font-size:0.8rem;margin-top:8px;display:none">Skopiowano do schowka!</div>
+    </div>
   </div>
 
   <div class="filters">
@@ -147,6 +168,32 @@
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script src="/static/app.js?v=9"></script>
+<script src="/static/app.js?v=10"></script>
+<script>
+  let _inviteLink = '';
+
+  async function showInvite() {
+    const modal = document.getElementById('invite-modal');
+    const box = document.getElementById('invite-link-box');
+    modal.style.display = 'flex';
+    box.textContent = 'Generowanie...';
+    document.getElementById('invite-copied').style.display = 'none';
+    try {
+      const res = await authFetch('/api/household/invite', { method: 'POST' });
+      const data = await res.json();
+      _inviteLink = data.link;
+      box.textContent = data.link;
+    } catch (e) {
+      box.textContent = 'Błąd: ' + e.message;
+    }
+  }
+
+  function copyInvite() {
+    if (!_inviteLink) return;
+    navigator.clipboard.writeText(_inviteLink).then(() => {
+      document.getElementById('invite-copied').style.display = 'block';
+    });
+  }
+</script>
 </body>
 </html>

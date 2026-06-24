@@ -7,11 +7,15 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="/static/auth.js"></script>
 <nav>
   <a href="/" class="logo">🏠 Budżet</a>
   <a href="/">Dashboard</a>
   <a href="/upload" class="active">Dodaj wydatek</a>
   <a href="/analiza">Analiza</a>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
 </nav>
 
 <main style="max-width:720px">

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Konfiguracja — Budżet domowy</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f0f4f8;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.1);
+      padding: 40px;
+      max-width: 440px;
+      width: 100%;
+    }
+    .logo { font-size: 2rem; margin-bottom: 12px; }
+    h1 { font-size: 1.4rem; margin-bottom: 6px; color: #1a1a1a; }
+    .subtitle { color: #666; margin-bottom: 24px; font-size: 0.9rem; }
+    .user-info {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      color: #555;
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .user-info img { width: 28px; height: 28px; border-radius: 50%; }
+    .section { margin-bottom: 24px; }
+    h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; color: #333; }
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      margin-bottom: 10px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    input:focus { border-color: #4285f4; }
+    .btn {
+      width: 100%;
+      padding: 11px;
+      background: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn:hover { background: #3367d6; }
+    .divider {
+      text-align: center;
+      color: #aaa;
+      margin: 20px 0;
+      font-size: 0.85rem;
+      position: relative;
+    }
+    .divider::before, .divider::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: 42%;
+      height: 1px;
+      background: #eee;
+    }
+    .divider::before { left: 0; }
+    .divider::after { right: 0; }
+    .error {
+      color: #d32f2f;
+      font-size: 0.85rem;
+      margin-top: 8px;
+      background: #fdecea;
+      padding: 8px 12px;
+      border-radius: 6px;
+      display: none;
+    }
+    .logout-link {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 0.8rem;
+      color: #aaa;
+    }
+    .logout-link a { color: #aaa; cursor: pointer; text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🏠</div>
+    <h1>Witaj w Budżecie domowym!</h1>
+    <div class="subtitle">Jeden krok dzieli Cię od śledzenia wydatków.</div>
+    <div class="user-info" id="user-info">Ładowanie...</div>
+
+    <div class="section">
+      <h2>Utwórz nowe gospodarstwo</h2>
+      <input id="inp-name" type="text" placeholder="np. Dom Kowalskich">
+      <button class="btn" id="btn-create">Utwórz gospodarstwo</button>
+      <div class="error" id="err-create"></div>
+    </div>
+
+    <div class="divider">lub</div>
+
+    <div class="section">
+      <h2>Dołącz przez zaproszenie</h2>
+      <input id="inp-code" type="text" placeholder="Wklej link lub kod zaproszenia">
+      <button class="btn" id="btn-join">Dołącz</button>
+      <div class="error" id="err-join"></div>
+    </div>
+
+    <div class="logout-link"><a onclick="authLogout()">Wyloguj się</a></div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="/static/auth.js"></script>
+  <script>
+    let _token = null;
+
+    firebase.auth().onAuthStateChanged(async (user) => {
+      if (!user) { window.location.href = "/login"; return; }
+      _token = await user.getIdToken();
+      const res = await fetch("/api/me", { headers: { Authorization: "Bearer " + _token } });
+      if (!res.ok) { window.location.href = "/login"; return; }
+      const me = await res.json();
+      if (me.household_id) { window.location.href = "/"; return; }
+      const el = document.getElementById("user-info");
+      el.innerHTML = me.picture
+        ? `<img src="${me.picture}" alt=""> ${me.name} (${me.email})`
+        : me.name + " (" + me.email + ")";
+    });
+
+    document.getElementById("btn-create").addEventListener("click", async () => {
+      const name = document.getElementById("inp-name").value.trim();
+      const errEl = document.getElementById("err-create");
+      errEl.style.display = "none";
+      if (!name) { errEl.textContent = "Podaj nazwę gospodarstwa"; errEl.style.display = "block"; return; }
+      const res = await fetch("/api/household", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + _token },
+        body: JSON.stringify({ name }),
+      });
+      if (res.ok) { window.location.href = "/"; }
+      else { const e = await res.json(); errEl.textContent = e.detail; errEl.style.display = "block"; }
+    });
+
+    document.getElementById("btn-join").addEventListener("click", async () => {
+      let code = document.getElementById("inp-code").value.trim();
+      const errEl = document.getElementById("err-join");
+      errEl.style.display = "none";
+      const match = code.match(/\/join\/([^/?#]+)/);
+      if (match) code = match[1];
+      if (!code) { errEl.textContent = "Podaj kod lub link zaproszenia"; errEl.style.display = "block"; return; }
+      const res = await fetch("/join/" + encodeURIComponent(code), {
+        headers: { Authorization: "Bearer " + _token },
+        redirect: "manual",
+      });
+      if (res.ok || res.status === 302 || res.type === "opaqueredirect") {
+        window.location.href = "/";
+      } else {
+        try { const e = await res.json(); errEl.textContent = e.detail; }
+        catch { errEl.textContent = "Nieprawidłowy kod zaproszenia"; }
+        errEl.style.display = "block";
+      }
+    });
+  </script>
+</body>
+</html>

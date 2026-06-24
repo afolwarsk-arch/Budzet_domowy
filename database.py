@@ -5,17 +5,50 @@ from pathlib import Path
 DB_PATH = Path(__file__).parent / "budget.db"
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS wydatki (
+CREATE TABLE IF NOT EXISTS households (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    data       DATE NOT NULL,
-    sklep      TEXT,
-    suma       REAL NOT NULL,
-    osoba      TEXT NOT NULL DEFAULT 'Adam',
-    notatki    TEXT,
-    zdjecie    TEXT,
-    waluta     TEXT NOT NULL DEFAULT 'PLN',
-    kurs       REAL NOT NULL DEFAULT 1.0,
+    name       TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    firebase_uid TEXT UNIQUE NOT NULL,
+    email        TEXT NOT NULL,
+    name         TEXT NOT NULL DEFAULT '',
+    picture      TEXT DEFAULT '',
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS memberships (
+    user_id      INTEGER NOT NULL REFERENCES users(id),
+    household_id INTEGER NOT NULL REFERENCES households(id),
+    role         TEXT NOT NULL DEFAULT 'member',
+    PRIMARY KEY (user_id, household_id)
+);
+
+CREATE TABLE IF NOT EXISTS invitations (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    code         TEXT UNIQUE NOT NULL,
+    household_id INTEGER NOT NULL REFERENCES households(id),
+    created_by   INTEGER NOT NULL REFERENCES users(id),
+    expires_at   TIMESTAMP NOT NULL,
+    used         INTEGER NOT NULL DEFAULT 0,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS wydatki (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    data         DATE NOT NULL,
+    sklep        TEXT,
+    suma         REAL NOT NULL,
+    osoba        TEXT NOT NULL DEFAULT 'Adam',
+    notatki      TEXT,
+    zdjecie      TEXT,
+    waluta       TEXT NOT NULL DEFAULT 'PLN',
+    kurs         REAL NOT NULL DEFAULT 1.0,
+    household_id INTEGER REFERENCES households(id),
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS pozycje (
@@ -107,6 +140,10 @@ def init_db():
             conn.execute("ALTER TABLE wydatki ADD COLUMN waluta TEXT NOT NULL DEFAULT 'PLN'")
             conn.execute("ALTER TABLE wydatki ADD COLUMN kurs REAL NOT NULL DEFAULT 1.0")
 
+        # Migracja: dodaj household_id do wydatki
+        if "household_id" not in wcols:
+            conn.execute("ALTER TABLE wydatki ADD COLUMN household_id INTEGER REFERENCES households(id)")
+
         cols = [r[1] for r in conn.execute("PRAGMA table_info(pozycje)").fetchall()]
         if "kategoria_glowna" not in cols:
             conn.execute("ALTER TABLE pozycje ADD COLUMN kategoria_glowna TEXT NOT NULL DEFAULT 'Inne'")
@@ -130,11 +167,12 @@ def init_db():
 def create_wydatek(data: str, sklep: str | None, suma: float, osoba: str,
                    notatki: str | None, zdjecie: str | None,
                    pozycje: list[dict],
-                   waluta: str = "PLN", kurs: float = 1.0) -> int:
+                   waluta: str = "PLN", kurs: float = 1.0,
+                   household_id: int | None = None) -> int:
     with get_db() as conn:
         cur = conn.execute(
-            "INSERT INTO wydatki (data, sklep, suma, osoba, notatki, zdjecie, waluta, kurs) VALUES (?,?,?,?,?,?,?,?)",
-            (data, sklep, suma, osoba, notatki, zdjecie, waluta, kurs),
+            "INSERT INTO wydatki (data, sklep, suma, osoba, notatki, zdjecie, waluta, kurs, household_id) VALUES (?,?,?,?,?,?,?,?,?)",
+            (data, sklep, suma, osoba, notatki, zdjecie, waluta, kurs, household_id),
         )
         wydatek_id = cur.lastrowid
         conn.executemany(
@@ -147,8 +185,10 @@ def create_wydatek(data: str, sklep: str | None, suma: float, osoba: str,
 
 
 def get_wydatki(month: str | None = None, osoba: str | None = None,
-                kategoria: str | None = None) -> list[dict]:
+                kategoria: str | None = None, household_id: int | None = None) -> list[dict]:
     conditions, params = [], []
+    if household_id is not None:
+        conditions.append("w.household_id = ?"); params.append(household_id)
     if month:
         conditions.append("strftime('%Y-%m', w.data) = ?"); params.append(month)
     if osoba:
@@ -246,8 +286,10 @@ def delete_wydatek(wydatek_id: int) -> bool:
 
 # --- statystyki ---
 
-def _where_params(month, osoba):
+def _where_params(month, osoba, household_id=None):
     conditions, params = [], []
+    if household_id is not None:
+        conditions.append("w.household_id = ?"); params.append(household_id)
     if month:
         conditions.append("strftime('%Y-%m', w.data) = ?"); params.append(month)
     if osoba:
@@ -255,8 +297,8 @@ def _where_params(month, osoba):
     return ("WHERE " + " AND ".join(conditions)) if conditions else "", params
 
 
-def stats_kategorie(month=None, osoba=None) -> list[dict]:
-    where, params = _where_params(month, osoba)
+def stats_kategorie(month=None, osoba=None, household_id=None) -> list[dict]:
+    where, params = _where_params(month, osoba, household_id)
     query = f"""
         SELECT p.kategoria_glowna AS kategoria_glowna,
                ROUND(SUM(p.cena * p.ilosc), 2) AS suma
@@ -266,8 +308,8 @@ def stats_kategorie(month=None, osoba=None) -> list[dict]:
         return [dict(r) for r in conn.execute(query, params).fetchall()]
 
 
-def stats_pozycje_subkat(kategoria: str, month=None, osoba=None, kategoria_glowna=None) -> list[dict]:
-    where, params = _where_params(month, osoba)
+def stats_pozycje_subkat(kategoria: str, month=None, osoba=None, kategoria_glowna=None, household_id=None) -> list[dict]:
+    where, params = _where_params(month, osoba, household_id)
     extra = f"{'AND' if where else 'WHERE'} p.kategoria = ?"
     params.append(kategoria)
     if kategoria_glowna:
@@ -281,8 +323,8 @@ def stats_pozycje_subkat(kategoria: str, month=None, osoba=None, kategoria_glown
         return [dict(r) for r in conn.execute(query, params).fetchall()]
 
 
-def stats_subkategorie(kategoria_glowna: str, month=None, osoba=None) -> list[dict]:
-    where, params = _where_params(month, osoba)
+def stats_subkategorie(kategoria_glowna: str, month=None, osoba=None, household_id=None) -> list[dict]:
+    where, params = _where_params(month, osoba, household_id)
     params.append(kategoria_glowna)
     query = f"""
         SELECT p.kategoria, ROUND(SUM(p.cena * p.ilosc), 2) AS suma
@@ -293,8 +335,8 @@ def stats_subkategorie(kategoria_glowna: str, month=None, osoba=None) -> list[di
         return [dict(r) for r in conn.execute(query, params).fetchall()]
 
 
-def stats_subkategorie_all(month=None, osoba=None) -> list[dict]:
-    where, params = _where_params(month, osoba)
+def stats_subkategorie_all(month=None, osoba=None, household_id=None) -> list[dict]:
+    where, params = _where_params(month, osoba, household_id)
     query = f"""
         SELECT p.kategoria_glowna, p.kategoria, ROUND(SUM(p.cena * p.ilosc), 2) AS suma
         FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
@@ -303,10 +345,13 @@ def stats_subkategorie_all(month=None, osoba=None) -> list[dict]:
         return [dict(r) for r in conn.execute(query, params).fetchall()]
 
 
-def stats_miesiace(n=6, osoba=None, kategoria=None) -> list[dict]:
+def stats_miesiace(n=6, osoba=None, kategoria=None, household_id=None) -> list[dict]:
     params = []
+    hid_cond = f"w.household_id = {int(household_id)} AND " if household_id is not None else ""
     if kategoria:
         conditions = [f"w.data >= date('now', '-{n} months')", "p.kategoria_glowna = ?"]
+        if household_id is not None:
+            conditions.insert(0, f"w.household_id = {int(household_id)}")
         if osoba:
             conditions.append("w.osoba = ?"); params.append(kategoria); params.append(osoba)
         else:
@@ -318,24 +363,29 @@ def stats_miesiace(n=6, osoba=None, kategoria=None) -> list[dict]:
             FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
             {where} GROUP BY miesiac, w.osoba ORDER BY miesiac"""
     else:
-        osoba_filter = ""
+        extra = []
+        if household_id is not None:
+            extra.append(f"w.household_id = {int(household_id)}")
         if osoba:
-            osoba_filter = "AND w.osoba = ?"; params.append(osoba)
+            extra.append("w.osoba = ?"); params.append(osoba)
+        extra_sql = ("AND " + " AND ".join(extra)) if extra else ""
         query = f"""
             SELECT strftime('%Y-%m', w.data) AS miesiac, w.osoba,
                    ROUND(SUM(w.suma), 2) AS suma
             FROM wydatki w
-            WHERE w.data >= date('now', '-{n} months') {osoba_filter}
+            WHERE w.data >= date('now', '-{n} months') {extra_sql}
             GROUP BY miesiac, w.osoba ORDER BY miesiac"""
     with get_db() as conn:
         return [dict(r) for r in conn.execute(query, params).fetchall()]
 
 
-def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None) -> list[dict]:
+def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None, household_id=None) -> list[dict]:
     params = []
     if kategoria:
         conditions = ["w.sklep IS NOT NULL", "p.kategoria_glowna = ?"]
         params.append(kategoria)
+        if household_id is not None:
+            conditions.append("w.household_id = ?"); params.append(household_id)
         if month:
             conditions.append("strftime('%Y-%m', w.data) = ?"); params.append(month)
         if osoba:
@@ -348,6 +398,8 @@ def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None) -> list[dict]
             {where} GROUP BY w.sklep ORDER BY suma DESC LIMIT ?"""
     else:
         conditions = ["w.sklep IS NOT NULL"]
+        if household_id is not None:
+            conditions.append("w.household_id = ?"); params.append(household_id)
         if month:
             conditions.append("strftime('%Y-%m', w.data) = ?"); params.append(month)
         if osoba:
@@ -362,8 +414,8 @@ def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None) -> list[dict]
         return [dict(r) for r in conn.execute(query, params).fetchall()]
 
 
-def stats_top_produkt(kategoria: str, month=None, osoba=None) -> dict | None:
-    where, params = _where_params(month, osoba)
+def stats_top_produkt(kategoria: str, month=None, osoba=None, household_id=None) -> dict | None:
+    where, params = _where_params(month, osoba, household_id)
     params.append(kategoria)
     query = f"""
         SELECT p.nazwa, COUNT(*) AS ile_razy, ROUND(SUM(p.cena * p.ilosc), 2) AS suma_total
@@ -373,3 +425,95 @@ def stats_top_produkt(kategoria: str, month=None, osoba=None) -> dict | None:
     with get_db() as conn:
         row = conn.execute(query, params).fetchone()
         return dict(row) if row else None
+
+
+# --- households & users ---
+
+def create_household(name: str) -> int:
+    with get_db() as conn:
+        cur = conn.execute("INSERT INTO households (name) VALUES (?)", (name,))
+        return cur.lastrowid
+
+
+def get_household(household_id: int) -> dict | None:
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM households WHERE id = ?", (household_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def create_or_update_user(firebase_uid: str, email: str, name: str, picture: str) -> int:
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO users (firebase_uid, email, name, picture) VALUES (?,?,?,?)
+               ON CONFLICT(firebase_uid) DO UPDATE SET
+               email=excluded.email, name=excluded.name, picture=excluded.picture""",
+            (firebase_uid, email, name, picture),
+        )
+        row = conn.execute("SELECT id FROM users WHERE firebase_uid = ?", (firebase_uid,)).fetchone()
+        return row["id"]
+
+
+def get_user_household(user_id: int) -> dict | None:
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT h.id, h.name, m.role FROM households h
+               JOIN memberships m ON m.household_id = h.id
+               WHERE m.user_id = ? LIMIT 1""",
+            (user_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def add_member(user_id: int, household_id: int, role: str = "member") -> None:
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO memberships (user_id, household_id, role) VALUES (?,?,?)",
+            (user_id, household_id, role),
+        )
+
+
+def get_household_members(household_id: int) -> list[dict]:
+    with get_db() as conn:
+        return [dict(r) for r in conn.execute(
+            """SELECT u.id, u.name, u.email, u.picture, m.role
+               FROM users u JOIN memberships m ON m.user_id = u.id
+               WHERE m.household_id = ?""",
+            (household_id,),
+        ).fetchall()]
+
+
+def create_invitation(household_id: int, created_by: int) -> str:
+    import secrets
+    from datetime import datetime, timedelta
+    code = secrets.token_urlsafe(8)
+    expires = (datetime.utcnow() + timedelta(days=7)).isoformat()
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO invitations (code, household_id, created_by, expires_at) VALUES (?,?,?,?)",
+            (code, household_id, created_by, expires),
+        )
+    return code
+
+
+def use_invitation(code: str) -> dict | None:
+    from datetime import datetime
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT i.household_id, h.name AS household_name
+               FROM invitations i JOIN households h ON h.id = i.household_id
+               WHERE i.code = ? AND i.used = 0 AND i.expires_at > ?""",
+            (code, datetime.utcnow().isoformat()),
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute("UPDATE invitations SET used = 1 WHERE code = ?", (code,))
+        return dict(row)
+
+
+def get_all_households() -> list[dict]:
+    with get_db() as conn:
+        return [dict(r) for r in conn.execute(
+            """SELECT h.id, h.name, h.created_at, COUNT(m.user_id) AS members
+               FROM households h LEFT JOIN memberships m ON m.household_id = h.id
+               GROUP BY h.id ORDER BY h.created_at DESC"""
+        ).fetchall()]

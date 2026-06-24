@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Analiza — Budżet domowy</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="/static/auth.js"></script>
   <style>
     .analiza-layout { display: grid; grid-template-columns: 1fr 290px; gap: 20px; align-items: start; }
     .groups-area { display: flex; flex-direction: column; gap: 14px; }
@@ -66,6 +69,7 @@
   <a href="/">Dashboard</a>
   <a href="/upload">Dodaj wydatek</a>
   <a href="/analiza" class="active">Analiza</a>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
 </nav>
 <main>
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px">
