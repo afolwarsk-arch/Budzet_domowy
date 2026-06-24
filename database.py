@@ -64,6 +64,14 @@ CREATE TABLE IF NOT EXISTS pozycje (
     kategoria         TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS analiza_state (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    household_id INTEGER NOT NULL UNIQUE REFERENCES households(id),
+    groups_json  TEXT NOT NULL DEFAULT '[]',
+    pool_json    TEXT NOT NULL DEFAULT '[]',
+    updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 PRAGMA foreign_keys = ON;
 """
 
@@ -511,6 +519,30 @@ def use_invitation(code: str) -> dict | None:
             return None
         conn.execute("UPDATE invitations SET used = 1 WHERE code = ?", (code,))
         return dict(row)
+
+
+def get_analiza_state(household_id: int) -> dict:
+    import json as _json
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT groups_json, pool_json FROM analiza_state WHERE household_id = ?",
+            (household_id,)
+        ).fetchone()
+        if not row:
+            return {"groups": [], "pool": []}
+        return {"groups": _json.loads(row["groups_json"]), "pool": _json.loads(row["pool_json"])}
+
+
+def save_analiza_state(household_id: int, groups_json: str, pool_json: str) -> None:
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO analiza_state (household_id, groups_json, pool_json)
+               VALUES (?, ?, ?)
+               ON CONFLICT(household_id) DO UPDATE SET
+               groups_json=excluded.groups_json, pool_json=excluded.pool_json,
+               updated_at=CURRENT_TIMESTAMP""",
+            (household_id, groups_json, pool_json),
+        )
 
 
 def get_all_households() -> list[dict]:

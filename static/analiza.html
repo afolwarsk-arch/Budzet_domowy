@@ -173,29 +173,35 @@ function isPartial(key) {
 }
 
 // ── Persistence ───────────────────────────────────────────────────
+let _saveTimer = null;
 function saveState() {
-  localStorage.setItem('analiza-groups', JSON.stringify(groups));
-  localStorage.setItem('analiza-pool', JSON.stringify(poolItems));
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    authFetch('/api/analiza/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groups, pool: poolItems }),
+    }).catch(() => {});
+  }, 800);
 }
-function loadState() {
+async function loadState() {
   try {
-    groups = JSON.parse(localStorage.getItem('analiza-groups')||'[]');
-    groups.forEach(g => {
+    const data = await authFetch('/api/analiza/state').then(r => r.json());
+    groups = (data.groups || []).map(g => {
       if (g.kategorie && !g.items) { g.items = g.kategorie; delete g.kategorie; }
       if (!g.items) g.items = [];
+      return g;
     });
-  } catch { groups = []; }
-  try {
-    const raw = JSON.parse(localStorage.getItem('analiza-pool')||'[]');
-    poolItems = raw.map(i => {
+    poolItems = (data.pool || []).map(i => {
       const item = typeof i === 'string' ? { key: i, parentKey: null } : { ...i };
-      // infer parentKey for subcategories when missing (sub keys contain '::')
       if (!item.parentKey && item.key && item.key.includes('::') && !item.key.startsWith('p::')) {
         item.parentKey = item.key.slice(0, item.key.indexOf('::'));
       }
       return item;
     });
-  } catch { poolItems = []; }
+  } catch {
+    groups = []; poolItems = [];
+  }
 }
 
 // ── Move / pool operations ────────────────────────────────────────
@@ -796,8 +802,8 @@ async function loadData() {
 }
 
 // ── Init ──────────────────────────────────────────────────────────
-authRequireHousehold().then(() => {
-  loadState();
+authRequireHousehold().then(async () => {
+  await loadState();
   document.getElementById('filter-month').value = new Date().toISOString().slice(0,7);
   document.getElementById('filter-month').addEventListener('change', loadData);
   document.getElementById('filter-osoba').addEventListener('change', loadData);

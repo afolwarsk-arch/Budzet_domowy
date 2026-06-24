@@ -336,6 +336,24 @@ def delete_wydatek(wydatek_id: int):
 
 # --- statystyki ---
 
+@app.get("/api/analiza/state")
+def get_analiza_state(current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        return {"groups": [], "pool": []}
+    return database.get_analiza_state(hid)
+
+
+@app.post("/api/analiza/state")
+def save_analiza_state(body: dict, current_user: dict = Depends(get_current_user)):
+    import json as _json
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(status_code=400, detail="Brak gospodarstwa")
+    database.save_analiza_state(hid, _json.dumps(body.get("groups", [])), _json.dumps(body.get("pool", [])))
+    return {"ok": True}
+
+
 @app.get("/api/kategorie")
 def get_kategorie():
     return ai_processor.KATEGORIE_HIERARCHIA
