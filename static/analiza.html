@@ -257,7 +257,7 @@ async function loadSubPozycje(subKey) {
   const osoba = document.getElementById('filter-osoba').value;
   if (month) q.set('month', month);
   if (osoba) q.set('osoba', osoba);
-  const data = await fetch('/api/stats/pozycje-subkat?' + q).then(r => r.json());
+  const data = await authFetch('/api/stats/pozycje-subkat?' + q).then(r => r.json());
   pozycjeBySubKey[subKey] = data;
   data.forEach(z => { pozycjeLookup[z.id] = { ...z, subKey }; });
   loadedSubs.add(subKey);
@@ -785,9 +785,9 @@ async function loadData() {
   if (month) q.set('month', month);
   if (osoba) q.set('osoba', osoba);
   const [hier, stats, subStats] = await Promise.all([
-    fetch('/api/kategorie').then(r => r.json()),
-    fetch('/api/stats/kategorie?' + q).then(r => r.json()),
-    fetch('/api/stats/subkategorie-all?' + q).then(r => r.json()),
+    authFetch('/api/kategorie').then(r => r.json()),
+    authFetch('/api/stats/kategorie?' + q).then(r => r.json()),
+    authFetch('/api/stats/subkategorie-all?' + q).then(r => r.json()),
   ]);
   allKat = Object.keys(hier); allSubKat = hier;
   sums = {}; stats.forEach(s => { sums[s.kategoria_glowna] = s.suma; });
@@ -796,21 +796,23 @@ async function loadData() {
 }
 
 // ── Init ──────────────────────────────────────────────────────────
-loadState();
-document.getElementById('filter-month').value = new Date().toISOString().slice(0,7);
-document.getElementById('filter-month').addEventListener('change', loadData);
-document.getElementById('filter-osoba').addEventListener('change', loadData);
-document.getElementById('btn-new-group').addEventListener('click', () => {
-  groups.push({ id: Date.now().toString(), name: '', items: [] });
-  saveState(); render();
+authRequireHousehold().then(() => {
+  loadState();
+  document.getElementById('filter-month').value = new Date().toISOString().slice(0,7);
+  document.getElementById('filter-month').addEventListener('change', loadData);
+  document.getElementById('filter-osoba').addEventListener('change', loadData);
+  document.getElementById('btn-new-group').addEventListener('click', () => {
+    groups.push({ id: Date.now().toString(), name: '', items: [] });
+    saveState(); render();
+  });
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    if (!confirm('Wyczyścić wszystkie grupy i wyciągnięte elementy?')) return;
+    groups = []; poolItems = []; groupExp = {};
+    saveState(); render();
+  });
+  setupDrop(document.getElementById('pool-card'), null);
+  loadData();
 });
-document.getElementById('btn-reset').addEventListener('click', () => {
-  if (!confirm('Wyczyścić wszystkie grupy i wyciągnięte elementy?')) return;
-  groups = []; poolItems = []; groupExp = {};
-  saveState(); render();
-});
-setupDrop(document.getElementById('pool-card'), null);
-loadData();
 </script>
 </body>
 </html>
