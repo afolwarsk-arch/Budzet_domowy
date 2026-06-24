@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dołącz do gospodarstwa — Budżet domowy</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f0f4f8;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.1);
+      padding: 48px 40px;
+      text-align: center;
+      max-width: 360px;
+      width: 100%;
+    }
+    .logo { font-size: 2.5rem; margin-bottom: 12px; }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; color: #1a1a1a; }
+    p { color: #666; margin-bottom: 32px; font-size: 0.9rem; line-height: 1.5; }
+    .household-name {
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+    .btn-google {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 12px 20px;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: #3c4043;
+      justify-content: center;
+      transition: background .15s;
+    }
+    .btn-google:hover { background: #f8f9fa; }
+    .btn-google img { width: 20px; height: 20px; }
+    #error {
+      color: #d32f2f;
+      margin-top: 16px;
+      font-size: 0.85rem;
+      display: none;
+      background: #fdecea;
+      padding: 10px;
+      border-radius: 6px;
+    }
+    #status {
+      color: #666;
+      font-size: 0.9rem;
+      margin-top: 16px;
+    }
+    .btn-home {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 10px 24px;
+      background: #4361ee;
+      color: white;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🏠</div>
+    <h1>Budżet domowy</h1>
+    <p id="desc">Sprawdzanie zaproszenia...</p>
+    <div id="google-section" style="display:none">
+      <button class="btn-google" id="btn-google">
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+        Zaloguj przez Google
+      </button>
+    </div>
+    <div id="error"></div>
+    <div id="status"></div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="/static/auth.js"></script>
+  <script>
+    const code = window.location.pathname.split('/').pop();
+
+    function showError(msg) {
+      const el = document.getElementById('error');
+      el.textContent = msg;
+      el.style.display = 'block';
+      document.getElementById('status').innerHTML = '<a class="btn-home" href="/">Wróć na stronę główną</a>';
+    }
+
+    async function doJoin() {
+      document.getElementById('desc').textContent = 'Dołączanie do gospodarstwa...';
+      document.getElementById('google-section').style.display = 'none';
+      try {
+        const res = await authFetch(`/api/join/${code}`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('desc').textContent =
+            data.already_member
+              ? 'Jesteś już członkiem tego gospodarstwa.'
+              : `Dołączono do "${data.household_name}"!`;
+          document.getElementById('status').innerHTML = '<a class="btn-home" href="/">Przejdź do aplikacji</a>';
+        } else {
+          showError(data.detail || 'Błąd dołączania do gospodarstwa');
+        }
+      } catch {
+        showError('Błąd połączenia — spróbuj ponownie');
+      }
+    }
+
+    _auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        await doJoin();
+      } else {
+        document.getElementById('desc').textContent = 'Zaloguj się, aby dołączyć do gospodarstwa domowego.';
+        document.getElementById('google-section').style.display = 'block';
+      }
+    });
+
+    document.getElementById('btn-google').addEventListener('click', async () => {
+      const errEl = document.getElementById('error');
+      errEl.style.display = 'none';
+      document.getElementById('status').textContent = 'Logowanie...';
+      try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        await firebase.auth().signInWithPopup(provider);
+      } catch (e) {
+        document.getElementById('status').textContent = '';
+        errEl.textContent = 'Błąd logowania: ' + e.message;
+        errEl.style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -100,14 +100,19 @@ def create_invite(request: Request, current_user: dict = Depends(get_current_use
 
 
 @app.get("/join/{code}")
+def join_page(code: str):
+    return FileResponse(STATIC_DIR / "join.html")
+
+
+@app.post("/api/join/{code}")
 def join_household(code: str, current_user: dict = Depends(get_current_user)):
+    if current_user["household_id"]:
+        return {"ok": True, "already_member": True}
     result = database.use_invitation(code)
     if not result:
         raise HTTPException(status_code=404, detail="Link wygasł lub jest nieprawidłowy")
-    if current_user["household_id"]:
-        return RedirectResponse(url="/", status_code=302)
     database.add_member(current_user["user_id"], result["household_id"], role="member")
-    return RedirectResponse(url="/", status_code=302)
+    return {"ok": True, "household_name": result["household_name"]}
 
 
 @app.get("/api/admin/households")
