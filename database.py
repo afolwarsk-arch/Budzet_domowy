@@ -1,8 +1,11 @@
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "budget.db"
+_data_dir = Path(os.getenv("DATA_DIR", Path(__file__).parent))
+_data_dir.mkdir(parents=True, exist_ok=True)
+DB_PATH = _data_dir / "budget.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS households (
