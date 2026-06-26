@@ -19,6 +19,7 @@ SCHEMA_STATEMENTS = [
         name         TEXT NOT NULL DEFAULT '',
         picture      TEXT DEFAULT '',
         display_name TEXT,
+        last_login   TIMESTAMP,
         created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""",
     """CREATE TABLE IF NOT EXISTS memberships (
@@ -151,6 +152,7 @@ def init_db():
         for stmt in SCHEMA_STATEMENTS:
             cur.execute(stmt)
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP")
         for stara, (glowna, sub) in _MIGRACJA_MAP.items():
             cur.execute(
                 "UPDATE pozycje SET kategoria_glowna=%s, kategoria=%s WHERE kategoria=%s",
@@ -455,10 +457,11 @@ def create_or_update_user(firebase_uid: str, email: str, name: str, picture: str
     default_display = name.split()[0] if name and name.strip() else email.split("@")[0]
     with get_db() as cur:
         cur.execute(
-            """INSERT INTO users (firebase_uid, email, name, picture, display_name) VALUES (%s,%s,%s,%s,%s)
+            """INSERT INTO users (firebase_uid, email, name, picture, display_name, last_login) VALUES (%s,%s,%s,%s,%s,CURRENT_TIMESTAMP)
                ON CONFLICT (firebase_uid) DO UPDATE SET
                email=EXCLUDED.email, name=EXCLUDED.name, picture=EXCLUDED.picture,
-               display_name=COALESCE(users.display_name, EXCLUDED.display_name)""",
+               display_name=COALESCE(users.display_name, EXCLUDED.display_name),
+               last_login=CURRENT_TIMESTAMP""",
             (firebase_uid, email, name, picture, default_display),
         )
         cur.execute("SELECT id, display_name FROM users WHERE firebase_uid = %s", (firebase_uid,))
@@ -577,6 +580,39 @@ def get_usage_stats() -> list[dict]:
             LEFT JOIN households h ON h.id = u.household_id
             GROUP BY u.household_id, h.name
             ORDER BY cost_usd DESC
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_admin_stats() -> list[dict]:
+    with get_db() as cur:
+        cur.execute("""
+            SELECT
+                h.id,
+                h.name AS household_name,
+                h.created_at AS household_created,
+                COUNT(DISTINCT m.user_id) AS members_count,
+                MAX(u.last_login) AS last_login,
+                STRING_AGG(DISTINCT u.display_name || ' <' || u.email || '>', ', ') AS members_info,
+                COUNT(DISTINCT w.id) AS wydatki_count,
+                ROUND(COALESCE(SUM(w.suma), 0)::numeric, 2) AS wydatki_sum,
+                MAX(w.created_at) AS last_wydatek,
+                COALESCE(MAX(au.calls), 0) AS api_calls,
+                COALESCE(MAX(au.cost_usd), 0) AS cost_usd,
+                COALESCE(MAX(au.last_call), NULL) AS last_api_call
+            FROM households h
+            LEFT JOIN memberships m ON m.household_id = h.id
+            LEFT JOIN users u ON u.id = m.user_id
+            LEFT JOIN wydatki w ON w.household_id = h.id
+            LEFT JOIN (
+                SELECT household_id,
+                       COUNT(*) AS calls,
+                       ROUND(CAST(SUM(input_tokens * 3.0 + output_tokens * 15.0) / 1000000 AS numeric), 4) AS cost_usd,
+                       MAX(created_at) AS last_call
+                FROM api_usage GROUP BY household_id
+            ) au ON au.household_id = h.id
+            GROUP BY h.id, h.name, h.created_at
+            ORDER BY last_login DESC NULLS LAST
         """)
         return [dict(r) for r in cur.fetchall()]
 

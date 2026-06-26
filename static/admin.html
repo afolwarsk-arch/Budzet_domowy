@@ -6,12 +6,23 @@
   <title>Admin — Budżet domowy</title>
   <link rel="stylesheet" href="/static/style.css">
   <style>
-    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    th { text-align: left; padding: 10px 12px; background: #f8f9fa; border-bottom: 2px solid #e9ecef; color: #555; font-weight: 600; }
-    td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
-    tr:last-child td { border-bottom: none; }
-    .cost { font-weight: 600; color: #4361ee; }
-    .badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.75rem; background:#e8f5e9; color:#388e3c; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .household-card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.07); padding: 20px; }
+    .household-card h3 { font-size: 1rem; margin-bottom: 4px; color: #1a1a1a; }
+    .household-card .created { font-size: 0.75rem; color: #aaa; margin-bottom: 14px; }
+    .stat-row { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #f4f4f4; font-size: 0.85rem; }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-label { color: #666; }
+    .stat-value { font-weight: 500; color: #1a1a1a; }
+    .stat-value.cost { color: #4361ee; }
+    .stat-value.dim { color: #999; font-weight: 400; font-size: 0.8rem; }
+    .members-list { margin-top: 12px; padding-top: 12px; border-top: 1px solid #f0f0f0; }
+    .member-item { display: flex; flex-direction: column; padding: 4px 0; font-size: 0.82rem; }
+    .member-name { font-weight: 500; color: #333; }
+    .member-email { color: #888; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.72rem; }
+    .badge-green { background:#e8f5e9; color:#388e3c; }
+    .badge-gray { background:#f5f5f5; color:#888; }
   </style>
 </head>
 <body>
@@ -24,85 +35,109 @@
   <span style="margin-left:auto;font-size:0.85rem;color:#888">Panel admina</span>
 </nav>
 
-<main style="max-width:900px">
+<main style="max-width:1100px">
   <h1>Panel admina</h1>
-
-  <div class="card" style="margin-bottom:24px">
-    <h2 style="margin-bottom:16px">Użycie API Anthropic</h2>
-    <div id="usage-table">Ładowanie...</div>
-  </div>
-
-  <div class="card">
-    <h2 style="margin-bottom:16px">Gospodarstwa</h2>
-    <div id="households-table">Ładowanie...</div>
-  </div>
+  <div id="stats-container">Ładowanie...</div>
 </main>
 
 <script>
+function fmt(dt) {
+  if (!dt) return '—';
+  return new Date(dt).toLocaleString('pl', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+function fmtDate(dt) {
+  if (!dt) return '—';
+  return new Date(dt).toLocaleDateString('pl', { day:'2-digit', month:'2-digit', year:'numeric' });
+}
+
 authRequireHousehold().then(async (me) => {
   if (me.email !== 'a.folwarsk@gmail.com') {
     document.querySelector('main').innerHTML = '<p style="color:#d32f2f">Brak dostępu.</p>';
     return;
   }
 
-  // Usage
   try {
-    const usage = await authFetch('/api/admin/usage').then(r => r.json());
-    if (!usage.length) {
-      document.getElementById('usage-table').innerHTML = '<p style="color:#aaa">Brak danych (zapytania do AI będą tu widoczne po pierwszym użyciu).</p>';
-    } else {
-      const totalCost = usage.reduce((s, r) => s + parseFloat(r.cost_usd || 0), 0);
-      const totalCalls = usage.reduce((s, r) => s + parseInt(r.calls || 0), 0);
-      document.getElementById('usage-table').innerHTML = `
-        <table>
-          <thead><tr>
-            <th>Gospodarstwo</th>
-            <th>Zapytania</th>
-            <th>Tokeny wejście</th>
-            <th>Tokeny wyjście</th>
-            <th>Koszt (USD)</th>
-            <th>Ostatnie użycie</th>
-          </tr></thead>
-          <tbody>
-            ${usage.map(r => `<tr>
-              <td>${r.household_name}</td>
-              <td>${r.calls}</td>
-              <td>${Number(r.input_tokens).toLocaleString('pl')}</td>
-              <td>${Number(r.output_tokens).toLocaleString('pl')}</td>
-              <td class="cost">$${parseFloat(r.cost_usd).toFixed(4)}</td>
-              <td style="color:#888;font-size:0.82rem">${r.last_call ? new Date(r.last_call).toLocaleString('pl') : '—'}</td>
-            </tr>`).join('')}
-          </tbody>
-          <tfoot><tr style="font-weight:600;background:#f8f9fa">
-            <td>Razem</td>
-            <td>${totalCalls}</td>
-            <td></td><td></td>
-            <td class="cost">$${totalCost.toFixed(4)}</td>
-            <td></td>
-          </tr></tfoot>
-        </table>
-        <p style="font-size:0.78rem;color:#aaa;margin-top:10px">Ceny: claude-sonnet-4-6 — $3/1M tokenów wejściowych, $15/1M wyjściowych</p>`;
+    const stats = await authFetch('/api/admin/stats').then(r => r.json());
+    if (!stats.length) {
+      document.getElementById('stats-container').innerHTML = '<p style="color:#aaa">Brak gospodarstw.</p>';
+      return;
     }
-  } catch (e) {
-    document.getElementById('usage-table').innerHTML = '<p style="color:#d32f2f">Błąd ładowania</p>';
-  }
 
-  // Households
-  try {
-    const households = await authFetch('/api/admin/households').then(r => r.json());
-    document.getElementById('households-table').innerHTML = `
-      <table>
-        <thead><tr><th>Nazwa</th><th>Członkowie</th><th>Utworzone</th></tr></thead>
-        <tbody>
-          ${households.map(h => `<tr>
-            <td>${h.name}</td>
-            <td><span class="badge">${h.members}</span></td>
-            <td style="color:#888;font-size:0.82rem">${new Date(h.created_at).toLocaleDateString('pl')}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>`;
-  } catch {
-    document.getElementById('households-table').innerHTML = '<p style="color:#d32f2f">Błąd ładowania</p>';
+    const totalCost = stats.reduce((s, r) => s + parseFloat(r.cost_usd || 0), 0);
+    const totalWydatki = stats.reduce((s, r) => s + parseInt(r.wydatki_count || 0), 0);
+    const totalCalls = stats.reduce((s, r) => s + parseInt(r.api_calls || 0), 0);
+
+    let html = `
+      <div style="display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap">
+        <div class="card" style="flex:1;min-width:160px;text-align:center">
+          <div style="font-size:1.6rem;font-weight:700;color:#4361ee">${stats.length}</div>
+          <div style="font-size:0.8rem;color:#888">Gospodarstw</div>
+        </div>
+        <div class="card" style="flex:1;min-width:160px;text-align:center">
+          <div style="font-size:1.6rem;font-weight:700;color:#4361ee">${totalWydatki}</div>
+          <div style="font-size:0.8rem;color:#888">Wydatków łącznie</div>
+        </div>
+        <div class="card" style="flex:1;min-width:160px;text-align:center">
+          <div style="font-size:1.6rem;font-weight:700;color:#4361ee">${totalCalls}</div>
+          <div style="font-size:0.8rem;color:#888">Zapytań AI</div>
+        </div>
+        <div class="card" style="flex:1;min-width:160px;text-align:center">
+          <div style="font-size:1.6rem;font-weight:700;color:#4361ee">$${totalCost.toFixed(4)}</div>
+          <div style="font-size:0.8rem;color:#888">Koszt API łącznie</div>
+        </div>
+      </div>
+      <div class="stats-grid">`;
+
+    for (const h of stats) {
+      const members = (h.members_info || '').split(', ').filter(Boolean).map(m => {
+        const match = m.match(/^(.+?) <(.+?)>$/);
+        return match ? { name: match[1], email: match[2] } : { name: m, email: '' };
+      });
+
+      html += `
+        <div class="household-card">
+          <h3>${h.household_name}</h3>
+          <div class="created">Utworzone: ${fmtDate(h.household_created)}</div>
+
+          <div class="stat-row">
+            <span class="stat-label">Ostatnie logowanie</span>
+            <span class="stat-value ${h.last_login ? '' : 'dim'}">${fmt(h.last_login)}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Ostatni wydatek dodany</span>
+            <span class="stat-value ${h.last_wydatek ? '' : 'dim'}">${fmt(h.last_wydatek)}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Liczba wydatków</span>
+            <span class="stat-value">${h.wydatki_count}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Suma wydatków</span>
+            <span class="stat-value">${Number(h.wydatki_sum).toLocaleString('pl', {minimumFractionDigits:2})} zł</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Zapytania AI</span>
+            <span class="stat-value">${h.api_calls} <span style="color:#aaa;font-weight:400">($${parseFloat(h.cost_usd).toFixed(4)})</span></span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Ostatnie zapytanie AI</span>
+            <span class="stat-value ${h.last_api_call ? '' : 'dim'}">${fmt(h.last_api_call)}</span>
+          </div>
+
+          <div class="members-list">
+            <div style="font-size:0.75rem;color:#aaa;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Członkowie (${h.members_count})</div>
+            ${members.map(m => `
+              <div class="member-item">
+                <span class="member-name">${m.name}</span>
+                <span class="member-email">${m.email}</span>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    }
+    html += '</div><p style="font-size:0.75rem;color:#aaa;margin-top:8px">Ceny AI: $3/1M tokenów wejściowych, $15/1M wyjściowych (claude-sonnet-4-6)</p>';
+    document.getElementById('stats-container').innerHTML = html;
+  } catch (e) {
+    document.getElementById('stats-container').innerHTML = '<p style="color:#d32f2f">Błąd: ' + e.message + '</p>';
   }
 });
 </script>

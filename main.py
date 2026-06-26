@@ -181,6 +181,11 @@ def admin_usage(admin: dict = Depends(require_admin)):
     return database.get_usage_stats()
 
 
+@app.get("/api/admin/stats")
+def admin_stats(admin: dict = Depends(require_admin)):
+    return database.get_admin_stats()
+
+
 @app.post("/api/admin/rename-osoba")
 def rename_osoba(body: dict, admin: dict = Depends(require_admin)):
     stara = (body.get("stara") or "").strip()
