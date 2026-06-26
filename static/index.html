@@ -31,8 +31,7 @@
 
   <div id="vm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center;">
     <div style="background:white;border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
-      <h2 style="margin-bottom:8px;font-size:1.1rem">Osoby bez konta Google</h2>
-      <p style="color:#666;font-size:0.85rem;margin-bottom:16px">Dodaj osobę, za którą będziesz wpisywać wydatki. Gdy założy konto, będzie mogła je przejąć.</p>
+      <h2 style="margin-bottom:8px;font-size:1.1rem">Członkowie gospodarstwa</h2>
       <div id="vm-list" style="margin-bottom:16px"></div>
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <input id="vm-input" type="text" placeholder="Imię osoby" maxlength="30"
@@ -219,16 +218,35 @@
     const list = document.getElementById('vm-list');
     try {
       const data = await authFetch('/api/household').then(r => r.json());
-      const vms = data.virtual_members || [];
-      if (!vms.length) {
-        list.innerHTML = '<p style="color:#aaa;font-size:0.85rem;margin-bottom:8px">Brak osób bez konta.</p>';
-        return;
+      let html = '';
+
+      const members = data.members || [];
+      if (members.length) {
+        html += '<p style="font-size:0.75rem;color:#aaa;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Z kontem Google</p>';
+        html += members.map(m => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f0f4ff;border-radius:8px;margin-bottom:6px">
+            <div>
+              <span style="font-size:0.9rem;font-weight:500">${m.display_name || m.name.split(' ')[0]}</span>
+              <span style="font-size:0.78rem;color:#888;margin-left:8px">${m.email}</span>
+            </div>
+            <span style="font-size:0.75rem;color:#888">${m.role === 'owner' ? 'właściciel' : 'członek'}</span>
+          </div>`).join('');
       }
-      list.innerHTML = vms.map(m => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f8f9fa;border-radius:8px;margin-bottom:6px">
-          <span style="font-size:0.9rem">${m.name} <span style="color:#aaa;font-size:0.75rem">(bez konta)</span></span>
-          <button onclick="deleteVirtualMember(${m.id})" style="padding:3px 10px;border:1px solid #e57373;border-radius:6px;background:white;color:#e57373;cursor:pointer;font-size:0.8rem">Usuń</button>
-        </div>`).join('');
+
+      const vms = data.virtual_members || [];
+      if (vms.length) {
+        html += '<p style="font-size:0.75rem;color:#aaa;text-transform:uppercase;letter-spacing:.05em;margin:10px 0 6px">Bez konta Google</p>';
+        html += vms.map(m => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f8f9fa;border-radius:8px;margin-bottom:6px">
+            <span style="font-size:0.9rem">${m.name}</span>
+            <button onclick="deleteVirtualMember(${m.id})" style="padding:3px 10px;border:1px solid #e57373;border-radius:6px;background:white;color:#e57373;cursor:pointer;font-size:0.8rem">Usuń</button>
+          </div>`).join('');
+      }
+
+      if (!members.length && !vms.length) {
+        html = '<p style="color:#aaa;font-size:0.85rem">Brak członków.</p>';
+      }
+      list.innerHTML = html;
     } catch { list.innerHTML = '<p style="color:#d32f2f;font-size:0.85rem">Błąd ładowania</p>'; }
   }
 
