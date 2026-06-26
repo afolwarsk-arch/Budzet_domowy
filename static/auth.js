@@ -21,6 +21,60 @@ async function authLogout() {
   window.location.href = "/login";
 }
 
+function _showProfileModal() {
+  const current = (window._currentUser || {}).display_name || '';
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;';
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:12px;padding:28px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <h3 style="margin-bottom:16px;font-size:1.1rem;color:#1a1a1a">Twój pseudonim</h3>
+      <input id="_mn" type="text" value="${current}" maxlength="30" placeholder="np. Adam, Ola, Mama"
+        style="width:100%;padding:10px 12px;border:1px solid #dadce0;border-radius:8px;font-size:0.95rem;margin-bottom:12px;box-sizing:border-box;outline:none">
+      <div style="display:flex;gap:8px">
+        <button id="_ms" style="flex:1;padding:10px;background:#4361ee;color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:500">Zapisz</button>
+        <button id="_mc" style="flex:1;padding:10px;background:#f1f3f5;color:#333;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">Anuluj</button>
+      </div>
+      <div id="_me" style="color:#d32f2f;font-size:0.8rem;margin-top:8px;display:none"></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#_mn').focus();
+  overlay.querySelector('#_mc').onclick = () => overlay.remove();
+  overlay.querySelector('#_ms').onclick = async () => {
+    const val = overlay.querySelector('#_mn').value.trim();
+    if (!val) return;
+    try {
+      const res = await authFetch('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: val }),
+      });
+      if (res.ok) { overlay.remove(); location.reload(); }
+      else {
+        const e = await res.json();
+        const err = overlay.querySelector('#_me');
+        err.textContent = e.detail; err.style.display = 'block';
+      }
+    } catch {
+      const err = overlay.querySelector('#_me');
+      err.textContent = 'Błąd połączenia'; err.style.display = 'block';
+    }
+  };
+}
+
+function _injectProfileButton(me) {
+  const nav = document.querySelector('nav');
+  if (!nav) return;
+  const btn = document.createElement('button');
+  btn.id = 'nav-profile-btn';
+  btn.textContent = me.display_name || me.name.split(' ')[0];
+  btn.title = 'Zmień pseudonim';
+  btn.style.cssText = 'padding:6px 14px;cursor:pointer;border:1px solid #4361ee;border-radius:6px;background:white;color:#4361ee;font-size:0.85rem;font-weight:500;';
+  btn.onclick = _showProfileModal;
+  const logoutBtn = nav.querySelector('button');
+  if (logoutBtn) nav.insertBefore(btn, logoutBtn);
+  else nav.appendChild(btn);
+}
+
 async function authRequireHousehold() {
   return new Promise((resolve, reject) => {
     _auth.onAuthStateChanged(async (user) => {
@@ -40,6 +94,7 @@ async function authRequireHousehold() {
           return reject();
         }
         window._currentUser = me;
+        _injectProfileButton(me);
         resolve(me);
       } catch {
         window.location.href = "/login";
