@@ -131,6 +131,18 @@ def admin_list_households(admin: dict = Depends(require_admin)):
     return database.get_all_households()
 
 
+@app.post("/api/admin/rename-osoba")
+def rename_osoba(body: dict, admin: dict = Depends(require_admin)):
+    stara = (body.get("stara") or "").strip()
+    nowa = (body.get("nowa") or "").strip()
+    if not stara or not nowa:
+        raise HTTPException(status_code=400, detail="Podaj stara i nowa")
+    with database.get_db() as cur:
+        cur.execute("UPDATE wydatki SET osoba=%s WHERE osoba=%s", (nowa, stara))
+        count = cur.rowcount
+    return {"zaktualizowane": count}
+
+
 @app.post("/api/admin/import-data")
 def import_data(body: dict, admin: dict = Depends(require_admin)):
     from collections import defaultdict
