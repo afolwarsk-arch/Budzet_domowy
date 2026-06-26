@@ -457,6 +457,15 @@ def update_user_display_name(user_id: int, display_name: str) -> None:
         cur.execute("UPDATE users SET display_name=%s WHERE id=%s", (display_name, user_id))
 
 
+def rename_osoba_in_household(stara: str, nowa: str, household_id: int) -> int:
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE wydatki SET osoba=%s WHERE osoba=%s AND household_id=%s",
+            (nowa, stara, household_id),
+        )
+        return cur.rowcount
+
+
 def get_user_household(user_id: int) -> dict | None:
     with get_db() as cur:
         cur.execute(

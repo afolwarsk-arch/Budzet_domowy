@@ -74,7 +74,10 @@ def update_me(body: dict, current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Podaj pseudonim")
     if len(display_name) > 30:
         raise HTTPException(status_code=400, detail="Pseudonim za długi (max 30 znaków)")
+    old_name = current_user.get("display_name")
     database.update_user_display_name(current_user["user_id"], display_name)
+    if old_name and old_name != display_name and current_user["household_id"]:
+        database.rename_osoba_in_household(old_name, display_name, current_user["household_id"])
     return {"ok": True}
 
 
