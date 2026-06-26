@@ -24,7 +24,23 @@
     <h1>Dashboard</h1>
     <div style="display:flex;gap:8px;align-items:center">
       <button id="btn-invite" onclick="showInvite()" style="padding:8px 16px;border:1px solid #4f7ef8;border-radius:8px;background:white;color:#4f7ef8;cursor:pointer;font-size:0.9rem;">👥 Zaproś osobę</button>
+      <button onclick="showVirtualMembers()" style="padding:8px 16px;border:1px solid #aaa;border-radius:8px;background:white;color:#555;cursor:pointer;font-size:0.9rem;">+ Osoba bez konta</button>
       <a href="/upload" class="btn btn-primary">+ Dodaj wydatek</a>
+    </div>
+  </div>
+
+  <div id="vm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:white;border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <h2 style="margin-bottom:8px;font-size:1.1rem">Osoby bez konta Google</h2>
+      <p style="color:#666;font-size:0.85rem;margin-bottom:16px">Dodaj osobę, za którą będziesz wpisywać wydatki. Gdy założy konto, będzie mogła je przejąć.</p>
+      <div id="vm-list" style="margin-bottom:16px"></div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input id="vm-input" type="text" placeholder="Imię osoby" maxlength="30"
+          style="flex:1;padding:9px 12px;border:1px solid #dadce0;border-radius:8px;font-size:0.9rem;outline:none">
+        <button onclick="addVirtualMember()" style="padding:9px 16px;background:#4f7ef8;color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">Dodaj</button>
+      </div>
+      <div id="vm-err" style="color:#d32f2f;font-size:0.8rem;margin-bottom:8px;display:none"></div>
+      <button onclick="document.getElementById('vm-modal').style.display='none'" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;background:white;cursor:pointer;font-size:0.9rem">Zamknij</button>
     </div>
   </div>
 
@@ -191,6 +207,49 @@
     navigator.clipboard.writeText(_inviteLink).then(() => {
       document.getElementById('invite-copied').style.display = 'block';
     });
+  }
+
+  async function showVirtualMembers() {
+    document.getElementById('vm-modal').style.display = 'flex';
+    document.getElementById('vm-err').style.display = 'none';
+    await refreshVmList();
+  }
+
+  async function refreshVmList() {
+    const list = document.getElementById('vm-list');
+    try {
+      const data = await authFetch('/api/household').then(r => r.json());
+      const vms = data.virtual_members || [];
+      if (!vms.length) {
+        list.innerHTML = '<p style="color:#aaa;font-size:0.85rem;margin-bottom:8px">Brak osób bez konta.</p>';
+        return;
+      }
+      list.innerHTML = vms.map(m => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f8f9fa;border-radius:8px;margin-bottom:6px">
+          <span style="font-size:0.9rem">${m.name} <span style="color:#aaa;font-size:0.75rem">(bez konta)</span></span>
+          <button onclick="deleteVirtualMember(${m.id})" style="padding:3px 10px;border:1px solid #e57373;border-radius:6px;background:white;color:#e57373;cursor:pointer;font-size:0.8rem">Usuń</button>
+        </div>`).join('');
+    } catch { list.innerHTML = '<p style="color:#d32f2f;font-size:0.85rem">Błąd ładowania</p>'; }
+  }
+
+  async function addVirtualMember() {
+    const inp = document.getElementById('vm-input');
+    const err = document.getElementById('vm-err');
+    err.style.display = 'none';
+    const name = inp.value.trim();
+    if (!name) return;
+    const res = await authFetch('/api/household/virtual-members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) { inp.value = ''; await refreshVmList(); }
+    else { const e = await res.json(); err.textContent = e.detail; err.style.display = 'block'; }
+  }
+
+  async function deleteVirtualMember(id) {
+    await authFetch('/api/household/virtual-members/' + id, { method: 'DELETE' });
+    await refreshVmList();
   }
 </script>
 </body>

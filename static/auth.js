@@ -127,6 +127,10 @@ async function loadOsobaOptions(selectId, includeAll = false) {
       const label = m.display_name || m.name.split(' ')[0];
       sel.appendChild(new Option(label, label));
     });
+    (data.virtual_members || []).forEach(m => {
+      const opt = new Option(m.name + ' *', m.name);
+      sel.appendChild(opt);
+    });
     if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
   } catch {}
 }

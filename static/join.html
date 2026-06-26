@@ -109,16 +109,54 @@
         const res = await authFetch(`/api/join/${code}`, { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
-          document.getElementById('desc').textContent =
-            data.already_member
-              ? 'Jesteś już członkiem tego gospodarstwa.'
-              : `Dołączono do "${data.household_name}"!`;
-          document.getElementById('status').innerHTML = '<a class="btn-home" href="/">Przejdź do aplikacji</a>';
+          if (data.already_member) {
+            document.getElementById('desc').textContent = 'Jesteś już członkiem tego gospodarstwa.';
+            document.getElementById('status').innerHTML = '<a class="btn-home" href="/">Przejdź do aplikacji</a>';
+          } else {
+            document.getElementById('desc').textContent = `Dołączono do "${data.household_name}"!`;
+            await showClaimStep(data.virtual_members || []);
+          }
         } else {
           showError(data.detail || 'Błąd dołączania do gospodarstwa');
         }
       } catch {
         showError('Błąd połączenia — spróbuj ponownie');
+      }
+    }
+
+    async function showClaimStep(virtualMembers) {
+      const statusEl = document.getElementById('status');
+      if (!virtualMembers.length) {
+        statusEl.innerHTML = '<a class="btn-home" href="/">Przejdź do aplikacji</a>';
+        return;
+      }
+      statusEl.innerHTML = `
+        <div style="margin-top:16px;text-align:left">
+          <p style="font-size:0.9rem;color:#444;margin-bottom:12px">Czy jesteś jedną z tych osób? Wybierz swoje imię, aby przypisać wcześniejsze wydatki do swojego konta.</p>
+          ${virtualMembers.map(m => `
+            <button onclick="claimMember(${m.id},'${m.name}')"
+              style="display:block;width:100%;padding:10px 16px;margin-bottom:8px;background:#f8f9fa;border:1px solid #dadce0;border-radius:8px;cursor:pointer;font-size:0.95rem;text-align:left">
+              ${m.name}
+            </button>`).join('')}
+          <button onclick="document.getElementById('status').innerHTML='<a class=\\'btn-home\\' href=\\'/\\'>Przejdź do aplikacji</a>'"
+            style="display:block;width:100%;padding:10px;margin-top:4px;background:white;border:1px solid #ccc;border-radius:8px;cursor:pointer;font-size:0.85rem;color:#888">
+            Żadna z powyższych
+          </button>
+        </div>`;
+    }
+
+    async function claimMember(vmId, vmName) {
+      try {
+        const res = await authFetch('/api/household/claim-virtual-member', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vm_id: vmId, display_name: vmName }),
+        });
+        if (res.ok) {
+          document.getElementById('status').innerHTML = `<p style="color:green;margin-bottom:12px">Konto przypisane jako "${vmName}"!</p><a class="btn-home" href="/">Przejdź do aplikacji</a>`;
+        }
+      } catch {
+        showError('Błąd przypisywania — spróbuj ponownie');
       }
     }
 

@@ -100,7 +100,48 @@ def get_household(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Nie należysz do żadnego gospodarstwa")
     h = database.get_household(hid)
     members = database.get_household_members(hid)
-    return {**h, "role": current_user["role"], "members": members}
+    virtual = database.get_virtual_members(hid)
+    return {**h, "role": current_user["role"], "members": members, "virtual_members": virtual}
+
+
+@app.post("/api/household/virtual-members", status_code=201)
+def add_virtual_member(body: dict, current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(status_code=400, detail="Brak gospodarstwa")
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Podaj imię")
+    if len(name) > 30:
+        raise HTTPException(status_code=400, detail="Imię za długie")
+    vm_id = database.add_virtual_member(hid, name)
+    return {"id": vm_id, "name": name}
+
+
+@app.delete("/api/household/virtual-members/{vm_id}")
+def delete_virtual_member(vm_id: int, current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(status_code=400, detail="Brak gospodarstwa")
+    ok = database.delete_virtual_member(vm_id, hid)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Nie znaleziono")
+    return {"ok": True}
+
+
+@app.post("/api/household/claim-virtual-member")
+def claim_virtual_member(body: dict, current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(status_code=400, detail="Brak gospodarstwa")
+    vm_id = body.get("vm_id")
+    display_name = (body.get("display_name") or "").strip()
+    if not vm_id:
+        raise HTTPException(status_code=400, detail="Podaj vm_id")
+    ok = database.claim_virtual_member(vm_id, hid, current_user["user_id"], display_name)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Nie znaleziono wirtualnego członka")
+    return {"ok": True}
 
 
 @app.post("/api/household/invite")
@@ -126,7 +167,8 @@ def join_household(code: str, current_user: dict = Depends(get_current_user)):
     if not result:
         raise HTTPException(status_code=404, detail="Link wygasł lub jest nieprawidłowy")
     database.add_member(current_user["user_id"], result["household_id"], role="member")
-    return {"ok": True, "household_name": result["household_name"]}
+    virtual = database.get_virtual_members(result["household_id"])
+    return {"ok": True, "household_name": result["household_name"], "virtual_members": virtual}
 
 
 @app.get("/api/admin/households")

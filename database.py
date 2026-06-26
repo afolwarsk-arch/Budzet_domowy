@@ -58,6 +58,12 @@ SCHEMA_STATEMENTS = [
         kategoria_glowna  TEXT NOT NULL DEFAULT 'Inne',
         kategoria         TEXT NOT NULL
     )""",
+    """CREATE TABLE IF NOT EXISTS virtual_members (
+        id           SERIAL PRIMARY KEY,
+        household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+        name         TEXT NOT NULL,
+        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
     """CREATE TABLE IF NOT EXISTS analiza_state (
         id           SERIAL PRIMARY KEY,
         household_id INTEGER NOT NULL UNIQUE REFERENCES households(id),
@@ -534,6 +540,43 @@ def get_all_households() -> list[dict]:
                GROUP BY h.id ORDER BY h.created_at DESC"""
         )
         return [dict(r) for r in cur.fetchall()]
+
+
+def get_virtual_members(household_id: int) -> list[dict]:
+    with get_db() as cur:
+        cur.execute("SELECT id, name FROM virtual_members WHERE household_id=%s ORDER BY name", (household_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def add_virtual_member(household_id: int, name: str) -> int:
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO virtual_members (household_id, name) VALUES (%s,%s) RETURNING id",
+            (household_id, name),
+        )
+        return cur.fetchone()["id"]
+
+
+def delete_virtual_member(vm_id: int, household_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("DELETE FROM virtual_members WHERE id=%s AND household_id=%s", (vm_id, household_id))
+        return cur.rowcount > 0
+
+
+def claim_virtual_member(vm_id: int, household_id: int, user_id: int, display_name: str) -> bool:
+    with get_db() as cur:
+        cur.execute("SELECT name FROM virtual_members WHERE id=%s AND household_id=%s", (vm_id, household_id))
+        row = cur.fetchone()
+        if not row:
+            return False
+        old_name = row["name"]
+        cur.execute("UPDATE users SET display_name=%s WHERE id=%s", (display_name or old_name, user_id))
+        cur.execute(
+            "UPDATE wydatki SET osoba=%s WHERE osoba=%s AND household_id=%s",
+            (display_name or old_name, old_name, household_id),
+        )
+        cur.execute("DELETE FROM virtual_members WHERE id=%s", (vm_id,))
+        return True
 
 
 def get_analiza_state(household_id: int) -> dict:
