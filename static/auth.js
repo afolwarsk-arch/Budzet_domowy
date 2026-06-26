@@ -61,9 +61,20 @@ function _showProfileModal() {
   };
 }
 
+const _ADMIN_EMAILS = ['a.folwarsk@gmail.com'];
+
 function _injectProfileButton(me) {
   const nav = document.querySelector('nav');
   if (!nav) return;
+  if (_ADMIN_EMAILS.includes(me.email)) {
+    const adminLink = document.createElement('a');
+    adminLink.href = '/admin';
+    adminLink.textContent = 'Admin';
+    adminLink.style.cssText = 'font-size:0.85rem;color:#888;';
+    const logoutBtn = nav.querySelector('button');
+    if (logoutBtn) nav.insertBefore(adminLink, logoutBtn);
+    else nav.appendChild(adminLink);
+  }
   const btn = document.createElement('button');
   btn.id = 'nav-profile-btn';
   btn.textContent = me.display_name || me.name.split(' ')[0];
