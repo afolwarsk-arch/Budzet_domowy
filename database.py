@@ -58,6 +58,14 @@ SCHEMA_STATEMENTS = [
         kategoria_glowna  TEXT NOT NULL DEFAULT 'Inne',
         kategoria         TEXT NOT NULL
     )""",
+    """CREATE TABLE IF NOT EXISTS api_usage (
+        id           SERIAL PRIMARY KEY,
+        household_id INTEGER REFERENCES households(id),
+        endpoint     TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
     """CREATE TABLE IF NOT EXISTS virtual_members (
         id           SERIAL PRIMARY KEY,
         household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
@@ -539,6 +547,37 @@ def get_all_households() -> list[dict]:
                FROM households h LEFT JOIN memberships m ON m.household_id = h.id
                GROUP BY h.id ORDER BY h.created_at DESC"""
         )
+        return [dict(r) for r in cur.fetchall()]
+
+
+_INPUT_PRICE  = 3.0 / 1_000_000   # USD per token
+_OUTPUT_PRICE = 15.0 / 1_000_000  # USD per token
+
+
+def log_api_usage(household_id: int | None, endpoint: str, input_tokens: int, output_tokens: int) -> None:
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO api_usage (household_id, endpoint, input_tokens, output_tokens) VALUES (%s,%s,%s,%s)",
+            (household_id, endpoint, input_tokens, output_tokens),
+        )
+
+
+def get_usage_stats() -> list[dict]:
+    with get_db() as cur:
+        cur.execute("""
+            SELECT
+                COALESCE(h.name, '(brak)') AS household_name,
+                u.household_id,
+                COUNT(*) AS calls,
+                SUM(u.input_tokens) AS input_tokens,
+                SUM(u.output_tokens) AS output_tokens,
+                ROUND(CAST(SUM(u.input_tokens * 3.0 + u.output_tokens * 15.0) / 1000000 AS numeric), 4) AS cost_usd,
+                MAX(u.created_at) AS last_call
+            FROM api_usage u
+            LEFT JOIN households h ON h.id = u.household_id
+            GROUP BY u.household_id, h.name
+            ORDER BY cost_usd DESC
+        """)
         return [dict(r) for r in cur.fetchall()]
 
 

@@ -242,8 +242,8 @@ Bez dodatkowego tekstu. Każdy obiekt wejściowy musi mieć odpowiednik na wyjś
 Kieruj się nazwą produktu i sklepem. Jeśli nie wiesz — użyj "Inne"/"Inne"."""
 
 
-def rekategoryzuj_batch(pozycje: list[dict]) -> list[dict]:
-    """Ponowna kategoryzacja listy pozycji przez Claude. Zwraca [{id, kategoria_glowna, kategoria}]."""
+def rekategoryzuj_batch(pozycje: list[dict]) -> tuple[list[dict], dict]:
+    """Ponowna kategoryzacja listy pozycji przez Claude. Zwraca ([{id, kategoria_glowna, kategoria}], usage)."""
     client = anthropic.Anthropic()
     wejscie = json.dumps(
         [{"id": p["id"], "nazwa": p["nazwa"], "sklep": p.get("sklep")} for p in pozycje],
@@ -257,7 +257,6 @@ def rekategoryzuj_batch(pozycje: list[dict]) -> list[dict]:
     )
     raw = re.sub(r"```(?:json)?|```", "", msg.content[0].text).strip()
     wynik = json.loads(raw)
-    # walidacja kategorii
     for item in wynik:
         glowna = item.get("kategoria_glowna", "Inne")
         sub = item.get("kategoria", "Inne")
@@ -267,7 +266,7 @@ def rekategoryzuj_batch(pozycje: list[dict]) -> list[dict]:
             sub = KATEGORIE_HIERARCHIA[glowna][0]
         item["kategoria_glowna"] = glowna
         item["kategoria"] = sub
-    return wynik
+    return wynik, _usage(msg)
 
 
 def _kontekst_txt(kontekst: str | None) -> str:
@@ -276,7 +275,11 @@ def _kontekst_txt(kontekst: str | None) -> str:
     return f"\n\nDODATKOWY KONTEKST OD UŻYTKOWNIKA: {kontekst}\nUżyj tego kontekstu do poprawnego przypisania kategorii."
 
 
-def process_image(image_bytes: bytes, mime_type: str = "image/jpeg", kontekst: str | None = None) -> list[dict]:
+def _usage(message) -> dict:
+    return {"input_tokens": message.usage.input_tokens, "output_tokens": message.usage.output_tokens}
+
+
+def process_image(image_bytes: bytes, mime_type: str = "image/jpeg", kontekst: str | None = None) -> tuple[list[dict], dict]:
     client = anthropic.Anthropic()
     image_bytes, mime_type = _compress_image(image_bytes, mime_type)
     image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
@@ -293,10 +296,10 @@ def process_image(image_bytes: bytes, mime_type: str = "image/jpeg", kontekst: s
             ],
         }],
     )
-    return _parse_response(message.content[0].text)
+    return _parse_response(message.content[0].text), _usage(message)
 
 
-def process_text(text: str, kontekst: str | None = None) -> list[dict]:
+def process_text(text: str, kontekst: str | None = None) -> tuple[list[dict], dict]:
     client = anthropic.Anthropic()
     message = client.messages.create(
         model="claude-sonnet-4-6",
@@ -304,7 +307,7 @@ def process_text(text: str, kontekst: str | None = None) -> list[dict]:
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": f"Przeanalizuj tę notatkę wydatków:\n\n{text}" + _kontekst_txt(kontekst)}],
     )
-    return _parse_response(message.content[0].text)
+    return _parse_response(message.content[0].text), _usage(message)
 
 
 def _parse_response(raw: str) -> list[dict]:

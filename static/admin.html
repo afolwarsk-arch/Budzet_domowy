@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Budżet domowy</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th { text-align: left; padding: 10px 12px; background: #f8f9fa; border-bottom: 2px solid #e9ecef; color: #555; font-weight: 600; }
+    td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
+    tr:last-child td { border-bottom: none; }
+    .cost { font-weight: 600; color: #4361ee; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.75rem; background:#e8f5e9; color:#388e3c; }
+  </style>
+</head>
+<body>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="/static/auth.js"></script>
+<nav>
+  <a href="/" class="logo">🏠 Budżet</a>
+  <a href="/">Dashboard</a>
+  <span style="margin-left:auto;font-size:0.85rem;color:#888">Panel admina</span>
+</nav>
+
+<main style="max-width:900px">
+  <h1>Panel admina</h1>
+
+  <div class="card" style="margin-bottom:24px">
+    <h2 style="margin-bottom:16px">Użycie API Anthropic</h2>
+    <div id="usage-table">Ładowanie...</div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-bottom:16px">Gospodarstwa</h2>
+    <div id="households-table">Ładowanie...</div>
+  </div>
+</main>
+
+<script>
+authRequireHousehold().then(async (me) => {
+  if (me.email !== 'a.folwarsk@gmail.com') {
+    document.querySelector('main').innerHTML = '<p style="color:#d32f2f">Brak dostępu.</p>';
+    return;
+  }
+
+  // Usage
+  try {
+    const usage = await authFetch('/api/admin/usage').then(r => r.json());
+    if (!usage.length) {
+      document.getElementById('usage-table').innerHTML = '<p style="color:#aaa">Brak danych (zapytania do AI będą tu widoczne po pierwszym użyciu).</p>';
+    } else {
+      const totalCost = usage.reduce((s, r) => s + parseFloat(r.cost_usd || 0), 0);
+      const totalCalls = usage.reduce((s, r) => s + parseInt(r.calls || 0), 0);
+      document.getElementById('usage-table').innerHTML = `
+        <table>
+          <thead><tr>
+            <th>Gospodarstwo</th>
+            <th>Zapytania</th>
+            <th>Tokeny wejście</th>
+            <th>Tokeny wyjście</th>
+            <th>Koszt (USD)</th>
+            <th>Ostatnie użycie</th>
+          </tr></thead>
+          <tbody>
+            ${usage.map(r => `<tr>
+              <td>${r.household_name}</td>
+              <td>${r.calls}</td>
+              <td>${Number(r.input_tokens).toLocaleString('pl')}</td>
+              <td>${Number(r.output_tokens).toLocaleString('pl')}</td>
+              <td class="cost">$${parseFloat(r.cost_usd).toFixed(4)}</td>
+              <td style="color:#888;font-size:0.82rem">${r.last_call ? new Date(r.last_call).toLocaleString('pl') : '—'}</td>
+            </tr>`).join('')}
+          </tbody>
+          <tfoot><tr style="font-weight:600;background:#f8f9fa">
+            <td>Razem</td>
+            <td>${totalCalls}</td>
+            <td></td><td></td>
+            <td class="cost">$${totalCost.toFixed(4)}</td>
+            <td></td>
+          </tr></tfoot>
+        </table>
+        <p style="font-size:0.78rem;color:#aaa;margin-top:10px">Ceny: claude-sonnet-4-6 — $3/1M tokenów wejściowych, $15/1M wyjściowych</p>`;
+    }
+  } catch (e) {
+    document.getElementById('usage-table').innerHTML = '<p style="color:#d32f2f">Błąd ładowania</p>';
+  }
+
+  // Households
+  try {
+    const households = await authFetch('/api/admin/households').then(r => r.json());
+    document.getElementById('households-table').innerHTML = `
+      <table>
+        <thead><tr><th>Nazwa</th><th>Członkowie</th><th>Utworzone</th></tr></thead>
+        <tbody>
+          ${households.map(h => `<tr>
+            <td>${h.name}</td>
+            <td><span class="badge">${h.members}</span></td>
+            <td style="color:#888;font-size:0.82rem">${new Date(h.created_at).toLocaleDateString('pl')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch {
+    document.getElementById('households-table').innerHTML = '<p style="color:#d32f2f">Błąd ładowania</p>';
+  }
+});
+</script>
+</body>
+</html>

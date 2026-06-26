@@ -176,6 +176,11 @@ def admin_list_households(admin: dict = Depends(require_admin)):
     return database.get_all_households()
 
 
+@app.get("/api/admin/usage")
+def admin_usage(admin: dict = Depends(require_admin)):
+    return database.get_usage_stats()
+
+
 @app.post("/api/admin/rename-osoba")
 def rename_osoba(body: dict, admin: dict = Depends(require_admin)):
     stara = (body.get("stara") or "").strip()
@@ -230,28 +235,31 @@ async def process_image(
     file: UploadFile = File(...),
     osoba: str = Form("Adam"),
     kontekst: str = Form(""),
+    current_user: dict = Depends(get_current_user),
 ):
     content = await file.read()
     mime = file.content_type or "image/jpeg"
     try:
-        results = await asyncio.to_thread(ai_processor.process_image, content, mime, kontekst or None)
+        results, usage = await asyncio.to_thread(ai_processor.process_image, content, mime, kontekst or None)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Błąd Claude API: {e}")
+    database.log_api_usage(current_user["household_id"], "process-image", usage["input_tokens"], usage["output_tokens"])
     for r in results:
         r["osoba"] = osoba
     return results
 
 
 @app.post("/api/process-text")
-async def process_text(payload: dict):
+async def process_text(payload: dict, current_user: dict = Depends(get_current_user)):
     text = payload.get("text", "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Brak tekstu")
     kontekst = payload.get("kontekst", "").strip() or None
     try:
-        results = await asyncio.to_thread(ai_processor.process_text, text, kontekst)
+        results, usage = await asyncio.to_thread(ai_processor.process_text, text, kontekst)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Błąd Claude API: {e}")
+    database.log_api_usage(current_user["household_id"], "process-text", usage["input_tokens"], usage["output_tokens"])
     osoba = payload.get("osoba", "Adam")
     for r in results:
         r["osoba"] = osoba
@@ -382,11 +390,14 @@ async def rekategoryzuj(body: dict):
 
     BATCH = 25
     wszystkie = []
+    total_in, total_out = 0, 0
     for i in range(0, len(pozycje), BATCH):
         paczka = pozycje[i:i + BATCH]
-        wynik = await asyncio.to_thread(ai_processor.rekategoryzuj_batch, paczka)
+        wynik, usage = await asyncio.to_thread(ai_processor.rekategoryzuj_batch, paczka)
         wszystkie.extend(wynik)
-
+        total_in += usage["input_tokens"]
+        total_out += usage["output_tokens"]
+    database.log_api_usage(None, "rekategoryzuj", total_in, total_out)
     zaktualizowane = database.update_pozycje_kategorie(wszystkie)
     return {"zaktualizowane": zaktualizowane, "przetworzone": len(wszystkie)}
 
