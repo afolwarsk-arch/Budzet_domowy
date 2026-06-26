@@ -18,6 +18,7 @@ SCHEMA_STATEMENTS = [
         email        TEXT NOT NULL,
         name         TEXT NOT NULL DEFAULT '',
         picture      TEXT DEFAULT '',
+        display_name TEXT,
         created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""",
     """CREATE TABLE IF NOT EXISTS memberships (
@@ -135,6 +136,7 @@ def init_db():
     with get_db() as cur:
         for stmt in SCHEMA_STATEMENTS:
             cur.execute(stmt)
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT")
         for stara, (glowna, sub) in _MIGRACJA_MAP.items():
             cur.execute(
                 "UPDATE pozycje SET kategoria_glowna=%s, kategoria=%s WHERE kategoria=%s",
@@ -435,16 +437,24 @@ def get_household(household_id: int) -> dict | None:
         return dict(row) if row else None
 
 
-def create_or_update_user(firebase_uid: str, email: str, name: str, picture: str) -> int:
+def create_or_update_user(firebase_uid: str, email: str, name: str, picture: str) -> tuple[int, str]:
+    default_display = name.split()[0] if name and name.strip() else email.split("@")[0]
     with get_db() as cur:
         cur.execute(
-            """INSERT INTO users (firebase_uid, email, name, picture) VALUES (%s,%s,%s,%s)
+            """INSERT INTO users (firebase_uid, email, name, picture, display_name) VALUES (%s,%s,%s,%s,%s)
                ON CONFLICT (firebase_uid) DO UPDATE SET
-               email=EXCLUDED.email, name=EXCLUDED.name, picture=EXCLUDED.picture""",
-            (firebase_uid, email, name, picture),
+               email=EXCLUDED.email, name=EXCLUDED.name, picture=EXCLUDED.picture,
+               display_name=COALESCE(users.display_name, EXCLUDED.display_name)""",
+            (firebase_uid, email, name, picture, default_display),
         )
-        cur.execute("SELECT id FROM users WHERE firebase_uid = %s", (firebase_uid,))
-        return cur.fetchone()["id"]
+        cur.execute("SELECT id, display_name FROM users WHERE firebase_uid = %s", (firebase_uid,))
+        row = cur.fetchone()
+        return row["id"], row["display_name"] or default_display
+
+
+def update_user_display_name(user_id: int, display_name: str) -> None:
+    with get_db() as cur:
+        cur.execute("UPDATE users SET display_name=%s WHERE id=%s", (display_name, user_id))
 
 
 def get_user_household(user_id: int) -> dict | None:
@@ -470,7 +480,7 @@ def add_member(user_id: int, household_id: int, role: str = "member") -> None:
 def get_household_members(household_id: int) -> list[dict]:
     with get_db() as cur:
         cur.execute(
-            """SELECT u.id, u.name, u.email, u.picture, m.role
+            """SELECT u.id, u.name, u.display_name, u.email, u.picture, m.role
                FROM users u JOIN memberships m ON m.user_id = u.id
                WHERE m.household_id = %s""",
             (household_id,),

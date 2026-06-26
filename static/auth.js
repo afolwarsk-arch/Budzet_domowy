@@ -60,7 +60,24 @@ async function authFetch(url, options = {}) {
   });
 }
 
+async function loadOsobaOptions(selectId, includeAll = false) {
+  try {
+    const data = await authFetch('/api/household').then(r => r.json());
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '';
+    if (includeAll) sel.appendChild(new Option('Oboje', ''));
+    (data.members || []).forEach(m => {
+      const label = m.display_name || m.name.split(' ')[0];
+      sel.appendChild(new Option(label, label));
+    });
+    if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  } catch {}
+}
+
 window.authGetToken = authGetToken;
 window.authLogout = authLogout;
 window.authRequireHousehold = authRequireHousehold;
 window.authFetch = authFetch;
+window.loadOsobaOptions = loadOsobaOptions;

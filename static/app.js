@@ -14,7 +14,8 @@ function esc(s) {
 
 // â”€â”€ DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(() => {
+if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(async (me) => {
+  await loadOsobaOptions('filter-osoba', true);
   let chartKat = null;
   let chartMies = null;
   let miesiaceLacznie = false;
@@ -506,7 +507,12 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(()
 
 // ── UPLOAD PAGE ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-if (document.getElementById('drop-zone')) { authRequireHousehold().then(() => {
+if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (me) => {
+  await loadOsobaOptions('osoba');
+  const osobaSel = document.getElementById('osoba');
+  if (me && me.display_name && [...osobaSel.options].some(o => o.value === me.display_name)) {
+    osobaSel.value = me.display_name;
+  }
   let HIERARCHIA = {};
   let GLOWNE = [];
 

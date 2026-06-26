@@ -43,7 +43,7 @@ def get_current_user(
     name = decoded.get("name", "") or email.split("@")[0]
     picture = decoded.get("picture", "")
 
-    user_id = database.create_or_update_user(firebase_uid, email, name, picture)
+    user_id, display_name = database.create_or_update_user(firebase_uid, email, name, picture)
     household = database.get_user_household(user_id)
 
     return {
@@ -51,6 +51,7 @@ def get_current_user(
         "email": email,
         "name": name,
         "picture": picture,
+        "display_name": display_name,
         "user_id": user_id,
         "household_id": household["id"] if household else None,
         "role": household["role"] if household else None,

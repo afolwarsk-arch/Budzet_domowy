@@ -106,6 +106,12 @@
     <div class="user-info" id="user-info">Ładowanie...</div>
 
     <div class="section">
+      <h2>Jak masz na imię?</h2>
+      <input id="inp-display" type="text" placeholder="np. Adam, Ola, Mama, Tata" maxlength="30">
+      <div class="error" id="err-display"></div>
+    </div>
+
+    <div class="section">
       <h2>Utwórz nowe gospodarstwo</h2>
       <input id="inp-name" type="text" placeholder="np. Dom Kowalskich">
       <button class="btn" id="btn-create">Utwórz gospodarstwo</button>
@@ -141,9 +147,25 @@
       el.innerHTML = me.picture
         ? `<img src="${me.picture}" alt=""> ${me.name} (${me.email})`
         : me.name + " (" + me.email + ")";
+      document.getElementById("inp-display").value = me.display_name || "";
     });
 
+    async function saveDisplayName() {
+      const display_name = document.getElementById("inp-display").value.trim();
+      const errEl = document.getElementById("err-display");
+      errEl.style.display = "none";
+      if (!display_name) { errEl.textContent = "Podaj swoje imię"; errEl.style.display = "block"; return false; }
+      const res = await fetch("/api/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + _token },
+        body: JSON.stringify({ display_name }),
+      });
+      if (!res.ok) { errEl.textContent = "Błąd zapisu imienia"; errEl.style.display = "block"; return false; }
+      return true;
+    }
+
     document.getElementById("btn-create").addEventListener("click", async () => {
+      if (!await saveDisplayName()) return;
       const name = document.getElementById("inp-name").value.trim();
       const errEl = document.getElementById("err-create");
       errEl.style.display = "none";
@@ -158,6 +180,7 @@
     });
 
     document.getElementById("btn-join").addEventListener("click", async () => {
+      if (!await saveDisplayName()) return;
       let code = document.getElementById("inp-code").value.trim();
       const errEl = document.getElementById("err-join");
       errEl.style.display = "none";

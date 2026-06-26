@@ -67,6 +67,17 @@ def get_me(current_user: dict = Depends(get_current_user)):
     return {**current_user, "household": household}
 
 
+@app.patch("/api/me")
+def update_me(body: dict, current_user: dict = Depends(get_current_user)):
+    display_name = (body.get("display_name") or "").strip()
+    if not display_name:
+        raise HTTPException(status_code=400, detail="Podaj pseudonim")
+    if len(display_name) > 30:
+        raise HTTPException(status_code=400, detail="Pseudonim za długi (max 30 znaków)")
+    database.update_user_display_name(current_user["user_id"], display_name)
+    return {"ok": True}
+
+
 @app.post("/api/household", status_code=201)
 def create_household(body: dict, current_user: dict = Depends(get_current_user)):
     name = (body.get("name") or "").strip()

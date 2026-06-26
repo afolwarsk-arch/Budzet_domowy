@@ -82,8 +82,6 @@
     <label style="font-size:13px;color:var(--muted)">Osoba:</label>
     <select id="filter-osoba">
       <option value="">Oboje</option>
-      <option value="Adam">Adam</option>
-      <option value="Ola">Ola</option>
     </select>
   </div>
   <div class="card" id="chart-card" style="margin-bottom:20px">
@@ -803,6 +801,7 @@ async function loadData() {
 
 // ── Init ──────────────────────────────────────────────────────────
 authRequireHousehold().then(async () => {
+  await loadOsobaOptions('filter-osoba', true);
   await loadState();
   document.getElementById('filter-month').value = new Date().toISOString().slice(0,7);
   document.getElementById('filter-month').addEventListener('change', loadData);
