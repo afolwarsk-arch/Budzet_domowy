@@ -10,3 +10,6 @@ venv/
 *.png
 *.url
 firebase-service-account.json
+_*.txt
+_*.py
+migration_data.json
