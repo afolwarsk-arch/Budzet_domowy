@@ -81,8 +81,18 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       fetches.push(authFetch('/api/stats/top-produkt?' + q).then(r => r.json()));
     }
 
-    const results = await Promise.all(fetches);
+    let results;
+    try {
+      results = await Promise.all(fetches);
+    } catch (e) {
+      document.getElementById('sklepy-list').textContent = 'Błąd ładowania: ' + e.message;
+      return;
+    }
     const [statKat, statMies, statSklepy, wydatki] = results;
+    if (!Array.isArray(statKat) || !Array.isArray(wydatki)) {
+      document.getElementById('sklepy-list').textContent = 'Błąd API: ' + JSON.stringify(statKat);
+      return;
+    }
     const statSub = kategoria ? results[4] : null;
     const topProdukt = kategoria ? results[5] : null;
 
@@ -98,7 +108,8 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   function renderStats(wydatki, statKat, kategoria, topProdukt) {
     const suma = wydatki.reduce((s, w) => s + w.suma, 0);
     document.getElementById('stat-suma').textContent = fmt(suma);
-    document.querySelector('.stat-card:first-child .label').textContent = filterMode === 'range' ? 'Suma za okres' : 'Suma miesięczna';
+    const sumaLabel = document.querySelector('.stat-card .label');
+    if (sumaLabel) sumaLabel.textContent = filterMode === 'range' ? 'Suma za okres' : 'Suma miesięczna';
     document.getElementById('stat-paragony').textContent = wydatki.length;
     const labelEl = document.querySelector('[for-stat="topkat"], .stat-card:last-child .label');
     const statLabel = document.getElementById('stat-topkat-label');
