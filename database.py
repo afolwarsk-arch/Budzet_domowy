@@ -595,7 +595,6 @@ def get_admin_stats() -> list[dict]:
                 MAX(u.last_login) AS last_login,
                 STRING_AGG(DISTINCT u.display_name || ' <' || u.email || '>', ', ') AS members_info,
                 COUNT(DISTINCT w.id) AS wydatki_count,
-                (SELECT ROUND(COALESCE(SUM(suma), 0)::numeric, 2) FROM wydatki WHERE household_id = h.id) AS wydatki_sum,
                 MAX(w.created_at) AS last_wydatek,
                 COALESCE(MAX(au.calls), 0) AS api_calls,
                 COALESCE(MAX(au.cost_usd), 0) AS cost_usd,

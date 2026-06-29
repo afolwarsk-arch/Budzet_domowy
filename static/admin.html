@@ -112,10 +112,6 @@ authRequireHousehold().then(async (me) => {
             <span class="stat-value">${h.wydatki_count}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Suma wydatków</span>
-            <span class="stat-value">${Number(h.wydatki_sum).toLocaleString('pl', {minimumFractionDigits:2})} zł</span>
-          </div>
-          <div class="stat-row">
             <span class="stat-label">Zapytania AI</span>
             <span class="stat-value">${h.api_calls} <span style="color:#aaa;font-weight:400">($${parseFloat(h.cost_usd).toFixed(4)})</span></span>
           </div>
