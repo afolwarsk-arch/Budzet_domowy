@@ -37,6 +37,18 @@
 
 <main style="max-width:1100px">
   <h1>Panel admina</h1>
+
+  <div class="card" style="margin-bottom:24px;padding:20px">
+    <h3 style="margin-bottom:12px;font-size:1rem">Zmień nazwę osoby w wydatkach</h3>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="rename-stara" type="text" placeholder="Stara nazwa (np. Ola)" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+      <span style="color:#888">→</span>
+      <input id="rename-nowa" type="text" placeholder="Nowa nazwa (np. Aleksandra)" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+      <button id="btn-rename" class="btn btn-primary" style="padding:8px 16px">Zmień</button>
+      <span id="rename-info" style="font-size:13px;color:var(--muted)"></span>
+    </div>
+  </div>
+
   <div id="stats-container">Ładowanie...</div>
 </main>
 
@@ -55,6 +67,28 @@ authRequireHousehold().then(async (me) => {
     document.querySelector('main').innerHTML = '<p style="color:#d32f2f">Brak dostępu.</p>';
     return;
   }
+
+  document.getElementById('btn-rename').addEventListener('click', async () => {
+    const stara = document.getElementById('rename-stara').value.trim();
+    const nowa = document.getElementById('rename-nowa').value.trim();
+    const info = document.getElementById('rename-info');
+    if (!stara || !nowa) { info.textContent = 'Wypełnij oba pola.'; return; }
+    info.textContent = 'Zmieniam...';
+    try {
+      const res = await authFetch('/api/admin/rename-osoba', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stara, nowa }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail);
+      info.textContent = `Zaktualizowano ${data.zaktualizowane} wydatków.`;
+      info.style.color = '#1e7e34';
+    } catch (e) {
+      info.textContent = 'Błąd: ' + e.message;
+      info.style.color = '#c0392b';
+    }
+  });
 
   try {
     const stats = await authFetch('/api/admin/stats').then(r => r.json());
