@@ -31,6 +31,12 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   let filterMode = 'month';
   let katMode = 'pierwotne';
 
+  window.updateKontekstKat = function(ri, val) {
+    receiptsData[ri].kontekst_kategoria = val || null;
+    receiptsData[ri].kontekst_podkategoria = null;
+    renderCards();
+  };
+
   window.setKatMode = function(mode) {
     katMode = mode;
     document.getElementById('kat-mode-pierwotne').style.background = mode === 'pierwotne' ? '#4f7ef8' : '#fff';
@@ -203,6 +209,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     const q = new URLSearchParams({ kategoria_glowna: glowna });
     if (month) q.set('month', month);
     if (osoba) q.set('osoba', osoba);
+    if (katMode === 'kontekst') q.set('kontekst', '1');
 
     const qw = new URLSearchParams({ kategoria: glowna });
     if (month) qw.set('month', month);
@@ -772,12 +779,25 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
             </div>
             <div class="form-group">
               <label>Kontekst kategorii <span style="font-weight:400;color:var(--muted)">(opcjonalnie)</span></label>
-              <select style="width:100%" onchange="updateReceipt(${ri},'kontekst_kategoria',this.value||null)">
-                <option value="">— brak (użyj kategorii pozycji) —</option>
+              <select id="kkSelect-${ri}" style="width:100%" onchange="updateKontekstKat(${ri},this.value)">
+                <option value="">— brak —</option>
                 ${GLOWNE.map(g => `<option value="${esc(g)}" ${r.kontekst_kategoria===g?'selected':''}>${esc(g)}</option>`).join('')}
               </select>
             </div>
           </div>
+          ${r.kontekst_kategoria ? `
+          <div class="form-row" style="margin-bottom:12px">
+            <div class="form-group" style="flex:1">
+              <label>Kontekst podkategorii <span style="font-weight:400;color:var(--muted)">(opcjonalnie)</span></label>
+              <select id="kpSelect-${ri}" style="width:100%" onchange="updateReceipt(${ri},'kontekst_podkategoria',this.value||null)">
+                <option value="">— brak (użyj podkategorii pozycji) —</option>
+                ${(HIERARCHIA[r.kontekst_kategoria]||[]).map(s => `<option value="${esc(s)}" ${r.kontekst_podkategoria===s?'selected':''}>${esc(s)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group" style="flex:0">
+            </div>
+          </div>
+          ` : ''}
 
           <div style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">
             Pozycje (${r.pozycje.length})

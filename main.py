@@ -292,6 +292,7 @@ class WydatekIn(BaseModel):
     pozycje: list[PozycjaIn]
     okazja: str | None = None
     kontekst_kategoria: str | None = None
+    kontekst_podkategoria: str | None = None
 
 
 @app.post("/api/wydatki", status_code=201)
@@ -309,6 +310,7 @@ def create_wydatek(body: WydatekIn, current_user: dict = Depends(get_current_use
         household_id=current_user["household_id"],
         okazja=body.okazja,
         kontekst_kategoria=body.kontekst_kategoria,
+        kontekst_podkategoria=body.kontekst_podkategoria,
     )
     return {"id": wid}
 
@@ -379,6 +381,7 @@ def update_wydatek(wydatek_id: int, body: WydatekIn):
         pozycje=[p.model_dump() for p in body.pozycje],
         okazja=body.okazja,
         kontekst_kategoria=body.kontekst_kategoria,
+        kontekst_podkategoria=body.kontekst_podkategoria,
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Nie znaleziono")
@@ -476,10 +479,11 @@ def stats_pozycje_subkat(kategoria: str, month: str | None = None, osoba: str | 
 
 @app.get("/api/stats/subkategorie")
 def stats_subkategorie(kategoria_glowna: str, month: str | None = None, osoba: str | None = None,
-                       od: str | None = None, do: str | None = None,
+                       od: str | None = None, do: str | None = None, kontekst: bool = False,
                        current_user: dict = Depends(get_current_user)):
     return database.stats_subkategorie(kategoria_glowna=kategoria_glowna, month=month, osoba=osoba,
-                                       od=od, do=do, household_id=current_user["household_id"])
+                                       od=od, do=do, kontekst=kontekst,
+                                       household_id=current_user["household_id"])
 
 
 @app.get("/api/stats/subkategorie-all")

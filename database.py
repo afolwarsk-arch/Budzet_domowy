@@ -155,6 +155,7 @@ def init_db():
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS okazja TEXT")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS kontekst_kategoria TEXT")
+        cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS kontekst_podkategoria TEXT")
         for stara, (glowna, sub) in _MIGRACJA_MAP.items():
             cur.execute(
                 "UPDATE pozycje SET kategoria_glowna=%s, kategoria=%s WHERE kategoria=%s",
@@ -171,11 +172,12 @@ def create_wydatek(data: str, sklep: str | None, suma: float, osoba: str,
                    waluta: str = "PLN", kurs: float = 1.0,
                    household_id: int | None = None,
                    okazja: str | None = None,
-                   kontekst_kategoria: str | None = None) -> int:
+                   kontekst_kategoria: str | None = None,
+                   kontekst_podkategoria: str | None = None) -> int:
     with get_db() as cur:
         cur.execute(
-            "INSERT INTO wydatki (data,sklep,suma,osoba,notatki,zdjecie,waluta,kurs,household_id,okazja,kontekst_kategoria) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
-            (data, sklep, suma, osoba, notatki, zdjecie, waluta, kurs, household_id, okazja or None, kontekst_kategoria or None),
+            "INSERT INTO wydatki (data,sklep,suma,osoba,notatki,zdjecie,waluta,kurs,household_id,okazja,kontekst_kategoria,kontekst_podkategoria) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+            (data, sklep, suma, osoba, notatki, zdjecie, waluta, kurs, household_id, okazja or None, kontekst_kategoria or None, kontekst_podkategoria or None),
         )
         wydatek_id = cur.fetchone()["id"]
         if pozycje:
@@ -209,14 +211,14 @@ def get_wydatki(month: str | None = None, osoba: str | None = None,
 
     if kategoria:
         query = f"""
-            SELECT DISTINCT w.id, w.data, w.sklep, w.suma, w.osoba, w.notatki, w.zdjecie, w.created_at, w.okazja, w.kontekst_kategoria
+            SELECT DISTINCT w.id, w.data, w.sklep, w.suma, w.osoba, w.notatki, w.zdjecie, w.created_at, w.okazja, w.kontekst_kategoria, w.kontekst_podkategoria
             FROM wydatki w JOIN pozycje p ON p.wydatek_id = w.id
             {where} {'AND' if where else 'WHERE'} p.kategoria_glowna = %s
             ORDER BY w.data DESC"""
         params.append(kategoria)
     else:
         query = f"""
-            SELECT w.id, w.data, w.sklep, w.suma, w.osoba, w.notatki, w.zdjecie, w.created_at, w.okazja, w.kontekst_kategoria
+            SELECT w.id, w.data, w.sklep, w.suma, w.osoba, w.notatki, w.zdjecie, w.created_at, w.okazja, w.kontekst_kategoria, w.kontekst_podkategoria
             FROM wydatki w {where} ORDER BY w.data DESC"""
 
     with get_db() as cur:
@@ -238,11 +240,12 @@ def get_wydatek(wydatek_id: int) -> dict | None:
 
 def update_wydatek(wydatek_id: int, data: str, sklep: str | None, suma: float,
                    osoba: str, notatki: str | None, pozycje: list[dict],
-                   okazja: str | None = None, kontekst_kategoria: str | None = None) -> bool:
+                   okazja: str | None = None, kontekst_kategoria: str | None = None,
+                   kontekst_podkategoria: str | None = None) -> bool:
     with get_db() as cur:
         cur.execute(
-            "UPDATE wydatki SET data=%s,sklep=%s,suma=%s,osoba=%s,notatki=%s,okazja=%s,kontekst_kategoria=%s WHERE id=%s",
-            (data, sklep, suma, osoba, notatki, okazja or None, kontekst_kategoria or None, wydatek_id),
+            "UPDATE wydatki SET data=%s,sklep=%s,suma=%s,osoba=%s,notatki=%s,okazja=%s,kontekst_kategoria=%s,kontekst_podkategoria=%s WHERE id=%s",
+            (data, sklep, suma, osoba, notatki, okazja or None, kontekst_kategoria or None, kontekst_podkategoria or None, wydatek_id),
         )
         if cur.rowcount == 0:
             return False
@@ -345,14 +348,20 @@ def stats_pozycje_subkat(kategoria: str, month=None, osoba=None, kategoria_glown
         return [dict(r) for r in cur.fetchall()]
 
 
-def stats_subkategorie(kategoria_glowna: str, month=None, osoba=None, household_id=None, od=None, do=None) -> list[dict]:
+def stats_subkategorie(kategoria_glowna: str, month=None, osoba=None, household_id=None, od=None, do=None, kontekst=False) -> list[dict]:
     where, params = _where_params(month, osoba, household_id, od=od, do=do)
     params.append(kategoria_glowna)
+    if kontekst:
+        kat_filter = "COALESCE(w.kontekst_kategoria, p.kategoria_glowna)"
+        sub_col = "COALESCE(w.kontekst_podkategoria, p.kategoria)"
+    else:
+        kat_filter = "p.kategoria_glowna"
+        sub_col = "p.kategoria"
     query = f"""
-        SELECT p.kategoria, ROUND(CAST(SUM(p.cena * p.ilosc) AS numeric), 2) AS suma
+        SELECT {sub_col} AS kategoria, ROUND(CAST(SUM(p.cena * p.ilosc) AS numeric), 2) AS suma
         FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
-        {where} {'AND' if where else 'WHERE'} p.kategoria_glowna = %s
-        GROUP BY p.kategoria ORDER BY suma DESC"""
+        {where} {'AND' if where else 'WHERE'} {kat_filter} = %s
+        GROUP BY {sub_col} ORDER BY suma DESC"""
     with get_db() as cur:
         cur.execute(query, params)
         return [dict(r) for r in cur.fetchall()]
