@@ -314,12 +314,14 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       );
       datasets = [{ label: 'ĹÄ…cznie', data: lacznie, backgroundColor: '#4fc8f8', borderRadius: 4 }];
     } else {
-      const adam = miesiace.map(m => data.find(d => d.miesiac === m && d.osoba === 'Adam')?.suma ?? 0);
-      const ola  = miesiace.map(m => data.find(d => d.miesiac === m && d.osoba === 'Ola')?.suma ?? 0);
-      datasets = [
-        { label: 'Adam', data: adam, backgroundColor: '#4f7ef8', borderRadius: 4 },
-        { label: 'Ola',  data: ola,  backgroundColor: '#f84f8a', borderRadius: 4 },
-      ];
+      const OSOBA_COLORS = ['#4f7ef8', '#f84f8a', '#4fc8f8', '#f8a04f', '#a04ff8', '#4ff8a0'];
+      const osoby = [...new Set(data.map(d => d.osoba))].sort();
+      datasets = osoby.map((osoba, i) => ({
+        label: osoba,
+        data: miesiace.map(m => data.find(d => d.miesiac === m && d.osoba === osoba)?.suma ?? 0),
+        backgroundColor: OSOBA_COLORS[i % OSOBA_COLORS.length],
+        borderRadius: 4,
+      }));
     }
 
     chartMies = new Chart(ctx, {
@@ -513,6 +515,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   if (me && me.display_name && [...osobaSel.options].some(o => o.value === me.display_name)) {
     osobaSel.value = me.display_name;
   }
+  const OSOBY_OPCJE = [...osobaSel.options].map(o => ({ value: o.value, label: o.text }));
   let HIERARCHIA = {};
   let GLOWNE = [];
 
@@ -688,8 +691,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
             <div class="form-group">
               <label>Osoba</label>
               <select style="width:100%" onchange="updateReceipt(${ri},'osoba',this.value)">
-                <option value="Adam" ${r.osoba==='Adam'?'selected':''}>Adam</option>
-                <option value="Ola" ${r.osoba==='Ola'?'selected':''}>Ola</option>
+                ${OSOBY_OPCJE.map(o => `<option value="${esc(o.value)}" ${r.osoba===o.value?'selected':''}>${esc(o.label)}</option>`).join('')}
               </select>
             </div>
           </div>
