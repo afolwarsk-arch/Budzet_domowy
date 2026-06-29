@@ -541,6 +541,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   // receiptsData[i] = { sklep, data, suma, osoba, notatki, pozycje[] }
   let receiptsData = [];
   let editId = null;
+  let selectedFiles = [];
 
   // ZaĹ‚aduj hierarchiÄ™ kategorii z backendu (zawsze aktualna)
   authFetch('/api/kategorie').then(r => r.json()).then(hier => {
@@ -585,16 +586,30 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
 
   function handleFiles(files) {
     if (!files || !files.length) return;
+    for (const file of files) selectedFiles.push(file);
+    renderFilePreviews();
+  }
+
+  function renderFilePreviews() {
     previewThumbs.innerHTML = '';
-    for (const file of files) {
+    selectedFiles.forEach((file, i) => {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'position:relative;display:inline-block';
       const img = document.createElement('img');
       img.src = URL.createObjectURL(file);
       img.style.cssText = 'height:80px;width:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border)';
-      previewThumbs.appendChild(img);
-    }
-    const n = files.length;
-    dropZone.querySelector('p').textContent = n === 1 ? files[0].name : `${n} zdjęć wybranych`;
-    analyzeBtn.disabled = false;
+      const del = document.createElement('button');
+      del.textContent = '×';
+      del.title = 'Usuń';
+      del.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#e74c3c;color:#fff;font-size:12px;line-height:1;cursor:pointer;padding:0';
+      del.onclick = (e) => { e.stopPropagation(); selectedFiles.splice(i, 1); renderFilePreviews(); fileInput.value = ''; };
+      wrap.appendChild(img);
+      wrap.appendChild(del);
+      previewThumbs.appendChild(wrap);
+    });
+    const n = selectedFiles.length;
+    dropZone.querySelector('p').textContent = n === 0 ? 'Przeciągnij zdjęcie lub kliknij, by wybrać plik' : n === 1 ? selectedFiles[0].name : `${n} zdjęć wybranych`;
+    analyzeBtn.disabled = n === 0;
   }
 
   analyzeBtn.addEventListener('click', async () => {
@@ -618,11 +633,10 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
         list = await res.json();
         if (!res.ok) throw new Error(list.detail);
       } else {
-        const files = fileInput.files;
-        if (!files.length) { setAlert('Wybierz plik', 'error'); return; }
+        if (!selectedFiles.length) { setAlert('Wybierz plik', 'error'); return; }
 
-        // wyĹ›lij wszystkie zdjÄ™cia rĂłwnolegle
-        const requests = Array.from(files).map(file => {
+        // wyślij wszystkie zdjęcia równolegle
+        const requests = selectedFiles.map(file => {
           const fd = new FormData();
           fd.append('file', file);
           fd.append('osoba', osoba);
