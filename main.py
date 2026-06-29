@@ -348,10 +348,10 @@ async def create_wydatek_z_plikiem(
 
 @app.get("/api/wydatki")
 def list_wydatki(month: str | None = None, osoba: str | None = None,
-                 kategoria: str | None = None,
+                 kategoria: str | None = None, od: str | None = None, do: str | None = None,
                  current_user: dict = Depends(get_current_user)):
     return database.get_wydatki(month=month, osoba=osoba, kategoria=kategoria,
-                                household_id=current_user["household_id"])
+                                od=od, do=do, household_id=current_user["household_id"])
 
 
 @app.get("/api/wydatki/{wydatek_id}")
@@ -450,9 +450,10 @@ def get_kategorie():
 
 @app.get("/api/stats/kategorie")
 def stats_kategorie(month: str | None = None, osoba: str | None = None,
+                    od: str | None = None, do: str | None = None,
                     current_user: dict = Depends(get_current_user)):
     return database.stats_kategorie(month=month, osoba=osoba,
-                                    household_id=current_user["household_id"])
+                                    od=od, do=do, household_id=current_user["household_id"])
 
 
 @app.get("/api/stats/pozycje-subkat")
@@ -466,9 +467,10 @@ def stats_pozycje_subkat(kategoria: str, month: str | None = None, osoba: str | 
 
 @app.get("/api/stats/subkategorie")
 def stats_subkategorie(kategoria_glowna: str, month: str | None = None, osoba: str | None = None,
+                       od: str | None = None, do: str | None = None,
                        current_user: dict = Depends(get_current_user)):
     return database.stats_subkategorie(kategoria_glowna=kategoria_glowna, month=month, osoba=osoba,
-                                       household_id=current_user["household_id"])
+                                       od=od, do=do, household_id=current_user["household_id"])
 
 
 @app.get("/api/stats/subkategorie-all")
@@ -488,14 +490,16 @@ def stats_miesiace(n: int = 6, osoba: str | None = None, kategoria: str | None =
 @app.get("/api/stats/sklepy")
 def stats_sklepy(month: str | None = None, osoba: str | None = None,
                  limit: int = 10, kategoria: str | None = None,
+                 od: str | None = None, do: str | None = None,
                  current_user: dict = Depends(get_current_user)):
     return database.stats_sklepy(month=month, osoba=osoba, limit=limit, kategoria=kategoria,
-                                 household_id=current_user["household_id"])
+                                 od=od, do=do, household_id=current_user["household_id"])
 
 
 @app.get("/api/stats/top-produkt")
 def stats_top_produkt(kategoria: str, month: str | None = None, osoba: str | None = None,
+                      od: str | None = None, do: str | None = None,
                       current_user: dict = Depends(get_current_user)):
     result = database.stats_top_produkt(kategoria=kategoria, month=month, osoba=osoba,
-                                        household_id=current_user["household_id"])
+                                        od=od, do=do, household_id=current_user["household_id"])
     return result or {}

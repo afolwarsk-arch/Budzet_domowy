@@ -25,7 +25,21 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   const monthInput = document.getElementById('filter-month');
   const osobaSelect = document.getElementById('filter-osoba');
   const katSelect = document.getElementById('filter-kategoria');
+  const odInput = document.getElementById('filter-od');
+  const doInput = document.getElementById('filter-do');
   monthInput.value = currentMonth();
+  let filterMode = 'month';
+
+  window.setFilterMode = function(mode) {
+    filterMode = mode;
+    document.getElementById('filter-month-wrap').style.display = mode === 'month' ? '' : 'none';
+    document.getElementById('filter-range-wrap').style.display = mode === 'range' ? 'flex' : 'none';
+    document.getElementById('mode-month').style.background = mode === 'month' ? '#4f7ef8' : '#fff';
+    document.getElementById('mode-month').style.color = mode === 'month' ? '#fff' : '#555';
+    document.getElementById('mode-range').style.background = mode === 'range' ? '#4f7ef8' : '#fff';
+    document.getElementById('mode-range').style.color = mode === 'range' ? '#fff' : '#555';
+    loadDashboard();
+  };
 
   // ZaĹ‚aduj kategorie dynamicznie z backendu
   authFetch('/api/kategorie').then(r => r.json()).then(hier => {
@@ -35,11 +49,16 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   });
 
   async function loadDashboard() {
-    const month = monthInput.value;
     const osoba = osobaSelect.value;
     const kategoria = katSelect.value;
     const q = new URLSearchParams();
-    if (month) q.set('month', month);
+    if (filterMode === 'range') {
+      if (odInput.value) q.set('od', odInput.value);
+      if (doInput.value) q.set('do', doInput.value);
+    } else {
+      const month = monthInput.value;
+      if (month) q.set('month', month);
+    }
     if (osoba) q.set('osoba', osoba);
     if (kategoria) q.set('kategoria', kategoria);
 
@@ -76,6 +95,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   function renderStats(wydatki, statKat, kategoria, topProdukt) {
     const suma = wydatki.reduce((s, w) => s + w.suma, 0);
     document.getElementById('stat-suma').textContent = fmt(suma);
+    document.querySelector('.stat-card:first-child .label').textContent = filterMode === 'range' ? 'Suma za okres' : 'Suma miesięczna';
     document.getElementById('stat-paragony').textContent = wydatki.length;
     const labelEl = document.querySelector('[for-stat="topkat"], .stat-card:last-child .label');
     const statLabel = document.getElementById('stat-topkat-label');
@@ -454,6 +474,8 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   };
 
   monthInput.addEventListener('change', loadDashboard);
+  odInput.addEventListener('change', loadDashboard);
+  doInput.addEventListener('change', loadDashboard);
   osobaSelect.addEventListener('change', loadDashboard);
   katSelect.addEventListener('change', loadDashboard);
 

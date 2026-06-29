@@ -185,12 +185,17 @@ def create_wydatek(data: str, sklep: str | None, suma: float, osoba: str,
 
 
 def get_wydatki(month: str | None = None, osoba: str | None = None,
-                kategoria: str | None = None, household_id: int | None = None) -> list[dict]:
+                kategoria: str | None = None, household_id: int | None = None,
+                od: str | None = None, do: str | None = None) -> list[dict]:
     conditions, params = [], []
     if household_id is not None:
         conditions.append("w.household_id = %s"); params.append(household_id)
     if month:
         conditions.append("TO_CHAR(w.data, 'YYYY-MM') = %s"); params.append(month)
+    if od:
+        conditions.append("w.data >= %s"); params.append(od)
+    if do:
+        conditions.append("w.data <= %s"); params.append(do)
     if osoba:
         conditions.append("w.osoba = %s"); params.append(osoba)
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
@@ -285,19 +290,23 @@ def delete_wydatek(wydatek_id: int) -> bool:
 
 # --- statystyki ---
 
-def _where_params(month, osoba, household_id=None):
+def _where_params(month, osoba, household_id=None, od=None, do=None):
     conditions, params = [], []
     if household_id is not None:
         conditions.append("w.household_id = %s"); params.append(household_id)
     if month:
         conditions.append("TO_CHAR(w.data, 'YYYY-MM') = %s"); params.append(month)
+    if od:
+        conditions.append("w.data >= %s"); params.append(od)
+    if do:
+        conditions.append("w.data <= %s"); params.append(do)
     if osoba:
         conditions.append("w.osoba = %s"); params.append(osoba)
     return ("WHERE " + " AND ".join(conditions)) if conditions else "", params
 
 
-def stats_kategorie(month=None, osoba=None, household_id=None) -> list[dict]:
-    where, params = _where_params(month, osoba, household_id)
+def stats_kategorie(month=None, osoba=None, household_id=None, od=None, do=None) -> list[dict]:
+    where, params = _where_params(month, osoba, household_id, od=od, do=do)
     query = f"""
         SELECT p.kategoria_glowna,
                ROUND(CAST(SUM(p.cena * p.ilosc) AS numeric), 2) AS suma
@@ -308,8 +317,8 @@ def stats_kategorie(month=None, osoba=None, household_id=None) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
-def stats_pozycje_subkat(kategoria: str, month=None, osoba=None, kategoria_glowna=None, household_id=None) -> list[dict]:
-    where, params = _where_params(month, osoba, household_id)
+def stats_pozycje_subkat(kategoria: str, month=None, osoba=None, kategoria_glowna=None, household_id=None, od=None, do=None) -> list[dict]:
+    where, params = _where_params(month, osoba, household_id, od=od, do=do)
     extra = f"{'AND' if where else 'WHERE'} p.kategoria = %s"
     params.append(kategoria)
     if kategoria_glowna:
@@ -325,8 +334,8 @@ def stats_pozycje_subkat(kategoria: str, month=None, osoba=None, kategoria_glown
         return [dict(r) for r in cur.fetchall()]
 
 
-def stats_subkategorie(kategoria_glowna: str, month=None, osoba=None, household_id=None) -> list[dict]:
-    where, params = _where_params(month, osoba, household_id)
+def stats_subkategorie(kategoria_glowna: str, month=None, osoba=None, household_id=None, od=None, do=None) -> list[dict]:
+    where, params = _where_params(month, osoba, household_id, od=od, do=do)
     params.append(kategoria_glowna)
     query = f"""
         SELECT p.kategoria, ROUND(CAST(SUM(p.cena * p.ilosc) AS numeric), 2) AS suma
@@ -338,8 +347,8 @@ def stats_subkategorie(kategoria_glowna: str, month=None, osoba=None, household_
         return [dict(r) for r in cur.fetchall()]
 
 
-def stats_subkategorie_all(month=None, osoba=None, household_id=None) -> list[dict]:
-    where, params = _where_params(month, osoba, household_id)
+def stats_subkategorie_all(month=None, osoba=None, household_id=None, od=None, do=None) -> list[dict]:
+    where, params = _where_params(month, osoba, household_id, od=od, do=do)
     query = f"""
         SELECT p.kategoria_glowna, p.kategoria,
                ROUND(CAST(SUM(p.cena * p.ilosc) AS numeric), 2) AS suma
@@ -386,15 +395,22 @@ def stats_miesiace(n=6, osoba=None, kategoria=None, household_id=None) -> list[d
         return [dict(r) for r in cur.fetchall()]
 
 
-def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None, household_id=None) -> list[dict]:
+def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None, household_id=None, od=None, do=None) -> list[dict]:
+    def _date_conds(conditions, params):
+        if month:
+            conditions.append("TO_CHAR(w.data, 'YYYY-MM') = %s"); params.append(month)
+        if od:
+            conditions.append("w.data >= %s"); params.append(od)
+        if do:
+            conditions.append("w.data <= %s"); params.append(do)
+
     params = []
     if kategoria:
         conditions = ["w.sklep IS NOT NULL", "p.kategoria_glowna = %s"]
         params.append(kategoria)
         if household_id is not None:
             conditions.append("w.household_id = %s"); params.append(household_id)
-        if month:
-            conditions.append("TO_CHAR(w.data, 'YYYY-MM') = %s"); params.append(month)
+        _date_conds(conditions, params)
         if osoba:
             conditions.append("w.osoba = %s"); params.append(osoba)
         where = "WHERE " + " AND ".join(conditions)
@@ -408,8 +424,7 @@ def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None, household_id=
         conditions = ["w.sklep IS NOT NULL"]
         if household_id is not None:
             conditions.append("w.household_id = %s"); params.append(household_id)
-        if month:
-            conditions.append("TO_CHAR(w.data, 'YYYY-MM') = %s"); params.append(month)
+        _date_conds(conditions, params)
         if osoba:
             conditions.append("w.osoba = %s"); params.append(osoba)
         where = "WHERE " + " AND ".join(conditions)
@@ -423,8 +438,8 @@ def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None, household_id=
         return [dict(r) for r in cur.fetchall()]
 
 
-def stats_top_produkt(kategoria: str, month=None, osoba=None, household_id=None) -> dict | None:
-    where, params = _where_params(month, osoba, household_id)
+def stats_top_produkt(kategoria: str, month=None, osoba=None, household_id=None, od=None, do=None) -> dict | None:
+    where, params = _where_params(month, osoba, household_id, od=od, do=do)
     params.append(kategoria)
     query = f"""
         SELECT p.nazwa, COUNT(*) AS ile_razy,

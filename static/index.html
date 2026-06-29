@@ -57,8 +57,18 @@
   </div>
 
   <div class="filters">
-    <label style="font-size:13px;color:var(--muted)">Miesiąc:</label>
-    <input type="month" id="filter-month">
+    <div style="display:flex;gap:4px;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+      <button id="mode-month" onclick="setFilterMode('month')" style="padding:6px 12px;border:none;cursor:pointer;font-size:13px;background:#4f7ef8;color:#fff">Miesiąc</button>
+      <button id="mode-range" onclick="setFilterMode('range')" style="padding:6px 12px;border:none;cursor:pointer;font-size:13px;background:#fff;color:#555">Zakres</button>
+    </div>
+    <div id="filter-month-wrap">
+      <input type="month" id="filter-month">
+    </div>
+    <div id="filter-range-wrap" style="display:none;gap:6px;align-items:center">
+      <input type="date" id="filter-od" style="font-size:13px;padding:4px 8px;border:1px solid #ddd;border-radius:6px">
+      <span style="font-size:13px;color:var(--muted)">—</span>
+      <input type="date" id="filter-do" style="font-size:13px;padding:4px 8px;border:1px solid #ddd;border-radius:6px">
+    </div>
     <label style="font-size:13px;color:var(--muted)">Osoba:</label>
     <select id="filter-osoba">
       <option value="">Oboje</option>
