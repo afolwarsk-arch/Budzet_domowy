@@ -286,7 +286,7 @@ def process_image(image_bytes: bytes, mime_type: str = "image/jpeg", kontekst: s
 
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=4096,
+        max_tokens=16000,
         system=SYSTEM_PROMPT,
         messages=[{
             "role": "user",
@@ -346,7 +346,21 @@ def _parse_response(raw: str) -> list[dict]:
             elif glowna not in KATEGORIE_HIERARCHIA:
                 p["kategoria_glowna"] = SUB_DO_GLOWNEJ.get(kat, "Inne")
 
-        if not item.get("suma") and item.get("pozycje"):
-            item["suma"] = round(sum(p["cena"] * p.get("ilosc", 1) for p in item["pozycje"]), 2)
+        if item.get("pozycje"):
+            suma_obliczona = round(sum(p["cena"] * p.get("ilosc", 1) for p in item["pozycje"]), 2)
+            suma_z_paragonu = item.get("suma") or 0.0
+            if not suma_z_paragonu:
+                item["suma"] = suma_obliczona
+            else:
+                roznica = abs(suma_obliczona - suma_z_paragonu)
+                prog = max(0.50, 0.02 * suma_z_paragonu)
+                if roznica > prog:
+                    item["suma_paragon"] = suma_z_paragonu
+                    item["suma"] = suma_obliczona
+                    item["_ostrzezenie"] = (
+                        f"Suma z paragonu ({suma_z_paragonu:.2f} PLN) różni się od sumy "
+                        f"wykrytych pozycji ({suma_obliczona:.2f} PLN) o {roznica:.2f} PLN. "
+                        "Paragon może być ucięty lub niektóre pozycje nie zostały odczytane."
+                    )
 
     return data

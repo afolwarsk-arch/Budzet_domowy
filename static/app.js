@@ -663,6 +663,10 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
           ${receiptsData.length > 1 ? `<button class="remove-card-btn" onclick="removeCard(event,${ri})" title="UsuĹ„ ten paragon">Ă—</button>` : ''}
         </div>
         <div class="paragon-card-body" id="card-body-${ri}">
+          ${r._ostrzezenie ? `<div class="alert alert-warning" style="margin-bottom:12px">
+            <strong>Uwaga:</strong> ${r._ostrzezenie}
+            ${r.suma_paragon ? `<br><small>Suma z paragonu: <strong>${fmt(r.suma_paragon)}</strong> — użyto sumy widocznych pozycji. Sprawdź czy paragon był kompletny.</small>` : ''}
+          </div>` : ''}
           <div class="form-row" style="margin-bottom:12px">
             <div class="form-group">
               <label>Sklep</label>

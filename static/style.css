@@ -243,6 +243,7 @@ tr:hover td { background: #fafbff; }
 }
 .alert-error { background: #fdeaea; color: #c0392b; border: 1px solid #f5c6c6; }
 .alert-success { background: #eafaf1; color: #1e7e34; border: 1px solid #b8dfc5; }
+.alert-warning { background: #fff8e1; color: #7d5a00; border: 1px solid #ffe082; }
 
 .hidden { display: none !important; }
 
