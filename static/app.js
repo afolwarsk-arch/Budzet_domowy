@@ -27,6 +27,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   const katSelect = document.getElementById('filter-kategoria');
   const odInput = document.getElementById('filter-od');
   const doInput = document.getElementById('filter-do');
+  const okazjaInput = document.getElementById('filter-okazja');
   monthInput.value = currentMonth();
   let filterMode = 'month';
 
@@ -61,6 +62,8 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     }
     if (osoba) q.set('osoba', osoba);
     if (kategoria) q.set('kategoria', kategoria);
+    const okazja = okazjaInput.value.trim();
+    if (okazja) q.set('okazja', okazja);
 
     const qMies = new URLSearchParams();
     if (osoba) qMies.set('osoba', osoba);
@@ -372,7 +375,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   function renderTable(data) {
     const tbody = document.querySelector('#wydatki-table tbody');
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Brak wydatkĂłw w tym okresie</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Brak wydatkĂłw w tym okresie</td></tr>';
       return;
     }
     tbody.innerHTML = data.map(w => `
@@ -382,11 +385,15 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         </td>
         <td>${w.data}</td>
         <td>
-          <span class="sklep-name">${w.sklep || 'â€”'}</span>
-          ${w.notatki ? `<div class="notatka-hint">${w.notatki}</div>` : ''}
+          <span class=”sklep-name”>${w.sklep || 'â€”'}</span>
+          ${w.notatki ? `<div class=”notatka-hint”>${w.notatki}</div>` : ''}
         </td>
-        <td style="font-weight:600">${fmt(w.suma)}</td>
-        <td><span class="badge ${w.osoba === 'Ola' ? 'ola' : ''}">${w.osoba}</span></td>
+        <td style=”font-size:13px”>
+          ${w.okazja ? `<span style=”font-weight:500;color:#7c3aed”>${esc(w.okazja)}</span>` : ''}
+          ${w.kontekst_kategoria ? `<div style=”font-size:11px;color:#a04ff8”>→ ${esc(w.kontekst_kategoria)}</div>` : ''}
+        </td>
+        <td style=”font-weight:600”>${fmt(w.suma)}</td>
+        <td><span class=”badge ${w.osoba === 'Ola' ? 'ola' : ''}”>${w.osoba}</span></td>
         <td>
           <button class="btn btn-outline btn-sm" onclick="editWydatek(${w.id})">Edytuj</button>
           <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteWydatek(${w.id})">UsuĹ„</button>
@@ -478,6 +485,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   doInput.addEventListener('change', loadDashboard);
   osobaSelect.addEventListener('change', loadDashboard);
   katSelect.addEventListener('change', loadDashboard);
+  okazjaInput.addEventListener('change', loadDashboard);
 
   // â”€â”€ Przelicz kategorie (tylko admin) â”€â”€
   if (!authIsAdmin(me)) {
@@ -733,6 +741,21 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
               <label>Osoba</label>
               <select style="width:100%" onchange="updateReceipt(${ri},'osoba',this.value)">
                 ${OSOBY_OPCJE.map(o => `<option value="${esc(o.value)}" ${r.osoba===o.value?'selected':''}>${esc(o.label)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-bottom:12px">
+            <div class="form-group">
+              <label>Okazja <span style="font-weight:400;color:var(--muted)">(opcjonalnie)</span></label>
+              <input type="text" value="${esc(r.okazja||'')}" placeholder="np. Urodziny Zosi, Wakacje 2026" style="width:100%"
+                oninput="updateReceipt(${ri},'okazja',this.value)">
+            </div>
+            <div class="form-group">
+              <label>Kontekst kategorii <span style="font-weight:400;color:var(--muted)">(opcjonalnie)</span></label>
+              <select style="width:100%" onchange="updateReceipt(${ri},'kontekst_kategoria',this.value||null)">
+                <option value="">— brak (użyj kategorii pozycji) —</option>
+                ${GLOWNE.map(g => `<option value="${esc(g)}" ${r.kontekst_kategoria===g?'selected':''}>${esc(g)}</option>`).join('')}
               </select>
             </div>
           </div>

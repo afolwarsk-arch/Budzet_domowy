@@ -290,6 +290,8 @@ class WydatekIn(BaseModel):
     waluta: str = "PLN"
     kurs: float = 1.0
     pozycje: list[PozycjaIn]
+    okazja: str | None = None
+    kontekst_kategoria: str | None = None
 
 
 @app.post("/api/wydatki", status_code=201)
@@ -305,6 +307,8 @@ def create_wydatek(body: WydatekIn, current_user: dict = Depends(get_current_use
         waluta=body.waluta,
         kurs=body.kurs,
         household_id=current_user["household_id"],
+        okazja=body.okazja,
+        kontekst_kategoria=body.kontekst_kategoria,
     )
     return {"id": wid}
 
@@ -349,9 +353,10 @@ async def create_wydatek_z_plikiem(
 @app.get("/api/wydatki")
 def list_wydatki(month: str | None = None, osoba: str | None = None,
                  kategoria: str | None = None, od: str | None = None, do: str | None = None,
+                 okazja: str | None = None,
                  current_user: dict = Depends(get_current_user)):
     return database.get_wydatki(month=month, osoba=osoba, kategoria=kategoria,
-                                od=od, do=do, household_id=current_user["household_id"])
+                                od=od, do=do, okazja=okazja, household_id=current_user["household_id"])
 
 
 @app.get("/api/wydatki/{wydatek_id}")
@@ -372,6 +377,8 @@ def update_wydatek(wydatek_id: int, body: WydatekIn):
         osoba=body.osoba,
         notatki=body.notatki,
         pozycje=[p.model_dump() for p in body.pozycje],
+        okazja=body.okazja,
+        kontekst_kategoria=body.kontekst_kategoria,
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Nie znaleziono")
