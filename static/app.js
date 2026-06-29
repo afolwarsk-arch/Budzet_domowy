@@ -457,7 +457,12 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   osobaSelect.addEventListener('change', loadDashboard);
   katSelect.addEventListener('change', loadDashboard);
 
-  // â”€â”€ Przelicz kategorie â”€â”€
+  // â”€â”€ Przelicz kategorie (tylko admin) â”€â”€
+  if (!authIsAdmin(me)) {
+    const rekatSection = document.querySelector('details.card');
+    if (rekatSection) rekatSection.style.display = 'none';
+  }
+
   const btnPreview = document.getElementById('btn-rekat-preview');
   const btnRun = document.getElementById('btn-rekat-run');
   const rekatInfo = document.getElementById('rekat-info');

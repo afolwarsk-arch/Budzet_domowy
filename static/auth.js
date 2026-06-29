@@ -63,6 +63,11 @@ function _showProfileModal() {
 
 const _ADMIN_EMAILS = ['a.folwarsk@gmail.com'];
 
+function authIsAdmin(me) {
+  return me && _ADMIN_EMAILS.includes(me.email);
+}
+window.authIsAdmin = authIsAdmin;
+
 function _injectProfileButton(me) {
   const nav = document.querySelector('nav');
   if (!nav) return;
