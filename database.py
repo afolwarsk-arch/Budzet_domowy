@@ -315,13 +315,14 @@ def _where_params(month, osoba, household_id=None, od=None, do=None, okazja=None
     return ("WHERE " + " AND ".join(conditions)) if conditions else "", params
 
 
-def stats_kategorie(month=None, osoba=None, household_id=None, od=None, do=None) -> list[dict]:
+def stats_kategorie(month=None, osoba=None, household_id=None, od=None, do=None, kontekst=False) -> list[dict]:
     where, params = _where_params(month, osoba, household_id, od=od, do=do)
+    kat_col = "COALESCE(w.kontekst_kategoria, p.kategoria_glowna)" if kontekst else "p.kategoria_glowna"
     query = f"""
-        SELECT COALESCE(w.kontekst_kategoria, p.kategoria_glowna) AS kategoria_glowna,
+        SELECT {kat_col} AS kategoria_glowna,
                ROUND(CAST(SUM(p.cena * p.ilosc) AS numeric), 2) AS suma
         FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
-        {where} GROUP BY COALESCE(w.kontekst_kategoria, p.kategoria_glowna) ORDER BY suma DESC"""
+        {where} GROUP BY {kat_col} ORDER BY suma DESC"""
     with get_db() as cur:
         cur.execute(query, params)
         return [dict(r) for r in cur.fetchall()]

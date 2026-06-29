@@ -73,8 +73,6 @@
     <select id="filter-osoba">
       <option value="">Oboje</option>
     </select>
-    <label style="font-size:13px;color:var(--muted)">Okazja:</label>
-    <input type="text" id="filter-okazja" placeholder="np. Urodziny Zosi" style="font-size:13px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;width:140px">
     <label style="font-size:13px;color:var(--muted)">Kategoria:</label>
     <select id="filter-kategoria">
       <option value="">Wszystkie</option>
@@ -111,7 +109,13 @@
 
   <div class="charts-grid">
     <div class="card">
-      <h2>Wydatki wg kategorii</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <h2 style="margin-bottom:0">Wydatki wg kategorii</h2>
+        <div style="display:flex;gap:0;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+          <button id="kat-mode-pierwotne" onclick="setKatMode('pierwotne')" style="padding:5px 10px;border:none;cursor:pointer;font-size:12px;background:#4f7ef8;color:#fff">Pierwotne</button>
+          <button id="kat-mode-kontekst" onclick="setKatMode('kontekst')" style="padding:5px 10px;border:none;cursor:pointer;font-size:12px;background:#fff;color:#555">Kontekstowe</button>
+        </div>
+      </div>
       <div class="chart-wrap">
         <canvas id="chart-kategorie"></canvas>
       </div>

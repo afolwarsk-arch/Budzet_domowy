@@ -458,9 +458,11 @@ def get_kategorie():
 @app.get("/api/stats/kategorie")
 def stats_kategorie(month: str | None = None, osoba: str | None = None,
                     od: str | None = None, do: str | None = None,
+                    kontekst: bool = False,
                     current_user: dict = Depends(get_current_user)):
     return database.stats_kategorie(month=month, osoba=osoba,
-                                    od=od, do=do, household_id=current_user["household_id"])
+                                    od=od, do=do, kontekst=kontekst,
+                                    household_id=current_user["household_id"])
 
 
 @app.get("/api/stats/pozycje-subkat")

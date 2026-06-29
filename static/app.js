@@ -27,9 +27,18 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   const katSelect = document.getElementById('filter-kategoria');
   const odInput = document.getElementById('filter-od');
   const doInput = document.getElementById('filter-do');
-  const okazjaInput = document.getElementById('filter-okazja');
   monthInput.value = currentMonth();
   let filterMode = 'month';
+  let katMode = 'pierwotne';
+
+  window.setKatMode = function(mode) {
+    katMode = mode;
+    document.getElementById('kat-mode-pierwotne').style.background = mode === 'pierwotne' ? '#4f7ef8' : '#fff';
+    document.getElementById('kat-mode-pierwotne').style.color = mode === 'pierwotne' ? '#fff' : '#555';
+    document.getElementById('kat-mode-kontekst').style.background = mode === 'kontekst' ? '#4f7ef8' : '#fff';
+    document.getElementById('kat-mode-kontekst').style.color = mode === 'kontekst' ? '#fff' : '#555';
+    loadDashboard();
+  };
 
   window.setFilterMode = function(mode) {
     filterMode = mode;
@@ -62,16 +71,16 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     }
     if (osoba) q.set('osoba', osoba);
     if (kategoria) q.set('kategoria', kategoria);
-    const okazja = okazjaInput.value.trim();
-    if (okazja) q.set('okazja', okazja);
 
     const qMies = new URLSearchParams();
     if (osoba) qMies.set('osoba', osoba);
     if (kategoria) qMies.set('kategoria', kategoria);
     qMies.set('n', '6');
 
+    const qKat = new URLSearchParams(q);
+    if (katMode === 'kontekst') qKat.set('kontekst', '1');
     const fetches = [
-      authFetch('/api/stats/kategorie?' + q).then(r => r.json()),
+      authFetch('/api/stats/kategorie?' + qKat).then(r => r.json()),
       authFetch('/api/stats/miesiace?' + qMies).then(r => r.json()),
       authFetch('/api/stats/sklepy?' + q).then(r => r.json()),
       authFetch('/api/wydatki?' + q).then(r => r.json()),
@@ -496,7 +505,6 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   doInput.addEventListener('change', loadDashboard);
   osobaSelect.addEventListener('change', loadDashboard);
   katSelect.addEventListener('change', loadDashboard);
-  okazjaInput.addEventListener('change', loadDashboard);
 
   // â”€â”€ Przelicz kategorie (tylko admin) â”€â”€
   if (!authIsAdmin(me)) {
