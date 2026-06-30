@@ -1,4 +1,5 @@
 import asyncio
+import re
 import subprocess
 from pathlib import Path
 
@@ -33,7 +34,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 def _html(filename: str) -> HTMLResponse:
     content = (STATIC_DIR / filename).read_text(encoding="utf-8")
-    content = content.replace('.js"', f'.js?v={_BUILD}"').replace('.css"', f'.css?v={_BUILD}"')
+    content = re.sub(r'(/static/[^"\']*?\.(?:js|css))(\?v=[^"\']*)?', rf'\1?v={_BUILD}', content)
     return HTMLResponse(content=content, headers={"Cache-Control": "no-store"})
 
 
