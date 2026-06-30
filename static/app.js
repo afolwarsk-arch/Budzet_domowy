@@ -244,7 +244,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
               <td>
                 ${w.sklep || '—'}
                 ${w.notatki ? `<div class=”notatka-hint”>${w.notatki}</div>` : ''}
-                ${w.kontekst_kategoria === glowna ? `<div style=”font-size:11px;color:#a04ff8;margin-top:2px”>↩ kontekst${w.kontekst_podkategoria ? ': ' + esc(w.kontekst_podkategoria) : ''}</div>` : ''}
+                ${katMode === 'kontekst' && w.kontekst_kategoria === glowna ? `<div style=”font-size:11px;color:#a04ff8;margin-top:2px”>↩ kontekst${w.kontekst_podkategoria ? ': ' + esc(w.kontekst_podkategoria) : ''}</div>` : ''}
               </td>
               <td><span class="badge ${w.osoba==='Ola'?'ola':''}">${w.osoba}</span></td>
               <td style="text-align:right;font-weight:600">${fmt(w.suma)}</td>
@@ -292,7 +292,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
               ${items.map(p => `<tr>
                 <td>
                   ${esc(p.nazwa)}
-                  ${p.kontekst_podkategoria && p.oryg_subkat !== p.kontekst_podkategoria ? `<div style=”font-size:10px;color:#aaa”>${esc(p.oryg_subkat)}</div>` : ''}
+                  ${katMode === 'kontekst' && p.kontekst_podkategoria && p.oryg_subkat !== p.kontekst_podkategoria ? `<div style=”font-size:10px;color:#aaa”>${esc(p.oryg_subkat)}</div>` : ''}
                 </td>
                 <td style=”color:var(--muted)”>${esc(p.sklep || '—')}</td>
                 <td style=”color:var(--muted)”>${p.data}</td>
