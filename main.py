@@ -1,11 +1,11 @@
 import asyncio
+import subprocess
 from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).parent
@@ -19,15 +19,10 @@ database.init_db()
 
 app = FastAPI(title="Budżet domowy")
 
-class NoCacheStatic(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        if request.url.path.startswith("/static/"):
-            response.headers["Cache-Control"] = "no-cache, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-        return response
-
-app.add_middleware(NoCacheStatic)
+try:
+    _BUILD = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+except Exception:
+    import time; _BUILD = str(int(time.time()))
 
 UPLOADS_DIR = Path(__file__).parent / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
@@ -36,34 +31,40 @@ STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+def _html(filename: str) -> HTMLResponse:
+    content = (STATIC_DIR / filename).read_text(encoding="utf-8")
+    content = content.replace('.js"', f'.js?v={_BUILD}"').replace('.css"', f'.css?v={_BUILD}"')
+    return HTMLResponse(content=content, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/")
 def root():
-    return FileResponse(STATIC_DIR / "index.html")
+    return _html("index.html")
 
 
 @app.get("/upload")
 def upload_page():
-    return FileResponse(STATIC_DIR / "upload.html")
+    return _html("upload.html")
 
 
 @app.get("/analiza")
 def analiza_page():
-    return FileResponse(STATIC_DIR / "analiza.html")
+    return _html("analiza.html")
 
 
 @app.get("/login")
 def login_page():
-    return FileResponse(STATIC_DIR / "login.html")
+    return _html("login.html")
 
 
 @app.get("/onboarding")
 def onboarding_page():
-    return FileResponse(STATIC_DIR / "onboarding.html")
+    return _html("onboarding.html")
 
 
 @app.get("/admin")
 def admin_page():
-    return FileResponse(STATIC_DIR / "admin.html")
+    return _html("admin.html")
 
 
 # --- Auth & Household routes ---
@@ -167,7 +168,7 @@ def create_invite(request: Request, current_user: dict = Depends(get_current_use
 
 @app.get("/join/{code}")
 def join_page(code: str):
-    return FileResponse(STATIC_DIR / "join.html")
+    return _html("join.html")
 
 
 @app.post("/api/join/{code}")
