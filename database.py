@@ -80,6 +80,38 @@ SCHEMA_STATEMENTS = [
         pool_json    TEXT NOT NULL DEFAULT '[]',
         updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""",
+    """CREATE TABLE IF NOT EXISTS konta (
+        id               SERIAL PRIMARY KEY,
+        household_id     INTEGER NOT NULL REFERENCES households(id),
+        nazwa            TEXT NOT NULL,
+        typ              TEXT NOT NULL DEFAULT 'bank',
+        osoba            TEXT,
+        waluta           TEXT NOT NULL DEFAULT 'PLN',
+        saldo_poczatkowe NUMERIC(12,2) NOT NULL DEFAULT 0,
+        aktywne          BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS wplywy (
+        id           SERIAL PRIMARY KEY,
+        household_id INTEGER NOT NULL REFERENCES households(id),
+        data         DATE NOT NULL,
+        kwota        NUMERIC(12,2) NOT NULL,
+        osoba        TEXT,
+        kategoria    TEXT NOT NULL DEFAULT 'Inne',
+        opis         TEXT,
+        konto_id     INTEGER REFERENCES konta(id) ON DELETE SET NULL,
+        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS inwentaryzacje (
+        id                SERIAL PRIMARY KEY,
+        konto_id          INTEGER NOT NULL REFERENCES konta(id) ON DELETE CASCADE,
+        data              DATE NOT NULL,
+        saldo_rzeczywiste NUMERIC(12,2) NOT NULL,
+        saldo_obliczone   NUMERIC(12,2) NOT NULL,
+        roznica           NUMERIC(12,2) NOT NULL,
+        notatki           TEXT,
+        created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 
 _MIGRACJA_MAP: dict[str, tuple[str, str]] = {
@@ -157,6 +189,7 @@ def init_db():
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS kontekst_kategoria TEXT")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS kontekst_podkategoria TEXT")
         cur.execute("ALTER TABLE pozycje ADD COLUMN IF NOT EXISTS poza_kontekstem BOOLEAN NOT NULL DEFAULT FALSE")
+        cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS konto_id INTEGER REFERENCES konta(id) ON DELETE SET NULL")
         for stara, (glowna, sub) in _MIGRACJA_MAP.items():
             cur.execute(
                 "UPDATE pozycje SET kategoria_glowna=%s, kategoria=%s WHERE kategoria=%s",
@@ -731,3 +764,158 @@ def save_analiza_state(household_id: int, groups_json: str, pool_json: str) -> N
                updated_at=CURRENT_TIMESTAMP""",
             (household_id, groups_json, pool_json),
         )
+
+
+# --- konta ---
+
+def get_konta(household_id: int) -> list[dict]:
+    with get_db() as cur:
+        cur.execute("""
+            SELECT k.*,
+                ROUND(CAST(
+                    k.saldo_poczatkowe
+                    + COALESCE((SELECT SUM(w.kwota) FROM wplywy w WHERE w.konto_id = k.id), 0)
+                    - COALESCE((SELECT SUM(wy.suma) FROM wydatki wy WHERE wy.konto_id = k.id), 0)
+                AS numeric), 2) AS saldo_biezace
+            FROM konta k
+            WHERE k.household_id = %s AND k.aktywne = TRUE
+            ORDER BY k.created_at
+        """, (household_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def create_konto(household_id: int, nazwa: str, typ: str, osoba: str | None,
+                 waluta: str, saldo_poczatkowe: float) -> dict:
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO konta (household_id, nazwa, typ, osoba, waluta, saldo_poczatkowe) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *",
+            (household_id, nazwa, typ, osoba or None, waluta, saldo_poczatkowe),
+        )
+        row = dict(cur.fetchone())
+        row["saldo_biezace"] = float(saldo_poczatkowe)
+        return row
+
+
+def update_konto(konto_id: int, household_id: int, nazwa: str, typ: str,
+                 osoba: str | None, waluta: str, saldo_poczatkowe: float) -> bool:
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE konta SET nazwa=%s, typ=%s, osoba=%s, waluta=%s, saldo_poczatkowe=%s WHERE id=%s AND household_id=%s AND aktywne=TRUE",
+            (nazwa, typ, osoba or None, waluta, saldo_poczatkowe, konto_id, household_id),
+        )
+        return cur.rowcount > 0
+
+
+def delete_konto(konto_id: int, household_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("SELECT id FROM konta WHERE id=%s AND household_id=%s AND aktywne=TRUE", (konto_id, household_id))
+        if not cur.fetchone():
+            return False
+        cur.execute("UPDATE wydatki SET konto_id=NULL WHERE konto_id=%s", (konto_id,))
+        cur.execute("UPDATE wplywy SET konto_id=NULL WHERE konto_id=%s", (konto_id,))
+        cur.execute("DELETE FROM konta WHERE id=%s", (konto_id,))
+        return True
+
+
+def _saldo_konta_na_date(cur, konto_id: int, data: str) -> float:
+    cur.execute("SELECT saldo_poczatkowe FROM konta WHERE id=%s", (konto_id,))
+    row = cur.fetchone()
+    if not row:
+        return 0.0
+    sp = float(row["saldo_poczatkowe"])
+    cur.execute("SELECT COALESCE(SUM(kwota), 0) AS s FROM wplywy WHERE konto_id=%s AND data <= %s", (konto_id, data))
+    wp = float(cur.fetchone()["s"])
+    cur.execute("SELECT COALESCE(SUM(suma), 0) AS s FROM wydatki WHERE konto_id=%s AND data <= %s", (konto_id, data))
+    wy = float(cur.fetchone()["s"])
+    return round(sp + wp - wy, 2)
+
+
+# --- wplywy ---
+
+def get_wplywy(household_id: int, month: str | None = None, konto_id: int | None = None) -> list[dict]:
+    conditions = ["w.household_id = %s"]
+    params: list = [household_id]
+    if month:
+        conditions.append("TO_CHAR(w.data, 'YYYY-MM') = %s"); params.append(month)
+    if konto_id is not None:
+        conditions.append("w.konto_id = %s"); params.append(konto_id)
+    where = "WHERE " + " AND ".join(conditions)
+    with get_db() as cur:
+        cur.execute(f"""
+            SELECT w.*, k.nazwa AS konto_nazwa
+            FROM wplywy w LEFT JOIN konta k ON k.id = w.konto_id
+            {where} ORDER BY w.data DESC, w.created_at DESC
+        """, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def create_wplyw(household_id: int, data: str, kwota: float, osoba: str | None,
+                 kategoria: str, opis: str | None, konto_id: int | None) -> dict:
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO wplywy (household_id, data, kwota, osoba, kategoria, opis, konto_id) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+            (household_id, data, kwota, osoba or None, kategoria, opis or None, konto_id or None),
+        )
+        return dict(cur.fetchone())
+
+
+def delete_wplyw(wplyw_id: int, household_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("DELETE FROM wplywy WHERE id=%s AND household_id=%s", (wplyw_id, household_id))
+        return cur.rowcount > 0
+
+
+# --- historia konta ---
+
+def get_historia_konta(konto_id: int, household_id: int, month: str | None = None) -> list[dict]:
+    conds_w = ["wy.konto_id = %s", "wy.household_id = %s"]
+    conds_wp = ["wp.konto_id = %s", "wp.household_id = %s"]
+    p_w: list = [konto_id, household_id]
+    p_wp: list = [konto_id, household_id]
+    if month:
+        conds_w.append("TO_CHAR(wy.data,'YYYY-MM') = %s"); p_w.append(month)
+        conds_wp.append("TO_CHAR(wp.data,'YYYY-MM') = %s"); p_wp.append(month)
+    where_w = "WHERE " + " AND ".join(conds_w)
+    where_wp = "WHERE " + " AND ".join(conds_wp)
+    with get_db() as cur:
+        cur.execute(f"""
+            SELECT 'wydatek' AS typ, wy.id, wy.data,
+                   ROUND(CAST(-wy.suma AS numeric), 2) AS kwota,
+                   COALESCE(wy.sklep, wy.notatki, 'Wydatek') AS opis, wy.osoba
+            FROM wydatki wy {where_w}
+            UNION ALL
+            SELECT 'wplyw' AS typ, wp.id, wp.data,
+                   ROUND(CAST(wp.kwota AS numeric), 2) AS kwota,
+                   COALESCE(wp.opis, wp.kategoria) AS opis, wp.osoba
+            FROM wplywy wp {where_wp}
+            ORDER BY data DESC, opis
+        """, p_w + p_wp)
+        return [dict(r) for r in cur.fetchall()]
+
+
+# --- inwentaryzacje ---
+
+def get_inwentaryzacje(konto_id: int, household_id: int) -> list[dict]:
+    with get_db() as cur:
+        cur.execute("""
+            SELECT i.* FROM inwentaryzacje i
+            JOIN konta k ON k.id = i.konto_id
+            WHERE i.konto_id = %s AND k.household_id = %s
+            ORDER BY i.data DESC, i.created_at DESC
+        """, (konto_id, household_id))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def create_inwentaryzacja(konto_id: int, household_id: int, data: str,
+                           saldo_rzeczywiste: float, notatki: str | None) -> dict:
+    with get_db() as cur:
+        cur.execute("SELECT id FROM konta WHERE id=%s AND household_id=%s", (konto_id, household_id))
+        if not cur.fetchone():
+            raise ValueError("Konto nie istnieje")
+        saldo_obl = _saldo_konta_na_date(cur, konto_id, data)
+        roznica = round(saldo_rzeczywiste - saldo_obl, 2)
+        cur.execute(
+            "INSERT INTO inwentaryzacje (konto_id, data, saldo_rzeczywiste, saldo_obliczone, roznica, notatki) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *",
+            (konto_id, data, saldo_rzeczywiste, saldo_obl, roznica, notatki or None),
+        )
+        return dict(cur.fetchone())

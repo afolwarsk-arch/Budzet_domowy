@@ -68,6 +68,11 @@ def admin_page():
     return _html("admin.html")
 
 
+@app.get("/konta")
+def konta_page():
+    return _html("konta.html")
+
+
 # --- Auth & Household routes ---
 
 @app.get("/api/me")
@@ -533,3 +538,99 @@ def stats_top_produkt(kategoria: str, month: str | None = None, osoba: str | Non
     result = database.stats_top_produkt(kategoria=kategoria, month=month, osoba=osoba,
                                         od=od, do=do, household_id=current_user["household_id"])
     return result or {}
+
+
+# --- Konta ---
+
+class KontoIn(BaseModel):
+    nazwa: str
+    typ: str = "bank"
+    osoba: str | None = None
+    waluta: str = "PLN"
+    saldo_poczatkowe: float = 0.0
+
+
+@app.get("/api/konta")
+def api_get_konta(current_user: dict = Depends(get_current_user)):
+    return database.get_konta(current_user["household_id"])
+
+
+@app.post("/api/konta", status_code=201)
+def api_create_konto(body: KontoIn, current_user: dict = Depends(get_current_user)):
+    return database.create_konto(current_user["household_id"], body.nazwa, body.typ,
+                                 body.osoba, body.waluta, body.saldo_poczatkowe)
+
+
+@app.put("/api/konta/{konto_id}")
+def api_update_konto(konto_id: int, body: KontoIn, current_user: dict = Depends(get_current_user)):
+    ok = database.update_konto(konto_id, current_user["household_id"], body.nazwa, body.typ,
+                               body.osoba, body.waluta, body.saldo_poczatkowe)
+    if not ok:
+        raise HTTPException(404, "Konto nie znalezione")
+    return {"ok": True}
+
+
+@app.delete("/api/konta/{konto_id}")
+def api_delete_konto(konto_id: int, current_user: dict = Depends(get_current_user)):
+    ok = database.delete_konto(konto_id, current_user["household_id"])
+    if not ok:
+        raise HTTPException(404, "Konto nie znalezione")
+    return {"ok": True}
+
+
+@app.get("/api/konta/{konto_id}/historia")
+def api_historia_konta(konto_id: int, month: str | None = None,
+                       current_user: dict = Depends(get_current_user)):
+    return database.get_historia_konta(konto_id, current_user["household_id"], month=month)
+
+
+@app.get("/api/konta/{konto_id}/inwentaryzacje")
+def api_get_inwentaryzacje(konto_id: int, current_user: dict = Depends(get_current_user)):
+    return database.get_inwentaryzacje(konto_id, current_user["household_id"])
+
+
+class InwentaryzacjaIn(BaseModel):
+    data: str
+    saldo_rzeczywiste: float
+    notatki: str | None = None
+
+
+@app.post("/api/konta/{konto_id}/inwentaryzacja", status_code=201)
+def api_create_inwentaryzacja(konto_id: int, body: InwentaryzacjaIn,
+                              current_user: dict = Depends(get_current_user)):
+    try:
+        return database.create_inwentaryzacja(konto_id, current_user["household_id"],
+                                              body.data, body.saldo_rzeczywiste, body.notatki)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+# --- Wpływy ---
+
+class WplywIn(BaseModel):
+    data: str
+    kwota: float
+    osoba: str | None = None
+    kategoria: str = "Inne"
+    opis: str | None = None
+    konto_id: int | None = None
+
+
+@app.get("/api/wplywy")
+def api_get_wplywy(month: str | None = None, konto_id: int | None = None,
+                   current_user: dict = Depends(get_current_user)):
+    return database.get_wplywy(current_user["household_id"], month=month, konto_id=konto_id)
+
+
+@app.post("/api/wplywy", status_code=201)
+def api_create_wplyw(body: WplywIn, current_user: dict = Depends(get_current_user)):
+    return database.create_wplyw(current_user["household_id"], body.data, body.kwota,
+                                 body.osoba, body.kategoria, body.opis, body.konto_id)
+
+
+@app.delete("/api/wplywy/{wplyw_id}")
+def api_delete_wplyw(wplyw_id: int, current_user: dict = Depends(get_current_user)):
+    ok = database.delete_wplyw(wplyw_id, current_user["household_id"])
+    if not ok:
+        raise HTTPException(404, "Wpływ nie znaleziony")
+    return {"ok": True}
