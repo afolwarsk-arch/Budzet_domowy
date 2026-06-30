@@ -31,12 +31,6 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   let filterMode = 'month';
   let katMode = 'pierwotne';
 
-  window.updateKontekstKat = function(ri, val) {
-    receiptsData[ri].kontekst_kategoria = val || null;
-    receiptsData[ri].kontekst_podkategoria = null;
-    renderCards();
-  };
-
   window.setKatMode = function(mode) {
     katMode = mode;
     document.getElementById('kat-mode-pierwotne').style.background = mode === 'pierwotne' ? '#4f7ef8' : '#fff';
@@ -214,6 +208,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     const qw = new URLSearchParams({ kategoria: glowna });
     if (month) qw.set('month', month);
     if (osoba) qw.set('osoba', osoba);
+    if (katMode === 'kontekst') qw.set('kontekst', '1');
 
     const [subs, wydatki] = await Promise.all([
       authFetch('/api/stats/subkategorie?' + q).then(r => r.json()),
@@ -246,7 +241,11 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
           ${wydatki.map(w => `
             <tr>
               <td>${w.data}</td>
-              <td>${w.sklep || 'â€”'}${w.notatki ? `<div class="notatka-hint">${w.notatki}</div>` : ''}</td>
+              <td>
+                ${w.sklep || '—'}
+                ${w.notatki ? `<div class=”notatka-hint”>${w.notatki}</div>` : ''}
+                ${w.kontekst_kategoria === glowna ? `<div style=”font-size:11px;color:#a04ff8;margin-top:2px”>↩ kontekst${w.kontekst_podkategoria ? ': ' + esc(w.kontekst_podkategoria) : ''}</div>` : ''}
+              </td>
               <td><span class="badge ${w.osoba==='Ola'?'ola':''}">${w.osoba}</span></td>
               <td style="text-align:right;font-weight:600">${fmt(w.suma)}</td>
               <td><button class="btn btn-outline btn-sm" onclick="editWydatek(${w.id})">Edytuj</button></td>
@@ -865,6 +864,12 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   };
 
   window.updateReceipt = (ri, key, val) => { receiptsData[ri][key] = val; };
+
+  window.updateKontekstKat = function(ri, val) {
+    receiptsData[ri].kontekst_kategoria = val || null;
+    receiptsData[ri].kontekst_podkategoria = null;
+    renderCards();
+  };
 
   window.updatePozycja = (ri, pi, key, val) => { receiptsData[ri].pozycje[pi][key] = val; };
 

@@ -193,7 +193,7 @@ def create_wydatek(data: str, sklep: str | None, suma: float, osoba: str,
 def get_wydatki(month: str | None = None, osoba: str | None = None,
                 kategoria: str | None = None, household_id: int | None = None,
                 od: str | None = None, do: str | None = None,
-                okazja: str | None = None) -> list[dict]:
+                okazja: str | None = None, kontekst: bool = False) -> list[dict]:
     conditions, params = [], []
     if household_id is not None:
         conditions.append("w.household_id = %s"); params.append(household_id)
@@ -210,10 +210,11 @@ def get_wydatki(month: str | None = None, osoba: str | None = None,
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     if kategoria:
+        kat_col = "COALESCE(w.kontekst_kategoria, p.kategoria_glowna)" if kontekst else "p.kategoria_glowna"
         query = f"""
             SELECT DISTINCT w.id, w.data, w.sklep, w.suma, w.osoba, w.notatki, w.zdjecie, w.created_at, w.okazja, w.kontekst_kategoria, w.kontekst_podkategoria
             FROM wydatki w JOIN pozycje p ON p.wydatek_id = w.id
-            {where} {'AND' if where else 'WHERE'} p.kategoria_glowna = %s
+            {where} {'AND' if where else 'WHERE'} {kat_col} = %s
             ORDER BY w.data DESC"""
         params.append(kategoria)
     else:

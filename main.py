@@ -355,10 +355,11 @@ async def create_wydatek_z_plikiem(
 @app.get("/api/wydatki")
 def list_wydatki(month: str | None = None, osoba: str | None = None,
                  kategoria: str | None = None, od: str | None = None, do: str | None = None,
-                 okazja: str | None = None,
+                 okazja: str | None = None, kontekst: bool = False,
                  current_user: dict = Depends(get_current_user)):
     return database.get_wydatki(month=month, osoba=osoba, kategoria=kategoria,
-                                od=od, do=do, okazja=okazja, household_id=current_user["household_id"])
+                                od=od, do=do, okazja=okazja, kontekst=kontekst,
+                                household_id=current_user["household_id"])
 
 
 @app.get("/api/wydatki/{wydatek_id}")
