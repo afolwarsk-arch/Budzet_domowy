@@ -156,6 +156,7 @@ def init_db():
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS okazja TEXT")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS kontekst_kategoria TEXT")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS kontekst_podkategoria TEXT")
+        cur.execute("ALTER TABLE pozycje ADD COLUMN IF NOT EXISTS poza_kontekstem BOOLEAN NOT NULL DEFAULT FALSE")
         for stara, (glowna, sub) in _MIGRACJA_MAP.items():
             cur.execute(
                 "UPDATE pozycje SET kategoria_glowna=%s, kategoria=%s WHERE kategoria=%s",
@@ -182,12 +183,18 @@ def create_wydatek(data: str, sklep: str | None, suma: float, osoba: str,
         wydatek_id = cur.fetchone()["id"]
         if pozycje:
             cur.executemany(
-                "INSERT INTO pozycje (wydatek_id,nazwa,cena,ilosc,kategoria_glowna,kategoria) VALUES (%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO pozycje (wydatek_id,nazwa,cena,ilosc,kategoria_glowna,kategoria,poza_kontekstem) VALUES (%s,%s,%s,%s,%s,%s,%s)",
                 [(wydatek_id, p["nazwa"], p["cena"], p.get("ilosc", 1),
-                  p.get("kategoria_glowna", "Inne"), p.get("kategoria", "Inne"))
+                  p.get("kategoria_glowna", "Inne"), p.get("kategoria", "Inne"),
+                  bool(p.get("poza_kontekstem", False)))
                  for p in pozycje],
             )
     return wydatek_id
+
+
+# Wyrażenia SQL dla trybu kontekstowego z uwzględnieniem flagi poza_kontekstem
+_KAT = "CASE WHEN p.poza_kontekstem THEN p.kategoria_glowna ELSE COALESCE(w.kontekst_kategoria, p.kategoria_glowna) END"
+_SUB = "CASE WHEN p.poza_kontekstem THEN p.kategoria ELSE COALESCE(w.kontekst_podkategoria, p.kategoria) END"
 
 
 def get_wydatki(month: str | None = None, osoba: str | None = None,
@@ -210,7 +217,7 @@ def get_wydatki(month: str | None = None, osoba: str | None = None,
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     if kategoria:
-        kat_col = "COALESCE(w.kontekst_kategoria, p.kategoria_glowna)" if kontekst else "p.kategoria_glowna"
+        kat_col = _KAT if kontekst else "p.kategoria_glowna"
         query = f"""
             SELECT DISTINCT w.id, w.data, w.sklep, w.suma, w.osoba, w.notatki, w.zdjecie, w.created_at, w.okazja, w.kontekst_kategoria, w.kontekst_podkategoria
             FROM wydatki w JOIN pozycje p ON p.wydatek_id = w.id
@@ -253,9 +260,10 @@ def update_wydatek(wydatek_id: int, data: str, sklep: str | None, suma: float,
         cur.execute("DELETE FROM pozycje WHERE wydatek_id = %s", (wydatek_id,))
         if pozycje:
             cur.executemany(
-                "INSERT INTO pozycje (wydatek_id,nazwa,cena,ilosc,kategoria_glowna,kategoria) VALUES (%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO pozycje (wydatek_id,nazwa,cena,ilosc,kategoria_glowna,kategoria,poza_kontekstem) VALUES (%s,%s,%s,%s,%s,%s,%s)",
                 [(wydatek_id, p["nazwa"], p["cena"], p.get("ilosc", 1),
-                  p.get("kategoria_glowna", "Inne"), p.get("kategoria", "Inne"))
+                  p.get("kategoria_glowna", "Inne"), p.get("kategoria", "Inne"),
+                  bool(p.get("poza_kontekstem", False)))
                  for p in pozycje],
             )
     return True
@@ -321,7 +329,7 @@ def _where_params(month, osoba, household_id=None, od=None, do=None, okazja=None
 
 def stats_kategorie(month=None, osoba=None, household_id=None, od=None, do=None, kontekst=False) -> list[dict]:
     where, params = _where_params(month, osoba, household_id, od=od, do=do)
-    kat_col = "COALESCE(w.kontekst_kategoria, p.kategoria_glowna)" if kontekst else "p.kategoria_glowna"
+    kat_col = _KAT if kontekst else "p.kategoria_glowna"
     query = f"""
         SELECT {kat_col} AS kategoria_glowna,
                ROUND(CAST(SUM(p.cena * p.ilosc) AS numeric), 2) AS suma
@@ -335,8 +343,8 @@ def stats_kategorie(month=None, osoba=None, household_id=None, od=None, do=None,
 def stats_pozycje_subkat(kategoria: str, month=None, osoba=None, kategoria_glowna=None, household_id=None, od=None, do=None, kontekst=False) -> list[dict]:
     where, params = _where_params(month, osoba, household_id, od=od, do=do)
     if kontekst:
-        sub_col = "COALESCE(w.kontekst_podkategoria, p.kategoria)"
-        kat_col = "COALESCE(w.kontekst_kategoria, p.kategoria_glowna)"
+        sub_col = _SUB
+        kat_col = _KAT
     else:
         sub_col = "p.kategoria"
         kat_col = "p.kategoria_glowna"
@@ -360,8 +368,8 @@ def stats_subkategorie(kategoria_glowna: str, month=None, osoba=None, household_
     where, params = _where_params(month, osoba, household_id, od=od, do=do)
     params.append(kategoria_glowna)
     if kontekst:
-        kat_filter = "COALESCE(w.kontekst_kategoria, p.kategoria_glowna)"
-        sub_col = "COALESCE(w.kontekst_podkategoria, p.kategoria)"
+        kat_filter = _KAT
+        sub_col = _SUB
     else:
         kat_filter = "p.kategoria_glowna"
         sub_col = "p.kategoria"

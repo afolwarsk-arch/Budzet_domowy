@@ -825,6 +825,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   }
 
   function renderPozycjeHTML(ri, pozycje) {
+    const maKontekst = !!receiptsData[ri].kontekst_kategoria;
     return pozycje.map((p, pi) => {
       const glowna = p.kategoria_glowna || GLOWNE[0];
       return `
@@ -834,9 +835,9 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
             oninput="updatePozycja(${ri},${pi},'nazwa',this.value)">
           <input type="number" step="0.01" value="${p.cena}" placeholder="Cena"
             oninput="updatePozycja(${ri},${pi},'cena',parseFloat(this.value))">
-          <input type="number" step="0.1" value="${p.ilosc||1}" placeholder="IloĹ›Ä‡"
+          <input type="number" step="0.1" value="${p.ilosc||1}" placeholder="Ilość"
             oninput="updatePozycja(${ri},${pi},'ilosc',parseFloat(this.value))">
-          <button class="remove-btn" onclick="removePozycja(${ri},${pi})" title="UsuĹ„">Ă—</button>
+          <button class="remove-btn" onclick="removePozycja(${ri},${pi})" title="Usuń">×</button>
         </div>
         <div class="pozycja-kat">
           <select id="glowna-${ri}-${pi}" onchange="onGlownaChange(${ri},${pi},this.value)">
@@ -845,6 +846,13 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
           <select id="sub-${ri}-${pi}" onchange="updatePozycja(${ri},${pi},'kategoria',this.value)">
             ${subOptions(glowna, p.kategoria)}
           </select>
+          ${maKontekst ? `
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#888;white-space:nowrap;cursor:pointer;margin-left:4px">
+            <input type="checkbox" ${p.poza_kontekstem ? 'checked' : ''}
+              onchange="updatePozycja(${ri},${pi},'poza_kontekstem',this.checked)"
+              style="cursor:pointer">
+            poza kontekstem
+          </label>` : ''}
         </div>
       </div>`;
     }).join('');
