@@ -502,8 +502,11 @@ def stats_subkategorie(kategoria_glowna: str, month: str | None = None, osoba: s
 
 @app.get("/api/stats/subkategorie-all")
 def stats_subkategorie_all(month: str | None = None, osoba: str | None = None,
+                           od: str | None = None, do: str | None = None,
+                           kontekst: bool = False,
                            current_user: dict = Depends(get_current_user)):
-    return database.stats_subkategorie_all(month=month, osoba=osoba,
+    return database.stats_subkategorie_all(month=month, osoba=osoba, od=od, do=do,
+                                           kontekst=kontekst,
                                            household_id=current_user["household_id"])
 
 

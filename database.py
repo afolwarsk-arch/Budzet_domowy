@@ -383,13 +383,17 @@ def stats_subkategorie(kategoria_glowna: str, month=None, osoba=None, household_
         return [dict(r) for r in cur.fetchall()]
 
 
-def stats_subkategorie_all(month=None, osoba=None, household_id=None, od=None, do=None) -> list[dict]:
+def stats_subkategorie_all(month=None, osoba=None, household_id=None, od=None, do=None, kontekst=False) -> list[dict]:
     where, params = _where_params(month, osoba, household_id, od=od, do=do)
+    if kontekst:
+        kat_col, sub_col = _KAT, _SUB
+    else:
+        kat_col, sub_col = "p.kategoria_glowna", "p.kategoria"
     query = f"""
-        SELECT p.kategoria_glowna, p.kategoria,
+        SELECT {kat_col} AS kategoria_glowna, {sub_col} AS kategoria,
                ROUND(CAST(SUM(p.cena * p.ilosc) AS numeric), 2) AS suma
         FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
-        {where} GROUP BY p.kategoria_glowna, p.kategoria ORDER BY p.kategoria_glowna, suma DESC"""
+        {where} GROUP BY {kat_col}, {sub_col} ORDER BY {kat_col}, suma DESC"""
     with get_db() as cur:
         cur.execute(query, params)
         return [dict(r) for r in cur.fetchall()]

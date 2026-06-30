@@ -77,12 +77,26 @@
     <button class="btn btn-outline btn-sm" id="btn-reset">Wyczyść grupy</button>
   </div>
   <div class="filters" style="margin-bottom:20px">
-    <label style="font-size:13px;color:var(--muted)">Miesiąc:</label>
-    <input type="month" id="filter-month">
+    <div style="display:flex;gap:4px;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+      <button id="mode-month" onclick="setFilterMode('month')" style="padding:6px 12px;border:none;cursor:pointer;font-size:13px;background:#4f7ef8;color:#fff">Miesiąc</button>
+      <button id="mode-range" onclick="setFilterMode('range')" style="padding:6px 12px;border:none;cursor:pointer;font-size:13px;background:#fff;color:#555">Zakres</button>
+    </div>
+    <div id="filter-month-wrap">
+      <input type="month" id="filter-month">
+    </div>
+    <div id="filter-range-wrap" style="display:none;gap:6px;align-items:center">
+      <input type="date" id="filter-od" style="font-size:13px;padding:4px 8px;border:1px solid #ddd;border-radius:6px">
+      <span style="font-size:13px;color:var(--muted)">—</span>
+      <input type="date" id="filter-do" style="font-size:13px;padding:4px 8px;border:1px solid #ddd;border-radius:6px">
+    </div>
     <label style="font-size:13px;color:var(--muted)">Osoba:</label>
     <select id="filter-osoba">
       <option value="">Oboje</option>
     </select>
+    <div style="display:flex;gap:4px;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+      <button id="kat-mode-pierwotne" onclick="setKatMode('pierwotne')" style="padding:6px 12px;border:none;cursor:pointer;font-size:13px;background:#4f7ef8;color:#fff">Pierwotne</button>
+      <button id="kat-mode-kontekst" onclick="setKatMode('kontekst')" style="padding:6px 12px;border:none;cursor:pointer;font-size:13px;background:#fff;color:#555">Kontekstowe</button>
+    </div>
   </div>
   <div class="card" id="chart-card" style="margin-bottom:20px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -135,6 +149,24 @@ let dragData = null;
 let chartPie = null;
 let chartBar = null;
 let drillStack = [];
+let filterMode = 'month';
+let katMode = 'pierwotne';
+
+function setFilterMode(mode) {
+  filterMode = mode;
+  document.getElementById('filter-month-wrap').style.display = mode === 'month' ? '' : 'none';
+  document.getElementById('filter-range-wrap').style.display = mode === 'range' ? 'flex' : 'none';
+  document.getElementById('mode-month').style.cssText = `padding:6px 12px;border:none;cursor:pointer;font-size:13px;background:${mode==='month'?'#4f7ef8':'#fff'};color:${mode==='month'?'#fff':'#555'}`;
+  document.getElementById('mode-range').style.cssText = `padding:6px 12px;border:none;cursor:pointer;font-size:13px;background:${mode==='range'?'#4f7ef8':'#fff'};color:${mode==='range'?'#fff':'#555'}`;
+  loadData();
+}
+
+function setKatMode(mode) {
+  katMode = mode;
+  document.getElementById('kat-mode-pierwotne').style.cssText = `padding:6px 12px;border:none;cursor:pointer;font-size:13px;background:${mode==='pierwotne'?'#4f7ef8':'#fff'};color:${mode==='pierwotne'?'#fff':'#555'}`;
+  document.getElementById('kat-mode-kontekst').style.cssText = `padding:6px 12px;border:none;cursor:pointer;font-size:13px;background:${mode==='kontekst'?'#4f7ef8':'#fff'};color:${mode==='kontekst'?'#fff':'#555'}`;
+  loadData();
+}
 const COLORS = ['#a04ff8','#4f7ef8','#f84f8a','#f8a04f','#22c55e','#06b6d4','#f59e0b','#8b5cf6','#ec4899','#ef4444'];
 
 function fmt(v) {
@@ -253,14 +285,27 @@ function setupDrop(el, toGroupId) {
 }
 
 // ── Lazy load ─────────────────────────────────────────────────────
+function buildQ(extra = {}) {
+  const q = new URLSearchParams(extra);
+  const osoba = document.getElementById('filter-osoba').value;
+  if (osoba) q.set('osoba', osoba);
+  if (filterMode === 'month') {
+    const month = document.getElementById('filter-month').value;
+    if (month) q.set('month', month);
+  } else {
+    const od = document.getElementById('filter-od').value;
+    const do_ = document.getElementById('filter-do').value;
+    if (od) q.set('od', od);
+    if (do_) q.set('do', do_);
+  }
+  if (katMode === 'kontekst') q.set('kontekst', '1');
+  return q;
+}
+
 async function loadSubPozycje(subKey) {
   if (loadedSubs.has(subKey)) return;
   const p = parseKey(subKey);
-  const q = new URLSearchParams({ kategoria: p.name, kategoria_glowna: p.parent });
-  const month = document.getElementById('filter-month').value;
-  const osoba = document.getElementById('filter-osoba').value;
-  if (month) q.set('month', month);
-  if (osoba) q.set('osoba', osoba);
+  const q = buildQ({ kategoria: p.name, kategoria_glowna: p.parent });
   const data = await authFetch('/api/stats/pozycje-subkat?' + q).then(r => r.json());
   pozycjeBySubKey[subKey] = data;
   data.forEach(z => { pozycjeLookup[z.id] = { ...z, subKey }; });
@@ -783,11 +828,7 @@ function renderChart() {
 // ── Data loading ──────────────────────────────────────────────────
 async function loadData() {
   loadedSubs.clear(); pozycjeBySubKey = {}; pozycjeLookup = {};
-  const month = document.getElementById('filter-month').value;
-  const osoba = document.getElementById('filter-osoba').value;
-  const q = new URLSearchParams();
-  if (month) q.set('month', month);
-  if (osoba) q.set('osoba', osoba);
+  const q = buildQ();
   const [hier, stats, subStats] = await Promise.all([
     authFetch('/api/kategorie').then(r => r.json()),
     authFetch('/api/stats/kategorie?' + q).then(r => r.json()),
@@ -805,6 +846,8 @@ authRequireHousehold().then(async () => {
   await loadState();
   document.getElementById('filter-month').value = new Date().toISOString().slice(0,7);
   document.getElementById('filter-month').addEventListener('change', loadData);
+  document.getElementById('filter-od').addEventListener('change', loadData);
+  document.getElementById('filter-do').addEventListener('change', loadData);
   document.getElementById('filter-osoba').addEventListener('change', loadData);
   document.getElementById('btn-new-group').addEventListener('click', () => {
     groups.push({ id: Date.now().toString(), name: '', items: [] });
