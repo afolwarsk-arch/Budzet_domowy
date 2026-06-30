@@ -602,15 +602,23 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   const cardsContainer = document.getElementById('paragony-cards');
   const saveAllBtn = document.getElementById('btn-save-all');
 
-  // receiptsData[i] = { sklep, data, suma, osoba, notatki, pozycje[] }
+  // receiptsData[i] = { sklep, data, suma, osoba, notatki, pozycje[], konto_id }
   let receiptsData = [];
   let editId = null;
   let selectedFiles = [];
+  let KONTA_OPCJE = [];
+  let myDefaultKontoId = null;
 
-  // ZaĹ‚aduj hierarchiÄ™ kategorii z backendu (zawsze aktualna)
-  authFetch('/api/kategorie').then(r => r.json()).then(hier => {
+  // Załaduj hierarchię kategorii + konta + domyślne konto
+  Promise.all([
+    authFetch('/api/kategorie').then(r => r.json()),
+    authFetch('/api/konta').then(r => r.json()),
+    authFetch('/api/me/konto-domyslne').then(r => r.json()),
+  ]).then(([hier, konta, def]) => {
     HIERARCHIA = hier;
     GLOWNE = Object.keys(hier);
+    KONTA_OPCJE = konta;
+    myDefaultKontoId = def.konto_id || null;
     const params = new URLSearchParams(location.search);
     if (params.get('edit')) {
       editId = parseInt(params.get('edit'));
@@ -715,7 +723,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
         list = results.flatMap(r => r.data);
       }
 
-      receiptsData = list.map(r => ({ ...r, osoba: r.osoba || osoba, notatki: '' }));
+      receiptsData = list.map(r => ({ ...r, osoba: r.osoba || osoba, notatki: '', konto_id: r.konto_id ?? myDefaultKontoId }));
       renderCards();
       resultSection.classList.remove('hidden');
     } catch (e) {
@@ -775,6 +783,15 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
               <label>Osoba</label>
               <select style="width:100%" onchange="updateReceipt(${ri},'osoba',this.value)">
                 ${OSOBY_OPCJE.map(o => `<option value="${esc(o.value)}" ${r.osoba===o.value?'selected':''}>${esc(o.label)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom:12px">
+            <div class="form-group" style="flex:1">
+              <label>Z konta <span style="font-weight:400;color:var(--muted)">(opcjonalnie)</span></label>
+              <select style="width:100%" onchange="updateReceipt(${ri},'konto_id',parseInt(this.value)||null)">
+                <option value="">— nie przypisane —</option>
+                ${KONTA_OPCJE.map(k => `<option value="${k.id}" ${r.konto_id===k.id?'selected':''}>${esc(k.nazwa)}${k.osoba?' ('+esc(k.osoba)+')':''}</option>`).join('')}
               </select>
             </div>
           </div>

@@ -311,6 +311,7 @@ class WydatekIn(BaseModel):
     okazja: str | None = None
     kontekst_kategoria: str | None = None
     kontekst_podkategoria: str | None = None
+    konto_id: int | None = None
 
 
 @app.post("/api/wydatki", status_code=201)
@@ -329,6 +330,7 @@ def create_wydatek(body: WydatekIn, current_user: dict = Depends(get_current_use
         okazja=body.okazja,
         kontekst_kategoria=body.kontekst_kategoria,
         kontekst_podkategoria=body.kontekst_podkategoria,
+        konto_id=body.konto_id,
     )
     return {"id": wid}
 
@@ -401,6 +403,7 @@ def update_wydatek(wydatek_id: int, body: WydatekIn):
         okazja=body.okazja,
         kontekst_kategoria=body.kontekst_kategoria,
         kontekst_podkategoria=body.kontekst_podkategoria,
+        konto_id=body.konto_id,
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Nie znaleziono")
@@ -633,4 +636,16 @@ def api_delete_wplyw(wplyw_id: int, current_user: dict = Depends(get_current_use
     ok = database.delete_wplyw(wplyw_id, current_user["household_id"])
     if not ok:
         raise HTTPException(404, "Wpływ nie znaleziony")
+    return {"ok": True}
+
+
+@app.get("/api/me/konto-domyslne")
+def api_get_konto_domyslne(current_user: dict = Depends(get_current_user)):
+    konto_id = database.get_konto_domyslne(current_user["user_id"])
+    return {"konto_id": konto_id}
+
+
+@app.put("/api/me/konto-domyslne")
+def api_set_konto_domyslne(body: dict, current_user: dict = Depends(get_current_user)):
+    database.set_konto_domyslne(current_user["user_id"], body.get("konto_id"))
     return {"ok": True}

@@ -112,6 +112,10 @@ SCHEMA_STATEMENTS = [
         notatki           TEXT,
         created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""",
+    """CREATE TABLE IF NOT EXISTS konto_domyslne (
+        user_id  INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        konto_id INTEGER NOT NULL REFERENCES konta(id) ON DELETE CASCADE
+    )""",
 ]
 
 _MIGRACJA_MAP: dict[str, tuple[str, str]] = {
@@ -207,11 +211,12 @@ def create_wydatek(data: str, sklep: str | None, suma: float, osoba: str,
                    household_id: int | None = None,
                    okazja: str | None = None,
                    kontekst_kategoria: str | None = None,
-                   kontekst_podkategoria: str | None = None) -> int:
+                   kontekst_podkategoria: str | None = None,
+                   konto_id: int | None = None) -> int:
     with get_db() as cur:
         cur.execute(
-            "INSERT INTO wydatki (data,sklep,suma,osoba,notatki,zdjecie,waluta,kurs,household_id,okazja,kontekst_kategoria,kontekst_podkategoria) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
-            (data, sklep, suma, osoba, notatki, zdjecie, waluta, kurs, household_id, okazja or None, kontekst_kategoria or None, kontekst_podkategoria or None),
+            "INSERT INTO wydatki (data,sklep,suma,osoba,notatki,zdjecie,waluta,kurs,household_id,okazja,kontekst_kategoria,kontekst_podkategoria,konto_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+            (data, sklep, suma, osoba, notatki, zdjecie, waluta, kurs, household_id, okazja or None, kontekst_kategoria or None, kontekst_podkategoria or None, konto_id or None),
         )
         wydatek_id = cur.fetchone()["id"]
         if pozycje:
@@ -252,14 +257,14 @@ def get_wydatki(month: str | None = None, osoba: str | None = None,
     if kategoria:
         kat_col = _KAT if kontekst else "p.kategoria_glowna"
         query = f"""
-            SELECT DISTINCT w.id, w.data, w.sklep, w.suma, w.osoba, w.notatki, w.zdjecie, w.created_at, w.okazja, w.kontekst_kategoria, w.kontekst_podkategoria
+            SELECT DISTINCT w.id, w.data, w.sklep, w.suma, w.osoba, w.notatki, w.zdjecie, w.created_at, w.okazja, w.kontekst_kategoria, w.kontekst_podkategoria, w.konto_id
             FROM wydatki w JOIN pozycje p ON p.wydatek_id = w.id
             {where} {'AND' if where else 'WHERE'} {kat_col} = %s
             ORDER BY w.data DESC"""
         params.append(kategoria)
     else:
         query = f"""
-            SELECT w.id, w.data, w.sklep, w.suma, w.osoba, w.notatki, w.zdjecie, w.created_at, w.okazja, w.kontekst_kategoria, w.kontekst_podkategoria
+            SELECT w.id, w.data, w.sklep, w.suma, w.osoba, w.notatki, w.zdjecie, w.created_at, w.okazja, w.kontekst_kategoria, w.kontekst_podkategoria, w.konto_id
             FROM wydatki w {where} ORDER BY w.data DESC"""
 
     with get_db() as cur:
@@ -282,11 +287,12 @@ def get_wydatek(wydatek_id: int) -> dict | None:
 def update_wydatek(wydatek_id: int, data: str, sklep: str | None, suma: float,
                    osoba: str, notatki: str | None, pozycje: list[dict],
                    okazja: str | None = None, kontekst_kategoria: str | None = None,
-                   kontekst_podkategoria: str | None = None) -> bool:
+                   kontekst_podkategoria: str | None = None,
+                   konto_id: int | None = None) -> bool:
     with get_db() as cur:
         cur.execute(
-            "UPDATE wydatki SET data=%s,sklep=%s,suma=%s,osoba=%s,notatki=%s,okazja=%s,kontekst_kategoria=%s,kontekst_podkategoria=%s WHERE id=%s",
-            (data, sklep, suma, osoba, notatki, okazja or None, kontekst_kategoria or None, kontekst_podkategoria or None, wydatek_id),
+            "UPDATE wydatki SET data=%s,sklep=%s,suma=%s,osoba=%s,notatki=%s,okazja=%s,kontekst_kategoria=%s,kontekst_podkategoria=%s,konto_id=%s WHERE id=%s",
+            (data, sklep, suma, osoba, notatki, okazja or None, kontekst_kategoria or None, kontekst_podkategoria or None, konto_id or None, wydatek_id),
         )
         if cur.rowcount == 0:
             return False
@@ -904,6 +910,24 @@ def get_inwentaryzacje(konto_id: int, household_id: int) -> list[dict]:
             ORDER BY i.data DESC, i.created_at DESC
         """, (konto_id, household_id))
         return [dict(r) for r in cur.fetchall()]
+
+
+def get_konto_domyslne(user_id: int) -> int | None:
+    with get_db() as cur:
+        cur.execute("SELECT konto_id FROM konto_domyslne WHERE user_id = %s", (user_id,))
+        row = cur.fetchone()
+        return row["konto_id"] if row else None
+
+
+def set_konto_domyslne(user_id: int, konto_id: int | None) -> None:
+    with get_db() as cur:
+        if konto_id is None:
+            cur.execute("DELETE FROM konto_domyslne WHERE user_id = %s", (user_id,))
+        else:
+            cur.execute(
+                "INSERT INTO konto_domyslne (user_id, konto_id) VALUES (%s,%s) ON CONFLICT (user_id) DO UPDATE SET konto_id=EXCLUDED.konto_id",
+                (user_id, konto_id),
+            )
 
 
 def create_inwentaryzacja(konto_id: int, household_id: int, data: str,
