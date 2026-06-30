@@ -116,6 +116,10 @@ SCHEMA_STATEMENTS = [
         user_id  INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         konto_id INTEGER NOT NULL REFERENCES konta(id) ON DELETE CASCADE
     )""",
+    """CREATE TABLE IF NOT EXISTS household_kategorie (
+        household_id   INTEGER PRIMARY KEY REFERENCES households(id) ON DELETE CASCADE,
+        hierarchia_json TEXT NOT NULL
+    )""",
 ]
 
 _MIGRACJA_MAP: dict[str, tuple[str, str]] = {
@@ -910,6 +914,25 @@ def get_inwentaryzacje(konto_id: int, household_id: int) -> list[dict]:
             ORDER BY i.data DESC, i.created_at DESC
         """, (konto_id, household_id))
         return [dict(r) for r in cur.fetchall()]
+
+
+def get_household_hierarchia(household_id: int) -> dict | None:
+    import json as _json
+    with get_db() as cur:
+        cur.execute("SELECT hierarchia_json FROM household_kategorie WHERE household_id = %s", (household_id,))
+        row = cur.fetchone()
+        return _json.loads(row["hierarchia_json"]) if row else None
+
+
+def save_household_hierarchia(household_id: int, hierarchia: dict) -> None:
+    import json as _json
+    with get_db() as cur:
+        cur.execute(
+            """INSERT INTO household_kategorie (household_id, hierarchia_json)
+               VALUES (%s, %s)
+               ON CONFLICT (household_id) DO UPDATE SET hierarchia_json = EXCLUDED.hierarchia_json""",
+            (household_id, _json.dumps(hierarchia, ensure_ascii=False)),
+        )
 
 
 def get_konto_domyslne(user_id: int) -> int | None:

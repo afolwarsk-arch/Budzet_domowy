@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kategorie — Budżet domowy</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .kat-list { display:flex; flex-direction:column; gap:12px; margin-bottom:24px; }
+    .kat-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.07); overflow:hidden; }
+    .kat-header { display:flex; align-items:center; gap:10px; padding:14px 16px; cursor:pointer; user-select:none; }
+    .kat-header:hover { background:#fafafa; }
+    .kat-name { font-weight:600; font-size:0.95rem; flex:1; }
+    .kat-count { font-size:0.75rem; color:#aaa; }
+    .kat-toggle { color:#aaa; font-size:14px; transition:transform .2s; }
+    .kat-toggle.open { transform:rotate(90deg); }
+    .kat-del { background:none; border:none; color:#e57373; cursor:pointer; font-size:18px; padding:0 4px; opacity:.6; }
+    .kat-del:hover { opacity:1; }
+    .kat-body { display:none; padding:0 16px 14px; border-top:1px solid #f4f4f4; }
+    .kat-body.open { display:block; }
+    .sub-list { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+    .sub-chip { display:flex; align-items:center; gap:5px; background:#f0f4ff; color:#3451d1; padding:4px 10px; border-radius:20px; font-size:13px; }
+    .sub-chip button { background:none; border:none; color:#aaa; cursor:pointer; font-size:14px; line-height:1; padding:0; }
+    .sub-chip button:hover { color:#c62828; }
+    .add-sub-row { display:flex; gap:8px; margin-top:8px; }
+    .add-sub-row input { flex:1; padding:7px 10px; border:1px solid #ddd; border-radius:8px; font-size:13px; }
+    .add-sub-row button { padding:7px 14px; background:#4361ee; color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:13px; }
+    .add-sub-row button:hover { background:#3451d1; }
+    .add-kat-row { display:flex; gap:8px; margin-bottom:20px; }
+    .add-kat-row input { flex:1; padding:9px 12px; border:1px solid #ddd; border-radius:8px; font-size:14px; }
+    .add-kat-row button { padding:9px 18px; background:#4361ee; color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600; }
+    .add-kat-row button:hover { background:#3451d1; }
+    .actions-bar { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
+    .btn-save-all { padding:10px 22px; background:#2e7d32; color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600; }
+    .btn-save-all:hover { background:#1b5e20; }
+    .btn-reset { padding:10px 18px; background:#fff; color:#c62828; border:1px solid #e57373; border-radius:8px; cursor:pointer; font-size:14px; }
+    .btn-reset:hover { background:#fde8e8; }
+    .status { font-size:13px; color:#2e7d32; align-self:center; }
+    .status.err { color:#c62828; }
+    .info-box { background:#f0f4ff; border-radius:10px; padding:14px 16px; font-size:13px; color:#3451d1; margin-bottom:20px; line-height:1.6; }
+  </style>
+</head>
+<body>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="/static/auth.js"></script>
+<nav>
+  <a href="/" class="logo">🏠 Budżet</a>
+  <a href="/">Dashboard</a>
+  <a href="/upload">Dodaj wydatek</a>
+  <a href="/konta">Konta</a>
+  <a href="/kategorie" class="active">Kategorie</a>
+  <a href="/analiza">Analiza</a>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
+</nav>
+
+<main style="max-width:800px">
+  <h1 style="margin-bottom:16px">Kategorie wydatków</h1>
+
+  <div class="info-box">
+    Kategorie są przypisane do Twojego gospodarstwa — inne gospodarstwa mają swoje własne. Zmiany wpływają na propozycje AI przy następnym skanowaniu paragonu. Historyczne wydatki zachowują swoje kategorie.
+  </div>
+
+  <div class="actions-bar">
+    <button class="btn-save-all" onclick="saveAll()">Zapisz zmiany</button>
+    <button class="btn-reset" onclick="resetToTemplate()">Resetuj do domyślnych</button>
+    <span id="status" class="status"></span>
+  </div>
+
+  <div class="add-kat-row">
+    <input type="text" id="new-kat" placeholder="Nowa kategoria główna, np. Nieruchomości">
+    <button onclick="addKat()">+ Dodaj kategorię</button>
+  </div>
+
+  <div class="kat-list" id="kat-list">Ładowanie...</div>
+</main>
+
+<script>
+let hier = {};
+
+function render() {
+  const el = document.getElementById('kat-list');
+  const names = Object.keys(hier);
+  if (!names.length) { el.innerHTML = '<p style="color:#aaa;text-align:center;padding:24px">Brak kategorii</p>'; return; }
+  el.innerHTML = names.map((kat, ki) => `
+    <div class="kat-card" id="kc-${ki}">
+      <div class="kat-header" onclick="toggleKat(${ki})">
+        <span class="kat-toggle" id="kt-${ki}">▶</span>
+        <span class="kat-name">${esc(kat)}</span>
+        <span class="kat-count">${hier[kat].length} podkategorii</span>
+        <button class="kat-del" onclick="event.stopPropagation();delKat('${esc2(kat)}')" title="Usuń kategorię">✕</button>
+      </div>
+      <div class="kat-body" id="kb-${ki}">
+        <div class="sub-list" id="subs-${ki}">
+          ${hier[kat].map((s, si) => `
+            <span class="sub-chip">
+              ${esc(s)}
+              <button onclick="delSub('${esc2(kat)}','${esc2(s)}')" title="Usuń">×</button>
+            </span>`).join('')}
+        </div>
+        <div class="add-sub-row">
+          <input type="text" id="newsub-${ki}" placeholder="Nowa podkategoria...">
+          <button onclick="addSub('${esc2(kat)}', ${ki})">Dodaj</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+function esc2(s) { return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+function toggleKat(ki) {
+  const body = document.getElementById('kb-' + ki);
+  const tog = document.getElementById('kt-' + ki);
+  const open = body.classList.toggle('open');
+  tog.classList.toggle('open', open);
+}
+
+function addKat() {
+  const inp = document.getElementById('new-kat');
+  const name = inp.value.trim();
+  if (!name) return;
+  if (hier[name]) { alert('Taka kategoria już istnieje.'); return; }
+  hier[name] = ['Inne'];
+  inp.value = '';
+  render();
+  setStatus('Dodano kategorię — kliknij „Zapisz zmiany".');
+}
+
+function delKat(kat) {
+  if (!confirm(`Usunąć kategorię „${kat}" wraz ze wszystkimi podkategoriami?`)) return;
+  delete hier[kat];
+  render();
+  setStatus('Usunieto kategorię — kliknij „Zapisz zmiany".');
+}
+
+function addSub(kat, ki) {
+  const inp = document.getElementById('newsub-' + ki);
+  const name = inp.value.trim();
+  if (!name) return;
+  if (hier[kat] && hier[kat].includes(name)) { alert('Taka podkategoria już istnieje.'); return; }
+  if (!hier[kat]) hier[kat] = [];
+  hier[kat].push(name);
+  inp.value = '';
+  render();
+  // przywróć otwartą sekcję
+  const ki2 = Object.keys(hier).indexOf(kat);
+  if (ki2 >= 0) {
+    document.getElementById('kb-' + ki2)?.classList.add('open');
+    document.getElementById('kt-' + ki2)?.classList.add('open');
+  }
+  setStatus('Dodano podkategorię — kliknij „Zapisz zmiany".');
+}
+
+function delSub(kat, sub) {
+  hier[kat] = (hier[kat] || []).filter(s => s !== sub);
+  render();
+  setStatus('Usunięto podkategorię — kliknij „Zapisz zmiany".');
+}
+
+async function saveAll() {
+  try {
+    const res = await authFetch('/api/kategorie', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hierarchia: hier }),
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
+    setStatus('✓ Zapisano!');
+  } catch (e) {
+    setStatus('Błąd: ' + e.message, true);
+  }
+}
+
+async function resetToTemplate() {
+  if (!confirm('Zresetować do domyślnych kategorii?\nWszystkie Twoje customizacje zostaną zastąpione domyślnymi. Historyczne wydatki nie zostaną zmienione.')) return;
+  const template = await authFetch('/api/kategorie/template').then(r => r.json());
+  hier = JSON.parse(JSON.stringify(template));
+  render();
+  setStatus('Wczytano domyślne — kliknij „Zapisz zmiany" żeby zatwierdzić.');
+}
+
+function setStatus(msg, err = false) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status' + (err ? ' err' : '');
+  if (!err) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
+}
+
+authRequireHousehold().then(async () => {
+  hier = await authFetch('/api/kategorie').then(r => r.json());
+  render();
+});
+</script>
+</body>
+</html>

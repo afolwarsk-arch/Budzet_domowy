@@ -110,30 +110,21 @@ KATEGORIE_HIERARCHIA: dict[str, list[str]] = {
     ],
 }
 
-# Płaska lista wszystkich podkategorii (do walidacji)
-WSZYSTKIE_PODKATEGORIE: list[str] = [
-    sub for subs in KATEGORIE_HIERARCHIA.values() for sub in subs
-]
+def _hier_helpers(hier: dict) -> tuple[list[str], dict[str, str], str]:
+    """Zwraca (wszystkie_podkategorie, sub_do_glownej, lista_prompt) dla danej hierarchii."""
+    wszystkie = [sub for subs in hier.values() for sub in subs]
+    sub_do_glownej = {sub: g for g, subs in hier.items() for sub in subs}
+    lista = "\n".join(f"  {g}: {', '.join(subs)}" for g, subs in hier.items())
+    return wszystkie, sub_do_glownej, lista
 
-# Mapa: podkategoria → kategoria główna
-SUB_DO_GLOWNEJ: dict[str, str] = {
-    sub: glowna
-    for glowna, subs in KATEGORIE_HIERARCHIA.items()
-    for sub in subs
-}
 
-# Skrócona lista do promptu
-_LISTA_PROMPT = "\n".join(
-    f"  {glowna}: {', '.join(subs)}"
-    for glowna, subs in KATEGORIE_HIERARCHIA.items()
-)
-
-SYSTEM_PROMPT = f"""Jesteś ekspertem od odczytywania polskich paragonów sklepowych. Zwracasz WYŁĄCZNIE poprawny JSON — zero dodatkowego tekstu, zero markdown.
+def _build_system_prompt(lista_prompt: str) -> str:
+    return f"""Jesteś ekspertem od odczytywania polskich paragonów sklepowych. Zwracasz WYŁĄCZNIE poprawny JSON — zero dodatkowego tekstu, zero markdown.
 
 WAŻNE: Jedno zdjęcie może zawierać wiele paragonów lub notatek. Każdy paragon = osobny obiekt na liście.
 
 Każda pozycja musi mieć kategorię główną I podkategorię z tej hierarchii:
-{_LISTA_PROMPT}
+{lista_prompt}
 
 Format — zawsze tablica:
 [
@@ -197,6 +188,22 @@ OGÓLNE:
 - Suma = suma pozycji jeśli nie widać jej na paragonie
 """
 
+
+def _build_rekat_prompt(lista_prompt: str) -> str:
+    return f"""Przypisz każdej pozycji właściwą kategorię główną i podkategorię z tej hierarchii:
+{lista_prompt}
+
+Wejście: lista obiektów JSON z polami id, nazwa, sklep (może być null).
+Wyjście: WYŁĄCZNIE JSON — tablica obiektów {{id, kategoria_glowna, kategoria}}.
+Bez dodatkowego tekstu. Każdy obiekt wejściowy musi mieć odpowiednik na wyjściu.
+Kieruj się nazwą produktu i sklepem. Jeśli nie wiesz — użyj "Inne"/"Inne"."""
+
+
+# Globalne helpery dla domyślnej hierarchii (cache — nie przeliczaj przy każdym wywołaniu)
+WSZYSTKIE_PODKATEGORIE, SUB_DO_GLOWNEJ, _LISTA_PROMPT = _hier_helpers(KATEGORIE_HIERARCHIA)
+SYSTEM_PROMPT = _build_system_prompt(_LISTA_PROMPT)
+_REKAT_PROMPT = _build_rekat_prompt(_LISTA_PROMPT)
+
 MAX_BYTES = 4 * 1024 * 1024
 
 
@@ -243,17 +250,10 @@ def _compress_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> tuple[
     return buf.getvalue(), "image/jpeg"
 
 
-_REKAT_PROMPT = f"""Przypisz każdej pozycji właściwą kategorię główną i podkategorię z tej hierarchii:
-{_LISTA_PROMPT}
-
-Wejście: lista obiektów JSON z polami id, nazwa, sklep (może być null).
-Wyjście: WYŁĄCZNIE JSON — tablica obiektów {{id, kategoria_glowna, kategoria}}.
-Bez dodatkowego tekstu. Każdy obiekt wejściowy musi mieć odpowiednik na wyjściu.
-Kieruj się nazwą produktu i sklepem. Jeśli nie wiesz — użyj "Inne"/"Inne"."""
-
-
-def rekategoryzuj_batch(pozycje: list[dict]) -> tuple[list[dict], dict]:
+def rekategoryzuj_batch(pozycje: list[dict], hierarchia: dict | None = None) -> tuple[list[dict], dict]:
     """Ponowna kategoryzacja listy pozycji przez Claude. Zwraca ([{id, kategoria_glowna, kategoria}], usage)."""
+    hier = hierarchia or KATEGORIE_HIERARCHIA
+    prompt = _build_rekat_prompt(_hier_helpers(hier)[2]) if hierarchia else _REKAT_PROMPT
     client = anthropic.Anthropic()
     wejscie = json.dumps(
         [{"id": p["id"], "nazwa": p["nazwa"], "sklep": p.get("sklep")} for p in pozycje],
@@ -262,7 +262,7 @@ def rekategoryzuj_batch(pozycje: list[dict]) -> tuple[list[dict], dict]:
     msg = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=2048,
-        system=_REKAT_PROMPT,
+        system=prompt,
         messages=[{"role": "user", "content": wejscie}],
     )
     raw = re.sub(r"```(?:json)?|```", "", msg.content[0].text).strip()
@@ -270,10 +270,10 @@ def rekategoryzuj_batch(pozycje: list[dict]) -> tuple[list[dict], dict]:
     for item in wynik:
         glowna = item.get("kategoria_glowna", "Inne")
         sub = item.get("kategoria", "Inne")
-        if glowna not in KATEGORIE_HIERARCHIA:
+        if glowna not in hier:
             glowna = "Inne"
-        if sub not in (KATEGORIE_HIERARCHIA.get(glowna) or []):
-            sub = KATEGORIE_HIERARCHIA[glowna][0]
+        if sub not in (hier.get(glowna) or []):
+            sub = (hier.get(glowna) or ["Inne"])[0]
         item["kategoria_glowna"] = glowna
         item["kategoria"] = sub
     return wynik, _usage(msg)
@@ -289,15 +289,17 @@ def _usage(message) -> dict:
     return {"input_tokens": message.usage.input_tokens, "output_tokens": message.usage.output_tokens}
 
 
-def process_image(image_bytes: bytes, mime_type: str = "image/jpeg", kontekst: str | None = None) -> tuple[list[dict], dict]:
+def process_image(image_bytes: bytes, mime_type: str = "image/jpeg",
+                  kontekst: str | None = None, hierarchia: dict | None = None) -> tuple[list[dict], dict]:
+    hier = hierarchia or KATEGORIE_HIERARCHIA
+    system = _build_system_prompt(_hier_helpers(hier)[2]) if hierarchia else SYSTEM_PROMPT
     client = anthropic.Anthropic()
     image_bytes, mime_type = _compress_image(image_bytes, mime_type)
     image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
-
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=16000,
-        system=SYSTEM_PROMPT,
+        system=system,
         messages=[{
             "role": "user",
             "content": [
@@ -306,21 +308,29 @@ def process_image(image_bytes: bytes, mime_type: str = "image/jpeg", kontekst: s
             ],
         }],
     )
-    return _parse_response(message.content[0].text), _usage(message)
+    return _parse_response(message.content[0].text, hier), _usage(message)
 
 
-def process_text(text: str, kontekst: str | None = None) -> tuple[list[dict], dict]:
+def process_text(text: str, kontekst: str | None = None, hierarchia: dict | None = None) -> tuple[list[dict], dict]:
+    hier = hierarchia or KATEGORIE_HIERARCHIA
+    system = _build_system_prompt(_hier_helpers(hier)[2]) if hierarchia else SYSTEM_PROMPT
     client = anthropic.Anthropic()
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=2048,
-        system=SYSTEM_PROMPT,
+        system=system,
         messages=[{"role": "user", "content": f"Przeanalizuj tę notatkę wydatków:\n\n{text}" + _kontekst_txt(kontekst)}],
     )
-    return _parse_response(message.content[0].text), _usage(message)
+    return _parse_response(message.content[0].text, hier), _usage(message)
 
 
-def _parse_response(raw: str) -> list[dict]:
+def _parse_response(raw: str, hierarchia: dict | None = None) -> list[dict]:
+    hier = hierarchia or KATEGORIE_HIERARCHIA
+    if hier is KATEGORIE_HIERARCHIA:
+        wszystkie, sub_do_glownej = WSZYSTKIE_PODKATEGORIE, SUB_DO_GLOWNEJ
+    else:
+        wszystkie, sub_do_glownej, _ = _hier_helpers(hier)
+
     cleaned = re.sub(r"```(?:json)?|```", "", raw).strip()
     data = json.loads(cleaned)
     if isinstance(data, dict):
@@ -331,7 +341,6 @@ def _parse_response(raw: str) -> list[dict]:
         if not item.get("data"):
             item["data"] = today
 
-        # przeliczenie waluty obcej na PLN
         waluta = (item.get("waluta") or "PLN").upper()
         item["waluta"] = waluta
         item["kurs"] = 1.0
@@ -350,11 +359,11 @@ def _parse_response(raw: str) -> list[dict]:
         for p in item.get("pozycje", []):
             kat = p.get("kategoria", "")
             glowna = p.get("kategoria_glowna", "")
-            if kat not in WSZYSTKIE_PODKATEGORIE:
+            if kat not in wszystkie:
                 p["kategoria"] = "Inne"
                 p["kategoria_glowna"] = "Inne"
-            elif glowna not in KATEGORIE_HIERARCHIA:
-                p["kategoria_glowna"] = SUB_DO_GLOWNEJ.get(kat, "Inne")
+            elif glowna not in hier:
+                p["kategoria_glowna"] = sub_do_glownej.get(kat, "Inne")
 
         if item.get("pozycje"):
             suma_obliczona = round(sum(p["cena"] * p.get("ilosc", 1) for p in item["pozycje"]), 2)

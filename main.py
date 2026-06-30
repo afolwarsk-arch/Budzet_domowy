@@ -73,6 +73,11 @@ def konta_page():
     return _html("konta.html")
 
 
+@app.get("/kategorie")
+def kategorie_page():
+    return _html("kategorie.html")
+
+
 # --- Auth & Household routes ---
 
 @app.get("/api/me")
@@ -260,13 +265,15 @@ async def process_image(
     kontekst: str = Form(""),
     current_user: dict = Depends(get_current_user),
 ):
+    hid = current_user["household_id"]
+    hier = database.get_household_hierarchia(hid) if hid else None
     content = await file.read()
     mime = file.content_type or "image/jpeg"
     try:
-        results, usage = await asyncio.to_thread(ai_processor.process_image, content, mime, kontekst or None)
+        results, usage = await asyncio.to_thread(ai_processor.process_image, content, mime, kontekst or None, hier)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Błąd Claude API: {e}")
-    database.log_api_usage(current_user["household_id"], "process-image", usage["input_tokens"], usage["output_tokens"])
+    database.log_api_usage(hid, "process-image", usage["input_tokens"], usage["output_tokens"])
     for r in results:
         r["osoba"] = osoba
     return results
@@ -278,8 +285,10 @@ async def process_text(payload: dict, current_user: dict = Depends(get_current_u
     if not text:
         raise HTTPException(status_code=400, detail="Brak tekstu")
     kontekst = payload.get("kontekst", "").strip() or None
+    hid = current_user["household_id"]
+    hier = database.get_household_hierarchia(hid) if hid else None
     try:
-        results, usage = await asyncio.to_thread(ai_processor.process_text, text, kontekst)
+        results, usage = await asyncio.to_thread(ai_processor.process_text, text, kontekst, hier)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Błąd Claude API: {e}")
     database.log_api_usage(current_user["household_id"], "process-text", usage["input_tokens"], usage["output_tokens"])
@@ -476,7 +485,26 @@ def save_analiza_state(body: dict, current_user: dict = Depends(get_current_user
 
 
 @app.get("/api/kategorie")
-def get_kategorie():
+def get_kategorie(current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    custom = database.get_household_hierarchia(hid) if hid else None
+    return custom if custom is not None else ai_processor.KATEGORIE_HIERARCHIA
+
+
+@app.put("/api/kategorie")
+def save_kategorie(body: dict, current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    hier = body.get("hierarchia")
+    if not isinstance(hier, dict) or not hier:
+        raise HTTPException(400, "Nieprawidłowa hierarchia")
+    database.save_household_hierarchia(hid, hier)
+    return {"ok": True}
+
+
+@app.get("/api/kategorie/template")
+def get_kategorie_template():
     return ai_processor.KATEGORIE_HIERARCHIA
 
 
