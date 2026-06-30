@@ -273,28 +273,32 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         const q = new URLSearchParams({ kategoria });
         if (month) q.set('month', month);
         if (osoba) q.set('osoba', osoba);
+        if (katMode === 'kontekst') q.set('kontekst', '1');
 
         const items = await authFetch('/api/stats/pozycje-subkat?' + q).then(r => r.json());
         if (!items.length) {
-          poz.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:6px 8px">Brak pozycji</p>';
+          poz.innerHTML = '<p style=”color:var(--muted);font-size:13px;padding:6px 8px”>Brak pozycji</p>';
           return;
         }
         poz.innerHTML = `
-          <table class="pozycje-table" style="margin-left:20px">
+          <table class=”pozycje-table” style=”margin-left:20px”>
             <thead><tr>
               <th>Produkt</th><th>Sklep</th><th>Data</th>
-              <th style="text-align:right">IloĹ›Ä‡</th>
-              <th style="text-align:right">Cena</th>
-              <th style="text-align:right">Suma</th>
+              <th style=”text-align:right”>Ilość</th>
+              <th style=”text-align:right”>Cena</th>
+              <th style=”text-align:right”>Suma</th>
             </tr></thead>
             <tbody>
               ${items.map(p => `<tr>
-                <td>${esc(p.nazwa)}</td>
-                <td style="color:var(--muted)">${esc(p.sklep || 'â€”')}</td>
-                <td style="color:var(--muted)">${p.data}</td>
-                <td style="text-align:right;color:var(--muted)">${p.ilosc > 1 ? p.ilosc : ''}</td>
-                <td style="text-align:right;color:var(--muted)">${fmt(p.cena)}</td>
-                <td style="text-align:right;font-weight:600">${fmt(p.suma)}</td>
+                <td>
+                  ${esc(p.nazwa)}
+                  ${p.kontekst_podkategoria && p.oryg_subkat !== p.kontekst_podkategoria ? `<div style=”font-size:10px;color:#aaa”>${esc(p.oryg_subkat)}</div>` : ''}
+                </td>
+                <td style=”color:var(--muted)”>${esc(p.sklep || '—')}</td>
+                <td style=”color:var(--muted)”>${p.data}</td>
+                <td style=”text-align:right;color:var(--muted)”>${p.ilosc > 1 ? p.ilosc : ''}</td>
+                <td style=”text-align:right;color:var(--muted)”>${fmt(p.cena)}</td>
+                <td style=”text-align:right;font-weight:600”>${fmt(p.suma)}</td>
               </tr>`).join('')}
             </tbody>
           </table>`;
@@ -327,21 +331,26 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     const q = new URLSearchParams({ kategoria: subkat });
     if (month) q.set('month', month);
     if (osoba) q.set('osoba', osoba);
+    if (katMode === 'kontekst') q.set('kontekst', '1');
     const data = await authFetch('/api/stats/pozycje-subkat?' + q).then(r => r.json());
     const panel = document.getElementById('drill-panel');
     document.getElementById('drill-title').textContent = subkat;
     const list = document.getElementById('drill-list');
     if (!data.length) {
-      list.innerHTML = '<p style="color:var(--muted);font-size:13px">Brak danych</p>';
+      list.innerHTML = '<p style=”color:var(--muted);font-size:13px”>Brak danych</p>';
     } else {
       const rows = data.map(p => `<tr>
-        <td>${p.data}</td><td>${esc(p.sklep || 'â€”')}</td>
-        <td>${esc(p.nazwa)}</td>
-        <td style="text-align:right">${fmt(p.cena)} Ă— ${p.ilosc}</td>
-        <td style="text-align:right;font-weight:600">${fmt(p.suma)}</td>
+        <td>${p.data}</td>
+        <td>${esc(p.sklep || '—')}</td>
+        <td>
+          ${esc(p.nazwa)}
+          ${p.kontekst_podkategoria && p.oryg_subkat !== p.kontekst_podkategoria ? `<div style=”font-size:10px;color:#aaa”>${esc(p.oryg_subkat)}</div>` : ''}
+        </td>
+        <td style=”text-align:right”>${fmt(p.cena)} × ${p.ilosc}</td>
+        <td style=”text-align:right;font-weight:600”>${fmt(p.suma)}</td>
       </tr>`).join('');
-      list.innerHTML = `<div class="table-wrap" style="margin-top:10px"><table>
-        <thead><tr><th>Data</th><th>Sklep</th><th>Produkt</th><th>CenaĂ—il.</th><th>Suma</th></tr></thead>
+      list.innerHTML = `<div class=”table-wrap” style=”margin-top:10px”><table>
+        <thead><tr><th>Data</th><th>Sklep</th><th>Produkt</th><th>Cena×il.</th><th>Suma</th></tr></thead>
         <tbody>${rows}</tbody></table></div>`;
     }
     panel.classList.remove('hidden');

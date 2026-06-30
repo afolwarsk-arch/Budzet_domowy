@@ -332,15 +332,22 @@ def stats_kategorie(month=None, osoba=None, household_id=None, od=None, do=None,
         return [dict(r) for r in cur.fetchall()]
 
 
-def stats_pozycje_subkat(kategoria: str, month=None, osoba=None, kategoria_glowna=None, household_id=None, od=None, do=None) -> list[dict]:
+def stats_pozycje_subkat(kategoria: str, month=None, osoba=None, kategoria_glowna=None, household_id=None, od=None, do=None, kontekst=False) -> list[dict]:
     where, params = _where_params(month, osoba, household_id, od=od, do=do)
-    extra = f"{'AND' if where else 'WHERE'} p.kategoria = %s"
+    if kontekst:
+        sub_col = "COALESCE(w.kontekst_podkategoria, p.kategoria)"
+        kat_col = "COALESCE(w.kontekst_kategoria, p.kategoria_glowna)"
+    else:
+        sub_col = "p.kategoria"
+        kat_col = "p.kategoria_glowna"
+    extra = f"{'AND' if where else 'WHERE'} {sub_col} = %s"
     params.append(kategoria)
     if kategoria_glowna:
-        extra += " AND p.kategoria_glowna = %s"; params.append(kategoria_glowna)
+        extra += f" AND {kat_col} = %s"; params.append(kategoria_glowna)
     query = f"""
         SELECT p.id, p.nazwa, p.cena, p.ilosc,
-               ROUND(CAST(p.cena * p.ilosc AS numeric), 2) AS suma, w.sklep, w.data
+               ROUND(CAST(p.cena * p.ilosc AS numeric), 2) AS suma,
+               w.sklep, w.data, p.kategoria AS oryg_subkat, w.kontekst_podkategoria
         FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
         {where} {extra}
         ORDER BY suma DESC"""

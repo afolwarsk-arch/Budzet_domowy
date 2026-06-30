@@ -471,10 +471,10 @@ def stats_kategorie(month: str | None = None, osoba: str | None = None,
 
 @app.get("/api/stats/pozycje-subkat")
 def stats_pozycje_subkat(kategoria: str, month: str | None = None, osoba: str | None = None,
-                         kategoria_glowna: str | None = None,
+                         kategoria_glowna: str | None = None, kontekst: bool = False,
                          current_user: dict = Depends(get_current_user)):
     return database.stats_pozycje_subkat(kategoria=kategoria, month=month, osoba=osoba,
-                                         kategoria_glowna=kategoria_glowna,
+                                         kategoria_glowna=kategoria_glowna, kontekst=kontekst,
                                          household_id=current_user["household_id"])
 
 
