@@ -95,6 +95,16 @@ KATEGORIE_HIERARCHIA: dict[str, list[str]] = {
         "Naprawy i remonty",
         "Meble i wyposażenie",
     ],
+    "Prezenty": [
+        "Książki i gry",
+        "Zabawki",
+        "Kosmetyki i perfumy",
+        "Odzież",
+        "Elektronika",
+        "Kwiaty i dekoracje",
+        "Vouchery i karty podarunkowe",
+        "Inne prezenty",
+    ],
     "Inne": [
         "Inne",
     ],
