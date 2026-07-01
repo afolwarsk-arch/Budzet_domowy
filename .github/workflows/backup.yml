@@ -34,8 +34,8 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git fetch origin backups 2>/dev/null || true
-          git checkout backups 2>/dev/null || git checkout --orphan backups
+          git fetch origin
+          git checkout -B backups origin/backups 2>/dev/null || git checkout --orphan backups
           git add backups/
           git diff --staged --quiet && echo "Brak zmian" && exit 0
           git commit -m "Backup $(date -u +%Y-%m-%d)"

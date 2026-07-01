@@ -12,11 +12,18 @@ DATABASE_URL = os.environ["DATABASE_PUBLIC_URL"]
 
 
 def export_all() -> dict:
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = psycopg2.connect(DATABASE_URL, sslmode="require")
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute("SELECT current_database()")
+    db_name = cur.fetchone()["current_database"]
+    cur.execute("SELECT COUNT(*) AS c FROM wydatki")
+    wydatki_total = cur.fetchone()["c"]
+    print(f"[DIAGNOSTYKA] Baza: {db_name} | wydatki w bazie: {wydatki_total}")
 
     cur.execute("SELECT id, name FROM households ORDER BY id")
     households = cur.fetchall()
+    print(f"[DIAGNOSTYKA] Gospodarstwa: {len(households)}")
 
     result: dict = {
         "exported_at": datetime.utcnow().isoformat() + "Z",
