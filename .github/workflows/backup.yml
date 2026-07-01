@@ -25,17 +25,15 @@ jobs:
       - name: Zainstaluj psycopg2
         run: pip install psycopg2-binary
 
-      - name: Eksportuj dane
+      - name: Eksportuj i zapisz backup
         env:
           DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
-        run: python backup_all.py
-
-      - name: Zapisz backup do gałęzi backups
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git fetch origin
           git checkout -B backups origin/backups 2>/dev/null || git checkout --orphan backups
+          python backup_all.py
           git add backups/
           git diff --staged --quiet && echo "Brak zmian" && exit 0
           git commit -m "Backup $(date -u +%Y-%m-%d)"
