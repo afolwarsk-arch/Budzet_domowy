@@ -31,7 +31,7 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git fetch origin
+          git fetch origin backups:refs/remotes/origin/backups 2>/dev/null || true
           git checkout -B backups origin/backups 2>/dev/null || git checkout --orphan backups
           python backup_all.py
           git add backups/
