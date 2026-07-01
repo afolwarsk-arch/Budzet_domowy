@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Eksport wszystkich gospodarstw domowych do JSON — używany przez GitHub Actions."""
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+
+import psycopg2
+import psycopg2.extras
+
+DATABASE_URL = os.environ["DATABASE_PUBLIC_URL"]
+
+
+def export_all() -> dict:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute("SELECT id, name FROM households ORDER BY id")
+    households = cur.fetchall()
+
+    result: dict = {
+        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "households": [],
+    }
+
+    for h in households:
+        hid = h["id"]
+
+        cur.execute(
+            """SELECT w.*, json_agg(row_to_json(p.*)) FILTER (WHERE p.id IS NOT NULL) AS pozycje
+               FROM wydatki w LEFT JOIN pozycje p ON p.wydatek_id = w.id
+               WHERE w.household_id = %s
+               GROUP BY w.id ORDER BY w.data DESC, w.created_at DESC""",
+            (hid,),
+        )
+        wydatki = []
+        for row in cur.fetchall():
+            r = dict(row)
+            pozycje_raw = r.get("pozycje") or []
+            r["pozycje"] = [
+                p if isinstance(p, dict) else json.loads(p) for p in pozycje_raw
+            ]
+            wydatki.append(r)
+
+        cur.execute("SELECT * FROM konta WHERE household_id = %s ORDER BY created_at", (hid,))
+        konta = [dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            "SELECT * FROM wplywy WHERE household_id = %s ORDER BY data DESC", (hid,)
+        )
+        wplywy = [dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            """SELECT i.* FROM inwentaryzacje i
+               JOIN konta k ON k.id = i.konto_id
+               WHERE k.household_id = %s ORDER BY i.data DESC""",
+            (hid,),
+        )
+        inwentaryzacje = [dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            "SELECT hierarchia_json FROM household_kategorie WHERE household_id = %s", (hid,)
+        )
+        row = cur.fetchone()
+        hierarchia = json.loads(row["hierarchia_json"]) if row else None
+
+        result["households"].append(
+            {
+                "id": hid,
+                "name": h["name"],
+                "wydatki_count": len(wydatki),
+                "wydatki": wydatki,
+                "konta": konta,
+                "wplywy": wplywy,
+                "inwentaryzacje": inwentaryzacje,
+                "hierarchia": hierarchia,
+            }
+        )
+
+    cur.close()
+    conn.close()
+    return result
+
+
+if __name__ == "__main__":
+    Path("backups").mkdir(exist_ok=True)
+    data = export_all()
+    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    filename = f"backups/backup_{date_str}.json"
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+    total = sum(h["wydatki_count"] for h in data["households"])
+    print(f"Backup: {filename} | {len(data['households'])} gospodarstw | {total} wydatków")
