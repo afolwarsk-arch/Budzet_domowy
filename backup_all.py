@@ -30,24 +30,31 @@ def export_all() -> dict:
         "households": [],
     }
 
-    for h in households:
-        hid = h["id"]
-
+    def export_wydatki(cur, hid):
+        if hid is None:
+            where = "WHERE w.household_id IS NULL"
+            params = ()
+        else:
+            where = "WHERE w.household_id = %s"
+            params = (hid,)
         cur.execute(
-            """SELECT w.*, json_agg(row_to_json(p.*)) FILTER (WHERE p.id IS NOT NULL) AS pozycje
+            f"""SELECT w.*, json_agg(row_to_json(p.*)) FILTER (WHERE p.id IS NOT NULL) AS pozycje
                FROM wydatki w LEFT JOIN pozycje p ON p.wydatek_id = w.id
-               WHERE w.household_id = %s
+               {where}
                GROUP BY w.id ORDER BY w.data DESC, w.created_at DESC""",
-            (hid,),
+            params,
         )
         wydatki = []
         for row in cur.fetchall():
             r = dict(row)
             pozycje_raw = r.get("pozycje") or []
-            r["pozycje"] = [
-                p if isinstance(p, dict) else json.loads(p) for p in pozycje_raw
-            ]
+            r["pozycje"] = [p if isinstance(p, dict) else json.loads(p) for p in pozycje_raw]
             wydatki.append(r)
+        return wydatki
+
+    for h in households:
+        hid = h["id"]
+        wydatki = export_wydatki(cur, hid)
 
         cur.execute("SELECT * FROM konta WHERE household_id = %s ORDER BY created_at", (hid,))
         konta = [dict(r) for r in cur.fetchall()]
@@ -81,6 +88,23 @@ def export_all() -> dict:
                 "wplywy": wplywy,
                 "inwentaryzacje": inwentaryzacje,
                 "hierarchia": hierarchia,
+            }
+        )
+
+    # Wydatki bez przypisanego gospodarstwa (household_id = NULL)
+    orphaned = export_wydatki(cur, None)
+    print(f"[DIAGNOSTYKA] Wydatki bez gospodarstwa (NULL): {len(orphaned)}")
+    if orphaned:
+        result["households"].append(
+            {
+                "id": None,
+                "name": "_bez_gospodarstwa",
+                "wydatki_count": len(orphaned),
+                "wydatki": orphaned,
+                "konta": [],
+                "wplywy": [],
+                "inwentaryzacje": [],
+                "hierarchia": None,
             }
         )
 

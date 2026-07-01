@@ -31,8 +31,14 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git fetch origin backups:refs/remotes/origin/backups 2>/dev/null || true
-          git checkout -B backups origin/backups 2>/dev/null || git checkout --orphan backups
+          if git ls-remote --exit-code origin backups; then
+            echo "Gałąź backups istnieje — pobieram"
+            git fetch origin 'refs/heads/backups:refs/remotes/origin/backups'
+            git checkout -B backups origin/backups
+          else
+            echo "Gałąź backups nie istnieje — tworzę orphan"
+            git checkout --orphan backups
+          fi
           python backup_all.py
           git add backups/
           git diff --staged --quiet && echo "Brak zmian" && exit 0
