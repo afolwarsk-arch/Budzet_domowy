@@ -916,6 +916,32 @@ def get_inwentaryzacje(konto_id: int, household_id: int) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def export_household_data(household_id: int) -> dict:
+    import json as _json
+    with get_db() as cur:
+        cur.execute("""
+            SELECT w.*, array_agg(row_to_json(p.*)) FILTER (WHERE p.id IS NOT NULL) AS pozycje
+            FROM wydatki w
+            LEFT JOIN pozycje p ON p.wydatek_id = w.id
+            WHERE w.household_id = %s
+            GROUP BY w.id ORDER BY w.data DESC, w.created_at DESC
+        """, (household_id,))
+        wydatki = []
+        for row in cur.fetchall():
+            r = dict(row)
+            r["pozycje"] = [p if isinstance(p, dict) else _json.loads(p) for p in (r.get("pozycje") or [])]
+            wydatki.append(r)
+
+        cur.execute("SELECT * FROM konta WHERE household_id=%s ORDER BY created_at", (household_id,))
+        konta = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("SELECT * FROM wplywy WHERE konto_id IN (SELECT id FROM konta WHERE household_id=%s) ORDER BY data DESC", (household_id,))
+        wplywy = [dict(r) for r in cur.fetchall()]
+
+        hier = get_household_hierarchia(household_id)
+    return {"wydatki": wydatki, "konta": konta, "wplywy": wplywy, "hierarchia": hier}
+
+
 def get_household_hierarchia(household_id: int) -> dict | None:
     import json as _json
     with get_db() as cur:

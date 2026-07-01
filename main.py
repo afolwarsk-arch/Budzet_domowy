@@ -508,6 +508,25 @@ def get_kategorie_template():
     return ai_processor.KATEGORIE_HIERARCHIA
 
 
+@app.get("/api/export")
+def export_data(current_user: dict = Depends(get_current_user)):
+    from fastapi.responses import JSONResponse
+    import json
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    data = database.export_household_data(hid)
+    data["exported_at"] = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+    data["household_id"] = hid
+    content = json.dumps(data, ensure_ascii=False, indent=2, default=str)
+    from fastapi.responses import Response
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename=budzet_backup_{__import__('datetime').date.today()}.json"},
+    )
+
+
 @app.get("/api/stats/kategorie")
 def stats_kategorie(month: str | None = None, osoba: str | None = None,
                     od: str | None = None, do: str | None = None,
