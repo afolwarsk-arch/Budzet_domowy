@@ -392,15 +392,17 @@ def list_wydatki(month: str | None = None, osoba: str | None = None,
 
 
 @app.get("/api/wydatki/{wydatek_id}")
-def get_wydatek(wydatek_id: int):
+def get_wydatek(wydatek_id: int, current_user: dict = Depends(get_current_user)):
     row = database.get_wydatek(wydatek_id)
     if not row:
         raise HTTPException(status_code=404, detail="Nie znaleziono")
+    if row.get("household_id") != current_user["household_id"]:
+        raise HTTPException(status_code=403, detail="Brak dostępu")
     return row
 
 
 @app.put("/api/wydatki/{wydatek_id}")
-def update_wydatek(wydatek_id: int, body: WydatekIn):
+def update_wydatek(wydatek_id: int, body: WydatekIn, current_user: dict = Depends(get_current_user)):
     ok = database.update_wydatek(
         wydatek_id=wydatek_id,
         data=body.data,
@@ -413,6 +415,7 @@ def update_wydatek(wydatek_id: int, body: WydatekIn):
         kontekst_kategoria=body.kontekst_kategoria,
         kontekst_podkategoria=body.kontekst_podkategoria,
         konto_id=body.konto_id,
+        household_id=current_user["household_id"],
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Nie znaleziono")
@@ -420,13 +423,14 @@ def update_wydatek(wydatek_id: int, body: WydatekIn):
 
 
 @app.get("/api/admin/rekat-preview")
-def rekat_preview(month: str | None = None, od: str | None = None, do: str | None = None):
+def rekat_preview(month: str | None = None, od: str | None = None, do: str | None = None,
+                  admin: dict = Depends(require_admin)):
     pozycje = database.get_pozycje_do_rekat(month=month, od=od, do=do)
     return {"liczba": len(pozycje), "szacowane_paczki": -(-len(pozycje) // 25)}
 
 
 @app.post("/api/admin/rekategoryzuj")
-async def rekategoryzuj(body: dict):
+async def rekategoryzuj(body: dict, admin: dict = Depends(require_admin)):
     month = body.get("month")
     od = body.get("od")
     do = body.get("do")
@@ -449,16 +453,16 @@ async def rekategoryzuj(body: dict):
 
 
 @app.patch("/api/wydatki/{wydatek_id}/notatki")
-def patch_notatki(wydatek_id: int, body: dict):
-    ok = database.update_notatki(wydatek_id, body.get("notatki", ""))
+def patch_notatki(wydatek_id: int, body: dict, current_user: dict = Depends(get_current_user)):
+    ok = database.update_notatki(wydatek_id, body.get("notatki", ""), household_id=current_user["household_id"])
     if not ok:
         raise HTTPException(status_code=404, detail="Nie znaleziono")
     return {"ok": True}
 
 
 @app.delete("/api/wydatki/{wydatek_id}")
-def delete_wydatek(wydatek_id: int):
-    ok = database.delete_wydatek(wydatek_id)
+def delete_wydatek(wydatek_id: int, current_user: dict = Depends(get_current_user)):
+    ok = database.delete_wydatek(wydatek_id, household_id=current_user["household_id"])
     if not ok:
         raise HTTPException(status_code=404, detail="Nie znaleziono")
     return {"ok": True}

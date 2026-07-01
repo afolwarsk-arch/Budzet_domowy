@@ -292,12 +292,19 @@ def update_wydatek(wydatek_id: int, data: str, sklep: str | None, suma: float,
                    osoba: str, notatki: str | None, pozycje: list[dict],
                    okazja: str | None = None, kontekst_kategoria: str | None = None,
                    kontekst_podkategoria: str | None = None,
-                   konto_id: int | None = None) -> bool:
+                   konto_id: int | None = None,
+                   household_id: int | None = None) -> bool:
     with get_db() as cur:
-        cur.execute(
-            "UPDATE wydatki SET data=%s,sklep=%s,suma=%s,osoba=%s,notatki=%s,okazja=%s,kontekst_kategoria=%s,kontekst_podkategoria=%s,konto_id=%s WHERE id=%s",
-            (data, sklep, suma, osoba, notatki, okazja or None, kontekst_kategoria or None, kontekst_podkategoria or None, konto_id or None, wydatek_id),
-        )
+        if household_id is not None:
+            cur.execute(
+                "UPDATE wydatki SET data=%s,sklep=%s,suma=%s,osoba=%s,notatki=%s,okazja=%s,kontekst_kategoria=%s,kontekst_podkategoria=%s,konto_id=%s WHERE id=%s AND household_id=%s",
+                (data, sklep, suma, osoba, notatki, okazja or None, kontekst_kategoria or None, kontekst_podkategoria or None, konto_id or None, wydatek_id, household_id),
+            )
+        else:
+            cur.execute(
+                "UPDATE wydatki SET data=%s,sklep=%s,suma=%s,osoba=%s,notatki=%s,okazja=%s,kontekst_kategoria=%s,kontekst_podkategoria=%s,konto_id=%s WHERE id=%s",
+                (data, sklep, suma, osoba, notatki, okazja or None, kontekst_kategoria or None, kontekst_podkategoria or None, konto_id or None, wydatek_id),
+            )
         if cur.rowcount == 0:
             return False
         cur.execute("DELETE FROM pozycje WHERE wydatek_id = %s", (wydatek_id,))
@@ -339,15 +346,21 @@ def update_pozycje_kategorie(aktualizacje: list[dict]) -> int:
         return cur.rowcount
 
 
-def update_notatki(wydatek_id: int, notatki: str) -> bool:
+def update_notatki(wydatek_id: int, notatki: str, household_id: int | None = None) -> bool:
     with get_db() as cur:
-        cur.execute("UPDATE wydatki SET notatki=%s WHERE id=%s", (notatki or None, wydatek_id))
+        if household_id is not None:
+            cur.execute("UPDATE wydatki SET notatki=%s WHERE id=%s AND household_id=%s", (notatki or None, wydatek_id, household_id))
+        else:
+            cur.execute("UPDATE wydatki SET notatki=%s WHERE id=%s", (notatki or None, wydatek_id))
         return cur.rowcount > 0
 
 
-def delete_wydatek(wydatek_id: int) -> bool:
+def delete_wydatek(wydatek_id: int, household_id: int | None = None) -> bool:
     with get_db() as cur:
-        cur.execute("DELETE FROM wydatki WHERE id = %s", (wydatek_id,))
+        if household_id is not None:
+            cur.execute("DELETE FROM wydatki WHERE id = %s AND household_id=%s", (wydatek_id, household_id))
+        else:
+            cur.execute("DELETE FROM wydatki WHERE id = %s", (wydatek_id,))
         return cur.rowcount > 0
 
 

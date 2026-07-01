@@ -14,3 +14,4 @@ _*.txt
 _*.py
 migration_data.json
 budzet_backup_*.json
+budzet_PELNY_*.json
