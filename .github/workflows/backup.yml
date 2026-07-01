@@ -31,16 +31,26 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          if git ls-remote --exit-code origin backups; then
-            echo "Gałąź backups istnieje — pobieram"
-            git fetch origin 'refs/heads/backups:refs/remotes/origin/backups'
-            git checkout -B backups origin/backups
-          else
-            echo "Gałąź backups nie istnieje — tworzę orphan"
-            git checkout --orphan backups
-          fi
+
+          # Pobierz poprzednie pliki backupów z remote (żeby nie gubić historii)
+          git remote set-branches origin '*'
+          git fetch origin backups 2>/dev/null || true
+          git checkout origin/backups -- backups/ 2>/dev/null || true
+
+          # Wygeneruj dzisiejszy backup
           python backup_all.py
+
+          # Zapisz pliki backupów poza repozytorium
+          mkdir -p /tmp/backups-save
+          cp backups/*.json /tmp/backups-save/ 2>/dev/null || true
+
+          # Utwórz czysty orphan branch tylko z plikami backupów
+          git branch -D backups 2>/dev/null || true
+          git checkout --orphan backups
+          git rm -rf . --quiet
+          mkdir -p backups
+          cp /tmp/backups-save/*.json backups/
+
           git add backups/
-          git diff --staged --quiet && echo "Brak zmian" && exit 0
           git commit -m "Backup $(date -u +%Y-%m-%d)"
-          git push origin backups
+          git push --force origin backups
