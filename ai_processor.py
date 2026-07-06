@@ -114,7 +114,12 @@ KATEGORIE_HIERARCHIA: dict[str, list[str]] = {
         "Vouchery i karty podarunkowe",
         "Inne prezenty",
     ],
+    "Używki": [
+        "Papierosy",
+        "Inne używki",
+    ],
     "Inne": [
+        "Kaucja",
         "Inne",
     ],
 }
@@ -186,7 +191,8 @@ KAUCJA ZA OPAKOWANIA ZWROTNE (system kaucyjny — butelki PET, szkło, puszki):
   jako "suma" przyjmij kwotę "DO ZAPŁATY" (ona zawiera kaucję i tyle faktycznie zapłacono)
 - Zwrot kaucji (np. "OPAKOWANIA ZWROTNE PRZYJĘCIA", kwota ujemna) → osobna pozycja
   "Zwrot kaucji za opakowania" z ceną ujemną
-- Kategoria dla kaucji: ta sama co dla napojów, a jeśli jej nie ma w hierarchii — "Inne"
+- Kategoria dla kaucji: "Inne"/"Kaucja" jeśli podkategoria "Kaucja" istnieje w hierarchii;
+  w przeciwnym razie "Inne"/"Inne"
 
 WALUTA:
 - Sprawdź symbol lub kod waluty na paragonie (€, $, £, Kč, CZK, EUR, USD, GBP itp.)
