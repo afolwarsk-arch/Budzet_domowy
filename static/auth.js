@@ -91,6 +91,25 @@ function _injectProfileButton(me) {
   else nav.appendChild(btn);
 }
 
+const _BOTTOM_NAV_ITEMS = [
+  { href: '/',          icon: '📊', label: 'Pulpit' },
+  { href: '/upload',    icon: '➕', label: 'Dodaj' },
+  { href: '/konta',     icon: '💳', label: 'Konta' },
+  { href: '/kategorie', icon: '🏷️', label: 'Kategorie' },
+  { href: '/analiza',   icon: '📈', label: 'Analiza' },
+];
+
+function _injectBottomNav() {
+  if (!document.querySelector('nav') || document.querySelector('.bottom-nav')) return;
+  const bar = document.createElement('div');
+  bar.className = 'bottom-nav';
+  bar.innerHTML = _BOTTOM_NAV_ITEMS.map(i => `
+    <a href="${i.href}" class="${location.pathname === i.href ? 'active' : ''}">
+      <span class="bn-icon">${i.icon}</span>${i.label}
+    </a>`).join('');
+  document.body.appendChild(bar);
+}
+
 async function authRequireHousehold() {
   return new Promise((resolve, reject) => {
     _auth.onAuthStateChanged(async (user) => {
@@ -111,6 +130,7 @@ async function authRequireHousehold() {
         }
         window._currentUser = me;
         _injectProfileButton(me);
+        _injectBottomNav();
         resolve(me);
       } catch {
         window.location.href = "/login";

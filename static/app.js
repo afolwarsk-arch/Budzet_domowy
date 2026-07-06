@@ -660,7 +660,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   tabImage.addEventListener('click', () => {
     tabImage.classList.add('active'); tabText.classList.remove('active');
     panelImage.classList.remove('hidden'); panelText.classList.add('hidden');
-    analyzeBtn.disabled = !fileInput.files.length;
+    analyzeBtn.disabled = !selectedFiles.length;
   });
   tabText.addEventListener('click', () => {
     tabText.classList.add('active'); tabImage.classList.remove('active');
@@ -680,6 +680,14 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
   dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
   fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+  // aparat (mobile) — capture="environment" otwiera od razu tylną kamerę
+  const cameraBtn = document.getElementById('btn-camera');
+  const cameraInput = document.getElementById('camera-input');
+  if (cameraBtn && cameraInput) {
+    cameraBtn.addEventListener('click', () => cameraInput.click());
+    cameraInput.addEventListener('change', () => { handleFiles(cameraInput.files); cameraInput.value = ''; });
+  }
 
   function handleFiles(files) {
     if (!files || !files.length) return;
@@ -712,7 +720,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   analyzeBtn.addEventListener('click', async () => {
     setAlert('');
     analyzeBtn.disabled = true;
-    const fileCount = fileInput.files.length;
+    const fileCount = selectedFiles.length;
     analyzeBtn.innerHTML = `<span class="loader"></span> Analizuję${fileCount > 1 ? ` ${fileCount} zdjęć...` : '...'}`;
     const osoba = document.getElementById('osoba').value;
     const kontekst = document.getElementById('kontekst-input').value.trim();

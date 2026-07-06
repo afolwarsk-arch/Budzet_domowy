@@ -1,0 +1,15 @@
+{
+  "name": "Budżet domowy",
+  "short_name": "Budżet",
+  "description": "Domowy budżet — paragony, wydatki, konta i analizy",
+  "lang": "pl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#4f7ef8",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

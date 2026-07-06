@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dodaj wydatek — Budżet domowy</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#4f7ef8">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
 </head>
 <body>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
@@ -39,6 +42,8 @@
     </div>
 
     <div id="panel-image">
+      <button class="btn btn-primary btn-camera" id="btn-camera">📷 Zrób zdjęcie paragonu</button>
+      <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none">
       <div class="drop-zone" id="drop-zone">
         <div class="icon">📷</div>
         <p>Przeciągnij zdjęcie lub kliknij, by wybrać plik</p>
