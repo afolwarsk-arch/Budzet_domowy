@@ -15,17 +15,18 @@
     .konto-osoba { font-size:0.8rem; color:#999; margin-bottom:12px; min-height:16px; }
     .konto-saldo { font-size:1.75rem; font-weight:700; line-height:1; margin-bottom:2px; }
     .konto-waluta { font-size:0.78rem; color:#aaa; margin-bottom:16px; }
-    .konto-btns { display:flex; gap:6px; flex-wrap:wrap; }
-    .konto-btns button { flex:1; min-width:0; padding:7px 6px; border:none; border-radius:8px; cursor:pointer; font-size:12px; font-weight:500; }
+    .konto-btns { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+    .konto-btns button { padding:9px 6px; border:none; border-radius:8px; cursor:pointer; font-size:12.5px; font-weight:600; }
     .btn-wplyw  { background:#e8f5e9; color:#2e7d32; }
     .btn-inwent { background:#fff3e0; color:#e65100; }
     .btn-hist   { background:#f0f4ff; color:#3451d1; }
-    .btn-edit   { background:#f5f5f5; color:#555; flex:none; width:34px; }
-    .btn-del    { background:#fde8e8; color:#c62828; flex:none; width:34px; }
-    .btn-star   { background:#fffbea; color:#bbb; flex:none; width:34px; font-size:16px; transition:color .15s; }
-    .btn-star.active { color:#f59e0b; }
     .btn-przelew { background:#ede7f6; color:#5e35b1; }
     .konto-btns button:hover { filter:brightness(0.93); }
+    .konto-icons { margin-left:auto; display:flex; gap:2px; }
+    .konto-icons button { background:none; border:none; cursor:pointer; font-size:14px; color:#c5c5c5; padding:3px 6px; border-radius:6px; line-height:1; transition:color .15s, background .15s; }
+    .konto-icons button:hover { background:#f5f5f5; color:#555; }
+    .konto-icons button.star.active { color:#f59e0b; }
+    .konto-icons button.del:hover { background:#fde8e8; color:#c62828; }
 
     .cykl-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #f3f3f3; font-size:0.88rem; gap:10px; }
     .cykl-row:last-child { border-bottom:none; }
@@ -288,7 +289,12 @@ function renderKonta() {
     return `<div class="konto-card" ${isDomyslne ? 'style="border:2px solid #f59e0b"' : ''}>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <span class="konto-typ-badge" style="background:${color}18;color:${color}">${label}</span>
-        ${isDomyslne ? '<span style="font-size:11px;color:#f59e0b;font-weight:600">★ moje domyślne</span>' : ''}
+        ${isDomyslne ? '<span style="font-size:11px;color:#f59e0b;font-weight:600">★ domyślne</span>' : ''}
+        <div class="konto-icons">
+          <button class="star ${isDomyslne ? 'active' : ''}" onclick="toggleDomyslne(${k.id})" title="${isDomyslne ? 'Usuń jako domyślne' : 'Ustaw jako moje domyślne'}">★</button>
+          <button onclick="editKonto(${k.id})" title="Edytuj konto">✏</button>
+          <button class="del" onclick="delKonto(${k.id},'${esc(k.nazwa)}')" title="Usuń konto">✕</button>
+        </div>
       </div>
       <div class="konto-nazwa">${k.nazwa}</div>
       <div class="konto-osoba">${k.osoba || 'Wspólne'}</div>
@@ -297,11 +303,8 @@ function renderKonta() {
       <div class="konto-btns">
         <button class="btn-wplyw" onclick="openWplyw(${k.id})">+ Wpływ</button>
         <button class="btn-przelew" onclick="openPrzelew(${k.id})">⇄ Przelew</button>
-        <button class="btn-inwent" onclick="openModalInwent(${k.id},'${esc(k.nazwa)}')">Inw.</button>
         <button class="btn-hist" onclick="showHistoria(${k.id},'${esc(k.nazwa)}')">Historia</button>
-        <button class="btn-star ${isDomyslne ? 'active' : ''}" onclick="toggleDomyslne(${k.id})" title="${isDomyslne ? 'Usuń jako domyślne' : 'Ustaw jako moje domyślne'}">★</button>
-        <button class="btn-edit" onclick="editKonto(${k.id})" title="Edytuj">✏</button>
-        <button class="btn-del" onclick="delKonto(${k.id},'${esc(k.nazwa)}')" title="Usuń">✕</button>
+        <button class="btn-inwent" onclick="openModalInwent(${k.id},'${esc(k.nazwa)}')">Inwentaryzacja</button>
       </div>
     </div>`;
   }).join('');

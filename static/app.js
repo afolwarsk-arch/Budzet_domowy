@@ -132,7 +132,32 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     }
   }
 
-  const COLORS = ['#4f7ef8','#f87e4f','#4fc8f8','#a04ff8','#f84f8a','#4ff87e','#f8d74f','#4ff8d7','#f84f4f','#8af84f'];
+  // Stałe kolory kategorii głównych — kolor trzyma się nazwy, a nie pozycji na wykresie,
+  // więc przełączanie widoków (pierwotne/kontekstowe) nie przetasowuje kolorów.
+  const KAT_COLORS = {
+    'Spożywcze':           '#4f7ef8',
+    'Higiena i kosmetyki': '#f84f8a',
+    'Wydatki na dziecko':  '#f8d74f',
+    'Dom i wyposażenie':   '#f87e4f',
+    'Transport i paliwo':  '#4fc8f8',
+    'Zdrowie':             '#4ff87e',
+    'Odzież i obuwie':     '#a04ff8',
+    'Rozrywka i hobby':    '#f84f4f',
+    'Edukacja':            '#4ff8d7',
+    'Elektronika':         '#8af84f',
+    'Rachunki domowe':     '#5e60ce',
+    'Lokal Gałczyńskiego': '#c47f3d',
+    'Prezenty':            '#ff9ff3',
+    'Używki':              '#8d6e63',
+    'Inne':                '#9e9e9e',
+  };
+  function katColor(nazwa) {
+    if (KAT_COLORS[nazwa]) return KAT_COLORS[nazwa];
+    // kategorie spoza listy (własne w gospodarstwie): deterministyczny kolor z nazwy
+    let h = 0;
+    for (let i = 0; i < nazwa.length; i++) h = (h * 31 + nazwa.charCodeAt(i)) >>> 0;
+    return `hsl(${h % 360}, 65%, 58%)`;
+  }
 
   let activeGlowna = null;
 
@@ -173,7 +198,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         type: 'doughnut',
         data: {
           labels: data.map(d => d.kategoria_glowna),
-          datasets: [{ data: data.map(d => d.suma), backgroundColor: COLORS, borderWidth: 2 }],
+          datasets: [{ data: data.map(d => d.suma), backgroundColor: data.map(d => katColor(d.kategoria_glowna)), borderWidth: 2 }],
         },
         options: {
           plugins: {
