@@ -178,6 +178,16 @@ RABATY I OPUSTY (ważne!):
 
 Ignoruj linie: PLU, VAT, SUMA, RAZEM, RABAT całkowity, KARTA, GOTÓWKA, PTU, OPUSTY ŁĄCZNIE
 
+KAUCJA ZA OPAKOWANIA ZWROTNE (system kaucyjny — butelki PET, szkło, puszki):
+- Linii kaucji NIE ignoruj! "Kaucja PET", "OPAKOWANIA ZWROTNE WYDANIA" itp. → dodaj jako
+  osobną pozycję o nazwie "Kaucja za opakowania (PET)" z ilością i ceną z tej linii
+  - Przykład: "Kaucja PET(8774)  1,0x0,50  0,50" → nazwa="Kaucja za opakowania (PET)", ilosc=1, cena=0.50
+- UWAGA: kaucja NIE jest wliczona w "SUMA PLN" — jeśli na paragonie jest kaucja,
+  jako "suma" przyjmij kwotę "DO ZAPŁATY" (ona zawiera kaucję i tyle faktycznie zapłacono)
+- Zwrot kaucji (np. "OPAKOWANIA ZWROTNE PRZYJĘCIA", kwota ujemna) → osobna pozycja
+  "Zwrot kaucji za opakowania" z ceną ujemną
+- Kategoria dla kaucji: ta sama co dla napojów, a jeśli jej nie ma w hierarchii — "Inne"
+
 WALUTA:
 - Sprawdź symbol lub kod waluty na paragonie (€, $, £, Kč, CZK, EUR, USD, GBP itp.)
 - Dodaj pole "waluta" z kodem ISO (np. "EUR", "USD", "CZK")
