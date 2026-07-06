@@ -120,6 +120,31 @@ SCHEMA_STATEMENTS = [
         household_id   INTEGER PRIMARY KEY REFERENCES households(id) ON DELETE CASCADE,
         hierarchia_json TEXT NOT NULL
     )""",
+    """CREATE TABLE IF NOT EXISTS przelewy (
+        id           SERIAL PRIMARY KEY,
+        household_id INTEGER NOT NULL REFERENCES households(id),
+        data         DATE NOT NULL,
+        kwota        NUMERIC(12,2) NOT NULL,
+        konto_z_id   INTEGER REFERENCES konta(id) ON DELETE SET NULL,
+        konto_na_id  INTEGER REFERENCES konta(id) ON DELETE SET NULL,
+        opis         TEXT,
+        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS wydatki_cykliczne (
+        id               SERIAL PRIMARY KEY,
+        household_id     INTEGER NOT NULL REFERENCES households(id),
+        nazwa            TEXT NOT NULL,
+        kwota            NUMERIC(12,2) NOT NULL,
+        dzien            INTEGER NOT NULL DEFAULT 1,
+        kategoria_glowna TEXT NOT NULL DEFAULT 'Rozrywka i hobby',
+        kategoria        TEXT NOT NULL DEFAULT 'Subskrypcje',
+        osoba            TEXT NOT NULL,
+        konto_id         INTEGER REFERENCES konta(id) ON DELETE SET NULL,
+        od_miesiaca      DATE NOT NULL,
+        aktywne          BOOLEAN NOT NULL DEFAULT TRUE,
+        ostatnio_do      DATE,
+        created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
 ]
 
 _MIGRACJA_MAP: dict[str, tuple[str, str]] = {
@@ -799,6 +824,8 @@ def get_konta(household_id: int) -> list[dict]:
                     k.saldo_poczatkowe
                     + COALESCE((SELECT SUM(w.kwota) FROM wplywy w WHERE w.konto_id = k.id), 0)
                     - COALESCE((SELECT SUM(wy.suma) FROM wydatki wy WHERE wy.konto_id = k.id), 0)
+                    - COALESCE((SELECT SUM(p.kwota) FROM przelewy p WHERE p.konto_z_id = k.id), 0)
+                    + COALESCE((SELECT SUM(p.kwota) FROM przelewy p WHERE p.konto_na_id = k.id), 0)
                 AS numeric), 2) AS saldo_biezace
             FROM konta k
             WHERE k.household_id = %s AND k.aktywne = TRUE
@@ -836,6 +863,10 @@ def delete_konto(konto_id: int, household_id: int) -> bool:
             return False
         cur.execute("UPDATE wydatki SET konto_id=NULL WHERE konto_id=%s", (konto_id,))
         cur.execute("UPDATE wplywy SET konto_id=NULL WHERE konto_id=%s", (konto_id,))
+        cur.execute("UPDATE przelewy SET konto_z_id=NULL WHERE konto_z_id=%s", (konto_id,))
+        cur.execute("UPDATE przelewy SET konto_na_id=NULL WHERE konto_na_id=%s", (konto_id,))
+        cur.execute("DELETE FROM przelewy WHERE konto_z_id IS NULL AND konto_na_id IS NULL")
+        cur.execute("UPDATE wydatki_cykliczne SET konto_id=NULL WHERE konto_id=%s", (konto_id,))
         cur.execute("DELETE FROM konta WHERE id=%s", (konto_id,))
         return True
 
@@ -850,7 +881,11 @@ def _saldo_konta_na_date(cur, konto_id: int, data: str) -> float:
     wp = float(cur.fetchone()["s"])
     cur.execute("SELECT COALESCE(SUM(suma), 0) AS s FROM wydatki WHERE konto_id=%s AND data <= %s", (konto_id, data))
     wy = float(cur.fetchone()["s"])
-    return round(sp + wp - wy, 2)
+    cur.execute("SELECT COALESCE(SUM(kwota), 0) AS s FROM przelewy WHERE konto_z_id=%s AND data <= %s", (konto_id, data))
+    p_out = float(cur.fetchone()["s"])
+    cur.execute("SELECT COALESCE(SUM(kwota), 0) AS s FROM przelewy WHERE konto_na_id=%s AND data <= %s", (konto_id, data))
+    p_in = float(cur.fetchone()["s"])
+    return round(sp + wp - wy - p_out + p_in, 2)
 
 
 # --- wplywy ---
@@ -893,13 +928,21 @@ def delete_wplyw(wplyw_id: int, household_id: int) -> bool:
 def get_historia_konta(konto_id: int, household_id: int, month: str | None = None) -> list[dict]:
     conds_w = ["wy.konto_id = %s", "wy.household_id = %s"]
     conds_wp = ["wp.konto_id = %s", "wp.household_id = %s"]
+    conds_pz = ["pz.konto_z_id = %s", "pz.household_id = %s"]
+    conds_pn = ["pn.konto_na_id = %s", "pn.household_id = %s"]
     p_w: list = [konto_id, household_id]
     p_wp: list = [konto_id, household_id]
+    p_pz: list = [konto_id, household_id]
+    p_pn: list = [konto_id, household_id]
     if month:
         conds_w.append("TO_CHAR(wy.data,'YYYY-MM') = %s"); p_w.append(month)
         conds_wp.append("TO_CHAR(wp.data,'YYYY-MM') = %s"); p_wp.append(month)
+        conds_pz.append("TO_CHAR(pz.data,'YYYY-MM') = %s"); p_pz.append(month)
+        conds_pn.append("TO_CHAR(pn.data,'YYYY-MM') = %s"); p_pn.append(month)
     where_w = "WHERE " + " AND ".join(conds_w)
     where_wp = "WHERE " + " AND ".join(conds_wp)
+    where_pz = "WHERE " + " AND ".join(conds_pz)
+    where_pn = "WHERE " + " AND ".join(conds_pn)
     with get_db() as cur:
         cur.execute(f"""
             SELECT 'wydatek' AS typ, wy.id, wy.data,
@@ -911,8 +954,22 @@ def get_historia_konta(konto_id: int, household_id: int, month: str | None = Non
                    ROUND(CAST(wp.kwota AS numeric), 2) AS kwota,
                    COALESCE(wp.opis, wp.kategoria) AS opis, wp.osoba
             FROM wplywy wp {where_wp}
+            UNION ALL
+            SELECT 'przelew' AS typ, pz.id, pz.data,
+                   ROUND(CAST(-pz.kwota AS numeric), 2) AS kwota,
+                   'Przelew → ' || COALESCE((SELECT nazwa FROM konta WHERE id = pz.konto_na_id), 'konto usunięte')
+                       || COALESCE(' — ' || pz.opis, '') AS opis,
+                   NULL AS osoba
+            FROM przelewy pz {where_pz}
+            UNION ALL
+            SELECT 'przelew' AS typ, pn.id, pn.data,
+                   ROUND(CAST(pn.kwota AS numeric), 2) AS kwota,
+                   'Przelew ← ' || COALESCE((SELECT nazwa FROM konta WHERE id = pn.konto_z_id), 'konto usunięte')
+                       || COALESCE(' — ' || pn.opis, '') AS opis,
+                   NULL AS osoba
+            FROM przelewy pn {where_pn}
             ORDER BY data DESC, opis
-        """, p_w + p_wp)
+        """, p_w + p_wp + p_pz + p_pn)
         return [dict(r) for r in cur.fetchall()]
 
 
@@ -927,6 +984,130 @@ def get_inwentaryzacje(konto_id: int, household_id: int) -> list[dict]:
             ORDER BY i.data DESC, i.created_at DESC
         """, (konto_id, household_id))
         return [dict(r) for r in cur.fetchall()]
+
+
+# --- przelewy między kontami ---
+
+def create_przelew(household_id: int, data: str, kwota: float,
+                   konto_z_id: int, konto_na_id: int, opis: str | None) -> dict:
+    with get_db() as cur:
+        cur.execute("SELECT id, waluta FROM konta WHERE id IN (%s,%s) AND household_id=%s AND aktywne=TRUE",
+                    (konto_z_id, konto_na_id, household_id))
+        rows = {r["id"]: r for r in cur.fetchall()}
+        if konto_z_id not in rows or konto_na_id not in rows:
+            raise ValueError("Konto nie istnieje")
+        if rows[konto_z_id]["waluta"] != rows[konto_na_id]["waluta"]:
+            raise ValueError("Przelewy możliwe tylko między kontami w tej samej walucie")
+        cur.execute(
+            "INSERT INTO przelewy (household_id, data, kwota, konto_z_id, konto_na_id, opis) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *",
+            (household_id, data, kwota, konto_z_id, konto_na_id, opis or None),
+        )
+        return dict(cur.fetchone())
+
+
+def delete_przelew(przelew_id: int, household_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("DELETE FROM przelewy WHERE id=%s AND household_id=%s", (przelew_id, household_id))
+        return cur.rowcount > 0
+
+
+# --- wydatki cykliczne ---
+
+def get_cykliczne(household_id: int) -> list[dict]:
+    with get_db() as cur:
+        cur.execute("""
+            SELECT c.*, k.nazwa AS konto_nazwa
+            FROM wydatki_cykliczne c LEFT JOIN konta k ON k.id = c.konto_id
+            WHERE c.household_id = %s ORDER BY c.aktywne DESC, c.nazwa
+        """, (household_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def create_cykliczny(household_id: int, nazwa: str, kwota: float, dzien: int,
+                     kategoria_glowna: str, kategoria: str, osoba: str,
+                     konto_id: int | None, od_miesiaca: str) -> dict:
+    with get_db() as cur:
+        cur.execute(
+            """INSERT INTO wydatki_cykliczne
+               (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id, od_miesiaca)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+            (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None, od_miesiaca),
+        )
+        return dict(cur.fetchone())
+
+
+def update_cykliczny(cykliczny_id: int, household_id: int, nazwa: str, kwota: float,
+                     dzien: int, kategoria_glowna: str, kategoria: str, osoba: str,
+                     konto_id: int | None, aktywne: bool) -> bool:
+    with get_db() as cur:
+        cur.execute(
+            """UPDATE wydatki_cykliczne SET nazwa=%s, kwota=%s, dzien=%s, kategoria_glowna=%s,
+               kategoria=%s, osoba=%s, konto_id=%s, aktywne=%s WHERE id=%s AND household_id=%s""",
+            (nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None,
+             aktywne, cykliczny_id, household_id),
+        )
+        return cur.rowcount > 0
+
+
+def delete_cykliczny(cykliczny_id: int, household_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("DELETE FROM wydatki_cykliczne WHERE id=%s AND household_id=%s", (cykliczny_id, household_id))
+        return cur.rowcount > 0
+
+
+def _terminy_cykliczne(od_miesiaca, dzien: int, po, do_dnia) -> list:
+    """Daty naliczenia: co miesiąc w dniu `dzien` (przycięty do końca miesiąca),
+    począwszy od miesiąca `od_miesiaca`, tylko daty > `po` i <= `do_dnia`."""
+    import calendar
+    from datetime import date as _date
+    terminy = []
+    rok, mies = od_miesiaca.year, od_miesiaca.month
+    while True:
+        ostatni = calendar.monthrange(rok, mies)[1]
+        d = _date(rok, mies, min(dzien, ostatni))
+        if d > do_dnia:
+            break
+        if po is None or d > po:
+            terminy.append(d)
+        mies += 1
+        if mies > 12:
+            mies = 1; rok += 1
+    return terminy
+
+
+def naliczaj_cykliczne(household_id: int) -> int:
+    """Tworzy wydatki za zaległe terminy wszystkich aktywnych wydatków cyklicznych.
+    Zwraca liczbę utworzonych wydatków. Bezpieczne przy równoległych wywołaniach
+    (claim przez UPDATE ostatnio_do przed INSERT-ami)."""
+    from datetime import date as _date
+    today = _date.today()
+    utworzone = 0
+    with get_db() as cur:
+        cur.execute("SELECT * FROM wydatki_cykliczne WHERE household_id=%s AND aktywne=TRUE", (household_id,))
+        cykliczne = [dict(r) for r in cur.fetchall()]
+
+    for c in cykliczne:
+        terminy = _terminy_cykliczne(c["od_miesiaca"], c["dzien"], c["ostatnio_do"], today)
+        if not terminy:
+            continue
+        with get_db() as cur:
+            # claim: tylko jeden proces naliczy ten zakres
+            cur.execute(
+                "UPDATE wydatki_cykliczne SET ostatnio_do=%s WHERE id=%s AND ostatnio_do IS NOT DISTINCT FROM %s",
+                (terminy[-1], c["id"], c["ostatnio_do"]),
+            )
+            if cur.rowcount == 0:
+                continue
+        for t in terminy:
+            create_wydatek(
+                data=t.isoformat(), sklep=c["nazwa"], suma=float(c["kwota"]),
+                osoba=c["osoba"], notatki="Wydatek cykliczny", zdjecie=None,
+                pozycje=[{"nazwa": c["nazwa"], "cena": float(c["kwota"]), "ilosc": 1,
+                          "kategoria_glowna": c["kategoria_glowna"], "kategoria": c["kategoria"]}],
+                household_id=household_id, konto_id=c["konto_id"],
+            )
+            utworzone += 1
+    return utworzone
 
 
 def export_household_data(household_id: int) -> dict:

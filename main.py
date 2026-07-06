@@ -418,6 +418,8 @@ def list_wydatki(month: str | None = None, osoba: str | None = None,
                  kategoria: str | None = None, od: str | None = None, do: str | None = None,
                  okazja: str | None = None, kontekst: bool = False,
                  current_user: dict = Depends(get_current_user)):
+    if current_user["household_id"]:
+        database.naliczaj_cykliczne(current_user["household_id"])
     return database.get_wydatki(month=month, osoba=osoba, kategoria=kategoria,
                                 od=od, do=do, okazja=okazja, kontekst=kontekst,
                                 household_id=current_user["household_id"])
@@ -638,6 +640,8 @@ class KontoIn(BaseModel):
 
 @app.get("/api/konta")
 def api_get_konta(current_user: dict = Depends(get_current_user)):
+    if current_user["household_id"]:
+        database.naliczaj_cykliczne(current_user["household_id"])
     return database.get_konta(current_user["household_id"])
 
 
@@ -689,6 +693,96 @@ def api_create_inwentaryzacja(konto_id: int, body: InwentaryzacjaIn,
                                               body.data, body.saldo_rzeczywiste, body.notatki)
     except ValueError as e:
         raise HTTPException(404, str(e))
+
+
+# --- Przelewy między kontami ---
+
+class PrzelewIn(BaseModel):
+    data: str
+    kwota: float
+    konto_z_id: int
+    konto_na_id: int
+    opis: str | None = None
+
+
+@app.post("/api/przelewy", status_code=201)
+def api_create_przelew(body: PrzelewIn, current_user: dict = Depends(get_current_user)):
+    if body.kwota <= 0:
+        raise HTTPException(400, "Kwota przelewu musi być większa od zera")
+    if body.konto_z_id == body.konto_na_id:
+        raise HTTPException(400, "Konto źródłowe i docelowe muszą być różne")
+    try:
+        return database.create_przelew(current_user["household_id"], body.data, body.kwota,
+                                       body.konto_z_id, body.konto_na_id, body.opis)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/api/przelewy/{przelew_id}")
+def api_delete_przelew(przelew_id: int, current_user: dict = Depends(get_current_user)):
+    ok = database.delete_przelew(przelew_id, current_user["household_id"])
+    if not ok:
+        raise HTTPException(404, "Przelew nie znaleziony")
+    return {"ok": True}
+
+
+# --- Wydatki cykliczne ---
+
+class CyklicznyIn(BaseModel):
+    nazwa: str
+    kwota: float
+    dzien: int = 1
+    kategoria_glowna: str = "Rozrywka i hobby"
+    kategoria: str = "Subskrypcje"
+    osoba: str
+    konto_id: int | None = None
+    od_miesiaca: str | None = None
+    aktywne: bool = True
+
+
+@app.get("/api/cykliczne")
+def api_get_cykliczne(current_user: dict = Depends(get_current_user)):
+    return database.get_cykliczne(current_user["household_id"])
+
+
+@app.post("/api/cykliczne", status_code=201)
+def api_create_cykliczny(body: CyklicznyIn, current_user: dict = Depends(get_current_user)):
+    if not body.nazwa.strip():
+        raise HTTPException(400, "Podaj nazwę")
+    if body.kwota <= 0:
+        raise HTTPException(400, "Kwota musi być większa od zera")
+    if not 1 <= body.dzien <= 31:
+        raise HTTPException(400, "Dzień miesiąca musi być z zakresu 1-31")
+    from datetime import date as _date
+    od = body.od_miesiaca or _date.today().strftime("%Y-%m")
+    od_data = f"{od}-01" if len(od) == 7 else od
+    wynik = database.create_cykliczny(current_user["household_id"], body.nazwa.strip(),
+                                      body.kwota, body.dzien, body.kategoria_glowna,
+                                      body.kategoria, body.osoba, body.konto_id, od_data)
+    database.naliczaj_cykliczne(current_user["household_id"])
+    return wynik
+
+
+@app.put("/api/cykliczne/{cykliczny_id}")
+def api_update_cykliczny(cykliczny_id: int, body: CyklicznyIn,
+                         current_user: dict = Depends(get_current_user)):
+    if not 1 <= body.dzien <= 31:
+        raise HTTPException(400, "Dzień miesiąca musi być z zakresu 1-31")
+    ok = database.update_cykliczny(cykliczny_id, current_user["household_id"],
+                                   body.nazwa.strip(), body.kwota, body.dzien,
+                                   body.kategoria_glowna, body.kategoria, body.osoba,
+                                   body.konto_id, body.aktywne)
+    if not ok:
+        raise HTTPException(404, "Nie znaleziono")
+    return {"ok": True}
+
+
+@app.delete("/api/cykliczne/{cykliczny_id}")
+def api_delete_cykliczny(cykliczny_id: int, current_user: dict = Depends(get_current_user)):
+    ok = database.delete_cykliczny(cykliczny_id, current_user["household_id"])
+    if not ok:
+        raise HTTPException(404, "Nie znaleziono")
+    return {"ok": True}
 
 
 # --- Wpływy ---

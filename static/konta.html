@@ -24,7 +24,19 @@
     .btn-del    { background:#fde8e8; color:#c62828; flex:none; width:34px; }
     .btn-star   { background:#fffbea; color:#bbb; flex:none; width:34px; font-size:16px; transition:color .15s; }
     .btn-star.active { color:#f59e0b; }
+    .btn-przelew { background:#ede7f6; color:#5e35b1; }
     .konto-btns button:hover { filter:brightness(0.93); }
+
+    .cykl-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #f3f3f3; font-size:0.88rem; gap:10px; }
+    .cykl-row:last-child { border-bottom:none; }
+    .cykl-row.nieaktywny { opacity:.45; }
+    .cykl-nazwa { font-weight:600; color:#333; }
+    .cykl-meta { font-size:0.75rem; color:#aaa; margin-top:1px; }
+    .cykl-kwota { font-weight:700; white-space:nowrap; }
+    .cykl-btns { display:flex; gap:5px; flex-shrink:0; }
+    .cykl-btns button { border:none; border-radius:7px; cursor:pointer; font-size:12px; padding:5px 9px; }
+    .tx-del { background:none; border:none; color:#ddd; cursor:pointer; font-size:14px; padding:2px 6px; margin-left:4px; }
+    .tx-del:hover { color:#c62828; }
 
     .panel { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:20px; margin-bottom:16px; }
     .panel-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
@@ -104,6 +116,14 @@
     </div>
     <div id="inv-content"><p class="empty-hint">Ładowanie...</p></div>
   </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Wydatki cykliczne (subskrypcje, abonamenty)</span>
+      <button class="btn-primary" style="padding:6px 14px;border:none;border-radius:8px;cursor:pointer;font-size:13px" onclick="openAddCykl()">+ Dodaj</button>
+    </div>
+    <div id="cykl-content"><p class="empty-hint">Ładowanie...</p></div>
+  </div>
 </main>
 
 <!-- Modal: Konto -->
@@ -165,6 +185,46 @@
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal('m-wplyw')">Anuluj</button>
       <button class="btn-primary" onclick="saveWplyw()">Zapisz</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Przelew -->
+<div class="modal-backdrop" id="m-przelew">
+  <div class="modal-box">
+    <h3>Przelew między kontami</h3>
+    <div class="fg"><label>Z konta</label><select id="p-z" onchange="refreshPrzelewNa()"></select></div>
+    <div class="fg"><label>Na konto</label><select id="p-na"></select></div>
+    <div class="fg"><label>Kwota</label><input type="number" id="p-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
+    <div class="fg"><label>Data</label><input type="date" id="p-data"></div>
+    <div class="fg"><label>Opis (opcjonalnie)</label><input type="text" id="p-opis" placeholder="np. wypłata z bankomatu, na oszczędności"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('m-przelew')">Anuluj</button>
+      <button class="btn-primary" onclick="savePrzelew()">Zapisz</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Wydatek cykliczny -->
+<div class="modal-backdrop" id="m-cykl">
+  <div class="modal-box">
+    <h3 id="m-cykl-title">Nowy wydatek cykliczny</h3>
+    <div class="fg"><label>Nazwa</label><input type="text" id="c-nazwa" placeholder="np. Netflix, Spotify, siłownia"></div>
+    <div class="fg"><label>Kwota miesięczna</label><input type="number" id="c-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
+    <div class="fg"><label>Dzień miesiąca (naliczenie)</label><input type="number" id="c-dzien" min="1" max="31" value="1"></div>
+    <div class="fg"><label>Kategoria</label><select id="c-kat" onchange="refreshCyklSubkat()"></select></div>
+    <div class="fg"><label>Podkategoria</label><select id="c-subkat"></select></div>
+    <div class="fg"><label>Osoba</label><select id="c-osoba"></select></div>
+    <div class="fg"><label>Konto</label><select id="c-konto"></select></div>
+    <div class="fg" id="c-od-wrap"><label>Naliczaj od miesiąca</label><input type="month" id="c-od"></div>
+    <div class="fg" id="c-aktywne-wrap" style="display:none">
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:14px;font-weight:500;color:#333">
+        <input type="checkbox" id="c-aktywne" style="width:auto"> Aktywny (odznacz, by wstrzymać naliczanie)
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('m-cykl')">Anuluj</button>
+      <button class="btn-primary" onclick="saveCykl()">Zapisz</button>
     </div>
   </div>
 </div>
@@ -236,6 +296,7 @@ function renderKonta() {
       <div class="konto-waluta">${k.waluta}</div>
       <div class="konto-btns">
         <button class="btn-wplyw" onclick="openWplyw(${k.id})">+ Wpływ</button>
+        <button class="btn-przelew" onclick="openPrzelew(${k.id})">⇄ Przelew</button>
         <button class="btn-inwent" onclick="openModalInwent(${k.id},'${esc(k.nazwa)}')">Inw.</button>
         <button class="btn-hist" onclick="showHistoria(${k.id},'${esc(k.nazwa)}')">Historia</button>
         <button class="btn-star ${isDomyslne ? 'active' : ''}" onclick="toggleDomyslne(${k.id})" title="${isDomyslne ? 'Usuń jako domyślne' : 'Ustaw jako moje domyślne'}">★</button>
@@ -343,6 +404,165 @@ async function saveWplyw() {
   if (activeKontoId === body.konto_id) await loadHistoria();
 }
 
+// --- Przelewy ---
+function refreshPrzelewNa() {
+  const zId = parseInt(document.getElementById('p-z').value);
+  const zKonto = konta.find(k => k.id === zId);
+  const sel = document.getElementById('p-na');
+  const opcje = konta.filter(k => k.id !== zId && zKonto && k.waluta === zKonto.waluta);
+  sel.innerHTML = opcje.length
+    ? opcje.map(k => `<option value="${k.id}">${k.nazwa} (${k.waluta})</option>`).join('')
+    : '<option value="">— brak konta w tej samej walucie —</option>';
+}
+
+function openPrzelew(kontoZId) {
+  document.getElementById('p-z').innerHTML =
+    konta.map(k => `<option value="${k.id}"${k.id === kontoZId ? ' selected' : ''}>${k.nazwa} (${k.waluta})</option>`).join('');
+  refreshPrzelewNa();
+  document.getElementById('p-kwota').value = '';
+  document.getElementById('p-data').value = new Date().toISOString().slice(0,10);
+  document.getElementById('p-opis').value = '';
+  openModal('m-przelew');
+}
+
+async function savePrzelew() {
+  const body = {
+    konto_z_id: parseInt(document.getElementById('p-z').value),
+    konto_na_id: parseInt(document.getElementById('p-na').value) || null,
+    kwota: parseFloat(document.getElementById('p-kwota').value),
+    data: document.getElementById('p-data').value,
+    opis: document.getElementById('p-opis').value.trim() || null,
+  };
+  if (!body.konto_na_id) { alert('Brak konta docelowego w tej samej walucie.'); return; }
+  if (!body.data || isNaN(body.kwota) || body.kwota <= 0) { alert('Wypełnij datę i kwotę.'); return; }
+  const res = await authFetch('/api/przelewy', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    alert(e.detail || 'Nie udało się zapisać przelewu.');
+    return;
+  }
+  closeModal('m-przelew');
+  await loadKonta();
+  if (activeKontoId) await loadHistoria();
+}
+
+async function delPrzelew(id) {
+  if (!confirm('Usunąć ten przelew? Zniknie z historii obu kont, a salda zostaną przeliczone.')) return;
+  await authFetch(`/api/przelewy/${id}`, { method:'DELETE' });
+  await loadKonta();
+  if (activeKontoId) await loadHistoria();
+}
+
+// --- Wydatki cykliczne ---
+let cykliczne = [];
+let editCyklId = null;
+let HIERARCHIA = {};
+
+async function loadCykliczne() {
+  cykliczne = await authFetch('/api/cykliczne').then(r => r.json());
+  renderCykliczne();
+}
+
+function renderCykliczne() {
+  const el = document.getElementById('cykl-content');
+  if (!cykliczne.length) { el.innerHTML = '<p class="empty-hint">Brak wydatków cyklicznych — dodaj np. subskrypcję Netflixa czy abonament na siłownię.</p>'; return; }
+  el.innerHTML = cykliczne.map(c => `
+    <div class="cykl-row ${c.aktywne ? '' : 'nieaktywny'}">
+      <div>
+        <div class="cykl-nazwa">${c.nazwa}${c.aktywne ? '' : ' <span style="font-size:11px;color:#c62828">(wstrzymany)</span>'}</div>
+        <div class="cykl-meta">co miesiąc, ${c.dzien}. dnia · ${c.kategoria_glowna} / ${c.kategoria} · ${c.osoba}${c.konto_nazwa ? ' · ' + c.konto_nazwa : ''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="cykl-kwota">${fmt(c.kwota)} zł/mies.</span>
+        <div class="cykl-btns">
+          <button style="background:#f5f5f5;color:#555" onclick="editCykl(${c.id})" title="Edytuj">✏</button>
+          <button style="background:#fde8e8;color:#c62828" onclick="delCykl(${c.id},'${esc(c.nazwa)}')" title="Usuń">✕</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function fillCyklSelects(c) {
+  const katSel = document.getElementById('c-kat');
+  katSel.innerHTML = Object.keys(HIERARCHIA).map(g => `<option value="${g}">${g}</option>`).join('');
+  katSel.value = (c && HIERARCHIA[c.kategoria_glowna] !== undefined) ? c.kategoria_glowna
+    : (HIERARCHIA['Rozrywka i hobby'] !== undefined ? 'Rozrywka i hobby' : Object.keys(HIERARCHIA)[0]);
+  refreshCyklSubkat();
+  if (c && c.kategoria) document.getElementById('c-subkat').value = c.kategoria;
+  const osobaSel = document.getElementById('c-osoba');
+  osobaSel.innerHTML = osobyOpcje.map(o => `<option value="${o}">${o}</option>`).join('');
+  if (c && c.osoba) osobaSel.value = c.osoba;
+  const kontoSel = document.getElementById('c-konto');
+  kontoSel.innerHTML = '<option value="">— brak przypisania —</option>' +
+    konta.map(k => `<option value="${k.id}">${k.nazwa} (${k.waluta})</option>`).join('');
+  if (c && c.konto_id) kontoSel.value = c.konto_id;
+}
+
+function refreshCyklSubkat() {
+  const g = document.getElementById('c-kat').value;
+  const subs = HIERARCHIA[g] || [];
+  document.getElementById('c-subkat').innerHTML = subs.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+function openAddCykl() {
+  editCyklId = null;
+  document.getElementById('m-cykl-title').textContent = 'Nowy wydatek cykliczny';
+  document.getElementById('c-nazwa').value = '';
+  document.getElementById('c-kwota').value = '';
+  document.getElementById('c-dzien').value = '1';
+  document.getElementById('c-od').value = new Date().toISOString().slice(0,7);
+  document.getElementById('c-od-wrap').style.display = '';
+  document.getElementById('c-aktywne-wrap').style.display = 'none';
+  fillCyklSelects(null);
+  openModal('m-cykl');
+}
+
+function editCykl(id) {
+  const c = cykliczne.find(x => x.id === id);
+  if (!c) return;
+  editCyklId = id;
+  document.getElementById('m-cykl-title').textContent = 'Edytuj wydatek cykliczny';
+  document.getElementById('c-nazwa').value = c.nazwa;
+  document.getElementById('c-kwota').value = parseFloat(c.kwota);
+  document.getElementById('c-dzien').value = c.dzien;
+  document.getElementById('c-od-wrap').style.display = 'none';
+  document.getElementById('c-aktywne-wrap').style.display = '';
+  document.getElementById('c-aktywne').checked = !!c.aktywne;
+  fillCyklSelects(c);
+  openModal('m-cykl');
+}
+
+async function saveCykl() {
+  const body = {
+    nazwa: document.getElementById('c-nazwa').value.trim(),
+    kwota: parseFloat(document.getElementById('c-kwota').value),
+    dzien: parseInt(document.getElementById('c-dzien').value),
+    kategoria_glowna: document.getElementById('c-kat').value,
+    kategoria: document.getElementById('c-subkat').value,
+    osoba: document.getElementById('c-osoba').value,
+    konto_id: parseInt(document.getElementById('c-konto').value) || null,
+    aktywne: editCyklId ? document.getElementById('c-aktywne').checked : true,
+  };
+  if (!editCyklId) body.od_miesiaca = document.getElementById('c-od').value;
+  if (!body.nazwa || isNaN(body.kwota) || body.kwota <= 0) { alert('Podaj nazwę i kwotę.'); return; }
+  if (isNaN(body.dzien) || body.dzien < 1 || body.dzien > 31) { alert('Dzień miesiąca: 1-31.'); return; }
+  const url = editCyklId ? `/api/cykliczne/${editCyklId}` : '/api/cykliczne';
+  const res = await authFetch(url, { method: editCyklId ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    alert(e.detail || 'Nie udało się zapisać.');
+    return;
+  }
+  closeModal('m-cykl');
+  await Promise.all([loadCykliczne(), loadKonta()]);
+}
+
+async function delCykl(id, nazwa) {
+  if (!confirm(`Usunąć wydatek cykliczny „${nazwa}"?\n\nJuż naliczone wydatki pozostaną — przestaną się tylko tworzyć nowe.`)) return;
+  await authFetch(`/api/cykliczne/${id}`, { method:'DELETE' });
+  await loadCykliczne();
+}
+
 // --- Historia ---
 async function showHistoria(kontoId, nazwa) {
   activeKontoId = kontoId;
@@ -360,12 +580,16 @@ async function loadHistoria() {
   if (!data.length) { el.innerHTML = '<p class="empty-hint">Brak transakcji w tym okresie</p>'; return; }
   el.innerHTML = data.map(t => {
     const plus = t.kwota > 0;
+    const typLabel = t.typ === 'wplyw' ? 'wpływ' : t.typ === 'przelew' ? 'przelew' : 'wydatek';
     return `<div class="tx-row">
       <div>
         <div class="tx-opis">${t.opis || '—'}</div>
-        <div class="tx-meta">${fmtDate(t.data)}${t.osoba ? ' · ' + t.osoba : ''} · ${t.typ === 'wplyw' ? 'wpływ' : 'wydatek'}</div>
+        <div class="tx-meta">${fmtDate(t.data)}${t.osoba ? ' · ' + t.osoba : ''} · ${typLabel}</div>
       </div>
-      <div class="tx-kwota ${plus?'plus':'minus'}">${plus?'+':''}${fmt(t.kwota)}</div>
+      <div style="display:flex;align-items:center">
+        <div class="tx-kwota ${plus?'plus':'minus'}">${plus?'+':''}${fmt(t.kwota)}</div>
+        ${t.typ === 'przelew' ? `<button class="tx-del" onclick="delPrzelew(${t.id})" title="Usuń przelew">✕</button>` : ''}
+      </div>
     </div>`;
   }).join('');
 }
@@ -436,11 +660,13 @@ function closePanelInwent() {
 }
 
 authRequireHousehold().then(async () => {
-  const [hh, def] = await Promise.all([
+  const [hh, def, hier] = await Promise.all([
     authFetch('/api/household').then(r => r.json()),
     authFetch('/api/me/konto-domyslne').then(r => r.json()),
+    authFetch('/api/kategorie').then(r => r.json()),
   ]);
   myDefaultKontoId = def.konto_id || null;
+  HIERARCHIA = hier || {};
   osobyOpcje = [
     ...(hh.members || []).map(m => m.display_name || m.name),
     ...(hh.virtual_members || []).map(m => m.name),
@@ -448,6 +674,7 @@ authRequireHousehold().then(async () => {
   fillOsobaSelect();
   await loadKonta();
   refreshWKontoSelect();
+  await loadCykliczne();
 });
 </script>
 </body>
