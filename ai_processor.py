@@ -8,6 +8,15 @@ from datetime import date, timedelta
 import anthropic
 from PIL import Image
 
+
+class ObrazError(ValueError):
+    """Problem z przesłanym plikiem zdjęcia (zły format, pusty plik itp.)."""
+
+
+class RozpoznanieError(ValueError):
+    """Claude nie zwrócił danych możliwych do przetworzenia."""
+
+
 # Hierarchia: kategoria_glowna → [podkategorie]
 KATEGORIE_HIERARCHIA: dict[str, list[str]] = {
     "Spożywcze": [
@@ -176,9 +185,10 @@ WALUTA:
 - Podaj ceny w ORYGINALNEJ walucie paragonu — system sam przeliczy na PLN
 
 DATY:
-- Format na polskich paragonach: DD-MM-YYYY lub DD.MM.YYYY
-- Zamień na YYYY-MM-DD
-- Jeśli nieczytelna: {date.today().isoformat()}
+- DZISIAJ JEST {date.today().isoformat()} (rok {date.today().year})
+- Format na polskich paragonach: DD-MM-YYYY lub DD.MM.YYYY → zamień na YYYY-MM-DD
+- Jeśli podano dzień i miesiąc BEZ roku (np. "07.07", "18.06") → zawsze użyj bieżącego roku: {date.today().year}
+- Jeśli data jest nieczytelna lub jej brak: {date.today().isoformat()}
 
 NOTATKI TEKSTOWE:
 - Każdy wpis z inną datą = osobny obiekt na liście
@@ -200,11 +210,46 @@ Kieruj się nazwą produktu i sklepem. Jeśli nie wiesz — użyj "Inne"/"Inne".
 
 
 # Globalne helpery dla domyślnej hierarchii (cache — nie przeliczaj przy każdym wywołaniu)
+# Uwaga: system prompt NIE jest cache'owany, bo zawiera dzisiejszą datę.
 WSZYSTKIE_PODKATEGORIE, SUB_DO_GLOWNEJ, _LISTA_PROMPT = _hier_helpers(KATEGORIE_HIERARCHIA)
-SYSTEM_PROMPT = _build_system_prompt(_LISTA_PROMPT)
 _REKAT_PROMPT = _build_rekat_prompt(_LISTA_PROMPT)
 
+
+def _system_prompt_for(hierarchia: dict | None) -> str:
+    lista = _hier_helpers(hierarchia)[2] if hierarchia else _LISTA_PROMPT
+    return _build_system_prompt(lista)
+
 MAX_BYTES = 4 * 1024 * 1024
+
+# Formaty akceptowane przez Claude API
+_OBSLUGIWANE_FORMATY = {"JPEG": "image/jpeg", "PNG": "image/png", "GIF": "image/gif", "WEBP": "image/webp"}
+
+
+def prepare_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> tuple[bytes, str]:
+    """Waliduje i przygotowuje zdjęcie do wysłania do Claude.
+
+    Zgłasza ObrazError z czytelnym komunikatem, gdy plik nie jest obsługiwanym zdjęciem.
+    Formaty spoza listy Claude (BMP, TIFF...) konwertuje do JPEG.
+    """
+    if not image_bytes:
+        raise ObrazError("Przesłany plik jest pusty. Wybierz zdjęcie paragonu i spróbuj ponownie.")
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        img_format = img.format
+    except Exception:
+        raise ObrazError(
+            "Nie udało się odczytać pliku jako zdjęcia. Obsługiwane formaty: JPG, PNG, WebP, GIF. "
+            "Zdjęcia z iPhone'a (HEIC) zapisz jako JPG — w Ustawieniach aparatu wybierz "
+            "„Najbardziej zgodne” albo prześlij zdjęcie przez komunikator, który sam je skonwertuje."
+        )
+    if img_format in _OBSLUGIWANE_FORMATY:
+        return _compress_image(image_bytes, _OBSLUGIWANE_FORMATY[img_format])
+    # format czytelny dla PIL, ale nieobsługiwany przez Claude — konwertuj do JPEG
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=90)
+    return _compress_image(buf.getvalue(), "image/jpeg")
 
 
 def get_exchange_rate(currency: str, receipt_date: str) -> float:
@@ -292,9 +337,9 @@ def _usage(message) -> dict:
 def process_image(image_bytes: bytes, mime_type: str = "image/jpeg",
                   kontekst: str | None = None, hierarchia: dict | None = None) -> tuple[list[dict], dict]:
     hier = hierarchia or KATEGORIE_HIERARCHIA
-    system = _build_system_prompt(_hier_helpers(hier)[2]) if hierarchia else SYSTEM_PROMPT
+    system = _system_prompt_for(hierarchia)
     client = anthropic.Anthropic()
-    image_bytes, mime_type = _compress_image(image_bytes, mime_type)
+    image_bytes, mime_type = prepare_image(image_bytes, mime_type)
     image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
     message = client.messages.create(
         model="claude-sonnet-4-6",
@@ -313,7 +358,7 @@ def process_image(image_bytes: bytes, mime_type: str = "image/jpeg",
 
 def process_text(text: str, kontekst: str | None = None, hierarchia: dict | None = None) -> tuple[list[dict], dict]:
     hier = hierarchia or KATEGORIE_HIERARCHIA
-    system = _build_system_prompt(_hier_helpers(hier)[2]) if hierarchia else SYSTEM_PROMPT
+    system = _system_prompt_for(hierarchia)
     client = anthropic.Anthropic()
     message = client.messages.create(
         model="claude-sonnet-4-6",
@@ -332,9 +377,21 @@ def _parse_response(raw: str, hierarchia: dict | None = None) -> list[dict]:
         wszystkie, sub_do_glownej, _ = _hier_helpers(hier)
 
     cleaned = re.sub(r"```(?:json)?|```", "", raw).strip()
-    data = json.loads(cleaned)
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        raise RozpoznanieError(
+            "Claude nie rozpoznał paragonu — odpowiedź nie zawierała danych wydatku. "
+            "Upewnij się, że zdjęcie jest wyraźne, dobrze oświetlone i obejmuje cały paragon, "
+            "albo dodaj wskazówkę dla AI i spróbuj ponownie."
+        )
     if isinstance(data, dict):
         data = [data]
+    if not data:
+        raise RozpoznanieError(
+            "Claude nie znalazł żadnego wydatku ani paragonu w przesłanych danych. "
+            "Sprawdź, czy na zdjęciu widać paragon (lub czy notatka zawiera kwoty) i spróbuj ponownie."
+        )
 
     today = date.today().isoformat()
     for item in data:

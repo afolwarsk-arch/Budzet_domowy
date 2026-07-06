@@ -258,6 +258,38 @@ def admin_create_invite(request: Request, body: dict, admin: dict = Depends(requ
 
 # --- AI processing ---
 
+import anthropic as _anthropic
+
+
+def _ai_http_error(e: Exception) -> HTTPException:
+    """Tłumaczy wyjątki z warstwy AI na czytelne dla użytkownika komunikaty HTTP."""
+    if isinstance(e, ai_processor.ObrazError):
+        return HTTPException(status_code=400, detail=str(e))
+    if isinstance(e, ai_processor.RozpoznanieError):
+        return HTTPException(status_code=422, detail=str(e))
+    if isinstance(e, _anthropic.AuthenticationError):
+        return HTTPException(status_code=502, detail=(
+            "Błąd konfiguracji serwera — nieprawidłowy klucz Claude API. "
+            "Skontaktuj się z administratorem."))
+    if isinstance(e, _anthropic.RateLimitError):
+        return HTTPException(status_code=503, detail=(
+            "Zbyt wiele zapytań do Claude AI w krótkim czasie. "
+            "Odczekaj około minuty i spróbuj ponownie."))
+    if isinstance(e, _anthropic.BadRequestError):
+        return HTTPException(status_code=400, detail=(
+            "Claude AI odrzucił żądanie — najczęściej oznacza to uszkodzone lub "
+            "nieobsługiwane zdjęcie. Zapisz je jako JPG i wyślij ponownie."))
+    if isinstance(e, _anthropic.APIConnectionError):
+        return HTTPException(status_code=503, detail=(
+            "Brak połączenia z serwerami Claude AI. "
+            "Sprawdź połączenie z internetem i spróbuj ponownie."))
+    if isinstance(e, _anthropic.APIStatusError):
+        return HTTPException(status_code=503, detail=(
+            f"Serwery Claude AI są chwilowo niedostępne (kod {e.status_code}). "
+            "Spróbuj ponownie za kilka minut."))
+    return HTTPException(status_code=502, detail=f"Nieoczekiwany błąd analizy: {e}")
+
+
 @app.post("/api/process-image")
 async def process_image(
     file: UploadFile = File(...),
@@ -272,7 +304,7 @@ async def process_image(
     try:
         results, usage = await asyncio.to_thread(ai_processor.process_image, content, mime, kontekst or None, hier)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Błąd Claude API: {e}")
+        raise _ai_http_error(e)
     database.log_api_usage(hid, "process-image", usage["input_tokens"], usage["output_tokens"])
     for r in results:
         r["osoba"] = osoba
@@ -290,7 +322,7 @@ async def process_text(payload: dict, current_user: dict = Depends(get_current_u
     try:
         results, usage = await asyncio.to_thread(ai_processor.process_text, text, kontekst, hier)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Błąd Claude API: {e}")
+        raise _ai_http_error(e)
     database.log_api_usage(current_user["household_id"], "process-text", usage["input_tokens"], usage["output_tokens"])
     osoba = payload.get("osoba", "Adam")
     for r in results:
