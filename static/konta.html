@@ -213,6 +213,7 @@
     <div class="fg"><label>Nazwa</label><input type="text" id="c-nazwa" placeholder="np. Netflix, Spotify, siłownia"></div>
     <div class="fg"><label>Kwota miesięczna</label><input type="number" id="c-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
     <div class="fg"><label>Dzień miesiąca (naliczenie)</label><input type="number" id="c-dzien" min="1" max="31" value="1"></div>
+    <div class="fg"><label>Liczba naliczeń (puste = bezterminowo)</label><input type="number" id="c-limit" min="1" step="1" placeholder="np. 10 przy zakupie na raty"></div>
     <div class="fg"><label>Kategoria</label><select id="c-kat" onchange="refreshCyklSubkat()"></select></div>
     <div class="fg"><label>Podkategoria</label><select id="c-subkat"></select></div>
     <div class="fg"><label>Osoba</label><select id="c-osoba"></select></div>
@@ -466,14 +467,26 @@ async function loadCykliczne() {
   renderCykliczne();
 }
 
+function liczbaNaliczen(c) {
+  if (!c.ostatnio_do) return 0;
+  const ym = s => { const [y, m] = s.slice(0, 7).split('-').map(Number); return y * 12 + m; };
+  return ym(c.ostatnio_do) - ym(c.od_miesiaca) + 1;
+}
+
 function renderCykliczne() {
   const el = document.getElementById('cykl-content');
   if (!cykliczne.length) { el.innerHTML = '<p class="empty-hint">Brak wydatków cyklicznych — dodaj np. subskrypcję Netflixa czy abonament na siłownię.</p>'; return; }
-  el.innerHTML = cykliczne.map(c => `
+  el.innerHTML = cykliczne.map(c => {
+    const nal = liczbaNaliczen(c);
+    const zakonczony = c.limit_naliczen && nal >= c.limit_naliczen;
+    const badge = zakonczony ? ' <span style="font-size:11px;color:#2e7d32">(zakończony)</span>'
+      : (c.aktywne ? '' : ' <span style="font-size:11px;color:#c62828">(wstrzymany)</span>');
+    const raty = c.limit_naliczen ? ` · rata ${Math.min(nal, c.limit_naliczen)}/${c.limit_naliczen}` : '';
+    return `
     <div class="cykl-row ${c.aktywne ? '' : 'nieaktywny'}">
       <div>
-        <div class="cykl-nazwa">${c.nazwa}${c.aktywne ? '' : ' <span style="font-size:11px;color:#c62828">(wstrzymany)</span>'}</div>
-        <div class="cykl-meta">co miesiąc, ${c.dzien}. dnia · ${c.kategoria_glowna} / ${c.kategoria} · ${c.osoba}${c.konto_nazwa ? ' · ' + c.konto_nazwa : ''}</div>
+        <div class="cykl-nazwa">${c.nazwa}${badge}</div>
+        <div class="cykl-meta">co miesiąc, ${c.dzien}. dnia${raty} · ${c.kategoria_glowna} / ${c.kategoria} · ${c.osoba}${c.konto_nazwa ? ' · ' + c.konto_nazwa : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <span class="cykl-kwota">${fmt(c.kwota)} zł/mies.</span>
@@ -482,7 +495,8 @@ function renderCykliczne() {
           <button style="background:#fde8e8;color:#c62828" onclick="delCykl(${c.id},'${esc(c.nazwa)}')" title="Usuń">✕</button>
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function fillCyklSelects(c) {
@@ -513,6 +527,7 @@ function openAddCykl() {
   document.getElementById('c-nazwa').value = '';
   document.getElementById('c-kwota').value = '';
   document.getElementById('c-dzien').value = '1';
+  document.getElementById('c-limit').value = '';
   document.getElementById('c-od').value = new Date().toISOString().slice(0,7);
   document.getElementById('c-od-wrap').style.display = '';
   document.getElementById('c-aktywne-wrap').style.display = 'none';
@@ -528,6 +543,7 @@ function editCykl(id) {
   document.getElementById('c-nazwa').value = c.nazwa;
   document.getElementById('c-kwota').value = parseFloat(c.kwota);
   document.getElementById('c-dzien').value = c.dzien;
+  document.getElementById('c-limit').value = c.limit_naliczen || '';
   document.getElementById('c-od-wrap').style.display = 'none';
   document.getElementById('c-aktywne-wrap').style.display = '';
   document.getElementById('c-aktywne').checked = !!c.aktywne;
@@ -545,10 +561,12 @@ async function saveCykl() {
     osoba: document.getElementById('c-osoba').value,
     konto_id: parseInt(document.getElementById('c-konto').value) || null,
     aktywne: editCyklId ? document.getElementById('c-aktywne').checked : true,
+    limit_naliczen: parseInt(document.getElementById('c-limit').value) || null,
   };
   if (!editCyklId) body.od_miesiaca = document.getElementById('c-od').value;
   if (!body.nazwa || isNaN(body.kwota) || body.kwota <= 0) { alert('Podaj nazwę i kwotę.'); return; }
   if (isNaN(body.dzien) || body.dzien < 1 || body.dzien > 31) { alert('Dzień miesiąca: 1-31.'); return; }
+  if (body.limit_naliczen !== null && body.limit_naliczen < 1) { alert('Liczba naliczeń musi być większa od zera.'); return; }
   const url = editCyklId ? `/api/cykliczne/${editCyklId}` : '/api/cykliczne';
   const res = await authFetch(url, { method: editCyklId ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
   if (!res.ok) {

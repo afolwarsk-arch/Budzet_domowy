@@ -141,6 +141,7 @@ SCHEMA_STATEMENTS = [
         osoba            TEXT NOT NULL,
         konto_id         INTEGER REFERENCES konta(id) ON DELETE SET NULL,
         od_miesiaca      DATE NOT NULL,
+        limit_naliczen   INTEGER,
         aktywne          BOOLEAN NOT NULL DEFAULT TRUE,
         ostatnio_do      DATE,
         created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -223,6 +224,7 @@ def init_db():
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS kontekst_podkategoria TEXT")
         cur.execute("ALTER TABLE pozycje ADD COLUMN IF NOT EXISTS poza_kontekstem BOOLEAN NOT NULL DEFAULT FALSE")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS konto_id INTEGER REFERENCES konta(id) ON DELETE SET NULL")
+        cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS limit_naliczen INTEGER")
         for stara, (glowna, sub) in _MIGRACJA_MAP.items():
             cur.execute(
                 "UPDATE pozycje SET kategoria_glowna=%s, kategoria=%s WHERE kategoria=%s",
@@ -1025,26 +1027,30 @@ def get_cykliczne(household_id: int) -> list[dict]:
 
 def create_cykliczny(household_id: int, nazwa: str, kwota: float, dzien: int,
                      kategoria_glowna: str, kategoria: str, osoba: str,
-                     konto_id: int | None, od_miesiaca: str) -> dict:
+                     konto_id: int | None, od_miesiaca: str,
+                     limit_naliczen: int | None = None) -> dict:
     with get_db() as cur:
         cur.execute(
             """INSERT INTO wydatki_cykliczne
-               (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id, od_miesiaca)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
-            (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None, od_miesiaca),
+               (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id, od_miesiaca, limit_naliczen)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+            (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None,
+             od_miesiaca, limit_naliczen),
         )
         return dict(cur.fetchone())
 
 
 def update_cykliczny(cykliczny_id: int, household_id: int, nazwa: str, kwota: float,
                      dzien: int, kategoria_glowna: str, kategoria: str, osoba: str,
-                     konto_id: int | None, aktywne: bool) -> bool:
+                     konto_id: int | None, aktywne: bool,
+                     limit_naliczen: int | None = None) -> bool:
     with get_db() as cur:
         cur.execute(
             """UPDATE wydatki_cykliczne SET nazwa=%s, kwota=%s, dzien=%s, kategoria_glowna=%s,
-               kategoria=%s, osoba=%s, konto_id=%s, aktywne=%s WHERE id=%s AND household_id=%s""",
+               kategoria=%s, osoba=%s, konto_id=%s, aktywne=%s, limit_naliczen=%s
+               WHERE id=%s AND household_id=%s""",
             (nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None,
-             aktywne, cykliczny_id, household_id),
+             aktywne, limit_naliczen, cykliczny_id, household_id),
         )
         return cur.rowcount > 0
 
@@ -1075,6 +1081,19 @@ def _terminy_cykliczne(od_miesiaca, dzien: int, po, do_dnia) -> list:
     return terminy
 
 
+def _ostatni_termin(od_miesiaca, dzien: int, limit_naliczen) -> "date | None":
+    """Data ostatniego naliczenia przy ograniczonej liczbie naliczeń (None = bezterminowo)."""
+    if not limit_naliczen:
+        return None
+    import calendar
+    from datetime import date as _date
+    mies0 = od_miesiaca.year * 12 + (od_miesiaca.month - 1) + limit_naliczen - 1
+    rok, mies = divmod(mies0, 12)
+    mies += 1
+    ostatni = calendar.monthrange(rok, mies)[1]
+    return _date(rok, mies, min(dzien, ostatni))
+
+
 def naliczaj_cykliczne(household_id: int) -> int:
     """Tworzy wydatki za zaległe terminy wszystkich aktywnych wydatków cyklicznych.
     Zwraca liczbę utworzonych wydatków. Bezpieczne przy równoległych wywołaniach
@@ -1087,14 +1106,21 @@ def naliczaj_cykliczne(household_id: int) -> int:
         cykliczne = [dict(r) for r in cur.fetchall()]
 
     for c in cykliczne:
-        terminy = _terminy_cykliczne(c["od_miesiaca"], c["dzien"], c["ostatnio_do"], today)
+        ostatni_termin = _ostatni_termin(c["od_miesiaca"], c["dzien"], c.get("limit_naliczen"))
+        do_dnia = min(today, ostatni_termin) if ostatni_termin else today
+        terminy = _terminy_cykliczne(c["od_miesiaca"], c["dzien"], c["ostatnio_do"], do_dnia)
         if not terminy:
+            # limit osiągnięty już wcześniej (np. zmniejszony w edycji) — zakończ
+            if ostatni_termin and c["ostatnio_do"] and c["ostatnio_do"] >= ostatni_termin:
+                with get_db() as cur:
+                    cur.execute("UPDATE wydatki_cykliczne SET aktywne=FALSE WHERE id=%s", (c["id"],))
             continue
+        zakonczony = ostatni_termin is not None and terminy[-1] >= ostatni_termin
         with get_db() as cur:
             # claim: tylko jeden proces naliczy ten zakres
             cur.execute(
-                "UPDATE wydatki_cykliczne SET ostatnio_do=%s WHERE id=%s AND ostatnio_do IS NOT DISTINCT FROM %s",
-                (terminy[-1], c["id"], c["ostatnio_do"]),
+                "UPDATE wydatki_cykliczne SET ostatnio_do=%s, aktywne=%s WHERE id=%s AND ostatnio_do IS NOT DISTINCT FROM %s",
+                (terminy[-1], not zakonczony, c["id"], c["ostatnio_do"]),
             )
             if cur.rowcount == 0:
                 continue

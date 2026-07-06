@@ -738,6 +738,7 @@ class CyklicznyIn(BaseModel):
     konto_id: int | None = None
     od_miesiaca: str | None = None
     aktywne: bool = True
+    limit_naliczen: int | None = None
 
 
 @app.get("/api/cykliczne")
@@ -753,12 +754,15 @@ def api_create_cykliczny(body: CyklicznyIn, current_user: dict = Depends(get_cur
         raise HTTPException(400, "Kwota musi być większa od zera")
     if not 1 <= body.dzien <= 31:
         raise HTTPException(400, "Dzień miesiąca musi być z zakresu 1-31")
+    if body.limit_naliczen is not None and body.limit_naliczen < 1:
+        raise HTTPException(400, "Liczba naliczeń musi być większa od zera")
     from datetime import date as _date
     od = body.od_miesiaca or _date.today().strftime("%Y-%m")
     od_data = f"{od}-01" if len(od) == 7 else od
     wynik = database.create_cykliczny(current_user["household_id"], body.nazwa.strip(),
                                       body.kwota, body.dzien, body.kategoria_glowna,
-                                      body.kategoria, body.osoba, body.konto_id, od_data)
+                                      body.kategoria, body.osoba, body.konto_id, od_data,
+                                      body.limit_naliczen)
     database.naliczaj_cykliczne(current_user["household_id"])
     return wynik
 
@@ -768,10 +772,12 @@ def api_update_cykliczny(cykliczny_id: int, body: CyklicznyIn,
                          current_user: dict = Depends(get_current_user)):
     if not 1 <= body.dzien <= 31:
         raise HTTPException(400, "Dzień miesiąca musi być z zakresu 1-31")
+    if body.limit_naliczen is not None and body.limit_naliczen < 1:
+        raise HTTPException(400, "Liczba naliczeń musi być większa od zera")
     ok = database.update_cykliczny(cykliczny_id, current_user["household_id"],
                                    body.nazwa.strip(), body.kwota, body.dzien,
                                    body.kategoria_glowna, body.kategoria, body.osoba,
-                                   body.konto_id, body.aktywne)
+                                   body.konto_id, body.aktywne, body.limit_naliczen)
     if not ok:
         raise HTTPException(404, "Nie znaleziono")
     return {"ok": True}
