@@ -8,6 +8,7 @@ venv/
 *.jpg
 *.jpeg
 *.png
+!static/icon-*.png
 *.url
 firebase-service-account.json
 _*.txt
