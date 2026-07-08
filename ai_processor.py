@@ -380,7 +380,9 @@ Zasady:
 - Odwołuj się do konkretnych liczb z danych (nazwy produktów, częstotliwość, kwoty). Zamiast "ogranicz jedzenie na mieście" napisz "kawa na mieście: 14 zakupów, średnio 18 zł, razem 252 zł/mies".
 - Zwracaj uwagę na: częste drobne zakupy, które się sumują; abonamenty i subskrypcje (łatwe oszczędności); kategorie rosnące z miesiąca na miesiąc; wydatki nietypowo wysokie w danym miesiącu.
 - Rekomendacje muszą mieć realny szacunek oszczędności miesięcznej (oszczednosc_mies) i ocenę trudności.
-- Wydatki z listy wydatki_okazjonalne (urodziny, święta, imprezy) to zdarzenia JEDNORAZOWE — nie wyciągaj z nich nawyków ani miesięcznych rekomendacji oszczędności; możesz je co najwyżej odnotować w obserwacjach jako koszt jednorazowy. Kategorie w danych są już skorygowane o kontekst takich wydarzeń.
+- Wydatki z listy wydatki_okazjonalne (urodziny, święta, imprezy) to zdarzenia JEDNORAZOWE — nie wyciągaj z nich nawyków ani miesięcznych rekomendacji oszczędności; możesz je co najwyżej odnotować w obserwacjach jako koszt jednorazowy. Produkty z takich zakupów są celowo wyłączone z listy top_produkty.
+- NIE kwestionuj kategoryzacji wydatków — kategorie w danych są kontekstowe i przypisane świadomie przez użytkownika (np. zakupy na przyjęcie dziecka mogą celowo być w kategorii dziecka). Błędna kategoryzacja nie jest tematem tej analizy.
+- Nie powtarzaj tego samego tematu w kilku sekcjach: jeden temat = jedno miejsce (rekomendacja, jeśli jest z tym związana akcja; w przeciwnym razie obserwacja). Trendy dotyczą wyłącznie zmian kategorii w czasie.
 - Nie wymyślaj danych, których nie ma. Jeśli danych jest mało, powiedz to wprost w podsumowaniu.
 - Pisz po polsku, rzeczowo, bez lania wody. Kwoty jako liczby (bez "zł" w polach liczbowych).
 

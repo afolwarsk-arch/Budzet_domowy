@@ -641,13 +641,15 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
         """, (household_id, od))
         wplywy_miesiace = [dict(r) for r in cur.fetchall()]
 
-        # top produkty grupowane po nazwie — tu siedzą realne odkrycia
+        # top produkty grupowane po nazwie — tu siedzą realne odkrycia;
+        # bez paragonów okazjonalnych (roczek, święta) — to nie nawyki,
+        # ich suma trafia do modelu przez agregat wydatki_okazjonalne
         cur.execute(f"""
             SELECT MIN(p.nazwa) AS nazwa, {_KAT} AS kategoria,
                    COUNT(*) AS ile, ROUND(CAST(SUM(p.cena*p.ilosc) AS numeric),2) AS suma,
                    ROUND(CAST(AVG(p.cena) AS numeric),2) AS srednia_cena
             FROM pozycje p JOIN wydatki w ON w.id=p.wydatek_id
-            WHERE w.household_id=%s AND w.data>=%s
+            WHERE w.household_id=%s AND w.data>=%s AND (w.okazja IS NULL OR w.okazja = '')
             GROUP BY LOWER(p.nazwa), {_KAT}
             HAVING SUM(p.cena*p.ilosc) > 0
             ORDER BY suma DESC LIMIT 50
