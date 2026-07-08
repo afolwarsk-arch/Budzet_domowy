@@ -604,7 +604,8 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
                    ROUND(CAST(SUM(p.cena*p.ilosc) AS numeric),2) AS suma
             FROM pozycje p JOIN wydatki w ON w.id=p.wydatek_id
             WHERE w.household_id=%s AND w.data>=%s
-            GROUP BY miesiac, kategoria ORDER BY miesiac, suma DESC
+            GROUP BY TO_CHAR(w.data,'YYYY-MM'), p.kategoria_glowna
+            ORDER BY miesiac, suma DESC
         """, (household_id, od))
         kat_miesiace = [dict(r) for r in cur.fetchall()]
 
@@ -613,7 +614,7 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
             SELECT TO_CHAR(w.data,'YYYY-MM') AS miesiac,
                    ROUND(CAST(SUM(w.suma) AS numeric),2) AS suma
             FROM wydatki w WHERE w.household_id=%s AND w.data>=%s
-            GROUP BY miesiac ORDER BY miesiac
+            GROUP BY TO_CHAR(w.data,'YYYY-MM') ORDER BY miesiac
         """, (household_id, od))
         wydatki_miesiace = [dict(r) for r in cur.fetchall()]
 
@@ -622,7 +623,7 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
             SELECT TO_CHAR(w.data,'YYYY-MM') AS miesiac,
                    ROUND(CAST(SUM(w.kwota) AS numeric),2) AS suma
             FROM wplywy w WHERE w.household_id=%s AND w.data>=%s
-            GROUP BY miesiac ORDER BY miesiac
+            GROUP BY TO_CHAR(w.data,'YYYY-MM') ORDER BY miesiac
         """, (household_id, od))
         wplywy_miesiace = [dict(r) for r in cur.fetchall()]
 

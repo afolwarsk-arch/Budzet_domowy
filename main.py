@@ -555,7 +555,10 @@ def generuj_analiza_raport(body: RaportIn, current_user: dict = Depends(get_curr
     if not hid:
         raise HTTPException(400, "Brak gospodarstwa")
     miesiace = max(1, min(body.miesiace, 12))
-    dane = database.zbierz_dane_budzet(hid, miesiace)
+    try:
+        dane = database.zbierz_dane_budzet(hid, miesiace)
+    except Exception as e:
+        raise HTTPException(500, f"Błąd przygotowania danych do analizy: {e}")
     if not dane["wydatki_per_miesiac"]:
         raise HTTPException(400, "Za mało danych do analizy — dodaj najpierw kilka wydatków.")
     try:
