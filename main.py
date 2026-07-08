@@ -835,6 +835,31 @@ def api_create_przelew(body: PrzelewIn, current_user: dict = Depends(get_current
         raise HTTPException(400, str(e))
 
 
+@app.get("/api/przelewy/{przelew_id}")
+def api_get_przelew(przelew_id: int, current_user: dict = Depends(get_current_user)):
+    row = database.get_przelew(przelew_id, current_user["household_id"])
+    if not row:
+        raise HTTPException(404, "Przelew nie znaleziony")
+    return row
+
+
+@app.put("/api/przelewy/{przelew_id}")
+def api_update_przelew(przelew_id: int, body: PrzelewIn,
+                       current_user: dict = Depends(get_current_user)):
+    if body.kwota <= 0:
+        raise HTTPException(400, "Kwota przelewu musi być większa od zera")
+    if body.konto_z_id == body.konto_na_id:
+        raise HTTPException(400, "Konto źródłowe i docelowe muszą być różne")
+    try:
+        ok = database.update_przelew(przelew_id, current_user["household_id"], body.data,
+                                     body.kwota, body.konto_z_id, body.konto_na_id, body.opis)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not ok:
+        raise HTTPException(404, "Przelew nie znaleziony")
+    return {"ok": True}
+
+
 @app.delete("/api/przelewy/{przelew_id}")
 def api_delete_przelew(przelew_id: int, current_user: dict = Depends(get_current_user)):
     ok = database.delete_przelew(przelew_id, current_user["household_id"])
@@ -929,6 +954,18 @@ def api_get_wplywy(month: str | None = None, konto_id: int | None = None,
 def api_create_wplyw(body: WplywIn, current_user: dict = Depends(get_current_user)):
     return database.create_wplyw(current_user["household_id"], body.data, body.kwota,
                                  body.osoba, body.kategoria, body.opis, body.konto_id)
+
+
+@app.put("/api/wplywy/{wplyw_id}")
+def api_update_wplyw(wplyw_id: int, body: WplywIn,
+                     current_user: dict = Depends(get_current_user)):
+    if body.kwota <= 0:
+        raise HTTPException(400, "Kwota musi być większa od zera")
+    ok = database.update_wplyw(wplyw_id, current_user["household_id"], body.data, body.kwota,
+                               body.osoba, body.kategoria, body.opis, body.konto_id)
+    if not ok:
+        raise HTTPException(404, "Wpływ nie znaleziony")
+    return {"ok": True}
 
 
 @app.delete("/api/wplywy/{wplyw_id}")

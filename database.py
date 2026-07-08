@@ -919,6 +919,8 @@ def get_admin_stats() -> list[dict]:
                 MAX(w.created_at) AS last_wydatek,
                 COALESCE(MAX(au.calls), 0) AS api_calls,
                 COALESCE(MAX(au.cost_usd), 0) AS cost_usd,
+                COALESCE(MAX(au.analiza_calls), 0) AS analiza_calls,
+                COALESCE(MAX(au.analiza_cost_usd), 0) AS analiza_cost_usd,
                 COALESCE(MAX(au.last_call), NULL) AS last_api_call
             FROM households h
             LEFT JOIN memberships m ON m.household_id = h.id
@@ -928,6 +930,10 @@ def get_admin_stats() -> list[dict]:
                 SELECT household_id,
                        COUNT(*) AS calls,
                        ROUND(CAST(SUM(input_tokens * 3.0 + output_tokens * 15.0) / 1000000 AS numeric), 4) AS cost_usd,
+                       COUNT(*) FILTER (WHERE endpoint = 'analiza-raport') AS analiza_calls,
+                       ROUND(CAST(SUM(CASE WHEN endpoint = 'analiza-raport'
+                                           THEN input_tokens * 3.0 + output_tokens * 15.0
+                                           ELSE 0 END) / 1000000 AS numeric), 4) AS analiza_cost_usd,
                        MAX(created_at) AS last_call
                 FROM api_usage GROUP BY household_id
             ) au ON au.household_id = h.id
@@ -1102,6 +1108,19 @@ def create_wplyw(household_id: int, data: str, kwota: float, osoba: str | None,
         return dict(cur.fetchone())
 
 
+def update_wplyw(wplyw_id: int, household_id: int, data: str, kwota: float,
+                 osoba: str | None, kategoria: str, opis: str | None,
+                 konto_id: int | None) -> bool:
+    with get_db() as cur:
+        cur.execute(
+            """UPDATE wplywy SET data=%s, kwota=%s, osoba=%s, kategoria=%s, opis=%s, konto_id=%s
+               WHERE id=%s AND household_id=%s""",
+            (data, kwota, osoba or None, kategoria, opis or None, konto_id or None,
+             wplyw_id, household_id),
+        )
+        return cur.rowcount > 0
+
+
 def delete_wplyw(wplyw_id: int, household_id: int) -> bool:
     with get_db() as cur:
         cur.execute("DELETE FROM wplywy WHERE id=%s AND household_id=%s", (wplyw_id, household_id))
@@ -1188,6 +1207,32 @@ def create_przelew(household_id: int, data: str, kwota: float,
             (household_id, data, kwota, konto_z_id, konto_na_id, opis or None),
         )
         return dict(cur.fetchone())
+
+
+def get_przelew(przelew_id: int, household_id: int) -> dict | None:
+    with get_db() as cur:
+        cur.execute("SELECT * FROM przelewy WHERE id=%s AND household_id=%s",
+                    (przelew_id, household_id))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def update_przelew(przelew_id: int, household_id: int, data: str, kwota: float,
+                   konto_z_id: int, konto_na_id: int, opis: str | None) -> bool:
+    with get_db() as cur:
+        cur.execute("SELECT id, waluta FROM konta WHERE id IN (%s,%s) AND household_id=%s AND aktywne=TRUE",
+                    (konto_z_id, konto_na_id, household_id))
+        rows = {r["id"]: r for r in cur.fetchall()}
+        if konto_z_id not in rows or konto_na_id not in rows:
+            raise ValueError("Konto nie istnieje")
+        if rows[konto_z_id]["waluta"] != rows[konto_na_id]["waluta"]:
+            raise ValueError("Przelewy możliwe tylko między kontami w tej samej walucie")
+        cur.execute(
+            """UPDATE przelewy SET data=%s, kwota=%s, konto_z_id=%s, konto_na_id=%s, opis=%s
+               WHERE id=%s AND household_id=%s""",
+            (data, kwota, konto_z_id, konto_na_id, opis or None, przelew_id, household_id),
+        )
+        return cur.rowcount > 0
 
 
 def delete_przelew(przelew_id: int, household_id: int) -> bool:

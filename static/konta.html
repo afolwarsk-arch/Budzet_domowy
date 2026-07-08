@@ -168,7 +168,7 @@
 <!-- Modal: Wpływ -->
 <div class="modal-backdrop" id="m-wplyw">
   <div class="modal-box">
-    <h3>Nowy wpływ</h3>
+    <h3 id="m-wplyw-title">Nowy wpływ</h3>
     <div class="fg"><label>Data</label><input type="date" id="w-data"></div>
     <div class="fg"><label>Kwota</label><input type="number" id="w-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
     <div class="fg">
@@ -196,7 +196,7 @@
 <!-- Modal: Przelew -->
 <div class="modal-backdrop" id="m-przelew">
   <div class="modal-box">
-    <h3>Przelew między kontami</h3>
+    <h3 id="m-przelew-title">Przelew między kontami</h3>
     <div class="fg"><label>Z konta</label><select id="p-z" onchange="refreshPrzelewNa()"></select></div>
     <div class="fg"><label>Na konto</label><select id="p-na"></select></div>
     <div class="fg"><label>Kwota</label><input type="number" id="p-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
@@ -385,13 +385,32 @@ function refreshWKontoSelect(preferKontoId) {
     konta.map(k => `<option value="${k.id}"${k.id === preferKontoId?' selected':''}>${k.nazwa} (${k.waluta})</option>`).join('');
 }
 
+let editWplywId = null;
+
 function openWplyw(kontoId) {
+  editWplywId = null;
+  document.getElementById('m-wplyw-title').textContent = 'Nowy wpływ';
   document.getElementById('w-data').value = new Date().toISOString().slice(0,10);
   document.getElementById('w-kwota').value = '';
   document.getElementById('w-kat').value = 'Wynagrodzenie';
   document.getElementById('w-osoba').value = '';
   document.getElementById('w-opis').value = '';
   refreshWKontoSelect(kontoId);
+  openModal('m-wplyw');
+}
+
+async function editWplyw(id) {
+  const rows = await authFetch('/api/wplywy').then(r => r.json());
+  const w = rows.find(x => x.id === id);
+  if (!w) { alert('Nie znaleziono wpływu.'); return; }
+  editWplywId = id;
+  document.getElementById('m-wplyw-title').textContent = 'Edytuj wpływ';
+  document.getElementById('w-data').value = (w.data || '').slice(0,10);
+  document.getElementById('w-kwota').value = parseFloat(w.kwota);
+  document.getElementById('w-kat').value = w.kategoria || 'Inne';
+  document.getElementById('w-osoba').value = w.osoba || '';
+  document.getElementById('w-opis').value = w.opis || '';
+  refreshWKontoSelect(w.konto_id);
   openModal('m-wplyw');
 }
 
@@ -405,10 +424,23 @@ async function saveWplyw() {
     konto_id: parseInt(document.getElementById('w-konto').value) || null,
   };
   if (!body.data || isNaN(body.kwota) || body.kwota <= 0) { alert('Wypełnij datę i kwotę.'); return; }
-  await authFetch('/api/wplywy', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const url = editWplywId ? `/api/wplywy/${editWplywId}` : '/api/wplywy';
+  const res = await authFetch(url, { method: editWplywId ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    alert(e.detail || 'Nie udało się zapisać wpływu.');
+    return;
+  }
   closeModal('m-wplyw');
   await loadKonta();
-  if (activeKontoId === body.konto_id) await loadHistoria();
+  if (activeKontoId) await loadHistoria();
+}
+
+async function delWplyw(id) {
+  if (!confirm('Usunąć ten wpływ? Saldo konta zostanie przeliczone.')) return;
+  await authFetch(`/api/wplywy/${id}`, { method:'DELETE' });
+  await loadKonta();
+  if (activeKontoId) await loadHistoria();
 }
 
 // --- Przelewy ---
@@ -422,13 +454,33 @@ function refreshPrzelewNa() {
     : '<option value="">— brak konta w tej samej walucie —</option>';
 }
 
+let editPrzelewId = null;
+
 function openPrzelew(kontoZId) {
+  editPrzelewId = null;
+  document.getElementById('m-przelew-title').textContent = 'Przelew między kontami';
   document.getElementById('p-z').innerHTML =
     konta.map(k => `<option value="${k.id}"${k.id === kontoZId ? ' selected' : ''}>${k.nazwa} (${k.waluta})</option>`).join('');
   refreshPrzelewNa();
   document.getElementById('p-kwota').value = '';
   document.getElementById('p-data').value = new Date().toISOString().slice(0,10);
   document.getElementById('p-opis').value = '';
+  openModal('m-przelew');
+}
+
+async function editPrzelew(id) {
+  const res = await authFetch(`/api/przelewy/${id}`);
+  if (!res.ok) { alert('Nie znaleziono przelewu.'); return; }
+  const p = await res.json();
+  editPrzelewId = id;
+  document.getElementById('m-przelew-title').textContent = 'Edytuj przelew';
+  document.getElementById('p-z').innerHTML =
+    konta.map(k => `<option value="${k.id}"${k.id === p.konto_z_id ? ' selected' : ''}>${k.nazwa} (${k.waluta})</option>`).join('');
+  refreshPrzelewNa();
+  if (p.konto_na_id) document.getElementById('p-na').value = p.konto_na_id;
+  document.getElementById('p-kwota').value = parseFloat(p.kwota);
+  document.getElementById('p-data').value = (p.data || '').slice(0,10);
+  document.getElementById('p-opis').value = p.opis || '';
   openModal('m-przelew');
 }
 
@@ -442,7 +494,8 @@ async function savePrzelew() {
   };
   if (!body.konto_na_id) { alert('Brak konta docelowego w tej samej walucie.'); return; }
   if (!body.data || isNaN(body.kwota) || body.kwota <= 0) { alert('Wypełnij datę i kwotę.'); return; }
-  const res = await authFetch('/api/przelewy', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const url = editPrzelewId ? `/api/przelewy/${editPrzelewId}` : '/api/przelewy';
+  const res = await authFetch(url, { method: editPrzelewId ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
     alert(e.detail || 'Nie udało się zapisać przelewu.');
@@ -612,7 +665,9 @@ async function loadHistoria() {
       </div>
       <div style="display:flex;align-items:center">
         <div class="tx-kwota ${plus?'plus':'minus'}">${plus?'+':''}${fmt(t.kwota)}</div>
-        ${t.typ === 'przelew' ? `<button class="tx-del" onclick="delPrzelew(${t.id})" title="Usuń przelew">✕</button>` : ''}
+        ${t.typ === 'wydatek' ? `<button class="tx-del" onclick="location.href='/upload?edit=${t.id}'" title="Edytuj wydatek">✏</button>` : ''}
+        ${t.typ === 'wplyw' ? `<button class="tx-del" onclick="editWplyw(${t.id})" title="Edytuj wpływ">✏</button><button class="tx-del" onclick="delWplyw(${t.id})" title="Usuń wpływ">✕</button>` : ''}
+        ${t.typ === 'przelew' ? `<button class="tx-del" onclick="editPrzelew(${t.id})" title="Edytuj przelew">✏</button><button class="tx-del" onclick="delPrzelew(${t.id})" title="Usuń przelew">✕</button>` : ''}
       </div>
     </div>`;
   }).join('');

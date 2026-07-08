@@ -101,6 +101,7 @@ authRequireHousehold().then(async (me) => {
     }
 
     const totalCost = stats.reduce((s, r) => s + parseFloat(r.cost_usd || 0), 0);
+    const totalAnaliza = stats.reduce((s, r) => s + parseFloat(r.analiza_cost_usd || 0), 0);
     const totalWydatki = stats.reduce((s, r) => s + parseInt(r.wydatki_count || 0), 0);
     const totalCalls = stats.reduce((s, r) => s + parseInt(r.api_calls || 0), 0);
 
@@ -121,6 +122,7 @@ authRequireHousehold().then(async (me) => {
         <div class="card" style="flex:1;min-width:160px;text-align:center">
           <div style="font-size:1.6rem;font-weight:700;color:#4361ee">$${totalCost.toFixed(4)}</div>
           <div style="font-size:0.8rem;color:#888">Koszt API łącznie</div>
+          <div style="font-size:0.72rem;color:#aaa;margin-top:2px">wydatki $${(totalCost - totalAnaliza).toFixed(4)} · doradca $${totalAnaliza.toFixed(4)}</div>
         </div>
       </div>
       <div class="stats-grid">`;
@@ -149,8 +151,12 @@ authRequireHousehold().then(async (me) => {
             <span class="stat-value">${h.wydatki_count}</span>
           </div>
           <div class="stat-row">
-            <span class="stat-label">Zapytania AI</span>
-            <span class="stat-value">${h.api_calls} <span style="color:#aaa;font-weight:400">($${parseFloat(h.cost_usd).toFixed(4)})</span></span>
+            <span class="stat-label">AI — wydatki (skan/kategorie)</span>
+            <span class="stat-value">${h.api_calls - h.analiza_calls} <span style="color:#aaa;font-weight:400">($${(parseFloat(h.cost_usd) - parseFloat(h.analiza_cost_usd)).toFixed(4)})</span></span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">AI — doradca budżetowy</span>
+            <span class="stat-value">${h.analiza_calls} <span style="color:#aaa;font-weight:400">($${parseFloat(h.analiza_cost_usd).toFixed(4)})</span></span>
           </div>
           <div class="stat-row">
             <span class="stat-label">Ostatnie zapytanie AI</span>
