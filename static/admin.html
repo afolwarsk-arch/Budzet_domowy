@@ -52,6 +52,23 @@
     </div>
   </div>
 
+  <div class="card" style="margin-bottom:24px;padding:20px">
+    <h3 style="margin-bottom:4px;font-size:1rem">Przypomnienia o płatnościach cyklicznych</h3>
+    <p style="font-size:0.8rem;color:#888;margin-bottom:14px">Gdyby przypomnienia były zbyt upierdliwe (albo za późne) — dostrój liczby dni.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
+      <label style="font-size:0.8rem;color:#666">Przelew ręczny — przypominaj od (dni przed terminem)
+        <input id="ust-reczne" type="number" min="0" max="60" style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid #ddd;border-radius:6px"></label>
+      <label style="font-size:0.8rem;color:#666">Obciążenie automatyczne — „zapewnij środki" od (dni)
+        <input id="ust-auto" type="number" min="0" max="60" style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid #ddd;border-radius:6px"></label>
+      <label style="font-size:0.8rem;color:#666">Poziom żółty od (dni do terminu)
+        <input id="ust-zolte" type="number" min="0" max="60" style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid #ddd;border-radius:6px"></label>
+      <label style="font-size:0.8rem;color:#666">Poziom czerwony od (dni do terminu)
+        <input id="ust-czerwone" type="number" min="0" max="60" style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid #ddd;border-radius:6px"></label>
+    </div>
+    <button id="btn-ustawienia" class="btn btn-primary" style="padding:8px 16px">Zapisz ustawienia</button>
+    <span id="ust-info" style="font-size:13px;color:var(--muted);margin-left:10px"></span>
+  </div>
+
   <div id="stats-container">Ładowanie...</div>
 </main>
 
@@ -91,6 +108,25 @@ authRequireHousehold().then(async (me) => {
       info.textContent = 'Błąd: ' + e.message;
       info.style.color = '#c0392b';
     }
+  });
+
+  // ustawienia przypomnień
+  const USTA = { przyp_reczne_dni:'ust-reczne', przyp_auto_dni:'ust-auto', przyp_zolte_dni:'ust-zolte', przyp_czerwone_dni:'ust-czerwone' };
+  try {
+    const ust = await authFetch('/api/admin/ustawienia').then(r => r.json());
+    for (const [k, id] of Object.entries(USTA)) document.getElementById(id).value = ust[k];
+  } catch {}
+  document.getElementById('btn-ustawienia').addEventListener('click', async () => {
+    const info = document.getElementById('ust-info');
+    const body = {};
+    for (const [k, id] of Object.entries(USTA)) body[k] = parseInt(document.getElementById(id).value);
+    info.textContent = 'Zapisuję...'; info.style.color = '';
+    try {
+      const res = await authFetch('/api/admin/ustawienia', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Błąd zapisu');
+      info.textContent = 'Zapisano.'; info.style.color = '#1e7e34';
+    } catch (e) { info.textContent = 'Błąd: ' + e.message; info.style.color = '#c0392b'; }
   });
 
   try {

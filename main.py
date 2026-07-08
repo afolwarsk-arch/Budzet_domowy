@@ -209,6 +209,34 @@ def admin_stats(admin: dict = Depends(require_admin)):
     return database.get_admin_stats()
 
 
+_USTAWIENIA_PRZYPOMNIEN = {
+    "przyp_reczne_dni": "7",    # ile dni przed terminem pojawia się przypomnienie o przelewie ręcznym
+    "przyp_auto_dni": "3",      # ile dni przed obciążeniem automatycznym przypominać o środkach
+    "przyp_zolte_dni": "3",     # od ilu dni do terminu poziom żółty
+    "przyp_czerwone_dni": "1",  # od ilu dni do terminu poziom czerwony
+}
+
+
+@app.get("/api/admin/ustawienia")
+def admin_get_ustawienia(admin: dict = Depends(require_admin)):
+    return {k: int(database.get_ustawienie(k, v)) for k, v in _USTAWIENIA_PRZYPOMNIEN.items()}
+
+
+@app.put("/api/admin/ustawienia")
+def admin_put_ustawienia(body: dict, admin: dict = Depends(require_admin)):
+    for k, v in body.items():
+        if k not in _USTAWIENIA_PRZYPOMNIEN:
+            raise HTTPException(400, f"Nieznane ustawienie: {k}")
+        try:
+            iv = int(v)
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"{k}: wartość musi być liczbą dni")
+        if not 0 <= iv <= 60:
+            raise HTTPException(400, f"{k}: zakres 0-60 dni")
+        database.set_ustawienie(k, str(iv))
+    return {"ok": True}
+
+
 @app.post("/api/admin/rename-osoba")
 def rename_osoba(body: dict, admin: dict = Depends(require_admin)):
     stara = (body.get("stara") or "").strip()
@@ -881,6 +909,24 @@ class CyklicznyIn(BaseModel):
     od_miesiaca: str | None = None
     aktywne: bool = True
     limit_naliczen: int | None = None
+    automatyczny: bool = True
+
+
+@app.get("/api/przypomnienia")
+def api_przypomnienia(current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        return []
+    database.naliczaj_cykliczne(hid)
+    return database.get_przypomnienia(hid)
+
+
+@app.post("/api/platnosci/{platnosc_id}/potwierdz")
+def api_potwierdz_platnosc(platnosc_id: int, current_user: dict = Depends(get_current_user)):
+    wid = database.potwierdz_platnosc(platnosc_id, current_user["household_id"])
+    if wid is None:
+        raise HTTPException(404, "Nie znaleziono oczekującej płatności")
+    return {"ok": True, "wydatek_id": wid}
 
 
 @app.get("/api/cykliczne")
@@ -904,7 +950,7 @@ def api_create_cykliczny(body: CyklicznyIn, current_user: dict = Depends(get_cur
     wynik = database.create_cykliczny(current_user["household_id"], body.nazwa.strip(),
                                       body.kwota, body.dzien, body.kategoria_glowna,
                                       body.kategoria, body.osoba, body.konto_id, od_data,
-                                      body.limit_naliczen)
+                                      body.limit_naliczen, body.automatyczny)
     database.naliczaj_cykliczne(current_user["household_id"])
     return wynik
 
@@ -919,7 +965,8 @@ def api_update_cykliczny(cykliczny_id: int, body: CyklicznyIn,
     ok = database.update_cykliczny(cykliczny_id, current_user["household_id"],
                                    body.nazwa.strip(), body.kwota, body.dzien,
                                    body.kategoria_glowna, body.kategoria, body.osoba,
-                                   body.konto_id, body.aktywne, body.limit_naliczen)
+                                   body.konto_id, body.aktywne, body.limit_naliczen,
+                                   body.automatyczny)
     if not ok:
         raise HTTPException(404, "Nie znaleziono")
     return {"ok": True}

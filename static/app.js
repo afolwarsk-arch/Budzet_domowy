@@ -16,6 +16,44 @@ function esc(s) {
 
 if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(async (me) => {
   await loadOsobaOptions('filter-osoba', true);
+
+  // ── przypomnienia o płatnościach cyklicznych ──
+  async function loadPrzypomnienia() {
+    const el = document.getElementById('przypomnienia');
+    if (!el) return;
+    let items = [];
+    try { items = await authFetch('/api/przypomnienia').then(r => r.json()); } catch { return; }
+    if (!Array.isArray(items) || !items.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    const kolor = { czerwony: ['#fdeaea', '#c0392b'], zolty: ['#fff8e1', '#7d5a00'], info: ['#eef4ff', '#3563d4'] };
+    el.style.display = '';
+    el.innerHTML = items.map(p => {
+      const [bg, fg] = kolor[p.poziom] || kolor.info;
+      const dni = p.dni_do;
+      const kiedy = dni < 0 ? `<strong>${-dni} ${-dni === 1 ? 'dzień' : 'dni'} po terminie!</strong>`
+        : dni === 0 ? '<strong>dziś</strong>' : dni === 1 ? 'jutro' : `za ${dni} dni`;
+      const kwota = parseFloat(p.kwota).toFixed(2).replace('.', ',');
+      const txt = p.typ === 'reczny'
+        ? `Zrób przelew: <strong>${esc(p.nazwa)}</strong> — ${kwota} zł (termin ${kiedy})`
+        : `<strong>${esc(p.nazwa)}</strong> — ${kwota} zł zejdzie ${kiedy}${p.konto_nazwa ? ' z konta ' + esc(p.konto_nazwa) : ''} — zapewnij środki`;
+      const btn = p.typ === 'reczny'
+        ? `<button onclick="potwierdzPlatnosc(${p.id})" style="white-space:nowrap;border:1px solid ${fg};background:#fff;color:${fg};border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer">✓ Zrobione</button>`
+        : '';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;background:${bg};color:${fg};border-radius:10px;padding:11px 14px;margin-bottom:8px;font-size:14px">
+        <span>🔔 ${txt}</span>${btn}</div>`;
+    }).join('');
+  }
+
+  window.potwierdzPlatnosc = async (id) => {
+    try {
+      const res = await authFetch(`/api/platnosci/${id}/potwierdz`, { method: 'POST' });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.detail || 'Nie udało się potwierdzić.'); return; }
+    } catch { alert('Problem z połączeniem.'); return; }
+    await loadPrzypomnienia();
+    loadDashboard();
+  };
+
+  loadPrzypomnienia();
+
   let chartKat = null;
   let chartMies = null;
   let miesiaceLacznie = false;

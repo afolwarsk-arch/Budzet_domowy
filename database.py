@@ -225,6 +225,19 @@ def init_db():
         cur.execute("ALTER TABLE pozycje ADD COLUMN IF NOT EXISTS poza_kontekstem BOOLEAN NOT NULL DEFAULT FALSE")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS konto_id INTEGER REFERENCES konta(id) ON DELETE SET NULL")
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS limit_naliczen INTEGER")
+        cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS automatyczny BOOLEAN NOT NULL DEFAULT TRUE")
+        cur.execute("""CREATE TABLE IF NOT EXISTS platnosci_oczekujace (
+            id           SERIAL PRIMARY KEY,
+            household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            cykliczny_id INTEGER NOT NULL REFERENCES wydatki_cykliczne(id) ON DELETE CASCADE,
+            termin       DATE NOT NULL,
+            created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (cykliczny_id, termin)
+        )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS ustawienia (
+            klucz   TEXT PRIMARY KEY,
+            wartosc TEXT NOT NULL
+        )""")
         cur.execute("""CREATE TABLE IF NOT EXISTS raporty_ai (
             id             SERIAL PRIMARY KEY,
             household_id   INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
@@ -1241,6 +1254,22 @@ def delete_przelew(przelew_id: int, household_id: int) -> bool:
         return cur.rowcount > 0
 
 
+# --- ustawienia globalne ---
+
+def get_ustawienie(klucz: str, domyslna: str) -> str:
+    with get_db() as cur:
+        cur.execute("SELECT wartosc FROM ustawienia WHERE klucz=%s", (klucz,))
+        row = cur.fetchone()
+        return row["wartosc"] if row else domyslna
+
+
+def set_ustawienie(klucz: str, wartosc: str) -> None:
+    with get_db() as cur:
+        cur.execute("""INSERT INTO ustawienia (klucz, wartosc) VALUES (%s,%s)
+                       ON CONFLICT (klucz) DO UPDATE SET wartosc=EXCLUDED.wartosc""",
+                    (klucz, wartosc))
+
+
 # --- wydatki cykliczne ---
 
 def get_cykliczne(household_id: int) -> list[dict]:
@@ -1256,14 +1285,15 @@ def get_cykliczne(household_id: int) -> list[dict]:
 def create_cykliczny(household_id: int, nazwa: str, kwota: float, dzien: int,
                      kategoria_glowna: str, kategoria: str, osoba: str,
                      konto_id: int | None, od_miesiaca: str,
-                     limit_naliczen: int | None = None) -> dict:
+                     limit_naliczen: int | None = None,
+                     automatyczny: bool = True) -> dict:
     with get_db() as cur:
         cur.execute(
             """INSERT INTO wydatki_cykliczne
-               (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id, od_miesiaca, limit_naliczen)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+               (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id, od_miesiaca, limit_naliczen, automatyczny)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
             (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None,
-             od_miesiaca, limit_naliczen),
+             od_miesiaca, limit_naliczen, automatyczny),
         )
         return dict(cur.fetchone())
 
@@ -1271,14 +1301,15 @@ def create_cykliczny(household_id: int, nazwa: str, kwota: float, dzien: int,
 def update_cykliczny(cykliczny_id: int, household_id: int, nazwa: str, kwota: float,
                      dzien: int, kategoria_glowna: str, kategoria: str, osoba: str,
                      konto_id: int | None, aktywne: bool,
-                     limit_naliczen: int | None = None) -> bool:
+                     limit_naliczen: int | None = None,
+                     automatyczny: bool = True) -> bool:
     with get_db() as cur:
         cur.execute(
             """UPDATE wydatki_cykliczne SET nazwa=%s, kwota=%s, dzien=%s, kategoria_glowna=%s,
-               kategoria=%s, osoba=%s, konto_id=%s, aktywne=%s, limit_naliczen=%s
+               kategoria=%s, osoba=%s, konto_id=%s, aktywne=%s, limit_naliczen=%s, automatyczny=%s
                WHERE id=%s AND household_id=%s""",
             (nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None,
-             aktywne, limit_naliczen, cykliczny_id, household_id),
+             aktywne, limit_naliczen, automatyczny, cykliczny_id, household_id),
         )
         return cur.rowcount > 0
 
@@ -1323,19 +1354,24 @@ def _ostatni_termin(od_miesiaca, dzien: int, limit_naliczen) -> "date | None":
 
 
 def naliczaj_cykliczne(household_id: int) -> int:
-    """Tworzy wydatki za zaległe terminy wszystkich aktywnych wydatków cyklicznych.
-    Zwraca liczbę utworzonych wydatków. Bezpieczne przy równoległych wywołaniach
-    (claim przez UPDATE ostatnio_do przed INSERT-ami)."""
-    from datetime import date as _date
+    """Automatyczne wydatki cykliczne: tworzy wydatki za zaległe terminy.
+    Ręczne: tworzy oczekujące płatności (z wyprzedzeniem przyp_reczne_dni),
+    które użytkownik potwierdza. Zwraca liczbę utworzonych wydatków.
+    Bezpieczne przy równoległych wywołaniach (claim przez UPDATE ostatnio_do)."""
+    from datetime import date as _date, timedelta as _td
     today = _date.today()
+    wyprzedzenie = _td(days=int(get_ustawienie("przyp_reczne_dni", "7")))
     utworzone = 0
     with get_db() as cur:
         cur.execute("SELECT * FROM wydatki_cykliczne WHERE household_id=%s AND aktywne=TRUE", (household_id,))
         cykliczne = [dict(r) for r in cur.fetchall()]
 
     for c in cykliczne:
+        auto = c.get("automatyczny", True)
+        # ręczne planujemy z wyprzedzeniem, żeby przypomnienie wyszło przed terminem
+        horyzont = today if auto else today + wyprzedzenie
         ostatni_termin = _ostatni_termin(c["od_miesiaca"], c["dzien"], c.get("limit_naliczen"))
-        do_dnia = min(today, ostatni_termin) if ostatni_termin else today
+        do_dnia = min(horyzont, ostatni_termin) if ostatni_termin else horyzont
         terminy = _terminy_cykliczne(c["od_miesiaca"], c["dzien"], c["ostatnio_do"], do_dnia)
         if not terminy:
             # limit osiągnięty już wcześniej (np. zmniejszony w edycji) — zakończ
@@ -1352,16 +1388,95 @@ def naliczaj_cykliczne(household_id: int) -> int:
             )
             if cur.rowcount == 0:
                 continue
-        for t in terminy:
-            create_wydatek(
-                data=t.isoformat(), sklep=c["nazwa"], suma=float(c["kwota"]),
-                osoba=c["osoba"], notatki="Wydatek cykliczny", zdjecie=None,
-                pozycje=[{"nazwa": c["nazwa"], "cena": float(c["kwota"]), "ilosc": 1,
-                          "kategoria_glowna": c["kategoria_glowna"], "kategoria": c["kategoria"]}],
-                household_id=household_id, konto_id=c["konto_id"],
-            )
-            utworzone += 1
+        if auto:
+            for t in terminy:
+                create_wydatek(
+                    data=t.isoformat(), sklep=c["nazwa"], suma=float(c["kwota"]),
+                    osoba=c["osoba"], notatki="Wydatek cykliczny", zdjecie=None,
+                    pozycje=[{"nazwa": c["nazwa"], "cena": float(c["kwota"]), "ilosc": 1,
+                              "kategoria_glowna": c["kategoria_glowna"], "kategoria": c["kategoria"]}],
+                    household_id=household_id, konto_id=c["konto_id"],
+                )
+                utworzone += 1
+        else:
+            with get_db() as cur:
+                for t in terminy:
+                    cur.execute(
+                        """INSERT INTO platnosci_oczekujace (household_id, cykliczny_id, termin)
+                           VALUES (%s,%s,%s) ON CONFLICT (cykliczny_id, termin) DO NOTHING""",
+                        (household_id, c["id"], t),
+                    )
     return utworzone
+
+
+def get_przypomnienia(household_id: int) -> list[dict]:
+    """Przypomnienia: oczekujące płatności ręczne + nadchodzące obciążenia automatyczne."""
+    from datetime import date as _date, timedelta as _td
+    today = _date.today()
+    auto_dni = int(get_ustawienie("przyp_auto_dni", "3"))
+    zolte = int(get_ustawienie("przyp_zolte_dni", "3"))
+    czerwone = int(get_ustawienie("przyp_czerwone_dni", "1"))
+
+    def poziom(dni: int) -> str:
+        return "czerwony" if dni <= czerwone else ("zolty" if dni <= zolte else "info")
+
+    wynik: list[dict] = []
+    with get_db() as cur:
+        cur.execute("""
+            SELECT p.id, p.termin, c.nazwa, c.kwota, k.nazwa AS konto_nazwa
+            FROM platnosci_oczekujace p
+            JOIN wydatki_cykliczne c ON c.id = p.cykliczny_id
+            LEFT JOIN konta k ON k.id = c.konto_id
+            WHERE p.household_id=%s ORDER BY p.termin
+        """, (household_id,))
+        for r in cur.fetchall():
+            r = dict(r)
+            dni = (r["termin"] - today).days
+            r.update(typ="reczny", dni_do=dni, poziom=poziom(dni))
+            wynik.append(r)
+
+        cur.execute("""
+            SELECT c.*, k.nazwa AS konto_nazwa FROM wydatki_cykliczne c
+            LEFT JOIN konta k ON k.id = c.konto_id
+            WHERE c.household_id=%s AND c.aktywne=TRUE AND c.automatyczny=TRUE
+        """, (household_id,))
+        autos = [dict(r) for r in cur.fetchall()]
+
+    for c in autos:
+        ot = _ostatni_termin(c["od_miesiaca"], c["dzien"], c.get("limit_naliczen"))
+        do = today + _td(days=auto_dni)
+        if ot and ot < do:
+            do = ot
+        for t in _terminy_cykliczne(c["od_miesiaca"], c["dzien"], c["ostatnio_do"], do):
+            dni = (t - today).days
+            wynik.append({"id": None, "typ": "auto", "nazwa": c["nazwa"], "kwota": c["kwota"],
+                          "termin": t, "konto_nazwa": c["konto_nazwa"],
+                          "dni_do": dni, "poziom": poziom(dni)})
+
+    wynik.sort(key=lambda x: x["termin"])
+    return wynik
+
+
+def potwierdz_platnosc(platnosc_id: int, household_id: int) -> int | None:
+    """Potwierdzenie przelewu ręcznego: tworzy wydatek z DZISIEJSZĄ datą
+    (data faktycznej płatności) i usuwa oczekującą płatność. Zwraca id wydatku."""
+    from datetime import date as _date
+    with get_db() as cur:
+        cur.execute("""DELETE FROM platnosci_oczekujace WHERE id=%s AND household_id=%s
+                       RETURNING cykliczny_id, termin""", (platnosc_id, household_id))
+        row = cur.fetchone()
+        if not row:
+            return None
+        cur.execute("SELECT * FROM wydatki_cykliczne WHERE id=%s", (row["cykliczny_id"],))
+        c = dict(cur.fetchone())
+    return create_wydatek(
+        data=_date.today().isoformat(), sklep=c["nazwa"], suma=float(c["kwota"]),
+        osoba=c["osoba"], notatki=f"Wydatek cykliczny (przelew potwierdzony, termin {row['termin']})",
+        zdjecie=None,
+        pozycje=[{"nazwa": c["nazwa"], "cena": float(c["kwota"]), "ilosc": 1,
+                  "kategoria_glowna": c["kategoria_glowna"], "kategoria": c["kategoria"]}],
+        household_id=household_id, konto_id=c["konto_id"],
+    )
 
 
 def export_household_data(household_id: int) -> dict:
