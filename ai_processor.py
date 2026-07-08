@@ -372,6 +372,47 @@ def process_image(image_bytes: bytes, mime_type: str = "image/jpeg",
     return _parse_response(message.content[0].text, hier), _usage(message)
 
 
+_DORADCA_PROMPT = """Jesteś doświadczonym, konkretnym doradcą budżetowym dla polskiego gospodarstwa domowego. \
+Dostajesz zagregowane dane o wydatkach z ostatnich kilku miesięcy (kwoty w PLN). \
+Twoim zadaniem jest znaleźć REALNE, oparte na danych możliwości oszczędzania — nie ogólniki.
+
+Zasady:
+- Odwołuj się do konkretnych liczb z danych (nazwy produktów, częstotliwość, kwoty). Zamiast "ogranicz jedzenie na mieście" napisz "kawa na mieście: 14 zakupów, średnio 18 zł, razem 252 zł/mies".
+- Zwracaj uwagę na: częste drobne zakupy, które się sumują; abonamenty i subskrypcje (łatwe oszczędności); kategorie rosnące z miesiąca na miesiąc; wydatki nietypowo wysokie w danym miesiącu.
+- Rekomendacje muszą mieć realny szacunek oszczędności miesięcznej (oszczednosc_mies) i ocenę trudności.
+- Nie wymyślaj danych, których nie ma. Jeśli danych jest mało, powiedz to wprost w podsumowaniu.
+- Pisz po polsku, rzeczowo, bez lania wody. Kwoty jako liczby (bez "zł" w polach liczbowych).
+
+Zwróć WYŁĄCZNIE poprawny JSON w tym formacie (bez markdown, bez komentarzy):
+{
+  "podsumowanie": "2-4 zdania o ogólnej sytuacji budżetu",
+  "kondycja": {"ocena": "dobra|ok|uwaga", "wydatki_mies": 0, "wplywy_mies": 0, "bilans_mies": 0},
+  "obserwacje": [{"tytul": "krótki", "opis": "z konkretnymi liczbami", "waga": "wysoka|srednia|niska"}],
+  "rekomendacje": [{"tytul": "krótki", "opis": "jak i dlaczego", "oszczednosc_mies": 0, "trudnosc": "latwe|srednie|trudne"}],
+  "trendy": [{"kategoria": "nazwa", "kierunek": "rosnie|spada|stabilnie", "opis": "krótko"}],
+  "potencjal_oszczednosci_mies": 0
+}
+potencjal_oszczednosci_mies to suma realistycznych oszczednosc_mies z rekomendacji. \
+Podaj 3-6 obserwacji i 3-6 rekomendacji, posortowanych od najważniejszych."""
+
+
+def analizuj_budzet(dane: dict, kontekst: str | None = None) -> tuple[dict, dict]:
+    """Analiza budżetu przez Claude. Zwraca (raport_dict, usage)."""
+    client = anthropic.Anthropic()
+    tresc = "DANE BUDŻETU (JSON):\n" + json.dumps(dane, ensure_ascii=False, default=str)
+    if kontekst and kontekst.strip():
+        tresc += (f"\n\nKONTEKST GOSPODARSTWA (uwzględnij w rekomendacjach): {kontekst.strip()}")
+    msg = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=4096,
+        system=_DORADCA_PROMPT,
+        messages=[{"role": "user", "content": tresc}],
+    )
+    raw = re.sub(r"```(?:json)?|```", "", msg.content[0].text).strip()
+    raport = json.loads(raw)
+    return raport, _usage(msg)
+
+
 def process_text(text: str, kontekst: str | None = None, hierarchia: dict | None = None) -> tuple[list[dict], dict]:
     hier = hierarchia or KATEGORIE_HIERARCHIA
     system = _system_prompt_for(hierarchia)

@@ -64,6 +64,54 @@
     .analiza-summary { font-size: 14px; color: var(--muted); margin-bottom: 4px; }
     .analiza-summary strong { color: var(--text); }
     #chart-card { margin-top: 20px; display: none; }
+
+    /* ── Doradca budżetowy ── */
+    .doradca-card { background: linear-gradient(135deg, #4f7ef8 0%, #6a4ff8 100%); color: #fff; border-radius: 16px; padding: 22px 24px; margin-bottom: 24px; }
+    .doradca-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .doradca-head h2 { color: #fff; margin: 0; font-size: 19px; }
+    .doradca-sub { font-size: 13.5px; color: rgba(255,255,255,.85); margin-bottom: 16px; max-width: 640px; }
+    .doradca-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+    .doradca-controls label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.75); margin-bottom: 4px; font-weight: 600; }
+    .doradca-controls select, .doradca-controls input { border: none; border-radius: 8px; padding: 9px 12px; font-size: 14px; }
+    .doradca-controls .ctx { flex: 1; min-width: 200px; }
+    .doradca-controls .ctx input { width: 100%; }
+    .btn-doradca { background: #fff; color: #4f7ef8; font-weight: 700; border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+    .btn-doradca:hover { background: #eef2ff; }
+    .btn-doradca:disabled { opacity: .6; cursor: not-allowed; }
+    .doradca-meta { font-size: 12px; color: rgba(255,255,255,.7); margin-top: 10px; }
+
+    #raport-wynik { margin-bottom: 24px; }
+    #raport-wynik.empty { display: none; }
+    .rap-top { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+    .rap-summary { font-size: 15px; line-height: 1.55; }
+    .rap-potencjal { text-align: center; padding: 4px 18px; border-left: 1px solid var(--border); }
+    .rap-potencjal .val { font-size: 30px; font-weight: 800; color: #22a06b; line-height: 1; }
+    .rap-potencjal .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 6px; }
+    .rap-kondycja { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+    .rap-kstat { flex: 1; min-width: 130px; background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); }
+    .rap-kstat .v { font-size: 20px; font-weight: 700; }
+    .rap-kstat .l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .rap-section-title { font-size: 15px; font-weight: 700; margin: 20px 0 10px; display: flex; align-items: center; gap: 8px; }
+    .rap-item { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; box-shadow: var(--shadow); }
+    .rap-item-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+    .rap-item-title { font-weight: 600; font-size: 14.5px; }
+    .rap-item-opis { font-size: 13.5px; color: #444; line-height: 1.5; }
+    .rap-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+    .rap-badge.wysoka, .rap-badge.trudne { background: #fdeaea; color: #c0392b; }
+    .rap-badge.srednia, .rap-badge.srednie { background: #fff4e0; color: #b26a00; }
+    .rap-badge.niska, .rap-badge.latwe { background: #eafaf1; color: #1e7e34; }
+    .rap-osz { font-weight: 700; color: #22a06b; white-space: nowrap; font-size: 14px; }
+    .rap-trend { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+    .rap-trend:last-child { border-bottom: none; }
+    .rap-trend .tk { font-weight: 600; min-width: 150px; }
+    .rap-arrow { font-size: 15px; }
+    .rap-arrow.rosnie { color: #c0392b; }
+    .rap-arrow.spada { color: #1e7e34; }
+    .rap-arrow.stabilnie { color: var(--muted); }
+    @media (max-width: 600px) {
+      .rap-top { grid-template-columns: 1fr; }
+      .rap-potencjal { border-left: none; border-top: 1px solid var(--border); padding-top: 14px; }
+    }
   </style>
 </head>
 <body>
@@ -77,6 +125,33 @@
   <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
 </nav>
 <main>
+  <div class="doradca-card">
+    <div class="doradca-head">
+      <span style="font-size:24px">🤖</span>
+      <h2>Doradca budżetowy AI</h2>
+    </div>
+    <p class="doradca-sub">Claude przeanalizuje Twoje wydatki z ostatnich miesięcy i wskaże konkretne miejsca, gdzie możesz zaoszczędzić — z szacowaną kwotą przy każdej podpowiedzi.</p>
+    <div class="doradca-controls">
+      <div>
+        <label>Okres</label>
+        <select id="rap-miesiace">
+          <option value="1">1 miesiąc</option>
+          <option value="3" selected>3 miesiące</option>
+          <option value="6">6 miesięcy</option>
+          <option value="12">12 miesięcy</option>
+        </select>
+      </div>
+      <div class="ctx">
+        <label>Kontekst (opcjonalnie)</label>
+        <input type="text" id="rap-kontekst" placeholder="np. spłacamy kredyt, cel: odkładać 1000 zł/mies, nie tnij wydatków na dziecko">
+      </div>
+      <button class="btn-doradca" id="btn-analizuj">Przeanalizuj budżet</button>
+    </div>
+    <div class="doradca-meta" id="rap-meta"></div>
+  </div>
+
+  <div id="raport-wynik" class="empty"></div>
+
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px">
     <h1>Analiza własna</h1>
     <button class="btn btn-outline btn-sm" id="btn-reset">Wyczyść grupy</button>
@@ -845,8 +920,118 @@ async function loadData() {
   render();
 }
 
+// ── Doradca budżetowy ─────────────────────────────────────────────
+function fmtZl(v) {
+  return new Intl.NumberFormat('pl-PL',{style:'currency',currency:'PLN',minimumFractionDigits:0,maximumFractionDigits:0}).format(v||0);
+}
+
+function renderRaport(data) {
+  const el = document.getElementById('raport-wynik');
+  const r = data && data.raport;
+  if (!r) { el.className = 'empty'; el.innerHTML = ''; return; }
+  const k = r.kondycja || {};
+  const ocenaTxt = { dobra:'Dobra', ok:'W normie', uwaga:'Wymaga uwagi' }[k.ocena] || (k.ocena || '—');
+  const arrow = { rosnie:'▲', spada:'▼', stabilnie:'▬' };
+  el.className = '';
+  el.innerHTML = `
+    <div class="rap-top">
+      <div class="rap-summary">${esc(r.podsumowanie || '')}</div>
+      <div class="rap-potencjal">
+        <div class="val">${fmtZl(r.potencjal_oszczednosci_mies)}</div>
+        <div class="lbl">potencjał / mies.</div>
+      </div>
+    </div>
+    <div class="rap-kondycja">
+      <div class="rap-kstat"><div class="v">${fmtZl(k.wydatki_mies)}</div><div class="l">Wydatki / mies.</div></div>
+      <div class="rap-kstat"><div class="v">${fmtZl(k.wplywy_mies)}</div><div class="l">Wpływy / mies.</div></div>
+      <div class="rap-kstat"><div class="v" style="color:${(k.bilans_mies||0)>=0?'#22a06b':'#c0392b'}">${fmtZl(k.bilans_mies)}</div><div class="l">Bilans / mies.</div></div>
+      <div class="rap-kstat"><div class="v">${esc(ocenaTxt)}</div><div class="l">Kondycja</div></div>
+    </div>
+    ${(r.rekomendacje && r.rekomendacje.length) ? `
+      <div class="rap-section-title">💡 Gdzie zaoszczędzić</div>
+      ${r.rekomendacje.map(x => `
+        <div class="rap-item">
+          <div class="rap-item-head">
+            <span class="rap-item-title">${esc(x.tytul || '')}</span>
+            <span style="display:flex;gap:8px;align-items:center">
+              ${x.oszczednosc_mies ? `<span class="rap-osz">${fmtZl(x.oszczednosc_mies)}/mies</span>` : ''}
+              ${x.trudnosc ? `<span class="rap-badge ${esc(x.trudnosc)}">${esc(x.trudnosc)}</span>` : ''}
+            </span>
+          </div>
+          <div class="rap-item-opis">${esc(x.opis || '')}</div>
+        </div>`).join('')}` : ''}
+    ${(r.obserwacje && r.obserwacje.length) ? `
+      <div class="rap-section-title">⚠️ Obserwacje</div>
+      ${r.obserwacje.map(x => `
+        <div class="rap-item">
+          <div class="rap-item-head">
+            <span class="rap-item-title">${esc(x.tytul || '')}</span>
+            ${x.waga ? `<span class="rap-badge ${esc(x.waga)}">${esc(x.waga)}</span>` : ''}
+          </div>
+          <div class="rap-item-opis">${esc(x.opis || '')}</div>
+        </div>`).join('')}` : ''}
+    ${(r.trendy && r.trendy.length) ? `
+      <div class="rap-section-title">📈 Trendy</div>
+      <div class="rap-item">
+        ${r.trendy.map(x => `
+          <div class="rap-trend">
+            <span class="rap-arrow ${esc(x.kierunek)}">${arrow[x.kierunek] || '▬'}</span>
+            <span class="tk">${esc(x.kategoria || '')}</span>
+            <span style="color:#555">${esc(x.opis || '')}</span>
+          </div>`).join('')}
+      </div>` : ''}
+  `;
+}
+
+function applyRaportMeta(data) {
+  const meta = document.getElementById('rap-meta');
+  if (data && data.created_at) {
+    const d = new Date(data.created_at);
+    meta.textContent = 'Ostatnia analiza: ' + d.toLocaleString('pl-PL', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) + ` · ${data.miesiace} mies.`;
+    if (data.miesiace) document.getElementById('rap-miesiace').value = String(data.miesiace);
+    if (data.kontekst) document.getElementById('rap-kontekst').value = data.kontekst;
+  } else {
+    meta.textContent = '';
+  }
+}
+
+async function loadRaport() {
+  try {
+    const data = await authFetch('/api/analiza/raport').then(r => r.json());
+    renderRaport(data);
+    applyRaportMeta(data);
+  } catch {}
+}
+
+async function generujRaport() {
+  const btn = document.getElementById('btn-analizuj');
+  const meta = document.getElementById('rap-meta');
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Analizuję…';
+  meta.textContent = 'Claude analizuje Twoje wydatki — to potrwa kilkanaście sekund…';
+  try {
+    const body = {
+      miesiace: parseInt(document.getElementById('rap-miesiace').value),
+      kontekst: document.getElementById('rap-kontekst').value.trim() || null,
+    };
+    const res = await authFetch('/api/analiza/raport', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Błąd analizy');
+    renderRaport(data);
+    applyRaportMeta(data);
+  } catch (e) {
+    meta.textContent = 'Błąd: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────
 authRequireHousehold().then(async () => {
+  document.getElementById('btn-analizuj').addEventListener('click', generujRaport);
+  loadRaport();
   await loadOsobaOptions('filter-osoba', true);
   await loadState();
   document.getElementById('filter-month').value = new Date().toISOString().slice(0,7);

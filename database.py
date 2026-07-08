@@ -225,6 +225,14 @@ def init_db():
         cur.execute("ALTER TABLE pozycje ADD COLUMN IF NOT EXISTS poza_kontekstem BOOLEAN NOT NULL DEFAULT FALSE")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS konto_id INTEGER REFERENCES konta(id) ON DELETE SET NULL")
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS limit_naliczen INTEGER")
+        cur.execute("""CREATE TABLE IF NOT EXISTS raporty_ai (
+            household_id   INTEGER PRIMARY KEY REFERENCES households(id) ON DELETE CASCADE,
+            miesiace       INTEGER NOT NULL DEFAULT 3,
+            kontekst       TEXT,
+            raport_json    TEXT NOT NULL,
+            model          TEXT,
+            created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
         for stara, (glowna, sub) in _MIGRACJA_MAP.items():
             cur.execute(
                 "UPDATE pozycje SET kategoria_glowna=%s, kategoria=%s WHERE kategoria=%s",
@@ -572,6 +580,107 @@ def stats_top_produkt(kategoria: str, month=None, osoba=None, household_id=None,
         GROUP BY p.nazwa ORDER BY suma_total DESC LIMIT 1"""
     with get_db() as cur:
         cur.execute(query, params)
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+# --- doradca budżetowy (analiza AI) ---
+
+def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
+    """Zbiera bogaty, skompresowany zestaw danych do analizy AI za ostatnie `miesiace` miesięcy.
+    Grupowanie produktów po nazwie zbija liczbę tokenów przy zachowaniu konkretów."""
+    from datetime import date as _date
+    today = _date.today()
+    # początek okna: pierwszy dzień miesiąca sprzed (miesiace-1)
+    m0 = today.year * 12 + (today.month - 1) - (miesiace - 1)
+    rok0, mies0 = divmod(m0, 12)
+    od = _date(rok0, mies0 + 1, 1).isoformat()
+    do = today.isoformat()
+
+    with get_db() as cur:
+        # wydatki i pozycje per miesiąc + kategoria
+        cur.execute("""
+            SELECT TO_CHAR(w.data,'YYYY-MM') AS miesiac, p.kategoria_glowna AS kategoria,
+                   ROUND(CAST(SUM(p.cena*p.ilosc) AS numeric),2) AS suma
+            FROM pozycje p JOIN wydatki w ON w.id=p.wydatek_id
+            WHERE w.household_id=%s AND w.data>=%s
+            GROUP BY miesiac, kategoria ORDER BY miesiac, suma DESC
+        """, (household_id, od))
+        kat_miesiace = [dict(r) for r in cur.fetchall()]
+
+        # suma wydatków per miesiąc
+        cur.execute("""
+            SELECT TO_CHAR(w.data,'YYYY-MM') AS miesiac,
+                   ROUND(CAST(SUM(w.suma) AS numeric),2) AS suma
+            FROM wydatki w WHERE w.household_id=%s AND w.data>=%s
+            GROUP BY miesiac ORDER BY miesiac
+        """, (household_id, od))
+        wydatki_miesiace = [dict(r) for r in cur.fetchall()]
+
+        # wpływy per miesiąc
+        cur.execute("""
+            SELECT TO_CHAR(w.data,'YYYY-MM') AS miesiac,
+                   ROUND(CAST(SUM(w.kwota) AS numeric),2) AS suma
+            FROM wplywy w WHERE w.household_id=%s AND w.data>=%s
+            GROUP BY miesiac ORDER BY miesiac
+        """, (household_id, od))
+        wplywy_miesiace = [dict(r) for r in cur.fetchall()]
+
+        # top produkty grupowane po nazwie — tu siedzą realne odkrycia
+        cur.execute("""
+            SELECT MIN(p.nazwa) AS nazwa, p.kategoria_glowna AS kategoria,
+                   COUNT(*) AS ile, ROUND(CAST(SUM(p.cena*p.ilosc) AS numeric),2) AS suma,
+                   ROUND(CAST(AVG(p.cena) AS numeric),2) AS srednia_cena
+            FROM pozycje p JOIN wydatki w ON w.id=p.wydatek_id
+            WHERE w.household_id=%s AND w.data>=%s
+            GROUP BY LOWER(p.nazwa), p.kategoria_glowna
+            HAVING SUM(p.cena*p.ilosc) > 0
+            ORDER BY suma DESC LIMIT 50
+        """, (household_id, od))
+        produkty = [dict(r) for r in cur.fetchall()]
+
+        # top sklepy
+        cur.execute("""
+            SELECT w.sklep, COUNT(*) AS wizyty,
+                   ROUND(CAST(SUM(w.suma) AS numeric),2) AS suma
+            FROM wydatki w WHERE w.household_id=%s AND w.data>=%s AND w.sklep IS NOT NULL
+            GROUP BY w.sklep ORDER BY suma DESC LIMIT 15
+        """, (household_id, od))
+        sklepy = [dict(r) for r in cur.fetchall()]
+
+        # aktywne wydatki cykliczne (subskrypcje/abonamenty)
+        cur.execute("""
+            SELECT nazwa, kwota, kategoria_glowna AS kategoria, limit_naliczen
+            FROM wydatki_cykliczne WHERE household_id=%s AND aktywne=TRUE ORDER BY kwota DESC
+        """, (household_id,))
+        cykliczne = [dict(r) for r in cur.fetchall()]
+
+    return {
+        "okres": {"od": od, "do": do, "miesiace": miesiace},
+        "wydatki_per_miesiac": wydatki_miesiace,
+        "wplywy_per_miesiac": wplywy_miesiace,
+        "kategorie_per_miesiac": kat_miesiace,
+        "top_produkty": produkty,
+        "top_sklepy": sklepy,
+        "wydatki_cykliczne": cykliczne,
+    }
+
+
+def save_raport_ai(household_id: int, miesiace: int, kontekst: str | None,
+                   raport_json: str, model: str) -> None:
+    with get_db() as cur:
+        cur.execute("""
+            INSERT INTO raporty_ai (household_id, miesiace, kontekst, raport_json, model, created_at)
+            VALUES (%s,%s,%s,%s,%s,CURRENT_TIMESTAMP)
+            ON CONFLICT (household_id) DO UPDATE SET
+              miesiace=EXCLUDED.miesiace, kontekst=EXCLUDED.kontekst,
+              raport_json=EXCLUDED.raport_json, model=EXCLUDED.model, created_at=CURRENT_TIMESTAMP
+        """, (household_id, miesiace, kontekst, raport_json, model))
+
+
+def get_raport_ai(household_id: int) -> dict | None:
+    with get_db() as cur:
+        cur.execute("SELECT * FROM raporty_ai WHERE household_id=%s", (household_id,))
         row = cur.fetchone()
         return dict(row) if row else None
 

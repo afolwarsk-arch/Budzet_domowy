@@ -522,6 +522,53 @@ def save_analiza_state(body: dict, current_user: dict = Depends(get_current_user
     return {"ok": True}
 
 
+# --- Doradca budżetowy (analiza AI) ---
+
+class RaportIn(BaseModel):
+    miesiace: int = 3
+    kontekst: str | None = None
+
+
+def _raport_response(row: dict) -> dict:
+    import json as _json
+    return {
+        "raport": _json.loads(row["raport_json"]),
+        "miesiace": row["miesiace"],
+        "kontekst": row["kontekst"],
+        "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+    }
+
+
+@app.get("/api/analiza/raport")
+def get_analiza_raport(current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    row = database.get_raport_ai(hid)
+    return _raport_response(row) if row else {"raport": None}
+
+
+@app.post("/api/analiza/raport")
+def generuj_analiza_raport(body: RaportIn, current_user: dict = Depends(get_current_user)):
+    import json as _json
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    miesiace = max(1, min(body.miesiace, 12))
+    dane = database.zbierz_dane_budzet(hid, miesiace)
+    if not dane["wydatki_per_miesiac"]:
+        raise HTTPException(400, "Za mało danych do analizy — dodaj najpierw kilka wydatków.")
+    try:
+        raport, usage = ai_processor.analizuj_budzet(dane, body.kontekst)
+    except Exception as e:
+        raise HTTPException(502, f"Nie udało się wygenerować analizy: {e}")
+    database.log_api_usage(hid, "analiza-raport", usage["input_tokens"], usage["output_tokens"])
+    database.save_raport_ai(hid, miesiace, body.kontekst, _json.dumps(raport, ensure_ascii=False),
+                            "claude-sonnet-4-6")
+    row = database.get_raport_ai(hid)
+    return _raport_response(row)
+
+
 @app.get("/api/kategorie")
 def get_kategorie(current_user: dict = Depends(get_current_user)):
     hid = current_user["household_id"]
