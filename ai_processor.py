@@ -408,8 +408,15 @@ def analizuj_budzet(dane: dict, kontekst: str | None = None) -> tuple[dict, dict
         system=_DORADCA_PROMPT,
         messages=[{"role": "user", "content": tresc}],
     )
-    raw = re.sub(r"```(?:json)?|```", "", msg.content[0].text).strip()
-    raport = json.loads(raw)
+    raw = msg.content[0].text.strip()
+    # model czasem dokleja tekst albo fence'y wokół JSON — wytnij zewnętrzny obiekt {...}
+    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not m:
+        raise ValueError(f"Model nie zwrócił JSON (początek odpowiedzi: {raw[:200]!r})")
+    try:
+        raport = json.loads(m.group(0))
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Niepoprawny JSON z modelu ({e}; fragment: {m.group(0)[:200]!r})")
     return raport, _usage(msg)
 
 
