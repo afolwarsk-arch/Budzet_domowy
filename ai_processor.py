@@ -391,6 +391,9 @@ Zasady:
 - NIE kwestionuj kategoryzacji wydatków — kategorie w danych są kontekstowe i przypisane świadomie przez użytkownika (np. zakupy na przyjęcie dziecka mogą celowo być w kategorii dziecka). Błędna kategoryzacja nie jest tematem tej analizy.
 - Nie powtarzaj tego samego tematu w kilku sekcjach: jeden temat = jedno miejsce (rekomendacja, jeśli jest z tym związana akcja; w przeciwnym razie obserwacja). Trendy dotyczą wyłącznie zmian kategorii w czasie.
 - Nie wymyślaj danych, których nie ma. Jeśli danych jest mało, powiedz to wprost w podsumowaniu.
+- Liczby do pola kondycja (wydatki_mies, wplywy_mies, bilans_mies) są już WYLICZONE przez system \
+w polu kondycja_wyliczona — przepisz je 1:1, nie licz ich samodzielnie. Ty dobierasz tylko "ocena". \
+Pole "metoda" mówi, z jakiego okresu policzono średnią — uwzględnij to w podsumowaniu.
 - Pisz po polsku, rzeczowo, bez lania wody. Kwoty jako liczby (bez "zł" w polach liczbowych).
 
 Zwróć WYŁĄCZNIE poprawny JSON w tym formacie (bez markdown, bez komentarzy):

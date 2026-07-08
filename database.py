@@ -712,8 +712,26 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
         """, (household_id,))
         cykliczne = [dict(r) for r in cur.fetchall()]
 
+    # kondycja liczona przez system, nie przez model (LLM myli się w arytmetyce):
+    # średnia z zamkniętych miesięcy kalendarzowych; gdy ich brak — z tego, co jest
+    biezacy = today.strftime("%Y-%m")
+    mies_zamkniete = sorted({r["miesiac"] for r in wydatki_miesiace if r["miesiac"] != biezacy})
+    mies_baza = mies_zamkniete or sorted({r["miesiac"] for r in wydatki_miesiace})
+    n_mies = max(len(mies_baza), 1)
+    wyd_suma = sum(float(r["suma"]) for r in wydatki_miesiace if r["miesiac"] in mies_baza)
+    wpl_suma = sum(float(r["suma"]) for r in wplywy_miesiace if r["miesiac"] in mies_baza)
+    kondycja_wyliczona = {
+        "wydatki_mies": round(wyd_suma / n_mies, 2),
+        "wplywy_mies": round(wpl_suma / n_mies, 2),
+        "bilans_mies": round((wpl_suma - wyd_suma) / n_mies, 2),
+        "metoda": (f"średnia z zamkniętych miesięcy: {', '.join(mies_baza)}"
+                   if mies_zamkniete else
+                   f"tylko bieżący, niepełny miesiąc ({', '.join(mies_baza)}) — wartości orientacyjne"),
+    }
+
     return {
         "okres": {"od": od, "do": do, "miesiace": miesiace},
+        "kondycja_wyliczona": kondycja_wyliczona,
         "wydatki_per_miesiac": wydatki_miesiace,
         "wplywy_per_miesiac": wplywy_miesiace,
         "kategorie_per_miesiac": kat_miesiace,

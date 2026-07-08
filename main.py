@@ -674,6 +674,12 @@ def generuj_analiza_raport(body: RaportIn, current_user: dict = Depends(get_curr
         raport, usage = ai_processor.analizuj_budzet(dane, body.kontekst, profil)
     except Exception as e:
         raise HTTPException(502, f"Nie udało się wygenerować analizy: {e}")
+    # liczby kondycji zawsze z systemu — model bywa kreatywny w arytmetyce
+    kw = dane["kondycja_wyliczona"]
+    kondycja = raport.setdefault("kondycja", {})
+    kondycja["wydatki_mies"] = kw["wydatki_mies"]
+    kondycja["wplywy_mies"] = kw["wplywy_mies"]
+    kondycja["bilans_mies"] = kw["bilans_mies"]
     database.log_api_usage(hid, "analiza-raport", usage["input_tokens"], usage["output_tokens"])
     try:
         rid = database.save_raport_ai(hid, miesiace, body.kontekst,
