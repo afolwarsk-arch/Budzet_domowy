@@ -226,13 +226,26 @@ def init_db():
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS konto_id INTEGER REFERENCES konta(id) ON DELETE SET NULL")
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS limit_naliczen INTEGER")
         cur.execute("""CREATE TABLE IF NOT EXISTS raporty_ai (
-            household_id   INTEGER PRIMARY KEY REFERENCES households(id) ON DELETE CASCADE,
+            id             SERIAL PRIMARY KEY,
+            household_id   INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
             miesiace       INTEGER NOT NULL DEFAULT 3,
             kontekst       TEXT,
             raport_json    TEXT NOT NULL,
             model          TEXT,
             created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
+        # migracja starego kształtu (jeden raport na gospodarstwo, PK na household_id)
+        cur.execute("ALTER TABLE raporty_ai ADD COLUMN IF NOT EXISTS id SERIAL")
+        cur.execute("""DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.table_constraints tc
+                       JOIN information_schema.key_column_usage k
+                         ON k.constraint_name = tc.constraint_name AND k.table_name = tc.table_name
+                       WHERE tc.table_name='raporty_ai' AND tc.constraint_type='PRIMARY KEY'
+                         AND k.column_name='household_id') THEN
+                ALTER TABLE raporty_ai DROP CONSTRAINT raporty_ai_pkey;
+                ALTER TABLE raporty_ai ADD PRIMARY KEY (id);
+            END IF;
+        END $$""")
         for stara, (glowna, sub) in _MIGRACJA_MAP.items():
             cur.execute(
                 "UPDATE pozycje SET kategoria_glowna=%s, kategoria=%s WHERE kategoria=%s",
@@ -680,22 +693,41 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
 
 
 def save_raport_ai(household_id: int, miesiace: int, kontekst: str | None,
-                   raport_json: str, model: str) -> None:
+                   raport_json: str, model: str) -> int:
     with get_db() as cur:
         cur.execute("""
-            INSERT INTO raporty_ai (household_id, miesiace, kontekst, raport_json, model, created_at)
-            VALUES (%s,%s,%s,%s,%s,CURRENT_TIMESTAMP)
-            ON CONFLICT (household_id) DO UPDATE SET
-              miesiace=EXCLUDED.miesiace, kontekst=EXCLUDED.kontekst,
-              raport_json=EXCLUDED.raport_json, model=EXCLUDED.model, created_at=CURRENT_TIMESTAMP
+            INSERT INTO raporty_ai (household_id, miesiace, kontekst, raport_json, model)
+            VALUES (%s,%s,%s,%s,%s) RETURNING id
         """, (household_id, miesiace, kontekst, raport_json, model))
+        return cur.fetchone()["id"]
 
 
-def get_raport_ai(household_id: int) -> dict | None:
+def get_raport_ai(household_id: int, raport_id: int | None = None) -> dict | None:
+    """Konkretny raport (raport_id) albo najnowszy."""
     with get_db() as cur:
-        cur.execute("SELECT * FROM raporty_ai WHERE household_id=%s", (household_id,))
+        if raport_id is not None:
+            cur.execute("SELECT * FROM raporty_ai WHERE id=%s AND household_id=%s",
+                        (raport_id, household_id))
+        else:
+            cur.execute("""SELECT * FROM raporty_ai WHERE household_id=%s
+                           ORDER BY created_at DESC, id DESC LIMIT 1""", (household_id,))
         row = cur.fetchone()
         return dict(row) if row else None
+
+
+def list_raporty_ai(household_id: int) -> list[dict]:
+    with get_db() as cur:
+        cur.execute("""SELECT id, miesiace, kontekst, model, created_at
+                       FROM raporty_ai WHERE household_id=%s
+                       ORDER BY created_at DESC, id DESC""", (household_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def delete_raport_ai(raport_id: int, household_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("DELETE FROM raporty_ai WHERE id=%s AND household_id=%s",
+                    (raport_id, household_id))
+        return cur.rowcount > 0
 
 
 # --- households & users ---

@@ -79,6 +79,11 @@
     .btn-doradca:hover { background: #eef2ff; }
     .btn-doradca:disabled { opacity: .6; cursor: not-allowed; }
     .doradca-meta { font-size: 12px; color: rgba(255,255,255,.7); margin-top: 10px; }
+    .doradca-hist { display: none; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .doradca-hist label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.75); font-weight: 600; }
+    .doradca-hist select { border: none; border-radius: 8px; padding: 7px 10px; font-size: 13px; max-width: 100%; }
+    .doradca-hist button { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.35); border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+    .doradca-hist button:hover { background: rgba(255,255,255,.25); }
 
     #raport-wynik { margin-bottom: 24px; }
     #raport-wynik.empty { display: none; }
@@ -155,6 +160,11 @@
       <button class="btn-doradca" id="btn-analizuj">Przeanalizuj budżet</button>
     </div>
     <div class="doradca-meta" id="rap-meta"></div>
+    <div class="doradca-hist" id="rap-hist">
+      <label>Historia analiz</label>
+      <select id="rap-hist-sel"></select>
+      <button id="rap-hist-del" title="Usuń wybraną analizę">🗑 Usuń</button>
+    </div>
   </div>
 
   <div id="raport-wynik" class="empty"></div>
@@ -1017,7 +1027,55 @@ async function loadRaport() {
     const data = await authFetch('/api/analiza/raport').then(r => r.json());
     renderRaport(data);
     applyRaportMeta(data);
+    return data;
+  } catch { return null; }
+}
+
+async function loadHistoria(selectedId) {
+  try {
+    const lista = await authFetch('/api/analiza/raporty').then(r => r.json());
+    const wrap = document.getElementById('rap-hist');
+    const sel = document.getElementById('rap-hist-sel');
+    if (!Array.isArray(lista) || !lista.length) { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
+    wrap.style.display = 'flex';
+    sel.innerHTML = lista.map(r => {
+      const d = new Date(r.created_at);
+      let lbl = d.toLocaleString('pl-PL', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) + ` · ${r.miesiace} mies.`;
+      if (r.kontekst) lbl += ' · ' + (r.kontekst.length > 40 ? r.kontekst.slice(0, 40) + '…' : r.kontekst);
+      return `<option value="${r.id}">${esc(lbl)}</option>`;
+    }).join('');
+    if (selectedId != null) sel.value = String(selectedId);
   } catch {}
+}
+
+async function pokazRaportZHistorii() {
+  const id = document.getElementById('rap-hist-sel').value;
+  if (!id) return;
+  try {
+    const res = await authFetch('/api/analiza/raport/' + id);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `Serwer zwrócił błąd (HTTP ${res.status}).`);
+    renderRaport(data);
+    applyRaportMeta(data);
+  } catch (e) {
+    showRaportError(e.message || 'Nie udało się wczytać raportu.');
+  }
+}
+
+async function usunRaportZHistorii() {
+  const sel = document.getElementById('rap-hist-sel');
+  const id = sel.value;
+  if (!id) return;
+  const lbl = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+  if (!confirm(`Usunąć analizę z ${lbl}?`)) return;
+  try {
+    const res = await authFetch('/api/analiza/raport/' + id, { method: 'DELETE' });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.detail || 'Nie udało się usunąć.'); }
+    const latest = await loadRaport();
+    await loadHistoria(latest && latest.id != null ? latest.id : null);
+  } catch (e) {
+    showRaportError(e.message || 'Nie udało się usunąć raportu.');
+  }
 }
 
 async function generujRaport() {
@@ -1037,6 +1095,7 @@ async function generujRaport() {
     if (!res.ok) throw new Error(data.detail || `Serwer zwrócił błąd (HTTP ${res.status}).`);
     renderRaport(data);
     applyRaportMeta(data);
+    await loadHistoria(data.id != null ? data.id : null);
   } catch (e) {
     const msg = (e && e.message) ? e.message : 'Problem z połączeniem — sprawdź internet i spróbuj ponownie.';
     showRaportError(msg);
@@ -1050,7 +1109,9 @@ async function generujRaport() {
 // ── Init ──────────────────────────────────────────────────────────
 authRequireHousehold().then(async () => {
   document.getElementById('btn-analizuj').addEventListener('click', generujRaport);
-  loadRaport();
+  document.getElementById('rap-hist-sel').addEventListener('change', pokazRaportZHistorii);
+  document.getElementById('rap-hist-del').addEventListener('click', usunRaportZHistorii);
+  loadRaport().then(d => loadHistoria(d && d.id != null ? d.id : null));
   await loadOsobaOptions('filter-osoba', true);
   await loadState();
   document.getElementById('filter-month').value = new Date().toISOString().slice(0,7);
