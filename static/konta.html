@@ -223,7 +223,15 @@
     <div class="fg"><label>Nazwa</label><input type="text" id="c-nazwa" placeholder="np. Netflix, Spotify, siłownia"></div>
     <div class="fg"><label>Kwota miesięczna</label><input type="number" id="c-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
     <div class="fg"><label>Dzień miesiąca (naliczenie)</label><input type="number" id="c-dzien" min="1" max="31" value="1"></div>
-    <div class="fg"><label>Liczba naliczeń (puste = bezterminowo)</label><input type="number" id="c-limit" min="1" step="1" placeholder="np. 10 przy zakupie na raty"></div>
+    <div class="fg"><label>Zakończenie</label>
+      <select id="c-koniec" onchange="refreshCyklKoniec()">
+        <option value="brak">Bezterminowo</option>
+        <option value="liczba">Po określonej liczbie naliczeń (np. raty)</option>
+        <option value="miesiac">W konkretnym miesiącu (ostatnie naliczenie)</option>
+      </select>
+    </div>
+    <div class="fg" id="c-limit-wrap" style="display:none"><label>Liczba naliczeń</label><input type="number" id="c-limit" min="1" step="1" placeholder="np. 10 przy zakupie na raty"></div>
+    <div class="fg" id="c-do-wrap" style="display:none"><label>Miesiąc ostatniego naliczenia</label><input type="month" id="c-do"></div>
     <div class="fg"><label>Sposób płatności</label>
       <select id="c-auto">
         <option value="1">Pobierany automatycznie (karta / polecenie zapłaty)</option>
@@ -548,10 +556,12 @@ function renderCykliczne() {
   if (!cykliczne.length) { el.innerHTML = '<p class="empty-hint">Brak wydatków cyklicznych — dodaj np. subskrypcję Netflixa czy abonament na siłownię.</p>'; return; }
   el.innerHTML = cykliczne.map(c => {
     const nal = liczbaNaliczen(c);
-    const zakonczony = c.limit_naliczen && nal >= c.limit_naliczen;
+    const zakonczony = (c.limit_naliczen && nal >= c.limit_naliczen)
+      || (c.do_miesiaca && c.ostatnio_do && c.ostatnio_do.slice(0,7) >= c.do_miesiaca.slice(0,7));
     const badge = zakonczony ? ' <span style="font-size:11px;color:#2e7d32">(zakończony)</span>'
       : (c.aktywne ? '' : ' <span style="font-size:11px;color:#c62828">(wstrzymany)</span>');
-    const raty = c.limit_naliczen ? ` · rata ${Math.min(nal, c.limit_naliczen)}/${c.limit_naliczen}` : '';
+    const raty = c.limit_naliczen ? ` · rata ${Math.min(nal, c.limit_naliczen)}/${c.limit_naliczen}`
+      : (c.do_miesiaca ? ` · do ${c.do_miesiaca.slice(5,7)}.${c.do_miesiaca.slice(0,4)}` : '');
     const sposob = c.automatyczny ? '' : ' · <span style="color:#b26a00">przelew ręczny</span>';
     const cel = c.typ === 'przelew'
       ? `przelew → ${c.konto_na_nazwa || 'konto usunięte'}`
@@ -593,6 +603,12 @@ function fillCyklSelects(c) {
   if (c && c.konto_na_id) kontoNaSel.value = c.konto_na_id;
 }
 
+function refreshCyklKoniec() {
+  const tryb = document.getElementById('c-koniec').value;
+  document.getElementById('c-limit-wrap').style.display = tryb === 'liczba' ? '' : 'none';
+  document.getElementById('c-do-wrap').style.display = tryb === 'miesiac' ? '' : 'none';
+}
+
 function refreshCyklTyp() {
   const przelew = document.getElementById('c-typ').value === 'przelew';
   document.getElementById('c-kat-wrap').style.display = przelew ? 'none' : '';
@@ -614,6 +630,8 @@ function openAddCykl() {
   document.getElementById('c-kwota').value = '';
   document.getElementById('c-dzien').value = '1';
   document.getElementById('c-limit').value = '';
+  document.getElementById('c-do').value = '';
+  document.getElementById('c-koniec').value = 'brak';
   document.getElementById('c-auto').value = '1';
   document.getElementById('c-typ').value = 'wydatek';
   document.getElementById('c-od').value = new Date().toISOString().slice(0,7);
@@ -621,6 +639,7 @@ function openAddCykl() {
   document.getElementById('c-aktywne-wrap').style.display = 'none';
   fillCyklSelects(null);
   refreshCyklTyp();
+  refreshCyklKoniec();
   openModal('m-cykl');
 }
 
@@ -633,6 +652,8 @@ function editCykl(id) {
   document.getElementById('c-kwota').value = parseFloat(c.kwota);
   document.getElementById('c-dzien').value = c.dzien;
   document.getElementById('c-limit').value = c.limit_naliczen || '';
+  document.getElementById('c-do').value = c.do_miesiaca ? c.do_miesiaca.slice(0,7) : '';
+  document.getElementById('c-koniec').value = c.limit_naliczen ? 'liczba' : (c.do_miesiaca ? 'miesiac' : 'brak');
   document.getElementById('c-auto').value = c.automatyczny ? '1' : '0';
   document.getElementById('c-typ').value = c.typ || 'wydatek';
   document.getElementById('c-od-wrap').style.display = 'none';
@@ -640,6 +661,7 @@ function editCykl(id) {
   document.getElementById('c-aktywne').checked = !!c.aktywne;
   fillCyklSelects(c);
   refreshCyklTyp();
+  refreshCyklKoniec();
   openModal('m-cykl');
 }
 
@@ -653,16 +675,21 @@ async function saveCykl() {
     osoba: document.getElementById('c-osoba').value,
     konto_id: parseInt(document.getElementById('c-konto').value) || null,
     aktywne: editCyklId ? document.getElementById('c-aktywne').checked : true,
-    limit_naliczen: parseInt(document.getElementById('c-limit').value) || null,
+    limit_naliczen: null,
+    do_miesiaca: null,
     automatyczny: document.getElementById('c-auto').value === '1',
     typ: document.getElementById('c-typ').value,
     konto_na_id: parseInt(document.getElementById('c-konto-na').value) || null,
   };
+  const koniec = document.getElementById('c-koniec').value;
+  if (koniec === 'liczba') body.limit_naliczen = parseInt(document.getElementById('c-limit').value) || null;
+  if (koniec === 'miesiac') body.do_miesiaca = document.getElementById('c-do').value || null;
   if (body.typ !== 'przelew') body.konto_na_id = null;
   if (!editCyklId) body.od_miesiaca = document.getElementById('c-od').value;
   if (!body.nazwa || isNaN(body.kwota) || body.kwota <= 0) { alert('Podaj nazwę i kwotę.'); return; }
   if (isNaN(body.dzien) || body.dzien < 1 || body.dzien > 31) { alert('Dzień miesiąca: 1-31.'); return; }
-  if (body.limit_naliczen !== null && body.limit_naliczen < 1) { alert('Liczba naliczeń musi być większa od zera.'); return; }
+  if (koniec === 'liczba' && !body.limit_naliczen) { alert('Podaj liczbę naliczeń (co najmniej 1).'); return; }
+  if (koniec === 'miesiac' && !body.do_miesiaca) { alert('Wybierz miesiąc ostatniego naliczenia.'); return; }
   if (body.typ === 'przelew') {
     if (!body.konto_id || !body.konto_na_id) { alert('Przelew cykliczny wymaga konta źródłowego i docelowego.'); return; }
     if (body.konto_id === body.konto_na_id) { alert('Konto źródłowe i docelowe muszą być różne.'); return; }

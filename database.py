@@ -227,6 +227,7 @@ def init_db():
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS limit_naliczen INTEGER")
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS automatyczny BOOLEAN NOT NULL DEFAULT TRUE")
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS typ TEXT NOT NULL DEFAULT 'wydatek'")
+        cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS do_miesiaca DATE")
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS konto_na_id INTEGER REFERENCES konta(id) ON DELETE SET NULL")
         cur.execute("""CREATE TABLE IF NOT EXISTS platnosci_oczekujace (
             id           SERIAL PRIMARY KEY,
@@ -1295,14 +1296,15 @@ def create_cykliczny(household_id: int, nazwa: str, kwota: float, dzien: int,
                      konto_id: int | None, od_miesiaca: str,
                      limit_naliczen: int | None = None,
                      automatyczny: bool = True, typ: str = "wydatek",
-                     konto_na_id: int | None = None) -> dict:
+                     konto_na_id: int | None = None,
+                     do_miesiaca: str | None = None) -> dict:
     with get_db() as cur:
         cur.execute(
             """INSERT INTO wydatki_cykliczne
-               (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id, od_miesiaca, limit_naliczen, automatyczny, typ, konto_na_id)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+               (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id, od_miesiaca, limit_naliczen, automatyczny, typ, konto_na_id, do_miesiaca)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
             (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None,
-             od_miesiaca, limit_naliczen, automatyczny, typ, konto_na_id or None),
+             od_miesiaca, limit_naliczen, automatyczny, typ, konto_na_id or None, do_miesiaca),
         )
         return dict(cur.fetchone())
 
@@ -1312,15 +1314,16 @@ def update_cykliczny(cykliczny_id: int, household_id: int, nazwa: str, kwota: fl
                      konto_id: int | None, aktywne: bool,
                      limit_naliczen: int | None = None,
                      automatyczny: bool = True, typ: str = "wydatek",
-                     konto_na_id: int | None = None) -> bool:
+                     konto_na_id: int | None = None,
+                     do_miesiaca: str | None = None) -> bool:
     with get_db() as cur:
         cur.execute(
             """UPDATE wydatki_cykliczne SET nazwa=%s, kwota=%s, dzien=%s, kategoria_glowna=%s,
                kategoria=%s, osoba=%s, konto_id=%s, aktywne=%s, limit_naliczen=%s, automatyczny=%s,
-               typ=%s, konto_na_id=%s
+               typ=%s, konto_na_id=%s, do_miesiaca=%s
                WHERE id=%s AND household_id=%s""",
             (nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None,
-             aktywne, limit_naliczen, automatyczny, typ, konto_na_id or None,
+             aktywne, limit_naliczen, automatyczny, typ, konto_na_id or None, do_miesiaca,
              cykliczny_id, household_id),
         )
         return cur.rowcount > 0
@@ -1352,17 +1355,22 @@ def _terminy_cykliczne(od_miesiaca, dzien: int, po, do_dnia) -> list:
     return terminy
 
 
-def _ostatni_termin(od_miesiaca, dzien: int, limit_naliczen) -> "date | None":
-    """Data ostatniego naliczenia przy ograniczonej liczbie naliczeń (None = bezterminowo)."""
-    if not limit_naliczen:
-        return None
+def _ostatni_termin(od_miesiaca, dzien: int, limit_naliczen, do_miesiaca=None) -> "date | None":
+    """Data ostatniego naliczenia: z liczby naliczeń (limit_naliczen) i/lub miesiąca
+    końcowego (do_miesiaca) — gdy oba podane, wygrywa wcześniejszy. None = bezterminowo."""
     import calendar
     from datetime import date as _date
-    mies0 = od_miesiaca.year * 12 + (od_miesiaca.month - 1) + limit_naliczen - 1
-    rok, mies = divmod(mies0, 12)
-    mies += 1
-    ostatni = calendar.monthrange(rok, mies)[1]
-    return _date(rok, mies, min(dzien, ostatni))
+    kandydaci = []
+    if limit_naliczen:
+        mies0 = od_miesiaca.year * 12 + (od_miesiaca.month - 1) + limit_naliczen - 1
+        rok, mies = divmod(mies0, 12)
+        mies += 1
+        ostatni = calendar.monthrange(rok, mies)[1]
+        kandydaci.append(_date(rok, mies, min(dzien, ostatni)))
+    if do_miesiaca:
+        ostatni = calendar.monthrange(do_miesiaca.year, do_miesiaca.month)[1]
+        kandydaci.append(_date(do_miesiaca.year, do_miesiaca.month, min(dzien, ostatni)))
+    return min(kandydaci) if kandydaci else None
 
 
 def naliczaj_cykliczne(household_id: int) -> int:
@@ -1382,7 +1390,8 @@ def naliczaj_cykliczne(household_id: int) -> int:
         auto = c.get("automatyczny", True)
         # ręczne planujemy z wyprzedzeniem, żeby przypomnienie wyszło przed terminem
         horyzont = today if auto else today + wyprzedzenie
-        ostatni_termin = _ostatni_termin(c["od_miesiaca"], c["dzien"], c.get("limit_naliczen"))
+        ostatni_termin = _ostatni_termin(c["od_miesiaca"], c["dzien"], c.get("limit_naliczen"),
+                                         c.get("do_miesiaca"))
         do_dnia = min(horyzont, ostatni_termin) if ostatni_termin else horyzont
         terminy = _terminy_cykliczne(c["od_miesiaca"], c["dzien"], c["ostatnio_do"], do_dnia)
         if not terminy:
@@ -1480,7 +1489,8 @@ def get_przypomnienia(household_id: int) -> list[dict]:
         autos = [dict(r) for r in cur.fetchall()]
 
     for c in autos:
-        ot = _ostatni_termin(c["od_miesiaca"], c["dzien"], c.get("limit_naliczen"))
+        ot = _ostatni_termin(c["od_miesiaca"], c["dzien"], c.get("limit_naliczen"),
+                             c.get("do_miesiaca"))
         do = today + _td(days=auto_dni)
         if ot and ot < do:
             do = ot

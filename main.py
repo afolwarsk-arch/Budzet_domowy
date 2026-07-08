@@ -923,9 +923,24 @@ class CyklicznyIn(BaseModel):
     od_miesiaca: str | None = None
     aktywne: bool = True
     limit_naliczen: int | None = None
+    do_miesiaca: str | None = None   # 'YYYY-MM' — miesiąc ostatniego naliczenia
     automatyczny: bool = True
     typ: str = "wydatek"          # 'wydatek' | 'przelew'
     konto_na_id: int | None = None
+
+
+def _waliduj_zakonczenie(body: "CyklicznyIn") -> str | None:
+    """Zwraca do_miesiaca jako datę 'YYYY-MM-01' albo None; pilnuje formatu i wykluczania."""
+    if body.limit_naliczen is not None and body.limit_naliczen < 1:
+        raise HTTPException(400, "Liczba naliczeń musi być większa od zera")
+    if not body.do_miesiaca:
+        return None
+    if body.limit_naliczen is not None:
+        raise HTTPException(400, "Wybierz jedno zakończenie: liczbę naliczeń albo miesiąc końcowy")
+    import re as _re
+    if not _re.fullmatch(r"\d{4}-\d{2}", body.do_miesiaca):
+        raise HTTPException(400, "Miesiąc końcowy w formacie RRRR-MM")
+    return f"{body.do_miesiaca}-01"
 
 
 def _waliduj_cykliczny_przelew(body: "CyklicznyIn", household_id: int) -> None:
@@ -985,17 +1000,18 @@ def api_create_cykliczny(body: CyklicznyIn, current_user: dict = Depends(get_cur
         raise HTTPException(400, "Kwota musi być większa od zera")
     if not 1 <= body.dzien <= 31:
         raise HTTPException(400, "Dzień miesiąca musi być z zakresu 1-31")
-    if body.limit_naliczen is not None and body.limit_naliczen < 1:
-        raise HTTPException(400, "Liczba naliczeń musi być większa od zera")
+    do_data = _waliduj_zakonczenie(body)
     _waliduj_cykliczny_przelew(body, current_user["household_id"])
     from datetime import date as _date
     od = body.od_miesiaca or _date.today().strftime("%Y-%m")
     od_data = f"{od}-01" if len(od) == 7 else od
+    if do_data and do_data < od_data:
+        raise HTTPException(400, "Miesiąc końcowy nie może być wcześniejszy niż początek naliczania")
     wynik = database.create_cykliczny(current_user["household_id"], body.nazwa.strip(),
                                       body.kwota, body.dzien, body.kategoria_glowna,
                                       body.kategoria, body.osoba, body.konto_id, od_data,
                                       body.limit_naliczen, body.automatyczny,
-                                      body.typ, body.konto_na_id)
+                                      body.typ, body.konto_na_id, do_data)
     database.naliczaj_cykliczne(current_user["household_id"])
     return wynik
 
@@ -1005,14 +1021,13 @@ def api_update_cykliczny(cykliczny_id: int, body: CyklicznyIn,
                          current_user: dict = Depends(get_current_user)):
     if not 1 <= body.dzien <= 31:
         raise HTTPException(400, "Dzień miesiąca musi być z zakresu 1-31")
-    if body.limit_naliczen is not None and body.limit_naliczen < 1:
-        raise HTTPException(400, "Liczba naliczeń musi być większa od zera")
+    do_data = _waliduj_zakonczenie(body)
     _waliduj_cykliczny_przelew(body, current_user["household_id"])
     ok = database.update_cykliczny(cykliczny_id, current_user["household_id"],
                                    body.nazwa.strip(), body.kwota, body.dzien,
                                    body.kategoria_glowna, body.kategoria, body.osoba,
                                    body.konto_id, body.aktywne, body.limit_naliczen,
-                                   body.automatyczny, body.typ, body.konto_na_id)
+                                   body.automatyczny, body.typ, body.konto_na_id, do_data)
     if not ok:
         raise HTTPException(404, "Nie znaleziono")
     return {"ok": True}
