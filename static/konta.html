@@ -94,6 +94,7 @@
   <a href="/konta" class="active">Konta</a>
   <a href="/kategorie">Kategorie</a>
   <a href="/analiza">Analiza</a>
+  <a href="/powiadomienia">Powiadomienia</a>
   <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
 </nav>
 
@@ -213,6 +214,12 @@
 <div class="modal-backdrop" id="m-cykl">
   <div class="modal-box">
     <h3 id="m-cykl-title">Nowy wydatek cykliczny</h3>
+    <div class="fg"><label>Rodzaj</label>
+      <select id="c-typ" onchange="refreshCyklTyp()">
+        <option value="wydatek">Wydatek (subskrypcja, abonament, rata)</option>
+        <option value="przelew">Przelew na inne konto (np. oszczędności)</option>
+      </select>
+    </div>
     <div class="fg"><label>Nazwa</label><input type="text" id="c-nazwa" placeholder="np. Netflix, Spotify, siłownia"></div>
     <div class="fg"><label>Kwota miesięczna</label><input type="number" id="c-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
     <div class="fg"><label>Dzień miesiąca (naliczenie)</label><input type="number" id="c-dzien" min="1" max="31" value="1"></div>
@@ -223,10 +230,11 @@
         <option value="0">Robię przelew ręcznie — przypominaj i czekaj na potwierdzenie</option>
       </select>
     </div>
-    <div class="fg"><label>Kategoria</label><select id="c-kat" onchange="refreshCyklSubkat()"></select></div>
-    <div class="fg"><label>Podkategoria</label><select id="c-subkat"></select></div>
+    <div class="fg" id="c-kat-wrap"><label>Kategoria</label><select id="c-kat" onchange="refreshCyklSubkat()"></select></div>
+    <div class="fg" id="c-subkat-wrap"><label>Podkategoria</label><select id="c-subkat"></select></div>
     <div class="fg"><label>Osoba</label><select id="c-osoba"></select></div>
-    <div class="fg"><label>Konto</label><select id="c-konto"></select></div>
+    <div class="fg"><label id="c-konto-label">Konto</label><select id="c-konto"></select></div>
+    <div class="fg" id="c-na-wrap" style="display:none"><label>Na konto</label><select id="c-konto-na"></select></div>
     <div class="fg" id="c-od-wrap"><label>Naliczaj od miesiąca</label><input type="month" id="c-od"></div>
     <div class="fg" id="c-aktywne-wrap" style="display:none">
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:14px;font-weight:500;color:#333">
@@ -545,11 +553,14 @@ function renderCykliczne() {
       : (c.aktywne ? '' : ' <span style="font-size:11px;color:#c62828">(wstrzymany)</span>');
     const raty = c.limit_naliczen ? ` · rata ${Math.min(nal, c.limit_naliczen)}/${c.limit_naliczen}` : '';
     const sposob = c.automatyczny ? '' : ' · <span style="color:#b26a00">przelew ręczny</span>';
+    const cel = c.typ === 'przelew'
+      ? `przelew → ${c.konto_na_nazwa || 'konto usunięte'}`
+      : `${c.kategoria_glowna} / ${c.kategoria}`;
     return `
     <div class="cykl-row ${c.aktywne ? '' : 'nieaktywny'}">
       <div>
         <div class="cykl-nazwa">${c.nazwa}${badge}</div>
-        <div class="cykl-meta">co miesiąc, ${c.dzien}. dnia${raty}${sposob} · ${c.kategoria_glowna} / ${c.kategoria} · ${c.osoba}${c.konto_nazwa ? ' · ' + c.konto_nazwa : ''}</div>
+        <div class="cykl-meta">co miesiąc, ${c.dzien}. dnia${raty}${sposob} · ${cel} · ${c.osoba}${c.konto_nazwa ? ' · ' + c.konto_nazwa : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <span class="cykl-kwota">${fmt(c.kwota)} zł/mies.</span>
@@ -576,6 +587,18 @@ function fillCyklSelects(c) {
   kontoSel.innerHTML = '<option value="">— brak przypisania —</option>' +
     konta.map(k => `<option value="${k.id}">${k.nazwa} (${k.waluta})</option>`).join('');
   if (c && c.konto_id) kontoSel.value = c.konto_id;
+  const kontoNaSel = document.getElementById('c-konto-na');
+  kontoNaSel.innerHTML = '<option value="">— wybierz konto —</option>' +
+    konta.map(k => `<option value="${k.id}">${k.nazwa} (${k.waluta})</option>`).join('');
+  if (c && c.konto_na_id) kontoNaSel.value = c.konto_na_id;
+}
+
+function refreshCyklTyp() {
+  const przelew = document.getElementById('c-typ').value === 'przelew';
+  document.getElementById('c-kat-wrap').style.display = przelew ? 'none' : '';
+  document.getElementById('c-subkat-wrap').style.display = przelew ? 'none' : '';
+  document.getElementById('c-na-wrap').style.display = przelew ? '' : 'none';
+  document.getElementById('c-konto-label').textContent = przelew ? 'Z konta' : 'Konto';
 }
 
 function refreshCyklSubkat() {
@@ -592,10 +615,12 @@ function openAddCykl() {
   document.getElementById('c-dzien').value = '1';
   document.getElementById('c-limit').value = '';
   document.getElementById('c-auto').value = '1';
+  document.getElementById('c-typ').value = 'wydatek';
   document.getElementById('c-od').value = new Date().toISOString().slice(0,7);
   document.getElementById('c-od-wrap').style.display = '';
   document.getElementById('c-aktywne-wrap').style.display = 'none';
   fillCyklSelects(null);
+  refreshCyklTyp();
   openModal('m-cykl');
 }
 
@@ -609,10 +634,12 @@ function editCykl(id) {
   document.getElementById('c-dzien').value = c.dzien;
   document.getElementById('c-limit').value = c.limit_naliczen || '';
   document.getElementById('c-auto').value = c.automatyczny ? '1' : '0';
+  document.getElementById('c-typ').value = c.typ || 'wydatek';
   document.getElementById('c-od-wrap').style.display = 'none';
   document.getElementById('c-aktywne-wrap').style.display = '';
   document.getElementById('c-aktywne').checked = !!c.aktywne;
   fillCyklSelects(c);
+  refreshCyklTyp();
   openModal('m-cykl');
 }
 
@@ -628,11 +655,18 @@ async function saveCykl() {
     aktywne: editCyklId ? document.getElementById('c-aktywne').checked : true,
     limit_naliczen: parseInt(document.getElementById('c-limit').value) || null,
     automatyczny: document.getElementById('c-auto').value === '1',
+    typ: document.getElementById('c-typ').value,
+    konto_na_id: parseInt(document.getElementById('c-konto-na').value) || null,
   };
+  if (body.typ !== 'przelew') body.konto_na_id = null;
   if (!editCyklId) body.od_miesiaca = document.getElementById('c-od').value;
   if (!body.nazwa || isNaN(body.kwota) || body.kwota <= 0) { alert('Podaj nazwę i kwotę.'); return; }
   if (isNaN(body.dzien) || body.dzien < 1 || body.dzien > 31) { alert('Dzień miesiąca: 1-31.'); return; }
   if (body.limit_naliczen !== null && body.limit_naliczen < 1) { alert('Liczba naliczeń musi być większa od zera.'); return; }
+  if (body.typ === 'przelew') {
+    if (!body.konto_id || !body.konto_na_id) { alert('Przelew cykliczny wymaga konta źródłowego i docelowego.'); return; }
+    if (body.konto_id === body.konto_na_id) { alert('Konto źródłowe i docelowe muszą być różne.'); return; }
+  }
   const url = editCyklId ? `/api/cykliczne/${editCyklId}` : '/api/cykliczne';
   const res = await authFetch(url, { method: editCyklId ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
   if (!res.ok) {

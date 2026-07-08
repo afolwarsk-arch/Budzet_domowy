@@ -78,6 +78,11 @@ def kategorie_page():
     return _html("kategorie.html")
 
 
+@app.get("/powiadomienia")
+def powiadomienia_page():
+    return _html("powiadomienia.html")
+
+
 # --- Auth & Household routes ---
 
 @app.get("/api/me")
@@ -910,6 +915,24 @@ class CyklicznyIn(BaseModel):
     aktywne: bool = True
     limit_naliczen: int | None = None
     automatyczny: bool = True
+    typ: str = "wydatek"          # 'wydatek' | 'przelew'
+    konto_na_id: int | None = None
+
+
+def _waliduj_cykliczny_przelew(body: "CyklicznyIn", household_id: int) -> None:
+    if body.typ not in ("wydatek", "przelew"):
+        raise HTTPException(400, "Typ musi być 'wydatek' albo 'przelew'")
+    if body.typ != "przelew":
+        return
+    if not body.konto_id or not body.konto_na_id:
+        raise HTTPException(400, "Przelew cykliczny wymaga konta źródłowego i docelowego")
+    if body.konto_id == body.konto_na_id:
+        raise HTTPException(400, "Konto źródłowe i docelowe muszą być różne")
+    konta = {k["id"]: k for k in database.get_konta(household_id)}
+    if body.konto_id not in konta or body.konto_na_id not in konta:
+        raise HTTPException(400, "Konto nie istnieje")
+    if konta[body.konto_id]["waluta"] != konta[body.konto_na_id]["waluta"]:
+        raise HTTPException(400, "Przelewy możliwe tylko między kontami w tej samej walucie")
 
 
 @app.get("/api/przypomnienia")
@@ -923,10 +946,21 @@ def api_przypomnienia(current_user: dict = Depends(get_current_user)):
 
 @app.post("/api/platnosci/{platnosc_id}/potwierdz")
 def api_potwierdz_platnosc(platnosc_id: int, current_user: dict = Depends(get_current_user)):
-    wid = database.potwierdz_platnosc(platnosc_id, current_user["household_id"])
+    try:
+        wid = database.potwierdz_platnosc(platnosc_id, current_user["household_id"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     if wid is None:
         raise HTTPException(404, "Nie znaleziono oczekującej płatności")
     return {"ok": True, "wydatek_id": wid}
+
+
+@app.get("/api/przypomnienia/archiwum")
+def api_archiwum_powiadomien(current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        return []
+    return database.get_archiwum_powiadomien(hid)
 
 
 @app.get("/api/cykliczne")
@@ -944,13 +978,15 @@ def api_create_cykliczny(body: CyklicznyIn, current_user: dict = Depends(get_cur
         raise HTTPException(400, "Dzień miesiąca musi być z zakresu 1-31")
     if body.limit_naliczen is not None and body.limit_naliczen < 1:
         raise HTTPException(400, "Liczba naliczeń musi być większa od zera")
+    _waliduj_cykliczny_przelew(body, current_user["household_id"])
     from datetime import date as _date
     od = body.od_miesiaca or _date.today().strftime("%Y-%m")
     od_data = f"{od}-01" if len(od) == 7 else od
     wynik = database.create_cykliczny(current_user["household_id"], body.nazwa.strip(),
                                       body.kwota, body.dzien, body.kategoria_glowna,
                                       body.kategoria, body.osoba, body.konto_id, od_data,
-                                      body.limit_naliczen, body.automatyczny)
+                                      body.limit_naliczen, body.automatyczny,
+                                      body.typ, body.konto_na_id)
     database.naliczaj_cykliczne(current_user["household_id"])
     return wynik
 
@@ -962,11 +998,12 @@ def api_update_cykliczny(cykliczny_id: int, body: CyklicznyIn,
         raise HTTPException(400, "Dzień miesiąca musi być z zakresu 1-31")
     if body.limit_naliczen is not None and body.limit_naliczen < 1:
         raise HTTPException(400, "Liczba naliczeń musi być większa od zera")
+    _waliduj_cykliczny_przelew(body, current_user["household_id"])
     ok = database.update_cykliczny(cykliczny_id, current_user["household_id"],
                                    body.nazwa.strip(), body.kwota, body.dzien,
                                    body.kategoria_glowna, body.kategoria, body.osoba,
                                    body.konto_id, body.aktywne, body.limit_naliczen,
-                                   body.automatyczny)
+                                   body.automatyczny, body.typ, body.konto_na_id)
     if not ok:
         raise HTTPException(404, "Nie znaleziono")
     return {"ok": True}

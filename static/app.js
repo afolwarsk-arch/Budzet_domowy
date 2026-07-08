@@ -32,9 +32,14 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       const kiedy = dni < 0 ? `<strong>${-dni} ${-dni === 1 ? 'dzień' : 'dni'} po terminie!</strong>`
         : dni === 0 ? '<strong>dziś</strong>' : dni === 1 ? 'jutro' : `za ${dni} dni`;
       const kwota = parseFloat(p.kwota).toFixed(2).replace('.', ',');
+      const naKonto = p.konto_na_nazwa ? ' na konto ' + esc(p.konto_na_nazwa) : '';
       const txt = p.typ === 'reczny'
-        ? `Zrób przelew: <strong>${esc(p.nazwa)}</strong> — ${kwota} zł (termin ${kiedy})`
-        : `<strong>${esc(p.nazwa)}</strong> — ${kwota} zł zejdzie ${kiedy}${p.konto_nazwa ? ' z konta ' + esc(p.konto_nazwa) : ''} — zapewnij środki`;
+        ? (p.cel === 'przelew'
+            ? `Przelej: <strong>${esc(p.nazwa)}</strong> — ${kwota} zł${naKonto} (termin ${kiedy})`
+            : `Zrób przelew: <strong>${esc(p.nazwa)}</strong> — ${kwota} zł (termin ${kiedy})`)
+        : (p.cel === 'przelew'
+            ? `<strong>${esc(p.nazwa)}</strong> — ${kwota} zł przeleje się ${kiedy}${naKonto} — zapewnij środki`
+            : `<strong>${esc(p.nazwa)}</strong> — ${kwota} zł zejdzie ${kiedy}${p.konto_nazwa ? ' z konta ' + esc(p.konto_nazwa) : ''} — zapewnij środki`);
       const btn = p.typ === 'reczny'
         ? `<button onclick="potwierdzPlatnosc(${p.id})" style="white-space:nowrap;border:1px solid ${fg};background:#fff;color:${fg};border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer">✓ Zrobione</button>`
         : '';

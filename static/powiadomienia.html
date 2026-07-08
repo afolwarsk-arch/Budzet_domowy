@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Powiadomienia — Budżet domowy</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#4f7ef8">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <style>
+    .pw-row { display:flex; justify-content:space-between; align-items:center; gap:10px; border-radius:10px; padding:11px 14px; margin-bottom:8px; font-size:14px; }
+    .pw-btn { white-space:nowrap; background:#fff; border-radius:8px; padding:6px 14px; font-size:13px; font-weight:600; cursor:pointer; }
+    .arch-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--border); font-size:13.5px; }
+    .arch-row:last-child { border-bottom:none; }
+    .arch-meta { font-size:12px; color:var(--muted); margin-top:1px; }
+    .arch-badge { font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap; }
+    .arch-badge.potwierdzona { background:#eafaf1; color:#1e7e34; }
+    .arch-badge.naliczona { background:#eef1fb; color:#3563d4; }
+  </style>
+</head>
+<body>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="/static/auth.js"></script>
+<nav>
+  <a href="/" class="logo">🏠 Budżet</a>
+  <a href="/">Dashboard</a>
+  <a href="/upload">Dodaj wydatek</a>
+  <a href="/konta">Konta</a>
+  <a href="/kategorie">Kategorie</a>
+  <a href="/analiza">Analiza</a>
+  <a href="/powiadomienia" class="active">Powiadomienia</a>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
+</nav>
+
+<main style="max-width:760px">
+  <h1>Powiadomienia</h1>
+
+  <div class="card" style="margin-bottom:20px">
+    <h2>Aktywne</h2>
+    <div id="aktywne-list"><p class="empty-hint" style="color:var(--muted);text-align:center;padding:16px 0">Ładowanie…</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Archiwum</h2>
+    <p style="font-size:13px;color:var(--muted);margin:-6px 0 12px">Potwierdzone przelewy ręczne i automatyczne naliczenia (ostatnie 100).</p>
+    <div id="archiwum-list"><p style="color:var(--muted);text-align:center;padding:16px 0">Ładowanie…</p></div>
+  </div>
+</main>
+
+<script>
+const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fmtKw = v => parseFloat(v).toFixed(2).replace('.', ',');
+const fmtD = d => d ? new Date(d.slice ? d.slice(0,10) + 'T12:00' : d).toLocaleDateString('pl-PL', { day:'2-digit', month:'2-digit', year:'numeric' }) : '—';
+const fmtDT = d => d ? new Date(d).toLocaleString('pl-PL', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+
+async function loadAktywne() {
+  const el = document.getElementById('aktywne-list');
+  let items = [];
+  try { items = await authFetch('/api/przypomnienia').then(r => r.json()); } catch {}
+  if (!Array.isArray(items) || !items.length) {
+    el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:16px 0">Brak aktywnych powiadomień — wszystko opłacone. 🎉</p>';
+    return;
+  }
+  const kolor = { czerwony: ['#fdeaea', '#c0392b'], zolty: ['#fff8e1', '#7d5a00'], info: ['#eef4ff', '#3563d4'] };
+  el.innerHTML = items.map(p => {
+    const [bg, fg] = kolor[p.poziom] || kolor.info;
+    const dni = p.dni_do;
+    const kiedy = dni < 0 ? `<strong>${-dni} ${-dni === 1 ? 'dzień' : 'dni'} po terminie!</strong>`
+      : dni === 0 ? '<strong>dziś</strong>' : dni === 1 ? 'jutro' : `za ${dni} dni`;
+    const kwota = fmtKw(p.kwota);
+    const celPrzelew = p.cel === 'przelew';
+    const txt = p.typ === 'reczny'
+      ? (celPrzelew
+          ? `Przelej: <strong>${esc(p.nazwa)}</strong> — ${kwota} zł${p.konto_na_nazwa ? ' na konto ' + esc(p.konto_na_nazwa) : ''} (termin ${kiedy})`
+          : `Zrób przelew: <strong>${esc(p.nazwa)}</strong> — ${kwota} zł (termin ${kiedy})`)
+      : (celPrzelew
+          ? `<strong>${esc(p.nazwa)}</strong> — ${kwota} zł przeleje się ${kiedy}${p.konto_na_nazwa ? ' na ' + esc(p.konto_na_nazwa) : ''} — zapewnij środki`
+          : `<strong>${esc(p.nazwa)}</strong> — ${kwota} zł zejdzie ${kiedy}${p.konto_nazwa ? ' z konta ' + esc(p.konto_nazwa) : ''} — zapewnij środki`);
+    const btn = p.typ === 'reczny'
+      ? `<button class="pw-btn" style="border:1px solid ${fg};color:${fg}" onclick="potwierdz(${p.id})">✓ Zrobione</button>` : '';
+    return `<div class="pw-row" style="background:${bg};color:${fg}"><span>🔔 ${txt}</span>${btn}</div>`;
+  }).join('');
+}
+
+async function potwierdz(id) {
+  try {
+    const res = await authFetch(`/api/platnosci/${id}/potwierdz`, { method: 'POST' });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.detail || 'Nie udało się potwierdzić.'); return; }
+  } catch { alert('Problem z połączeniem.'); return; }
+  await Promise.all([loadAktywne(), loadArchiwum()]);
+}
+
+async function loadArchiwum() {
+  const el = document.getElementById('archiwum-list');
+  let items = [];
+  try { items = await authFetch('/api/przypomnienia/archiwum').then(r => r.json()); } catch {}
+  if (!Array.isArray(items) || !items.length) {
+    el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:16px 0">Archiwum jest puste.</p>';
+    return;
+  }
+  el.innerHTML = items.map(a => {
+    const potw = a.status === 'potwierdzona';
+    const badge = potw ? 'potwierdzono' : 'naliczono automatycznie';
+    const spoznienie = (() => {
+      if (!potw || !a.potwierdzona_at) return '';
+      const dni = Math.round((new Date(a.potwierdzona_at) - new Date(a.termin + 'T12:00')) / 86400000);
+      return dni > 0 ? ` · <span style="color:#c0392b">${dni} ${dni === 1 ? 'dzień' : 'dni'} po terminie</span>` : '';
+    })();
+    const cel = a.cel === 'przelew' ? ` · przelew${a.konto_na_nazwa ? ' → ' + esc(a.konto_na_nazwa) : ''}` : '';
+    return `<div class="arch-row">
+      <div>
+        <div><strong>${esc(a.nazwa)}</strong> — ${fmtKw(a.kwota)} zł</div>
+        <div class="arch-meta">termin ${fmtD(a.termin)} · ${badge} ${fmtDT(a.potwierdzona_at)}${spoznienie}${cel}</div>
+      </div>
+      <span class="arch-badge ${a.status}">${potw ? 'ręczna' : 'auto'}</span>
+    </div>`;
+  }).join('');
+}
+
+authRequireHousehold().then(() => { loadAktywne(); loadArchiwum(); });
+</script>
+</body>
+</html>

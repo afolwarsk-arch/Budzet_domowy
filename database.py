@@ -226,6 +226,8 @@ def init_db():
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS konto_id INTEGER REFERENCES konta(id) ON DELETE SET NULL")
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS limit_naliczen INTEGER")
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS automatyczny BOOLEAN NOT NULL DEFAULT TRUE")
+        cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS typ TEXT NOT NULL DEFAULT 'wydatek'")
+        cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS konto_na_id INTEGER REFERENCES konta(id) ON DELETE SET NULL")
         cur.execute("""CREATE TABLE IF NOT EXISTS platnosci_oczekujace (
             id           SERIAL PRIMARY KEY,
             household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
@@ -238,6 +240,10 @@ def init_db():
             klucz   TEXT PRIMARY KEY,
             wartosc TEXT NOT NULL
         )""")
+        # statusy płatności: 'oczekuje' | 'potwierdzona' (ręczna) | 'naliczona' (automatyczna)
+        # — wpisy nie-oczekujące pełnią rolę archiwum powiadomień
+        cur.execute("ALTER TABLE platnosci_oczekujace ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'oczekuje'")
+        cur.execute("ALTER TABLE platnosci_oczekujace ADD COLUMN IF NOT EXISTS potwierdzona_at TIMESTAMP")
         cur.execute("""CREATE TABLE IF NOT EXISTS raporty_ai (
             id             SERIAL PRIMARY KEY,
             household_id   INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
@@ -1275,8 +1281,10 @@ def set_ustawienie(klucz: str, wartosc: str) -> None:
 def get_cykliczne(household_id: int) -> list[dict]:
     with get_db() as cur:
         cur.execute("""
-            SELECT c.*, k.nazwa AS konto_nazwa
-            FROM wydatki_cykliczne c LEFT JOIN konta k ON k.id = c.konto_id
+            SELECT c.*, k.nazwa AS konto_nazwa, kn.nazwa AS konto_na_nazwa
+            FROM wydatki_cykliczne c
+            LEFT JOIN konta k ON k.id = c.konto_id
+            LEFT JOIN konta kn ON kn.id = c.konto_na_id
             WHERE c.household_id = %s ORDER BY c.aktywne DESC, c.nazwa
         """, (household_id,))
         return [dict(r) for r in cur.fetchall()]
@@ -1286,14 +1294,15 @@ def create_cykliczny(household_id: int, nazwa: str, kwota: float, dzien: int,
                      kategoria_glowna: str, kategoria: str, osoba: str,
                      konto_id: int | None, od_miesiaca: str,
                      limit_naliczen: int | None = None,
-                     automatyczny: bool = True) -> dict:
+                     automatyczny: bool = True, typ: str = "wydatek",
+                     konto_na_id: int | None = None) -> dict:
     with get_db() as cur:
         cur.execute(
             """INSERT INTO wydatki_cykliczne
-               (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id, od_miesiaca, limit_naliczen, automatyczny)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+               (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id, od_miesiaca, limit_naliczen, automatyczny, typ, konto_na_id)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
             (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None,
-             od_miesiaca, limit_naliczen, automatyczny),
+             od_miesiaca, limit_naliczen, automatyczny, typ, konto_na_id or None),
         )
         return dict(cur.fetchone())
 
@@ -1302,14 +1311,17 @@ def update_cykliczny(cykliczny_id: int, household_id: int, nazwa: str, kwota: fl
                      dzien: int, kategoria_glowna: str, kategoria: str, osoba: str,
                      konto_id: int | None, aktywne: bool,
                      limit_naliczen: int | None = None,
-                     automatyczny: bool = True) -> bool:
+                     automatyczny: bool = True, typ: str = "wydatek",
+                     konto_na_id: int | None = None) -> bool:
     with get_db() as cur:
         cur.execute(
             """UPDATE wydatki_cykliczne SET nazwa=%s, kwota=%s, dzien=%s, kategoria_glowna=%s,
-               kategoria=%s, osoba=%s, konto_id=%s, aktywne=%s, limit_naliczen=%s, automatyczny=%s
+               kategoria=%s, osoba=%s, konto_id=%s, aktywne=%s, limit_naliczen=%s, automatyczny=%s,
+               typ=%s, konto_na_id=%s
                WHERE id=%s AND household_id=%s""",
             (nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None,
-             aktywne, limit_naliczen, automatyczny, cykliczny_id, household_id),
+             aktywne, limit_naliczen, automatyczny, typ, konto_na_id or None,
+             cykliczny_id, household_id),
         )
         return cur.rowcount > 0
 
@@ -1390,14 +1402,18 @@ def naliczaj_cykliczne(household_id: int) -> int:
                 continue
         if auto:
             for t in terminy:
-                create_wydatek(
-                    data=t.isoformat(), sklep=c["nazwa"], suma=float(c["kwota"]),
-                    osoba=c["osoba"], notatki="Wydatek cykliczny", zdjecie=None,
-                    pozycje=[{"nazwa": c["nazwa"], "cena": float(c["kwota"]), "ilosc": 1,
-                              "kategoria_glowna": c["kategoria_glowna"], "kategoria": c["kategoria"]}],
-                    household_id=household_id, konto_id=c["konto_id"],
-                )
+                try:
+                    _wykonaj_cykliczny(c, t.isoformat(), household_id, "Wydatek cykliczny")
+                except Exception:
+                    continue  # np. konto przelewu usunięte — pomiń termin, nie blokuj reszty
                 utworzone += 1
+                with get_db() as cur:
+                    cur.execute(
+                        """INSERT INTO platnosci_oczekujace (household_id, cykliczny_id, termin, status, potwierdzona_at)
+                           VALUES (%s,%s,%s,'naliczona',CURRENT_TIMESTAMP)
+                           ON CONFLICT (cykliczny_id, termin) DO NOTHING""",
+                        (household_id, c["id"], t),
+                    )
         else:
             with get_db() as cur:
                 for t in terminy:
@@ -1407,6 +1423,23 @@ def naliczaj_cykliczne(household_id: int) -> int:
                         (household_id, c["id"], t),
                     )
     return utworzone
+
+
+def _wykonaj_cykliczny(c: dict, data_str: str, household_id: int, notatka: str) -> int:
+    """Realizuje pojedyncze naliczenie cyklicznego: wydatek albo przelew między kontami."""
+    if c.get("typ") == "przelew":
+        if not c.get("konto_id") or not c.get("konto_na_id"):
+            raise ValueError("Przelew cykliczny wymaga konta źródłowego i docelowego")
+        wynik = create_przelew(household_id, data_str, float(c["kwota"]),
+                               c["konto_id"], c["konto_na_id"], f"Cykliczny: {c['nazwa']}")
+        return wynik["id"]
+    return create_wydatek(
+        data=data_str, sklep=c["nazwa"], suma=float(c["kwota"]),
+        osoba=c["osoba"], notatki=notatka, zdjecie=None,
+        pozycje=[{"nazwa": c["nazwa"], "cena": float(c["kwota"]), "ilosc": 1,
+                  "kategoria_glowna": c["kategoria_glowna"], "kategoria": c["kategoria"]}],
+        household_id=household_id, konto_id=c["konto_id"],
+    )
 
 
 def get_przypomnienia(household_id: int) -> list[dict]:
@@ -1423,11 +1456,13 @@ def get_przypomnienia(household_id: int) -> list[dict]:
     wynik: list[dict] = []
     with get_db() as cur:
         cur.execute("""
-            SELECT p.id, p.termin, c.nazwa, c.kwota, k.nazwa AS konto_nazwa
+            SELECT p.id, p.termin, c.nazwa, c.kwota, c.typ AS cel,
+                   k.nazwa AS konto_nazwa, kn.nazwa AS konto_na_nazwa
             FROM platnosci_oczekujace p
             JOIN wydatki_cykliczne c ON c.id = p.cykliczny_id
             LEFT JOIN konta k ON k.id = c.konto_id
-            WHERE p.household_id=%s ORDER BY p.termin
+            LEFT JOIN konta kn ON kn.id = c.konto_na_id
+            WHERE p.household_id=%s AND p.status='oczekuje' ORDER BY p.termin
         """, (household_id,))
         for r in cur.fetchall():
             r = dict(r)
@@ -1436,8 +1471,10 @@ def get_przypomnienia(household_id: int) -> list[dict]:
             wynik.append(r)
 
         cur.execute("""
-            SELECT c.*, k.nazwa AS konto_nazwa FROM wydatki_cykliczne c
+            SELECT c.*, k.nazwa AS konto_nazwa, kn.nazwa AS konto_na_nazwa
+            FROM wydatki_cykliczne c
             LEFT JOIN konta k ON k.id = c.konto_id
+            LEFT JOIN konta kn ON kn.id = c.konto_na_id
             WHERE c.household_id=%s AND c.aktywne=TRUE AND c.automatyczny=TRUE
         """, (household_id,))
         autos = [dict(r) for r in cur.fetchall()]
@@ -1449,34 +1486,57 @@ def get_przypomnienia(household_id: int) -> list[dict]:
             do = ot
         for t in _terminy_cykliczne(c["od_miesiaca"], c["dzien"], c["ostatnio_do"], do):
             dni = (t - today).days
-            wynik.append({"id": None, "typ": "auto", "nazwa": c["nazwa"], "kwota": c["kwota"],
+            wynik.append({"id": None, "typ": "auto", "cel": c.get("typ") or "wydatek",
+                          "nazwa": c["nazwa"], "kwota": c["kwota"],
                           "termin": t, "konto_nazwa": c["konto_nazwa"],
+                          "konto_na_nazwa": c["konto_na_nazwa"],
                           "dni_do": dni, "poziom": poziom(dni)})
 
     wynik.sort(key=lambda x: x["termin"])
     return wynik
 
 
+def get_archiwum_powiadomien(household_id: int, limit: int = 100) -> list[dict]:
+    """Zamknięte zdarzenia cykliczne: potwierdzone przelewy ręczne i automatyczne naliczenia."""
+    with get_db() as cur:
+        cur.execute("""
+            SELECT p.termin, p.status, p.potwierdzona_at, c.nazwa, c.kwota, c.typ AS cel,
+                   c.automatyczny, k.nazwa AS konto_nazwa, kn.nazwa AS konto_na_nazwa
+            FROM platnosci_oczekujace p
+            JOIN wydatki_cykliczne c ON c.id = p.cykliczny_id
+            LEFT JOIN konta k ON k.id = c.konto_id
+            LEFT JOIN konta kn ON kn.id = c.konto_na_id
+            WHERE p.household_id=%s AND p.status <> 'oczekuje'
+            ORDER BY COALESCE(p.potwierdzona_at, p.created_at) DESC, p.termin DESC
+            LIMIT %s
+        """, (household_id, limit))
+        return [dict(r) for r in cur.fetchall()]
+
+
 def potwierdz_platnosc(platnosc_id: int, household_id: int) -> int | None:
-    """Potwierdzenie przelewu ręcznego: tworzy wydatek z DZISIEJSZĄ datą
-    (data faktycznej płatności) i usuwa oczekującą płatność. Zwraca id wydatku."""
+    """Potwierdzenie płatności ręcznej: tworzy wydatek albo przelew z DZISIEJSZĄ datą
+    (data faktycznej płatności) i oznacza wpis jako potwierdzony (archiwum).
+    Zwraca id utworzonego rekordu."""
     from datetime import date as _date
     with get_db() as cur:
-        cur.execute("""DELETE FROM platnosci_oczekujace WHERE id=%s AND household_id=%s
+        cur.execute("""UPDATE platnosci_oczekujace
+                       SET status='potwierdzona', potwierdzona_at=CURRENT_TIMESTAMP
+                       WHERE id=%s AND household_id=%s AND status='oczekuje'
                        RETURNING cykliczny_id, termin""", (platnosc_id, household_id))
         row = cur.fetchone()
         if not row:
             return None
         cur.execute("SELECT * FROM wydatki_cykliczne WHERE id=%s", (row["cykliczny_id"],))
         c = dict(cur.fetchone())
-    return create_wydatek(
-        data=_date.today().isoformat(), sklep=c["nazwa"], suma=float(c["kwota"]),
-        osoba=c["osoba"], notatki=f"Wydatek cykliczny (przelew potwierdzony, termin {row['termin']})",
-        zdjecie=None,
-        pozycje=[{"nazwa": c["nazwa"], "cena": float(c["kwota"]), "ilosc": 1,
-                  "kategoria_glowna": c["kategoria_glowna"], "kategoria": c["kategoria"]}],
-        household_id=household_id, konto_id=c["konto_id"],
-    )
+    try:
+        return _wykonaj_cykliczny(c, _date.today().isoformat(), household_id,
+                                  f"Wydatek cykliczny (przelew potwierdzony, termin {row['termin']})")
+    except Exception:
+        # nie udało się utworzyć rekordu — cofnij potwierdzenie, żeby nie zgubić płatności
+        with get_db() as cur:
+            cur.execute("""UPDATE platnosci_oczekujace SET status='oczekuje', potwierdzona_at=NULL
+                           WHERE id=%s""", (platnosc_id,))
+        raise
 
 
 def export_household_data(household_id: int) -> dict:

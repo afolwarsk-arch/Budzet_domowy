@@ -92,22 +92,28 @@ function _injectProfileButton(me) {
 }
 
 const _BOTTOM_NAV_ITEMS = [
-  { href: '/',          icon: '📊', label: 'Pulpit' },
-  { href: '/upload',    icon: '➕', label: 'Dodaj' },
-  { href: '/konta',     icon: '💳', label: 'Konta' },
-  { href: '/kategorie', icon: '🏷️', label: 'Kategorie' },
-  { href: '/analiza',   icon: '📈', label: 'Analiza' },
+  { href: '/',              icon: '📊', label: 'Pulpit' },
+  { href: '/upload',        icon: '➕', label: 'Dodaj' },
+  { href: '/konta',         icon: '💳', label: 'Konta' },
+  { href: '/kategorie',     icon: '🏷️', label: 'Kategorie' },
+  { href: '/analiza',       icon: '📈', label: 'Analiza' },
+  { href: '/powiadomienia', icon: '🔔', label: 'Alerty' },
 ];
 
-function _injectBottomNav() {
+function _injectBottomNav(me) {
   if (!document.querySelector('nav') || document.querySelector('.bottom-nav')) return;
+  const items = [..._BOTTOM_NAV_ITEMS];
+  if (me && authIsAdmin(me)) items.push({ href: '/admin', icon: '⚙️', label: 'Admin' });
   const bar = document.createElement('div');
   bar.className = 'bottom-nav';
-  bar.innerHTML = _BOTTOM_NAV_ITEMS.map(i => `
+  bar.innerHTML = items.map(i => `
     <a href="${i.href}" class="${location.pathname === i.href ? 'active' : ''}">
       <span class="bn-icon">${i.icon}</span>${i.label}
     </a>`).join('');
   document.body.appendChild(bar);
+  // dosuń aktywną ikonę do widoku (pasek jest przewijany w poziomie)
+  const act = bar.querySelector('a.active');
+  if (act && act.scrollIntoView) act.scrollIntoView({ inline: 'center', block: 'nearest' });
 }
 
 async function authRequireHousehold() {
@@ -130,7 +136,7 @@ async function authRequireHousehold() {
         }
         window._currentUser = me;
         _injectProfileButton(me);
-        _injectBottomNav();
+        _injectBottomNav(me);
         resolve(me);
       } catch {
         window.location.href = "/login";
