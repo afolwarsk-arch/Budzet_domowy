@@ -242,6 +242,15 @@ def admin_put_ustawienia(body: dict, admin: dict = Depends(require_admin)):
     return {"ok": True}
 
 
+@app.get("/api/admin/osoby")
+def admin_osoby(admin: dict = Depends(require_admin)):
+    with database.get_db() as cur:
+        cur.execute("""SELECT osoba, COUNT(*) AS ile FROM wydatki
+                       WHERE osoba IS NOT NULL AND osoba <> ''
+                       GROUP BY osoba ORDER BY osoba""")
+        return [dict(r) for r in cur.fetchall()]
+
+
 @app.post("/api/admin/rename-osoba")
 def rename_osoba(body: dict, admin: dict = Depends(require_admin)):
     stara = (body.get("stara") or "").strip()
