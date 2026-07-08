@@ -173,15 +173,22 @@ JAK ODCZYTYWAĆ POZYCJE:
 - Przykład: "Mleko  3,49" (bez ilości) → ilosc=1, cena=3.49
 
 RABATY I OPUSTY (ważne!):
-- Jeśli po pozycji jest linia "OPUST -X,XX" — użyj kwoty PO rabacie jako łącznej wartości
-- Oblicz cenę jednostkową = (wartość_przed - opust) / ilosc
-- NIE dodawaj OPUST jako osobnej pozycji
-- Przykład: "Arbuz luz  6,415×7,99  51,26" + "OPUST  -32,08" + "19,18"
-  → ilosc=6.415, cena=2.99 (bo 19,18/6,415 ≈ 2,99)
-- Przykład: "Awokado  2×6,99  13,98" + "OPUST  -7,00" + "6,98"
-  → ilosc=2, cena=3.49 (bo 6,98/2=3,49)
+- Rabat PRZYPISANY DO POZYCJI (linia "OPUST -X,XX" zaraz po produkcie) — użyj kwoty PO rabacie
+  jako łącznej wartości i NIE dodawaj opustu jako osobnej pozycji:
+  - Oblicz cenę jednostkową = (wartość_przed - opust) / ilosc
+  - Przykład: "Arbuz luz  6,415×7,99  51,26" + "OPUST  -32,08" + "19,18"
+    → ilosc=6.415, cena=2.99 (bo 19,18/6,415 ≈ 2,99)
+  - Przykład: "Awokado  2×6,99  13,98" + "OPUST  -7,00" + "6,98"
+    → ilosc=2, cena=3.49 (bo 6,98/2=3,49)
+- Rabat ZBIORCZY na grupę lub cały paragon (np. "Podsuma w grupie 15,77" + "OPUST RABAT KARTA
+  5,00% -0,79", "RABAT ŁĄCZNY -X,XX", rabaty za aplikację/kartę lojalnościową) — dodaj OSOBNĄ
+  pozycję z UJEMNĄ ceną równą kwocie opustu:
+  - nazwa: np. "Rabat (karta 5%)", ilosc=1, cena=-0.79
+  - kategoria: taka sama jak większość rabatowanych pozycji
+  - dzięki temu suma pozycji równa się kwocie faktycznie zapłaconej (SUMA PLN)
 
-Ignoruj linie: PLU, VAT, SUMA, RAZEM, RABAT całkowity, KARTA, GOTÓWKA, PTU, OPUSTY ŁĄCZNIE
+Ignoruj linie: PLU, VAT, SUMA, RAZEM, KARTA, GOTÓWKA, PTU, "Podsuma w grupie" (samą podsumę
+ignoruj, ale rabatu pod nią NIE ignoruj — patrz wyżej)
 
 KAUCJA ZA OPAKOWANIA ZWROTNE (system kaucyjny — butelki PET, szkło, puszki):
 - Linii kaucji NIE ignoruj! "Kaucja PET", "OPAKOWANIA ZWROTNE WYDANIA" itp. → dodaj jako
