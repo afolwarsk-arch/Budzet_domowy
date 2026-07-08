@@ -712,21 +712,28 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
         """, (household_id,))
         cykliczne = [dict(r) for r in cur.fetchall()]
 
-    # kondycja liczona przez system, nie przez model (LLM myli się w arytmetyce):
-    # średnia z zamkniętych miesięcy kalendarzowych; gdy ich brak — z tego, co jest
+    # kondycja liczona przez system, nie przez model (LLM myli się w arytmetyce).
+    # Każda metryka: średnia z zamkniętych miesięcy, w których MA dane; gdy takich brak —
+    # z miesięcy z danymi (także bieżącego, np. pensja księgowana na początku miesiąca).
     biezacy = today.strftime("%Y-%m")
-    mies_zamkniete = sorted({r["miesiac"] for r in wydatki_miesiace if r["miesiac"] != biezacy})
-    mies_baza = mies_zamkniete or sorted({r["miesiac"] for r in wydatki_miesiace})
-    n_mies = max(len(mies_baza), 1)
-    wyd_suma = sum(float(r["suma"]) for r in wydatki_miesiace if r["miesiac"] in mies_baza)
-    wpl_suma = sum(float(r["suma"]) for r in wplywy_miesiace if r["miesiac"] in mies_baza)
+
+    def _srednia(wiersze) -> tuple[float, str]:
+        mies_z_danymi = sorted({r["miesiac"] for r in wiersze})
+        zamkniete = [m for m in mies_z_danymi if m != biezacy]
+        baza = zamkniete or mies_z_danymi
+        if not baza:
+            return 0.0, "brak danych"
+        suma = sum(float(r["suma"]) for r in wiersze if r["miesiac"] in baza)
+        opis = ", ".join(baza) + ("" if zamkniete else " (niepełny miesiąc — orientacyjnie)")
+        return round(suma / len(baza), 2), opis
+
+    wyd_mies, wyd_opis = _srednia(wydatki_miesiace)
+    wpl_mies, wpl_opis = _srednia(wplywy_miesiace)
     kondycja_wyliczona = {
-        "wydatki_mies": round(wyd_suma / n_mies, 2),
-        "wplywy_mies": round(wpl_suma / n_mies, 2),
-        "bilans_mies": round((wpl_suma - wyd_suma) / n_mies, 2),
-        "metoda": (f"średnia z zamkniętych miesięcy: {', '.join(mies_baza)}"
-                   if mies_zamkniete else
-                   f"tylko bieżący, niepełny miesiąc ({', '.join(mies_baza)}) — wartości orientacyjne"),
+        "wydatki_mies": wyd_mies,
+        "wplywy_mies": wpl_mies,
+        "bilans_mies": round(wpl_mies - wyd_mies, 2),
+        "metoda": f"wydatki: średnia z [{wyd_opis}]; wpływy: średnia z [{wpl_opis}]",
     }
 
     return {
