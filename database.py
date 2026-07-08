@@ -234,6 +234,12 @@ def init_db():
             model          TEXT,
             created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS profil_ai (
+            id             SERIAL PRIMARY KEY,
+            household_id   INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            tresc          TEXT NOT NULL,
+            created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
         # migracja starego kształtu (jeden raport na gospodarstwo, PK na household_id)
         cur.execute("ALTER TABLE raporty_ai ADD COLUMN IF NOT EXISTS id SERIAL")
         cur.execute("""DO $$ BEGIN
@@ -729,6 +735,27 @@ def delete_raport_ai(raport_id: int, household_id: int) -> bool:
     with get_db() as cur:
         cur.execute("DELETE FROM raporty_ai WHERE id=%s AND household_id=%s",
                     (raport_id, household_id))
+        return cur.rowcount > 0
+
+
+def get_profil_ai(household_id: int) -> list[dict]:
+    with get_db() as cur:
+        cur.execute("""SELECT id, tresc, created_at FROM profil_ai
+                       WHERE household_id=%s ORDER BY id""", (household_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def add_profil_ai(household_id: int, tresc: str) -> int:
+    with get_db() as cur:
+        cur.execute("INSERT INTO profil_ai (household_id, tresc) VALUES (%s,%s) RETURNING id",
+                    (household_id, tresc))
+        return cur.fetchone()["id"]
+
+
+def delete_profil_ai(wpis_id: int, household_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("DELETE FROM profil_ai WHERE id=%s AND household_id=%s",
+                    (wpis_id, household_id))
         return cur.rowcount > 0
 
 

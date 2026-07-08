@@ -85,6 +85,23 @@
     .doradca-hist button { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.35); border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
     .doradca-hist button:hover { background: rgba(255,255,255,.25); }
 
+    .profil-box { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; margin-bottom: 20px; box-shadow: var(--shadow); }
+    .profil-box summary { cursor: pointer; font-size: 14px; font-weight: 600; list-style: none; }
+    .profil-box summary::before { content: '▸ '; color: var(--muted); font-size: 11px; }
+    .profil-box[open] summary::before { content: '▾ '; }
+    .profil-hint { font-size: 12.5px; color: var(--muted); margin: 8px 0 10px; }
+    .profil-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+    .profil-row:last-child { border-bottom: none; }
+    .profil-row button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 2px 6px; }
+    .profil-row button:hover { color: var(--danger); }
+    .profil-add { display: flex; gap: 8px; margin-top: 10px; }
+    .profil-add input { flex: 1; }
+
+    .pyt-opt { background: #eef1fb; color: var(--primary); border: 1px solid #d5ddf8; border-radius: 20px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 500; }
+    .pyt-opt:hover { background: #dfe6fb; }
+    .pyt-send { border-radius: 8px; }
+    .pyt-inp { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; }
+
     #raport-wynik { margin-bottom: 24px; }
     #raport-wynik.empty { display: none; }
     .rap-top { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
@@ -166,6 +183,16 @@
       <button id="rap-hist-del" title="Usuń wybraną analizę">🗑 Usuń</button>
     </div>
   </div>
+
+  <details class="profil-box" id="profil-box">
+    <summary>🧠 Profil gospodarstwa — co doradca o nas wie (<span id="profil-count">0</span>)</summary>
+    <p class="profil-hint">Trwałe fakty, które doradca uwzględnia w każdej analizie. Dopisują się z odpowiedzi na pytania pod raportem — możesz też dodać coś ręcznie (np. „Claude Pro używam zawodowo — nie sugeruj rezygnacji").</p>
+    <div id="profil-list"></div>
+    <div class="profil-add">
+      <input type="text" id="profil-input" maxlength="500" placeholder="np. rachunki płacimy kwartalnie">
+      <button class="btn btn-outline btn-sm" id="profil-add-btn">Dodaj</button>
+    </div>
+  </details>
 
   <div id="raport-wynik" class="empty"></div>
 
@@ -997,7 +1024,21 @@ function renderRaport(data) {
             <span style="color:#555">${esc(x.opis || '')}</span>
           </div>`).join('')}
       </div>` : ''}
+    ${(r.pytania && r.pytania.length) ? `
+      <div class="rap-section-title">❓ Doradca dopytuje</div>
+      <p style="font-size:12.5px;color:var(--muted);margin:-4px 0 10px">Odpowiedzi zapisują się w profilu gospodarstwa — kolejne analizy je uwzględnią, a pytania znikną.</p>
+      ${r.pytania.map((q, i) => `
+        <div class="rap-item" id="pyt-${i}">
+          <div class="rap-item-title">${esc(q.pytanie || '')}</div>
+          ${q.dlaczego ? `<div style="font-size:12.5px;color:var(--muted);margin:2px 0 8px">${esc(q.dlaczego)}</div>` : ''}
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">
+            ${(q.opcje || []).map(o => `<button class="pyt-opt" data-pyt="${i}" data-opt="${esc(o)}">${esc(o)}</button>`).join('')}
+            <input type="text" class="pyt-inp" id="pyt-inp-${i}" placeholder="własna odpowiedź / uwaga…" style="flex:1;min-width:160px">
+            <button class="pyt-opt pyt-send" data-pyt="${i}">Zapisz</button>
+          </div>
+        </div>`).join('')}` : ''}
   `;
+  currentPytania = r.pytania || [];
 }
 
 function applyRaportMeta(data) {
@@ -1009,6 +1050,39 @@ function applyRaportMeta(data) {
     if (data.kontekst) document.getElementById('rap-kontekst').value = data.kontekst;
   } else {
     meta.textContent = '';
+  }
+}
+
+let currentPytania = [];
+
+async function loadProfil() {
+  try {
+    const profil = await authFetch('/api/analiza/profil').then(r => r.json());
+    document.getElementById('profil-count').textContent = profil.length;
+    document.getElementById('profil-list').innerHTML = profil.length
+      ? profil.map(p => `<div class="profil-row"><span>${esc(p.tresc)}</span><button data-profil-del="${p.id}" title="Usuń z profilu">✕</button></div>`).join('')
+      : '<p style="color:var(--muted);font-size:13px;padding:6px 0">Profil jest pusty.</p>';
+  } catch {}
+}
+
+async function dodajDoProfilu(tresc) {
+  const res = await authFetch('/api/analiza/profil', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tresc }),
+  });
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.detail || 'Nie udało się zapisać.'); }
+  await loadProfil();
+}
+
+async function odpowiedzNaPytanie(i, odp) {
+  const q = currentPytania[i];
+  if (!q || !odp) return;
+  try {
+    await dodajDoProfilu(`${q.pytanie} — ${odp}`);
+    const card = document.getElementById('pyt-' + i);
+    if (card) card.innerHTML = `<div class="rap-item-opis">✅ Zapisano do profilu: <strong>${esc(odp)}</strong></div>`;
+  } catch (e) {
+    alert(e.message || 'Nie udało się zapisać odpowiedzi.');
   }
 }
 
@@ -1112,6 +1186,33 @@ authRequireHousehold().then(async () => {
   document.getElementById('rap-hist-sel').addEventListener('change', pokazRaportZHistorii);
   document.getElementById('rap-hist-del').addEventListener('click', usunRaportZHistorii);
   loadRaport().then(d => loadHistoria(d && d.id != null ? d.id : null));
+  loadProfil();
+  // pytania doradcy (delegacja — treść raportu jest renderowana dynamicznie)
+  document.getElementById('raport-wynik').addEventListener('click', e => {
+    const btn = e.target.closest('.pyt-opt');
+    if (!btn) return;
+    const i = parseInt(btn.dataset.pyt);
+    if (btn.classList.contains('pyt-send')) {
+      const inp = document.getElementById('pyt-inp-' + i);
+      odpowiedzNaPytanie(i, inp ? inp.value.trim() : '');
+    } else {
+      odpowiedzNaPytanie(i, btn.dataset.opt);
+    }
+  });
+  // profil: usuwanie wpisów i ręczne dodawanie
+  document.getElementById('profil-list').addEventListener('click', async e => {
+    const btn = e.target.closest('[data-profil-del]');
+    if (!btn) return;
+    if (!confirm('Usunąć ten wpis z profilu? Doradca przestanie go uwzględniać.')) return;
+    await authFetch('/api/analiza/profil/' + btn.dataset.profilDel, { method: 'DELETE' });
+    await loadProfil();
+  });
+  document.getElementById('profil-add-btn').addEventListener('click', async () => {
+    const inp = document.getElementById('profil-input');
+    const tresc = inp.value.trim();
+    if (!tresc) return;
+    try { await dodajDoProfilu(tresc); inp.value = ''; } catch (e) { alert(e.message); }
+  });
   await loadOsobaOptions('filter-osoba', true);
   await loadState();
   document.getElementById('filter-month').value = new Date().toISOString().slice(0,7);

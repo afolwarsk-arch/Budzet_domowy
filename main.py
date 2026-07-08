@@ -540,6 +540,42 @@ def _raport_response(row: dict) -> dict:
     }
 
 
+class ProfilIn(BaseModel):
+    tresc: str
+
+
+@app.get("/api/analiza/profil")
+def get_analiza_profil(current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    return database.get_profil_ai(hid)
+
+
+@app.post("/api/analiza/profil", status_code=201)
+def add_analiza_profil(body: ProfilIn, current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    tresc = body.tresc.strip()
+    if not tresc:
+        raise HTTPException(400, "Pusta treść")
+    if len(tresc) > 500:
+        raise HTTPException(400, "Maksymalnie 500 znaków")
+    wid = database.add_profil_ai(hid, tresc)
+    return {"id": wid, "tresc": tresc}
+
+
+@app.delete("/api/analiza/profil/{wpis_id}")
+def delete_analiza_profil(wpis_id: int, current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    if not database.delete_profil_ai(wpis_id, hid):
+        raise HTTPException(404, "Nie znaleziono wpisu")
+    return {"ok": True}
+
+
 @app.get("/api/analiza/raporty")
 def list_analiza_raporty(current_user: dict = Depends(get_current_user)):
     hid = current_user["household_id"]
@@ -591,8 +627,9 @@ def generuj_analiza_raport(body: RaportIn, current_user: dict = Depends(get_curr
         raise HTTPException(500, f"Błąd przygotowania danych do analizy: {e}")
     if not dane["wydatki_per_miesiac"]:
         raise HTTPException(400, "Za mało danych do analizy — dodaj najpierw kilka wydatków.")
+    profil = [p["tresc"] for p in database.get_profil_ai(hid)]
     try:
-        raport, usage = ai_processor.analizuj_budzet(dane, body.kontekst)
+        raport, usage = ai_processor.analizuj_budzet(dane, body.kontekst, profil)
     except Exception as e:
         raise HTTPException(502, f"Nie udało się wygenerować analizy: {e}")
     database.log_api_usage(hid, "analiza-raport", usage["input_tokens"], usage["output_tokens"])

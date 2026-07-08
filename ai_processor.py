@@ -393,16 +393,31 @@ Zwróć WYŁĄCZNIE poprawny JSON w tym formacie (bez markdown, bez komentarzy):
   "obserwacje": [{"tytul": "krótki", "opis": "z konkretnymi liczbami", "waga": "wysoka|srednia|niska"}],
   "rekomendacje": [{"tytul": "krótki", "opis": "jak i dlaczego", "oszczednosc_mies": 0, "trudnosc": "latwe|srednie|trudne"}],
   "trendy": [{"kategoria": "nazwa", "kierunek": "rosnie|spada|stabilnie", "opis": "krótko"}],
-  "potencjal_oszczednosci_mies": 0
+  "potencjal_oszczednosci_mies": 0,
+  "pytania": [{"pytanie": "krótkie pytanie do użytkownika", "opcje": ["opcja 1", "opcja 2"], "dlaczego": "jedno zdanie, co zmieni odpowiedź"}]
 }
 potencjal_oszczednosci_mies to suma realistycznych oszczednosc_mies z rekomendacji. \
-Podaj 3-6 obserwacji i 3-6 rekomendacji, posortowanych od najważniejszych."""
+Podaj 3-6 obserwacji i 3-6 rekomendacji, posortowanych od najważniejszych.
+
+Pytania (pole pytania): dodaj 0-3 pytania WYŁĄCZNIE o rzeczy, których odpowiedź realnie \
+zmieniłaby Twoją interpretację lub rekomendację (np. czy rachunki są płacone kwartalnie, \
+czy subskrypcja jest używana zawodowo, czy duży wydatek się powtórzy). Do każdego 2-4 krótkie \
+opcje odpowiedzi. NIE pytaj o nic, co wynika z danych albo z PROFILU GOSPODARSTWA. \
+Jeśli nie ma istotnych niejasności, zwróć pustą listę.
+Jeśli w wiadomości jest PROFIL GOSPODARSTWA, traktuj go jako pewne fakty nadrzędne wobec \
+domysłów z danych — rekomendacje nie mogą być z nim sprzeczne (np. nie sugeruj rezygnacji \
+z narzędzia, które użytkownik zadeklarował jako potrzebne)."""
 
 
-def analizuj_budzet(dane: dict, kontekst: str | None = None) -> tuple[dict, dict]:
+def analizuj_budzet(dane: dict, kontekst: str | None = None,
+                    profil: list[str] | None = None) -> tuple[dict, dict]:
     """Analiza budżetu przez Claude. Zwraca (raport_dict, usage)."""
     client = anthropic.Anthropic()
     tresc = "DANE BUDŻETU (JSON):\n" + json.dumps(dane, ensure_ascii=False, default=str)
+    if profil:
+        tresc += ("\n\nPROFIL GOSPODARSTWA — trwałe fakty podane przez użytkownika "
+                  "(pewne, nadrzędne wobec domysłów; nie zadawaj pytań o te tematy):\n"
+                  + "\n".join(f"- {p}" for p in profil))
     if kontekst and kontekst.strip():
         tresc += (f"\n\nKONTEKST GOSPODARSTWA (uwzględnij w rekomendacjach): {kontekst.strip()}")
     msg = client.messages.create(
