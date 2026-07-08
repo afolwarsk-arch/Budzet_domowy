@@ -598,13 +598,14 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
     do = today.isoformat()
 
     with get_db() as cur:
-        # wydatki i pozycje per miesiąc + kategoria
-        cur.execute("""
-            SELECT TO_CHAR(w.data,'YYYY-MM') AS miesiac, p.kategoria_glowna AS kategoria,
+        # wydatki i pozycje per miesiąc + kategoria (kontekstowa — imprezy/okazje
+        # lądują we właściwej kategorii, nie w np. Spożywczych)
+        cur.execute(f"""
+            SELECT TO_CHAR(w.data,'YYYY-MM') AS miesiac, {_KAT} AS kategoria,
                    ROUND(CAST(SUM(p.cena*p.ilosc) AS numeric),2) AS suma
             FROM pozycje p JOIN wydatki w ON w.id=p.wydatek_id
             WHERE w.household_id=%s AND w.data>=%s
-            GROUP BY TO_CHAR(w.data,'YYYY-MM'), p.kategoria_glowna
+            GROUP BY TO_CHAR(w.data,'YYYY-MM'), {_KAT}
             ORDER BY miesiac, suma DESC
         """, (household_id, od))
         kat_miesiace = [dict(r) for r in cur.fetchall()]
@@ -628,17 +629,27 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
         wplywy_miesiace = [dict(r) for r in cur.fetchall()]
 
         # top produkty grupowane po nazwie — tu siedzą realne odkrycia
-        cur.execute("""
-            SELECT MIN(p.nazwa) AS nazwa, p.kategoria_glowna AS kategoria,
+        cur.execute(f"""
+            SELECT MIN(p.nazwa) AS nazwa, {_KAT} AS kategoria,
                    COUNT(*) AS ile, ROUND(CAST(SUM(p.cena*p.ilosc) AS numeric),2) AS suma,
                    ROUND(CAST(AVG(p.cena) AS numeric),2) AS srednia_cena
             FROM pozycje p JOIN wydatki w ON w.id=p.wydatek_id
             WHERE w.household_id=%s AND w.data>=%s
-            GROUP BY LOWER(p.nazwa), p.kategoria_glowna
+            GROUP BY LOWER(p.nazwa), {_KAT}
             HAVING SUM(p.cena*p.ilosc) > 0
             ORDER BY suma DESC LIMIT 50
         """, (household_id, od))
         produkty = [dict(r) for r in cur.fetchall()]
+
+        # wydatki okazjonalne (urodziny, święta itp.) — jawnie jako jednorazowe
+        cur.execute("""
+            SELECT w.okazja, COUNT(*) AS paragony,
+                   ROUND(CAST(SUM(w.suma) AS numeric),2) AS suma
+            FROM wydatki w
+            WHERE w.household_id=%s AND w.data>=%s AND w.okazja IS NOT NULL AND w.okazja <> ''
+            GROUP BY w.okazja ORDER BY suma DESC
+        """, (household_id, od))
+        okazje = [dict(r) for r in cur.fetchall()]
 
         # top sklepy
         cur.execute("""
@@ -664,6 +675,7 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
         "top_produkty": produkty,
         "top_sklepy": sklepy,
         "wydatki_cykliczne": cykliczne,
+        "wydatki_okazjonalne": okazje,
     }
 
 
