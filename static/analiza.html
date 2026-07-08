@@ -1171,6 +1171,11 @@ async function generujRaport() {
     renderRaport(data);
     applyRaportMeta(data);
     await loadHistoria(data.id != null ? data.id : null);
+    if (data.blad_zapisu) {
+      const el = document.getElementById('raport-wynik');
+      el.insertAdjacentHTML('afterbegin',
+        `<div class="alert alert-warning" style="margin-bottom:14px">⚠️ ${esc(data.blad_zapisu)} — przekaż mi tę treść, naprawię zapis historii.</div>`);
+    }
   } catch (e) {
     const msg = (e && e.message) ? e.message : 'Problem z połączeniem — sprawdź internet i spróbuj ponownie.';
     showRaportError(msg);

@@ -262,13 +262,17 @@ def init_db():
         )""")
         # migracja starego kształtu (jeden raport na gospodarstwo, PK na household_id)
         cur.execute("ALTER TABLE raporty_ai ADD COLUMN IF NOT EXISTS id SERIAL")
-        cur.execute("""DO $$ BEGIN
-            IF EXISTS (SELECT 1 FROM information_schema.table_constraints tc
-                       JOIN information_schema.key_column_usage k
-                         ON k.constraint_name = tc.constraint_name AND k.table_name = tc.table_name
-                       WHERE tc.table_name='raporty_ai' AND tc.constraint_type='PRIMARY KEY'
-                         AND k.column_name='household_id') THEN
-                ALTER TABLE raporty_ai DROP CONSTRAINT raporty_ai_pkey;
+        cur.execute("""DO $$
+        DECLARE pk_nazwa text;
+        BEGIN
+            SELECT tc.constraint_name INTO pk_nazwa
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage k
+              ON k.constraint_name = tc.constraint_name AND k.table_name = tc.table_name
+            WHERE tc.table_name='raporty_ai' AND tc.constraint_type='PRIMARY KEY'
+              AND k.column_name='household_id';
+            IF pk_nazwa IS NOT NULL THEN
+                EXECUTE format('ALTER TABLE raporty_ai DROP CONSTRAINT %I', pk_nazwa);
                 ALTER TABLE raporty_ai ADD PRIMARY KEY (id);
             END IF;
         END $$""")

@@ -675,10 +675,17 @@ def generuj_analiza_raport(body: RaportIn, current_user: dict = Depends(get_curr
     except Exception as e:
         raise HTTPException(502, f"Nie udało się wygenerować analizy: {e}")
     database.log_api_usage(hid, "analiza-raport", usage["input_tokens"], usage["output_tokens"])
-    rid = database.save_raport_ai(hid, miesiace, body.kontekst,
-                                  _json.dumps(raport, ensure_ascii=False), "claude-sonnet-4-6")
-    row = database.get_raport_ai(hid, rid)
-    return _raport_response(row)
+    try:
+        rid = database.save_raport_ai(hid, miesiace, body.kontekst,
+                                      _json.dumps(raport, ensure_ascii=False), "claude-sonnet-4-6")
+        row = database.get_raport_ai(hid, rid)
+        return _raport_response(row)
+    except Exception as e:
+        # raport już wygenerowany (i opłacony) — pokaż go mimo problemu z zapisem historii
+        from datetime import datetime as _dt
+        return {"id": None, "raport": raport, "miesiace": miesiace, "kontekst": body.kontekst,
+                "created_at": _dt.utcnow().isoformat(),
+                "blad_zapisu": f"Raport nie zapisał się w historii: {e}"}
 
 
 @app.get("/api/kategorie")
