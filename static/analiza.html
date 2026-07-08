@@ -112,6 +112,13 @@
       .rap-top { grid-template-columns: 1fr; }
       .rap-potencjal { border-left: none; border-top: 1px solid var(--border); padding-top: 14px; }
     }
+    @media (max-width: 700px) {
+      /* zwiń układ do jednej kolumny — sztywna kolumna 290px powodowała poziomy scroll,
+         a ten odklejał dolny pasek nawigacji od dołu ekranu */
+      .analiza-layout { grid-template-columns: 1fr; }
+      .pool-card { position: static; max-height: none; }
+      #chart-card > div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+    }
   </style>
 </head>
 <body>
@@ -995,6 +1002,16 @@ function applyRaportMeta(data) {
   }
 }
 
+function showRaportError(msg) {
+  const el = document.getElementById('raport-wynik');
+  el.className = '';
+  el.innerHTML = `<div class="alert alert-error" style="font-size:14px;line-height:1.55">
+      <strong>⚠️ Nie udało się wykonać analizy.</strong><br>
+      ${esc(msg)}<br>
+      <span style="color:var(--muted);font-size:13px">Spróbuj ponownie za chwilę. Jeśli błąd się powtarza, przekaż mi powyższą treść.</span>
+    </div>`;
+}
+
 async function loadRaport() {
   try {
     const data = await authFetch('/api/analiza/raport').then(r => r.json());
@@ -1017,11 +1034,13 @@ async function generujRaport() {
     };
     const res = await authFetch('/api/analiza/raport', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Błąd analizy');
+    if (!res.ok) throw new Error(data.detail || `Serwer zwrócił błąd (HTTP ${res.status}).`);
     renderRaport(data);
     applyRaportMeta(data);
   } catch (e) {
-    meta.textContent = 'Błąd: ' + e.message;
+    const msg = (e && e.message) ? e.message : 'Problem z połączeniem — sprawdź internet i spróbuj ponownie.';
+    showRaportError(msg);
+    meta.textContent = '';
   } finally {
     btn.disabled = false;
     btn.textContent = orig;
