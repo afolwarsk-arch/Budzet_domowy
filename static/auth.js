@@ -146,6 +146,26 @@ async function authRequireHousehold() {
   });
 }
 
+// widoczny stan "Claude pracuje" z rotującymi komunikatami kroków;
+// zwraca funkcję stop() czyszczącą interwał
+function aiPracaStart(el, tytul, kroki) {
+  let i = 0;
+  el.innerHTML = `<div class="ai-praca">
+      <div class="ai-spinner"></div>
+      <div class="ai-tytul">${tytul}</div>
+      <div class="ai-krok">${kroki[0]}</div>
+    </div>`;
+  const krokEl = el.querySelector('.ai-krok');
+  const t = setInterval(() => {
+    i = (i + 1) % kroki.length;
+    krokEl.style.opacity = 0;
+    setTimeout(() => { krokEl.textContent = kroki[i]; krokEl.style.opacity = 1; }, 250);
+  }, 2800);
+  if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  return () => clearInterval(t);
+}
+window.aiPracaStart = aiPracaStart;
+
 async function authFetch(url, options = {}) {
   const token = await authGetToken();
   return fetch(url, {

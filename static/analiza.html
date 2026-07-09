@@ -1154,7 +1154,17 @@ async function generujRaport() {
   const orig = btn.textContent;
   btn.disabled = true;
   btn.textContent = 'Analizuję…';
-  meta.textContent = 'Claude analizuje Twoje wydatki — to potrwa kilkanaście sekund…';
+  meta.textContent = '';
+  const wynikEl = document.getElementById('raport-wynik');
+  wynikEl.className = '';
+  const stopPraca = aiPracaStart(wynikEl, '🤖 Claude analizuje Twój budżet…', [
+    'Zbieram dane z ostatnich miesięcy…',
+    'Przeglądam kategorie, sklepy i produkty…',
+    'Sprawdzam subskrypcje i wydatki cykliczne…',
+    'Szukam realnych możliwości oszczędności…',
+    'Liczę potencjał i piszę rekomendacje…',
+    'Jeszcze chwila — to może potrwać do minuty…',
+  ]);
   try {
     const body = {
       miesiace: parseInt(document.getElementById('rap-miesiace').value) || 3,
@@ -1177,6 +1187,7 @@ async function generujRaport() {
     showRaportError(msg);
     meta.textContent = '';
   } finally {
+    stopPraca();
     btn.disabled = false;
     btn.textContent = orig;
   }

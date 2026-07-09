@@ -768,6 +768,17 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
     const osoba = document.getElementById('osoba').value;
     const kontekst = document.getElementById('kontekst-input').value.trim();
 
+    const trybTekst = !panelText.classList.contains('hidden');
+    const loadEl = document.getElementById('ai-loading');
+    loadEl.classList.remove('hidden');
+    const stopPraca = aiPracaStart(loadEl,
+      trybTekst ? '🤖 Claude analizuje notatkę…'
+        : (fileCount > 1 ? `🤖 Claude czyta ${fileCount} paragony…` : '🤖 Claude czyta paragon…'),
+      trybTekst
+        ? ['Rozbijam notatkę na wydatki…', 'Przypisuję kategorie…', 'Jeszcze chwila…']
+        : ['Odczytuję pozycje i ceny…', 'Rozpoznaję sklep i datę…', 'Przypisuję kategorie…',
+           'Sprawdzam rabaty i sumy…', 'Jeszcze chwila — dokładność wymaga czasu…']);
+
     try {
       let list;
       if (!panelText.classList.contains('hidden')) {
@@ -812,6 +823,9 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
     } catch (e) {
       setAlert('Błąd: ' + e.message, 'error');
     } finally {
+      stopPraca();
+      loadEl.classList.add('hidden');
+      loadEl.innerHTML = '';
       analyzeBtn.disabled = false;
       analyzeBtn.textContent = 'Analizuj';
     }
