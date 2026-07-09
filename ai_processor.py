@@ -386,6 +386,10 @@ Twoim zadaniem jest znaleźć REALNE, oparte na danych możliwości oszczędzani
 Zasady:
 - Odwołuj się do konkretnych liczb z danych (nazwy produktów, częstotliwość, kwoty). Zamiast "ogranicz jedzenie na mieście" napisz "kawa na mieście: 14 zakupów, średnio 18 zł, razem 252 zł/mies".
 - Zwracaj uwagę na: częste drobne zakupy, które się sumują; abonamenty i subskrypcje (łatwe oszczędności); kategorie rosnące z miesiąca na miesiąc; wydatki nietypowo wysokie w danym miesiącu.
+- BIEŻĄCY MIESIĄC JEST NIEPEŁNY (pole okres.uwaga mówi, ile dni obejmuje). Nigdy nie porównuj go \
+wprost z pełnymi miesiącami ("lipiec droższy od czerwca" z 8 dni danych to błąd) i nie licz z niego \
+trendów. Przy każdej kwocie z niepełnego miesiąca dopisz, że to wartość częściowa; jeśli szacujesz \
+pełny miesiąc proporcjonalnie (run-rate), powiedz to wprost.
 - Rekomendacje muszą mieć realny szacunek oszczędności miesięcznej (oszczednosc_mies) i ocenę trudności.
 - Wydatki z listy wydatki_okazjonalne (urodziny, święta, imprezy) to zdarzenia JEDNORAZOWE — nie wyciągaj z nich nawyków ani miesięcznych rekomendacji oszczędności; możesz je co najwyżej odnotować w obserwacjach jako koszt jednorazowy. Produkty z takich zakupów są celowo wyłączone z listy top_produkty.
 - NIE kwestionuj kategoryzacji wydatków — kategorie w danych są kontekstowe i przypisane świadomie przez użytkownika (np. zakupy na przyjęcie dziecka mogą celowo być w kategorii dziecka). Błędna kategoryzacja nie jest tematem tej analizy.
@@ -423,7 +427,8 @@ def analizuj_budzet(dane: dict, kontekst: str | None = None,
                     profil: list[str] | None = None) -> tuple[dict, dict]:
     """Analiza budżetu przez Claude. Zwraca (raport_dict, usage)."""
     client = anthropic.Anthropic()
-    tresc = "DANE BUDŻETU (JSON):\n" + json.dumps(dane, ensure_ascii=False, default=str)
+    tresc = (f"DZISIAJ JEST {date.today().isoformat()}.\n\n"
+             "DANE BUDŻETU (JSON):\n" + json.dumps(dane, ensure_ascii=False, default=str))
     if profil:
         tresc += ("\n\nPROFIL GOSPODARSTWA — trwałe fakty podane przez użytkownika "
                   "(pewne, nadrzędne wobec domysłów; nie zadawaj pytań o te tematy):\n"

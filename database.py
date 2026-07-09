@@ -736,8 +736,12 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
         "metoda": f"wydatki: średnia z [{wyd_opis}]; wpływy: średnia z [{wpl_opis}]",
     }
 
+    import calendar as _cal
+    dni_w_mies = _cal.monthrange(today.year, today.month)[1]
     return {
-        "okres": {"od": od, "do": do, "miesiace": miesiace},
+        "okres": {"od": od, "do": do, "miesiace": miesiace,
+                  "uwaga": (f"UWAGA: miesiąc {biezacy} jest NIEPEŁNY — dane obejmują tylko "
+                            f"{today.day} z {dni_w_mies} dni ({round(100*today.day/dni_w_mies)}% miesiąca)")},
         "kondycja_wyliczona": kondycja_wyliczona,
         "wydatki_per_miesiac": wydatki_miesiace,
         "wplywy_per_miesiac": wplywy_miesiace,
