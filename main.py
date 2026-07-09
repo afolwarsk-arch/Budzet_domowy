@@ -107,7 +107,14 @@ def get_me(current_user: dict = Depends(get_current_user)):
         h = database.get_household(current_user["household_id"])
         if h:
             household = {"id": h["id"], "name": h["name"], "role": current_user["role"]}
-    return {**current_user, "household": household}
+    return {**current_user, "household": household,
+            "samouczek": database.get_samouczek(current_user["user_id"])}
+
+
+@app.post("/api/me/samouczek")
+def zaliczony_samouczek(current_user: dict = Depends(get_current_user)):
+    database.set_samouczek(current_user["user_id"])
+    return {"ok": True}
 
 
 @app.patch("/api/me")

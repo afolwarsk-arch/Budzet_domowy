@@ -80,6 +80,15 @@ function _injectProfileButton(me) {
     if (logoutBtn) nav.insertBefore(adminLink, logoutBtn);
     else nav.appendChild(adminLink);
   }
+  const help = document.createElement('button');
+  help.textContent = '❓';
+  help.title = 'Samouczek — jak korzystać z aplikacji';
+  help.style.cssText = 'padding:6px 10px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;';
+  help.onclick = () => pokazSamouczek(false);
+  const logoutBtn0 = nav.querySelector('button');
+  if (logoutBtn0) nav.insertBefore(help, logoutBtn0);
+  else nav.appendChild(help);
+
   const btn = document.createElement('button');
   btn.id = 'nav-profile-btn';
   btn.textContent = me.display_name || me.name.split(' ')[0];
@@ -90,6 +99,70 @@ function _injectProfileButton(me) {
   if (logoutBtn) nav.insertBefore(btn, logoutBtn);
   else nav.appendChild(btn);
 }
+
+const _SAMOUCZEK_SLAJDY = [
+  { emoji: '👋', tytul: 'Witaj w Budżecie domowym!',
+    opis: 'Wspólny budżet Waszego gospodarstwa: paragony, konta, analizy i doradca AI. Ten krótki przewodnik pokaże najważniejsze możliwości — wrócisz do niego w każdej chwili przyciskiem ❓ na górnym pasku.',
+    obraz: '/static/tutorial/1-dashboard.png' },
+  { emoji: '📷', tytul: 'Dodawaj wydatki zdjęciem paragonu',
+    opis: 'Zakładka „Dodaj wydatek": zrób zdjęcie paragonu (można kilka naraz) — Claude odczyta sklep, pozycje, ceny i przypisze kategorie. Możesz też wpisać wydatki zwykłą notatką. Przed zapisem wszystko da się poprawić.',
+    obraz: '/static/tutorial/2-upload.png' },
+  { emoji: '📊', tytul: 'Dashboard — wszystko na oku',
+    opis: 'Filtruj po miesiącu, osobie i kategorii. Kliknij segment wykresu, aby zejść do podkategorii i konkretnych produktów. W tabeli wydatków edytujesz i usuwasz wpisy.',
+    obraz: '/static/tutorial/1-dashboard.png' },
+  { emoji: '💳', tytul: 'Konta, wpływy i wydatki cykliczne',
+    opis: 'Strona „Konta": salda, wpływy, przelewy między kontami i inwentaryzacje. Subskrypcje i raty ustaw jako wydatki cykliczne — naliczą się same. Cykliczny przelew na oszczędności też ustawisz tutaj.',
+    obraz: '/static/tutorial/4-konta.png' },
+  { emoji: '🔔', tytul: 'Przypomnienia o płatnościach',
+    opis: 'O ręcznych przelewach apka przypomina z wyprzedzeniem — po zrobieniu przelewu klikasz „Zrobione". Przy automatycznych dostaniesz znać, żeby zapewnić środki na koncie. Archiwum znajdziesz w „Powiadomieniach".',
+    obraz: '/static/tutorial/5-powiadomienia.png' },
+  { emoji: '🤖', tytul: 'Doradca budżetowy AI',
+    opis: 'Na stronie „Analiza" Claude przeanalizuje Wasze wydatki i wskaże, gdzie realnie można zaoszczędzić — z konkretnymi kwotami. Odpowiadaj na jego pytania: buduje profil gospodarstwa i z każdą analizą zna Was lepiej.',
+    obraz: '/static/tutorial/6-doradca.png' },
+  { emoji: '📱', tytul: 'Miej budżet w kieszeni',
+    opis: 'Na telefonie wybierz w przeglądarce „Dodaj do ekranu głównego" — apka działa jak zwykła aplikacja: dolny pasek nawigacji i aparat do paragonów zawsze pod ręką. Miłego oszczędzania! 🎉',
+    obraz: '/static/tutorial/7-mobile.png' },
+];
+
+function pokazSamouczek(pierwszyRaz) {
+  let idx = 0;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,20,40,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
+  const zamknij = () => {
+    overlay.remove();
+    if (pierwszyRaz) authFetch('/api/me/samouczek', { method: 'POST' }).catch(() => {});
+  };
+  overlay.addEventListener('click', e => { if (e.target === overlay) zamknij(); });
+  const render = () => {
+    const s = _SAMOUCZEK_SLAJDY[idx];
+    const ostatni = idx === _SAMOUCZEK_SLAJDY.length - 1;
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:18px;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,.3)">
+        <img src="${s.obraz}" alt="" style="width:100%;display:block;border-radius:18px 18px 0 0;border-bottom:1px solid #e5e9f0" onerror="this.remove()">
+        <div style="padding:20px 26px 18px">
+          <div style="font-size:28px;margin-bottom:4px">${s.emoji}</div>
+          <h3 style="font-size:1.15rem;margin:0 0 8px;color:#1a1f2e">${s.tytul}</h3>
+          <p style="font-size:14px;line-height:1.55;color:#444;margin:0 0 16px">${s.opis}</p>
+          <div style="display:flex;justify-content:center;gap:6px;margin-bottom:14px">
+            ${_SAMOUCZEK_SLAJDY.map((_, i) => `<span style="width:8px;height:8px;border-radius:50%;background:${i === idx ? '#4f7ef8' : '#dde3f0'}"></span>`).join('')}
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button data-t="pomin" style="background:none;border:none;color:#98a0b3;cursor:pointer;font-size:13px;padding:8px 4px">Pomiń</button>
+            <span style="flex:1"></span>
+            ${idx > 0 ? '<button data-t="wstecz" style="background:#f0f2f8;border:none;border-radius:8px;padding:10px 18px;cursor:pointer;font-size:14px;color:#444">Wstecz</button>' : ''}
+            <button data-t="dalej" style="background:#4f7ef8;border:none;border-radius:8px;padding:10px 22px;cursor:pointer;font-size:14px;color:#fff;font-weight:600">${ostatni ? 'Zaczynamy! 🎉' : 'Dalej'}</button>
+          </div>
+        </div>
+      </div>`;
+    overlay.querySelector('[data-t="pomin"]').onclick = zamknij;
+    const w = overlay.querySelector('[data-t="wstecz"]');
+    if (w) w.onclick = () => { idx--; render(); };
+    overlay.querySelector('[data-t="dalej"]').onclick = () => { if (ostatni) zamknij(); else { idx++; render(); } };
+  };
+  render();
+  document.body.appendChild(overlay);
+}
+window.pokazSamouczek = pokazSamouczek;
 
 const _BOTTOM_NAV_ITEMS = [
   { href: '/',              icon: '📊', label: 'Pulpit' },
@@ -137,6 +210,7 @@ async function authRequireHousehold() {
         window._currentUser = me;
         _injectProfileButton(me);
         _injectBottomNav(me);
+        if (me.samouczek === false) setTimeout(() => pokazSamouczek(true), 600);
         resolve(me);
       } catch {
         window.location.href = "/login";

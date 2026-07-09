@@ -9,6 +9,7 @@ venv/
 *.jpeg
 *.png
 !static/icon-*.png
+!static/tutorial/*.png
 *.url
 firebase-service-account.json
 _*.txt

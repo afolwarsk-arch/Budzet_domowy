@@ -17,6 +17,31 @@ function esc(s) {
 if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(async (me) => {
   loadOsobaOptions('filter-osoba', true); // w tle — wykresy nie muszą na to czekać
 
+  // ── wskazówka dnia (rotacyjne przypominanie funkcji) ──
+  const TIPS = [
+    'Kliknij segment wykresu kategorii, aby zobaczyć podkategorie i konkretne produkty.',
+    'Możesz dodać kilka paragonów naraz — wybierz wiele zdjęć, każde stanie się osobnym wydatkiem.',
+    'Wydatek z przypisaną okazją (np. urodziny) nie psuje statystyk nawyków w doradcy AI.',
+    'Doradca AI zapamiętuje Twoje odpowiedzi w profilu gospodarstwa — nie zapyta o to samo dwa razy.',
+    'Raty? Ustaw wydatek cykliczny z liczbą naliczeń albo miesiącem końcowym — sam się zakończy.',
+    'Cykliczny przelew na konto oszczędnościowe ustawisz w Konta → Wydatki cykliczne → Rodzaj: przelew.',
+    'W historii konta edytujesz wpływy i przelewy ikonką ✏ — bez usuwania i dodawania od nowa.',
+    'Na telefonie dodaj apkę do ekranu głównego — działa jak zwykła aplikacja, z aparatem do paragonów.',
+    'Samouczek jest zawsze pod przyciskiem ❓ na górnym pasku.',
+  ];
+  (function pokazTip() {
+    const el = document.getElementById('tip-dnia');
+    if (!el || localStorage.getItem('tipsOff') === '1') return;
+    const i = (parseInt(localStorage.getItem('tipIdx') || '0', 10) || 0) % TIPS.length;
+    localStorage.setItem('tipIdx', String(i + 1));
+    el.style.display = '';
+    el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;background:#f0f7ff;border:1px solid #d5e5fb;color:#2c5aa0;border-radius:10px;padding:9px 14px;font-size:13.5px">
+      <span>💡 ${TIPS[i]}</span><span style="flex:1"></span>
+      <button onclick="localStorage.setItem('tipsOff','1');document.getElementById('tip-dnia').style.display='none'" style="background:none;border:none;color:#98a0b3;cursor:pointer;font-size:12px;white-space:nowrap">nie pokazuj więcej</button>
+      <button onclick="document.getElementById('tip-dnia').style.display='none'" style="background:none;border:none;color:#2c5aa0;cursor:pointer;font-size:16px;line-height:1;padding:0 2px">✕</button>
+    </div>`;
+  })();
+
   // ── przypomnienia o płatnościach cyklicznych ──
   async function loadPrzypomnienia() {
     const el = document.getElementById('przypomnienia');

@@ -218,6 +218,7 @@ def init_db():
         for stmt in SCHEMA_STATEMENTS:
             cur.execute(stmt)
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS samouczek BOOLEAN NOT NULL DEFAULT FALSE")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS okazja TEXT")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS kontekst_kategoria TEXT")
@@ -1292,6 +1293,18 @@ def delete_przelew(przelew_id: int, household_id: int) -> bool:
     with get_db() as cur:
         cur.execute("DELETE FROM przelewy WHERE id=%s AND household_id=%s", (przelew_id, household_id))
         return cur.rowcount > 0
+
+
+def get_samouczek(user_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("SELECT samouczek FROM users WHERE id=%s", (user_id,))
+        row = cur.fetchone()
+        return bool(row and row["samouczek"])
+
+
+def set_samouczek(user_id: int) -> None:
+    with get_db() as cur:
+        cur.execute("UPDATE users SET samouczek=TRUE WHERE id=%s", (user_id,))
 
 
 # --- ustawienia globalne ---
