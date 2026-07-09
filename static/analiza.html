@@ -163,13 +163,8 @@
     <p class="doradca-sub">Claude przeanalizuje Twoje wydatki z ostatnich miesięcy i wskaże konkretne miejsca, gdzie możesz zaoszczędzić — z szacowaną kwotą przy każdej podpowiedzi.</p>
     <div class="doradca-controls">
       <div>
-        <label>Okres</label>
-        <select id="rap-miesiace">
-          <option value="1">1 miesiąc</option>
-          <option value="3" selected>3 miesiące</option>
-          <option value="6">6 miesięcy</option>
-          <option value="12">12 miesięcy</option>
-        </select>
+        <label>Okres (miesięcy)</label>
+        <input type="number" id="rap-miesiace" min="1" max="24" step="1" value="3" style="width:110px">
       </div>
       <div class="ctx">
         <label>Kontekst (opcjonalnie)</label>
@@ -1162,9 +1157,10 @@ async function generujRaport() {
   meta.textContent = 'Claude analizuje Twoje wydatki — to potrwa kilkanaście sekund…';
   try {
     const body = {
-      miesiace: parseInt(document.getElementById('rap-miesiace').value),
+      miesiace: parseInt(document.getElementById('rap-miesiace').value) || 3,
       kontekst: document.getElementById('rap-kontekst').value.trim() || null,
     };
+    if (body.miesiace < 1 || body.miesiace > 24) { showRaportError('Okres analizy: 1-24 miesięcy.'); return; }
     const res = await authFetch('/api/analiza/raport', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || `Serwer zwrócił błąd (HTTP ${res.status}).`);

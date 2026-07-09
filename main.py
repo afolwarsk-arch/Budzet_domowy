@@ -662,7 +662,7 @@ def generuj_analiza_raport(body: RaportIn, current_user: dict = Depends(get_curr
     hid = current_user["household_id"]
     if not hid:
         raise HTTPException(400, "Brak gospodarstwa")
-    miesiace = max(1, min(body.miesiace, 12))
+    miesiace = max(1, min(body.miesiace, 24))
     try:
         dane = database.zbierz_dane_budzet(hid, miesiace)
     except Exception as e:
