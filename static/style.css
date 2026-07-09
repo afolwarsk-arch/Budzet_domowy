@@ -257,6 +257,7 @@ tr:hover td { background: #fafbff; }
 }
 .ai-praca .ai-tytul { font-weight: 700; font-size: 15px; }
 .ai-praca .ai-krok { font-size: 13.5px; color: var(--muted); min-height: 20px; transition: opacity .25s; }
+.ai-praca .ai-czas { font-size: 12px; color: #a3aab8; }
 
 /* alerts */
 .alert {

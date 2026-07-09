@@ -777,7 +777,9 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
       trybTekst
         ? ['Rozbijam notatkę na wydatki…', 'Przypisuję kategorie…', 'Jeszcze chwila…']
         : ['Odczytuję pozycje i ceny…', 'Rozpoznaję sklep i datę…', 'Przypisuję kategorie…',
-           'Sprawdzam rabaty i sumy…', 'Jeszcze chwila — dokładność wymaga czasu…']);
+           'Sprawdzam rabaty i sumy…', 'Jeszcze chwila — dokładność wymaga czasu…'],
+      trybTekst ? 'Zwykle trwa to 5–15 sekund.'
+        : 'Zwykle 10–30 sekund na zdjęcie, z reguły poniżej minuty.');
 
     try {
       let list;

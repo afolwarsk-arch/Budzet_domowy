@@ -148,12 +148,13 @@ async function authRequireHousehold() {
 
 // widoczny stan "Claude pracuje" z rotującymi komunikatami kroków;
 // zwraca funkcję stop() czyszczącą interwał
-function aiPracaStart(el, tytul, kroki) {
+function aiPracaStart(el, tytul, kroki, czasInfo) {
   let i = 0;
   el.innerHTML = `<div class="ai-praca">
       <div class="ai-spinner"></div>
       <div class="ai-tytul">${tytul}</div>
       <div class="ai-krok">${kroki[0]}</div>
+      ${czasInfo ? `<div class="ai-czas">⏱ ${czasInfo}</div>` : ''}
     </div>`;
   const krokEl = el.querySelector('.ai-krok');
   const t = setInterval(() => {
