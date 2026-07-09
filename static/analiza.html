@@ -8,9 +8,12 @@
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#4f7ef8">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-  <script src="/static/auth.js"></script>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com">
+  <link rel="preconnect" href="https://securetoken.googleapis.com">
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script defer src="/static/auth.js"></script>
   <style>
     .analiza-layout { display: grid; grid-template-columns: 1fr 290px; gap: 20px; align-items: start; }
     .groups-area { display: flex; flex-direction: column; gap: 14px; }
@@ -247,7 +250,7 @@
     </div>
   </div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 // Keys: "Spożywcze" (main), "Spożywcze::Napoje" (sub), "p::123" (pozycja)
 // poolItems stored as [{key, parentKey}] so parent survives page reload
@@ -1194,7 +1197,7 @@ async function generujRaport() {
 }
 
 // ── Init ──────────────────────────────────────────────────────────
-authRequireHousehold().then(async () => {
+window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(async () => {
   document.getElementById('btn-analizuj').addEventListener('click', generujRaport);
   document.getElementById('rap-hist-sel').addEventListener('change', pokazRaportZHistorii);
   document.getElementById('rap-hist-del').addEventListener('click', usunRaportZHistorii);
@@ -1226,8 +1229,7 @@ authRequireHousehold().then(async () => {
     if (!tresc) return;
     try { await dodajDoProfilu(tresc); inp.value = ''; } catch (e) { alert(e.message); }
   });
-  await loadOsobaOptions('filter-osoba', true);
-  await loadState();
+  await Promise.all([loadOsobaOptions('filter-osoba', true), loadState()]);
   document.getElementById('filter-month').value = new Date().toISOString().slice(0,7);
   document.getElementById('filter-month').addEventListener('change', loadData);
   document.getElementById('filter-od').addEventListener('change', loadData);
@@ -1244,7 +1246,7 @@ authRequireHousehold().then(async () => {
   });
   setupDrop(document.getElementById('pool-card'), null);
   loadData();
-});
+}));
 </script>
 </body>
 </html>

@@ -8,6 +8,9 @@
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#4f7ef8">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com">
+  <link rel="preconnect" href="https://securetoken.googleapis.com">
   <style>
     .konta-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:16px; margin-bottom:24px; }
     .konto-card { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:20px; }
@@ -84,9 +87,9 @@
   </style>
 </head>
 <body>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="/static/auth.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script defer src="/static/auth.js"></script>
 <nav>
   <a href="/" class="logo">🏠 Budżet</a>
   <a href="/">Dashboard</a>
@@ -809,11 +812,13 @@ function closePanelInwent() {
   document.getElementById('panel-inwent').style.display = 'none';
 }
 
-authRequireHousehold().then(async () => {
+window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(async () => {
   const [hh, def, hier] = await Promise.all([
     authFetch('/api/household').then(r => r.json()),
     authFetch('/api/me/konto-domyslne').then(r => r.json()),
     authFetch('/api/kategorie').then(r => r.json()),
+    loadKonta(),
+    loadCykliczne(),
   ]);
   myDefaultKontoId = def.konto_id || null;
   HIERARCHIA = hier || {};
@@ -822,10 +827,8 @@ authRequireHousehold().then(async () => {
     ...(hh.virtual_members || []).map(m => m.name),
   ].filter(Boolean);
   fillOsobaSelect();
-  await loadKonta();
   refreshWKontoSelect();
-  await loadCykliczne();
-});
+}));
 </script>
 </body>
 </html>

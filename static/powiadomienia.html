@@ -8,6 +8,9 @@
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#4f7ef8">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com">
+  <link rel="preconnect" href="https://securetoken.googleapis.com">
   <style>
     .pw-row { display:flex; justify-content:space-between; align-items:center; gap:10px; border-radius:10px; padding:11px 14px; margin-bottom:8px; font-size:14px; }
     .pw-btn { white-space:nowrap; background:#fff; border-radius:8px; padding:6px 14px; font-size:13px; font-weight:600; cursor:pointer; }
@@ -20,9 +23,9 @@
   </style>
 </head>
 <body>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="/static/auth.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script defer src="/static/auth.js"></script>
 <nav>
   <a href="/" class="logo">🏠 Budżet</a>
   <a href="/">Dashboard</a>
@@ -119,7 +122,7 @@ async function loadArchiwum() {
   }).join('');
 }
 
-authRequireHousehold().then(() => { loadAktywne(); loadArchiwum(); });
+window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(() => { loadAktywne(); loadArchiwum(); }));
 </script>
 </body>
 </html>

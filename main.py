@@ -29,7 +29,22 @@ UPLOADS_DIR = Path(__file__).parent / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
 STATIC_DIR = Path(__file__).parent / "static"
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+class CachedStaticFiles(StaticFiles):
+    """Statyki z długim cache: JS/CSS mają w HTML ?v=<hash-commita> (cache-busting
+    per deploy), więc mogą być immutable; reszta (ikony, manifest) — 1h."""
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            if path.endswith((".js", ".css")):
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            else:
+                response.headers["Cache-Control"] = "public, max-age=3600"
+        return response
+
+
+app.mount("/static", CachedStaticFiles(directory=STATIC_DIR), name="static")
 
 
 def _html(filename: str) -> HTMLResponse:

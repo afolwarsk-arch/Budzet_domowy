@@ -15,7 +15,7 @@ function esc(s) {
 // ── DASHBOARD ────────────────────────────────────────────────────
 
 if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(async (me) => {
-  await loadOsobaOptions('filter-osoba', true);
+  loadOsobaOptions('filter-osoba', true); // w tle — wykresy nie muszą na to czekać
 
   // ── przypomnienia o płatnościach cyklicznych ──
   async function loadPrzypomnienia() {

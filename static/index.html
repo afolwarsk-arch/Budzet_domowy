@@ -8,6 +8,9 @@
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#4f7ef8">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com">
+  <link rel="preconnect" href="https://securetoken.googleapis.com">
 </head>
 <body>
 <nav>
@@ -21,9 +24,9 @@
   <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
 </nav>
 
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="/static/auth.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script defer src="/static/auth.js"></script>
 
 <main>
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -207,8 +210,8 @@
   </div>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<script src="/static/app.js?v=10"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script defer src="/static/app.js?v=10"></script>
 <script>
   let _inviteLink = '';
 
