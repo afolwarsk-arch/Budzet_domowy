@@ -167,6 +167,13 @@ JAK ROZPOZNAĆ SKLEP:
 JAK ODCZYTYWAĆ POZYCJE:
 - Przejrzyj KAŻDĄ linię paragonu od góry do dołu
 - Każdy produkt = osobna pozycja, NIE łącz wielu w jedną
+- Jeśli dwie (lub więcej) sąsiednie linie PRODUKTU mają identyczną nazwę, ilość i cenę,
+  to NIE jest powtórzenie tego samego wpisu — to osobne skany tego samego produktu.
+  Zachowaj KAŻDĄ jako osobną pozycję, nie scalaj ich do jednej i żadnej nie pomijaj.
+  - Przykład: "Piwo  4 x5,99  23,96" i zaraz pod spodem znowu "Piwo  4 x5,99  23,96"
+    → DWIE osobne pozycje (razem 8 szt.), a nie jedna
+  - Dotyczy TYLKO linii produktów. Linie "OPUST"/rabat obsłuż wg sekcji RABATY I OPUSTY
+    poniżej (rabat przy pozycji zwijasz w cenę jednostkową — NIE twórz pozycji "OPUST ...")
 - CENA to zawsze CENA JEDNOSTKOWA (za 1 sztukę/kg), NIE łączna wartość linii
 - Przykład: "6 x 5,29  31,74" → ilosc=6, cena=5.29  (NIE cena=31.74!)
 - Przykład: "2,5 kg x 3,99  9,98" → ilosc=2.5, cena=3.99
