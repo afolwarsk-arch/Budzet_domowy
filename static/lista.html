@@ -19,18 +19,20 @@
     .lz-dot.on { background:#22b866; }
     .lz-dot.wait { background:#f0ad3c; animation:lzpulse 1s infinite; }
     @keyframes lzpulse { 50% { opacity:.35; } }
-    .lz-row { display:flex; align-items:center; gap:12px; padding:14px 14px; border-radius:12px; background:var(--card,#fff);
-              border:1px solid var(--border); margin-bottom:8px; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; }
+    .lz-row { display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:10px; background:var(--card,#fff);
+              border:1px solid var(--border); margin-bottom:5px; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; }
     .lz-row:active { transform:scale(.995); }
-    .lz-check { width:26px; height:26px; border-radius:50%; border:2px solid #cfd6e4; flex:none; display:flex; align-items:center;
-                justify-content:center; font-size:15px; color:#fff; }
+    .lz-handle { flex:none; color:#b7bece; font-size:16px; cursor:grab; padding:0 1px; line-height:1; touch-action:none; }
+    .lz-check { width:21px; height:21px; border-radius:50%; border:2px solid #cfd6e4; flex:none; display:flex; align-items:center;
+                justify-content:center; font-size:13px; color:#fff; }
     .lz-row.done .lz-check { background:#22b866; border-color:#22b866; }
-    .lz-name { flex:1; font-size:16px; line-height:1.3; word-break:break-word; }
-    .lz-who { font-size:11.5px; color:var(--muted); margin-top:2px; }
+    .lz-name { flex:1; font-size:15px; line-height:1.25; word-break:break-word; }
+    .lz-who { font-size:11px; color:var(--muted); }
     .lz-row.done .lz-name { text-decoration:line-through; color:var(--muted); }
-    .lz-del { flex:none; width:34px; height:34px; border:none; background:none; color:#c0392b; font-size:20px; cursor:pointer;
+    .lz-del { flex:none; width:30px; height:30px; border:none; background:none; color:#c0392b; font-size:19px; cursor:pointer;
               border-radius:8px; line-height:1; }
     .lz-row.pending { opacity:.55; }
+    .lz-drag-ghost { opacity:.35; }
     .lz-sekcja { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:18px 2px 8px; }
     .lz-empty { text-align:center; color:var(--muted); padding:32px 12px; font-size:15px; }
   </style>
@@ -38,6 +40,7 @@
 <body>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script defer src="/static/auth.js"></script>
 <nav>
   <a href="/" class="logo">🏠 Budżet</a>
@@ -72,6 +75,7 @@ let wsWanted = true;
 let reconnectTimer = null;
 let pingTimer = null;
 let pollTimer = null;
+let sortable = null;
 
 const wrap = document.getElementById('lista-wrap');
 const addInput = document.getElementById('add-input');
@@ -92,6 +96,8 @@ function render() {
   const doKupienia = items.filter(x => !x.kupione);
   const wKoszyku = items.filter(x => x.kupione);
 
+  if (sortable) { sortable.destroy(); sortable = null; }
+
   if (!items.length) {
     wrap.innerHTML = '<div class="lz-empty">Lista jest pusta.<br>Dodaj pierwszy produkt powyżej. 🛒</div>';
     return;
@@ -99,6 +105,7 @@ function render() {
 
   const rowHTML = (x, done) => `
     <div class="lz-row ${done ? 'done' : ''} ${x._pending ? 'pending' : ''}" data-id="${x.id}">
+      ${done ? '' : '<span class="lz-handle" title="Przeciągnij, aby zmienić kolejność">⠿</span>'}
       <div class="lz-check">${done ? '✓' : ''}</div>
       <div style="flex:1;min-width:0">
         <div class="lz-name">${esc(x.nazwa)}</div>
@@ -107,20 +114,20 @@ function render() {
       <button class="lz-del" data-del="${x.id}" title="Usuń">×</button>
     </div>`;
 
-  let html = '';
-  html += doKupienia.map(x => rowHTML(x, false)).join('');
+  let html = `<div id="lz-do">${doKupienia.map(x => rowHTML(x, false)).join('')}</div>`;
+  html += '<div id="lz-koszyk">';
   if (wKoszyku.length) {
     html += `<div class="lz-sekcja">W koszyku (${wKoszyku.length})</div>`;
     html += wKoszyku.map(x => rowHTML(x, true)).join('');
     html += `<button id="clear-btn" class="btn btn-outline btn-sm" style="margin-top:10px">Usuń kupione (${wKoszyku.length})</button>`;
   }
+  html += '</div>';
   wrap.innerHTML = html;
 
   wrap.querySelectorAll('.lz-row').forEach(row => {
     row.addEventListener('click', e => {
-      if (e.target.closest('.lz-del')) return;
-      const id = row.dataset.id;
-      const it = items.find(x => String(x.id) === String(id));
+      if (e.target.closest('.lz-del') || e.target.closest('.lz-handle')) return;
+      const it = items.find(x => String(x.id) === String(row.dataset.id));
       if (it && !it._pending) toggle(it);
     });
   });
@@ -129,6 +136,40 @@ function render() {
   });
   const clearBtn = document.getElementById('clear-btn');
   if (clearBtn) clearBtn.addEventListener('click', clearKupione);
+
+  const doEl = document.getElementById('lz-do');
+  if (doEl && window.Sortable) {
+    sortable = window.Sortable.create(doEl, {
+      handle: '.lz-handle',
+      animation: 150,
+      ghostClass: 'lz-drag-ghost',
+      onEnd: saveOrder,
+    });
+  }
+}
+
+async function saveOrder() {
+  const doEl = document.getElementById('lz-do');
+  if (!doEl) return;
+  const ids = [...doEl.querySelectorAll('.lz-row')]
+    .map(r => r.dataset.id)
+    .filter(id => !String(id).startsWith('tmp-'));
+  // uporządkuj lokalnie tak jak w DOM (kupione zostają na dole)
+  const pos = new Map(ids.map((id, i) => [String(id), i]));
+  items.sort((a, b) => {
+    const ka = a.kupione ? 1 : 0, kb = b.kupione ? 1 : 0;
+    if (ka !== kb) return ka - kb;
+    if (!a.kupione) return (pos.get(String(a.id)) ?? 0) - (pos.get(String(b.id)) ?? 0);
+    return 0;
+  });
+  try {
+    const res = await authFetch('/api/lista/kolejnosc', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids.map(Number) }),
+    });
+    if (!res.ok) throw new Error();
+    if (!wsOpen()) await refresh();
+  } catch { await refresh(); }
 }
 
 // ── zapisy (przez HTTP — działają nawet gdy WS chwilowo padnie) ──

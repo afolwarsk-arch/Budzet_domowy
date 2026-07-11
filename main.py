@@ -204,6 +204,20 @@ async def lista_delete(item_id: int, current_user: dict = Depends(get_current_us
     return {"ok": True}
 
 
+@app.post("/api/lista/kolejnosc")
+async def lista_reorder(body: dict, current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    try:
+        ids = [int(x) for x in (body.get("ids") or [])]
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Nieprawidłowa lista id")
+    await run_in_threadpool(database.reorder_lista, hid, ids)
+    await _broadcast_lista(hid)
+    return {"ok": True}
+
+
 @app.post("/api/lista/wyczysc-kupione")
 async def lista_clear(current_user: dict = Depends(get_current_user)):
     hid = current_user["household_id"]

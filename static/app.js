@@ -43,11 +43,30 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   })();
 
   // ── przypomnienia o płatnościach cyklicznych ──
+  // X chowa przypomnienie tylko na bieżącą sesję (sessionStorage) — wróci po
+  // odświeżeniu / w nowej sesji, dopóki płatność nie zostanie zrobiona.
+  const _PRZYP_DISMISS = 'przypDismiss';
+  function _przypDismissed() {
+    try { return new Set(JSON.parse(sessionStorage.getItem(_PRZYP_DISMISS) || '[]')); }
+    catch { return new Set(); }
+  }
+  function _przypKey(p) { return [p.typ, p.id ?? '', p.nazwa, p.termin].join('|'); }
+  window.dismissPrzyp = function(keyEnc) {
+    const s = _przypDismissed();
+    s.add(decodeURIComponent(keyEnc));
+    sessionStorage.setItem(_PRZYP_DISMISS, JSON.stringify([...s]));
+    loadPrzypomnienia();
+  };
+
   async function loadPrzypomnienia() {
     const el = document.getElementById('przypomnienia');
     if (!el) return;
     let items = [];
     try { items = await authFetch('/api/przypomnienia').then(r => r.json()); } catch { return; }
+    if (Array.isArray(items)) {
+      const skryte = _przypDismissed();
+      items = items.filter(p => !skryte.has(_przypKey(p)));
+    }
     if (!Array.isArray(items) || !items.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
     const kolor = { czerwony: ['#fdeaea', '#c0392b'], zolty: ['#fff8e1', '#7d5a00'], info: ['#eef4ff', '#3563d4'] };
     el.style.display = '';
@@ -68,8 +87,9 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       const btn = p.typ === 'reczny'
         ? `<button onclick="potwierdzPlatnosc(${p.id})" style="white-space:nowrap;border:1px solid ${fg};background:#fff;color:${fg};border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer">✓ Zrobione</button>`
         : '';
+      const xbtn = `<button onclick="dismissPrzyp('${encodeURIComponent(_przypKey(p))}')" title="Zamknij na tę sesję" style="border:none;background:none;color:${fg};opacity:.65;cursor:pointer;font-size:18px;line-height:1;padding:0 2px">✕</button>`;
       return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;background:${bg};color:${fg};border-radius:10px;padding:11px 14px;margin-bottom:8px;font-size:14px">
-        <span>🔔 ${txt}</span>${btn}</div>`;
+        <span>🔔 ${txt}</span><span style="display:flex;gap:8px;align-items:center;flex:none">${btn}${xbtn}</span></div>`;
     }).join('');
   }
 

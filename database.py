@@ -269,6 +269,7 @@ def init_db():
             dodane_przez TEXT,
             created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
+        cur.execute("ALTER TABLE lista_zakupow ADD COLUMN IF NOT EXISTS pozycja INTEGER NOT NULL DEFAULT 0")
         # migracja starego kształtu (jeden raport na gospodarstwo, PK na household_id)
         cur.execute("ALTER TABLE raporty_ai ADD COLUMN IF NOT EXISTS id SERIAL")
         cur.execute("""DO $$
@@ -1772,7 +1773,7 @@ def get_lista(household_id: int) -> list[dict]:
     with get_db() as cur:
         cur.execute(
             "SELECT id, nazwa, kupione, dodane_przez FROM lista_zakupow "
-            "WHERE household_id = %s ORDER BY kupione ASC, id ASC",
+            "WHERE household_id = %s ORDER BY kupione ASC, pozycja ASC, id ASC",
             (household_id,),
         )
         return [dict(r) for r in cur.fetchall()]
@@ -1781,11 +1782,22 @@ def get_lista(household_id: int) -> list[dict]:
 def add_pozycja_listy(household_id: int, nazwa: str, dodane_przez: str | None) -> dict:
     with get_db() as cur:
         cur.execute(
-            "INSERT INTO lista_zakupow (household_id, nazwa, dodane_przez) "
-            "VALUES (%s, %s, %s) RETURNING id, nazwa, kupione, dodane_przez",
-            (household_id, nazwa, dodane_przez),
+            "INSERT INTO lista_zakupow (household_id, nazwa, dodane_przez, pozycja) "
+            "VALUES (%s, %s, %s, COALESCE((SELECT MAX(pozycja) FROM lista_zakupow WHERE household_id=%s), 0) + 1) "
+            "RETURNING id, nazwa, kupione, dodane_przez",
+            (household_id, nazwa, dodane_przez, household_id),
         )
         return dict(cur.fetchone())
+
+
+def reorder_lista(household_id: int, ids: list[int]) -> None:
+    """Ustawia kolejność pozycji listy wg podanej sekwencji id (pozycja = indeks)."""
+    with get_db() as cur:
+        for i, item_id in enumerate(ids):
+            cur.execute(
+                "UPDATE lista_zakupow SET pozycja = %s WHERE id = %s AND household_id = %s",
+                (i, item_id, household_id),
+            )
 
 
 def set_pozycja_kupione(item_id: int, household_id: int, kupione: bool) -> bool:
