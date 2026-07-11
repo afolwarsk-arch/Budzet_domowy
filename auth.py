@@ -28,15 +28,14 @@ def _init_firebase():
 _init_firebase()
 
 
-def get_current_user(
-    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
-) -> dict:
-    if not creds:
-        raise HTTPException(status_code=401, detail="Brak tokenu autoryzacji")
+def user_from_token(token: str) -> dict | None:
+    """Waliduje token Firebase i zwraca kontekst użytkownika (lub None).
+    Używane przez get_current_user (REST) oraz uwierzytelnianie WebSocketa,
+    który nie może wysłać nagłówka Authorization — token leci w query param."""
     try:
-        decoded = firebase_auth.verify_id_token(creds.credentials)
+        decoded = firebase_auth.verify_id_token(token)
     except Exception:
-        raise HTTPException(status_code=401, detail="Nieprawidłowy token")
+        return None
 
     firebase_uid = decoded["uid"]
     email = decoded.get("email", "")
@@ -56,6 +55,17 @@ def get_current_user(
         "household_id": household["id"] if household else None,
         "role": household["role"] if household else None,
     }
+
+
+def get_current_user(
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> dict:
+    if not creds:
+        raise HTTPException(status_code=401, detail="Brak tokenu autoryzacji")
+    user = user_from_token(creds.credentials)
+    if not user:
+        raise HTTPException(status_code=401, detail="Nieprawidłowy token")
+    return user
 
 
 def require_admin(user: dict = Depends(get_current_user)) -> dict:

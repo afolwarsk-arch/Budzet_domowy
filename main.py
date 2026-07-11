@@ -4,7 +4,8 @@ import subprocess
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -14,7 +15,7 @@ load_dotenv(BASE_DIR / ".env")
 
 import ai_processor
 import database
-from auth import get_current_user, require_admin
+from auth import get_current_user, require_admin, user_from_token
 
 database.init_db()
 
@@ -96,6 +97,121 @@ def kategorie_page():
 @app.get("/powiadomienia")
 def powiadomienia_page():
     return _html("powiadomienia.html")
+
+
+@app.get("/lista")
+def lista_page():
+    return _html("lista.html")
+
+
+# --- Wspólna lista zakupów: zapisy przez REST (niezawodne), push zmian przez WebSocket ---
+
+class _ListaManager:
+    """Trzyma otwarte połączenia WS pogrupowane per gospodarstwo i rozsyła
+    do nich pełny stan listy po każdej zmianie. Zakłada pojedynczy worker
+    uvicorna (tak jak deploy na Railway) — stan połączeń jest w pamięci procesu."""
+    def __init__(self):
+        self.conns: dict[int, set[WebSocket]] = {}
+
+    async def connect(self, hid: int, ws: WebSocket):
+        await ws.accept()
+        self.conns.setdefault(hid, set()).add(ws)
+
+    def disconnect(self, hid: int, ws: WebSocket):
+        s = self.conns.get(hid)
+        if s:
+            s.discard(ws)
+
+    async def broadcast(self, hid: int, payload: dict):
+        for ws in list(self.conns.get(hid, ())):
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                self.disconnect(hid, ws)
+
+
+_lista_mgr = _ListaManager()
+
+
+async def _broadcast_lista(hid: int):
+    items = await run_in_threadpool(database.get_lista, hid)
+    await _lista_mgr.broadcast(hid, {"typ": "lista", "items": items})
+
+
+@app.websocket("/ws/lista")
+async def ws_lista(websocket: WebSocket, token: str = ""):
+    user = await run_in_threadpool(user_from_token, token)
+    if not user or not user.get("household_id"):
+        await websocket.close(code=1008)
+        return
+    hid = user["household_id"]
+    await _lista_mgr.connect(hid, websocket)
+    try:
+        items = await run_in_threadpool(database.get_lista, hid)
+        await websocket.send_json({"typ": "lista", "items": items})
+        while True:
+            # klient wysyła okresowy "ping" dla utrzymania łącza — treść ignorujemy
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        _lista_mgr.disconnect(hid, websocket)
+
+
+@app.get("/api/lista")
+def lista_get(current_user: dict = Depends(get_current_user)):
+    if not current_user["household_id"]:
+        return []
+    return database.get_lista(current_user["household_id"])
+
+
+@app.post("/api/lista", status_code=201)
+async def lista_add(body: dict, current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    nazwa = (body.get("nazwa") or "").strip()
+    if not nazwa:
+        raise HTTPException(400, "Pusta nazwa")
+    item = await run_in_threadpool(database.add_pozycja_listy, hid, nazwa[:200], current_user["display_name"])
+    await _broadcast_lista(hid)
+    return item
+
+
+@app.patch("/api/lista/{item_id}")
+async def lista_toggle(item_id: int, body: dict, current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    ok = await run_in_threadpool(database.set_pozycja_kupione, item_id, hid, bool(body.get("kupione")))
+    if not ok:
+        raise HTTPException(404, "Nie znaleziono")
+    await _broadcast_lista(hid)
+    return {"ok": True}
+
+
+@app.delete("/api/lista/{item_id}")
+async def lista_delete(item_id: int, current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    ok = await run_in_threadpool(database.delete_pozycja_listy, item_id, hid)
+    if not ok:
+        raise HTTPException(404, "Nie znaleziono")
+    await _broadcast_lista(hid)
+    return {"ok": True}
+
+
+@app.post("/api/lista/wyczysc-kupione")
+async def lista_clear(current_user: dict = Depends(get_current_user)):
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    n = await run_in_threadpool(database.clear_kupione_listy, hid)
+    await _broadcast_lista(hid)
+    return {"usuniete": n}
 
 
 # --- Auth & Household routes ---

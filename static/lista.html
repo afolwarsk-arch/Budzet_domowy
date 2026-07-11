@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lista zakupów — Budżet domowy</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#4f7ef8">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com">
+  <link rel="preconnect" href="https://securetoken.googleapis.com">
+  <style>
+    .lz-add { display:flex; gap:8px; margin-bottom:8px; }
+    .lz-add input { flex:1; min-width:0; padding:13px 15px; border:1px solid var(--border); border-radius:12px; font-size:16px; outline:none; }
+    .lz-status { font-size:12.5px; color:var(--muted); margin:2px 2px 18px; display:flex; align-items:center; gap:6px; }
+    .lz-dot { width:9px; height:9px; border-radius:50%; background:#bbb; flex:none; }
+    .lz-dot.on { background:#22b866; }
+    .lz-dot.wait { background:#f0ad3c; animation:lzpulse 1s infinite; }
+    @keyframes lzpulse { 50% { opacity:.35; } }
+    .lz-row { display:flex; align-items:center; gap:12px; padding:14px 14px; border-radius:12px; background:var(--card,#fff);
+              border:1px solid var(--border); margin-bottom:8px; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; }
+    .lz-row:active { transform:scale(.995); }
+    .lz-check { width:26px; height:26px; border-radius:50%; border:2px solid #cfd6e4; flex:none; display:flex; align-items:center;
+                justify-content:center; font-size:15px; color:#fff; }
+    .lz-row.done .lz-check { background:#22b866; border-color:#22b866; }
+    .lz-name { flex:1; font-size:16px; line-height:1.3; word-break:break-word; }
+    .lz-who { font-size:11.5px; color:var(--muted); margin-top:2px; }
+    .lz-row.done .lz-name { text-decoration:line-through; color:var(--muted); }
+    .lz-del { flex:none; width:34px; height:34px; border:none; background:none; color:#c0392b; font-size:20px; cursor:pointer;
+              border-radius:8px; line-height:1; }
+    .lz-row.pending { opacity:.55; }
+    .lz-sekcja { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:18px 2px 8px; }
+    .lz-empty { text-align:center; color:var(--muted); padding:32px 12px; font-size:15px; }
+  </style>
+</head>
+<body>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script defer src="/static/auth.js"></script>
+<nav>
+  <a href="/" class="logo">🏠 Budżet</a>
+  <a href="/">Dashboard</a>
+  <a href="/upload">Dodaj wydatek</a>
+  <a href="/lista" class="active">Lista</a>
+  <a href="/konta">Konta</a>
+  <a href="/kategorie">Kategorie</a>
+  <a href="/analiza">Analiza</a>
+  <a href="/powiadomienia">Powiadomienia</a>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
+</nav>
+
+<main style="max-width:640px">
+  <h1 style="margin-bottom:14px">🛒 Lista zakupów</h1>
+
+  <div class="lz-add">
+    <input id="add-input" type="text" placeholder="Dodaj produkt… (np. mleko)" maxlength="200" enterkeyhint="done" autocomplete="off">
+    <button id="add-btn" class="btn btn-primary" style="padding:0 20px">Dodaj</button>
+  </div>
+  <div class="lz-status"><span id="lz-dot" class="lz-dot wait"></span><span id="lz-status-txt">Łączę…</span></div>
+
+  <div id="lista-wrap"></div>
+</main>
+
+<script>
+const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+let items = [];
+let ws = null;
+let wsWanted = true;
+let reconnectTimer = null;
+let pingTimer = null;
+let pollTimer = null;
+
+const wrap = document.getElementById('lista-wrap');
+const addInput = document.getElementById('add-input');
+const addBtn = document.getElementById('add-btn');
+
+function wsOpen() { return ws && ws.readyState === 1; }
+
+function setStatus(state) {
+  const dot = document.getElementById('lz-dot');
+  const txt = document.getElementById('lz-status-txt');
+  dot.className = 'lz-dot ' + (state === 'online' ? 'on' : state === 'wait' ? 'wait' : '');
+  txt.textContent = state === 'online' ? 'Na żywo — zmiany widać u drugiej osoby od razu'
+    : state === 'wait' ? 'Łączę…'
+    : 'Offline — próbuję połączyć ponownie';
+}
+
+function render() {
+  const doKupienia = items.filter(x => !x.kupione);
+  const wKoszyku = items.filter(x => x.kupione);
+
+  if (!items.length) {
+    wrap.innerHTML = '<div class="lz-empty">Lista jest pusta.<br>Dodaj pierwszy produkt powyżej. 🛒</div>';
+    return;
+  }
+
+  const rowHTML = (x, done) => `
+    <div class="lz-row ${done ? 'done' : ''} ${x._pending ? 'pending' : ''}" data-id="${x.id}">
+      <div class="lz-check">${done ? '✓' : ''}</div>
+      <div style="flex:1;min-width:0">
+        <div class="lz-name">${esc(x.nazwa)}</div>
+        ${x.dodane_przez ? `<div class="lz-who">dodał(a): ${esc(x.dodane_przez)}</div>` : ''}
+      </div>
+      <button class="lz-del" data-del="${x.id}" title="Usuń">×</button>
+    </div>`;
+
+  let html = '';
+  html += doKupienia.map(x => rowHTML(x, false)).join('');
+  if (wKoszyku.length) {
+    html += `<div class="lz-sekcja">W koszyku (${wKoszyku.length})</div>`;
+    html += wKoszyku.map(x => rowHTML(x, true)).join('');
+    html += `<button id="clear-btn" class="btn btn-outline btn-sm" style="margin-top:10px">Usuń kupione (${wKoszyku.length})</button>`;
+  }
+  wrap.innerHTML = html;
+
+  wrap.querySelectorAll('.lz-row').forEach(row => {
+    row.addEventListener('click', e => {
+      if (e.target.closest('.lz-del')) return;
+      const id = row.dataset.id;
+      const it = items.find(x => String(x.id) === String(id));
+      if (it && !it._pending) toggle(it);
+    });
+  });
+  wrap.querySelectorAll('[data-del]').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); del(btn.dataset.del); });
+  });
+  const clearBtn = document.getElementById('clear-btn');
+  if (clearBtn) clearBtn.addEventListener('click', clearKupione);
+}
+
+// ── zapisy (przez HTTP — działają nawet gdy WS chwilowo padnie) ──
+
+async function addItem() {
+  const nazwa = addInput.value.trim();
+  if (!nazwa) return;
+  addInput.value = '';
+  addInput.focus();
+  const temp = { id: 'tmp-' + Date.now(), nazwa, kupione: false, dodane_przez: null, _pending: true };
+  items.push(temp);
+  render();
+  try {
+    const res = await authFetch('/api/lista', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nazwa }),
+    });
+    if (!res.ok) throw new Error();
+    if (!wsOpen()) await refresh();
+  } catch {
+    items = items.filter(x => x.id !== temp.id);
+    render();
+    alert('Nie udało się dodać. Sprawdź połączenie i spróbuj ponownie.');
+  }
+}
+
+async function toggle(it) {
+  if (String(it.id).startsWith('tmp-')) return;
+  const nowy = !it.kupione;
+  it.kupione = nowy;
+  render();
+  try {
+    const res = await authFetch('/api/lista/' + it.id, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kupione: nowy }),
+    });
+    if (!res.ok) throw new Error();
+    if (!wsOpen()) await refresh();
+  } catch {
+    it.kupione = !nowy;
+    render();
+  }
+}
+
+async function del(id) {
+  if (String(id).startsWith('tmp-')) return;
+  const before = items;
+  items = items.filter(x => String(x.id) !== String(id));
+  render();
+  try {
+    const res = await authFetch('/api/lista/' + id, { method: 'DELETE' });
+    if (!res.ok) throw new Error();
+    if (!wsOpen()) await refresh();
+  } catch {
+    items = before;
+    render();
+  }
+}
+
+async function clearKupione() {
+  const before = items;
+  items = items.filter(x => !x.kupione);
+  render();
+  try {
+    const res = await authFetch('/api/lista/wyczysc-kupione', { method: 'POST' });
+    if (!res.ok) throw new Error();
+    if (!wsOpen()) await refresh();
+  } catch {
+    items = before;
+    render();
+  }
+}
+
+async function refresh() {
+  try {
+    const data = await authFetch('/api/lista').then(r => r.json());
+    if (Array.isArray(data)) { items = data; render(); }
+  } catch {}
+}
+
+// ── WebSocket: natychmiastowy push zmian + samo-naprawianie ──
+
+function connectWs() {
+  if (!wsWanted) return;
+  setStatus('wait');
+  authGetToken().then(token => {
+    if (!wsWanted) return;
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    try {
+      ws = new WebSocket(`${proto}://${location.host}/ws/lista?token=${encodeURIComponent(token)}`);
+    } catch { scheduleReconnect(); return; }
+    ws.onopen = () => { setStatus('online'); startPing(); };
+    ws.onmessage = ev => {
+      let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+      if (msg.typ === 'lista') { items = msg.items || []; render(); }
+    };
+    ws.onclose = () => { setStatus('offline'); stopPing(); scheduleReconnect(); };
+    ws.onerror = () => { try { ws.close(); } catch {} };
+  }).catch(() => { setStatus('offline'); scheduleReconnect(); });
+}
+
+function scheduleReconnect() {
+  if (!wsWanted) return;
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(connectWs, 2500);
+}
+
+function startPing() {
+  stopPing();
+  pingTimer = setInterval(() => { if (wsOpen()) { try { ws.send('ping'); } catch {} } }, 25000);
+}
+function stopPing() { clearInterval(pingTimer); }
+
+// zapasowy cichy poll — na wypadek gdyby WS "zawisł" bez zdarzenia onclose
+function startPoll() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(() => { if (!wsOpen()) refresh(); }, 15000);
+}
+
+// po odblokowaniu ekranu / powrocie do karty — natychmiast odśwież i wznów łącze
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    refresh();
+    if (!wsOpen()) { clearTimeout(reconnectTimer); connectWs(); }
+  }
+});
+
+window.addEventListener('beforeunload', () => { wsWanted = false; try { ws && ws.close(); } catch {} });
+
+addBtn.addEventListener('click', addItem);
+addInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addItem(); } });
+
+window.addEventListener('DOMContentLoaded', () => {
+  authRequireHousehold().then(() => {
+    refresh();      // szybki pierwszy render z REST
+    connectWs();    // potem łącze na żywo
+    startPoll();    // siatka bezpieczeństwa
+  });
+});
+</script>
+</body>
+</html>

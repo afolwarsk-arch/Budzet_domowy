@@ -261,6 +261,14 @@ def init_db():
             tresc          TEXT NOT NULL,
             created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS lista_zakupow (
+            id           SERIAL PRIMARY KEY,
+            household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            nazwa        TEXT NOT NULL,
+            kupione      BOOLEAN NOT NULL DEFAULT FALSE,
+            dodane_przez TEXT,
+            created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
         # migracja starego kształtu (jeden raport na gospodarstwo, PK na household_id)
         cur.execute("ALTER TABLE raporty_ai ADD COLUMN IF NOT EXISTS id SERIAL")
         cur.execute("""DO $$
@@ -1756,3 +1764,52 @@ def create_inwentaryzacja(konto_id: int, household_id: int, data: str,
             (konto_id, data, saldo_rzeczywiste, saldo_obl, roznica, notatki or None),
         )
         return dict(cur.fetchone())
+
+
+# ── Wspólna lista zakupów (współdzielona w gospodarstwie, sync na żywo) ──
+
+def get_lista(household_id: int) -> list[dict]:
+    with get_db() as cur:
+        cur.execute(
+            "SELECT id, nazwa, kupione, dodane_przez FROM lista_zakupow "
+            "WHERE household_id = %s ORDER BY kupione ASC, id ASC",
+            (household_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def add_pozycja_listy(household_id: int, nazwa: str, dodane_przez: str | None) -> dict:
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO lista_zakupow (household_id, nazwa, dodane_przez) "
+            "VALUES (%s, %s, %s) RETURNING id, nazwa, kupione, dodane_przez",
+            (household_id, nazwa, dodane_przez),
+        )
+        return dict(cur.fetchone())
+
+
+def set_pozycja_kupione(item_id: int, household_id: int, kupione: bool) -> bool:
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE lista_zakupow SET kupione = %s WHERE id = %s AND household_id = %s",
+            (kupione, item_id, household_id),
+        )
+        return cur.rowcount > 0
+
+
+def delete_pozycja_listy(item_id: int, household_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute(
+            "DELETE FROM lista_zakupow WHERE id = %s AND household_id = %s",
+            (item_id, household_id),
+        )
+        return cur.rowcount > 0
+
+
+def clear_kupione_listy(household_id: int) -> int:
+    with get_db() as cur:
+        cur.execute(
+            "DELETE FROM lista_zakupow WHERE household_id = %s AND kupione = TRUE",
+            (household_id,),
+        )
+        return cur.rowcount
