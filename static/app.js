@@ -86,6 +86,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
 
   let chartKat = null;
   let chartMies = null;
+  let cenyChart = null;
   let miesiaceLacznie = false;
   let lastMiesData = null;
   let lastMiesKat = null;
@@ -682,6 +683,10 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     const podsum = res.liczba_pozycji
       ? `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Znaleziono <strong>${w.length}</strong> ${nParagon}. Produkty pasujące do „${esc(q)}": <strong>${res.liczba_pozycji}</strong> na łącznie <strong>${fmt(res.suma_pozycji)}</strong>.</div>`
       : `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Znaleziono <strong>${w.length}</strong> ${nParagon}.</div>`;
+    const cenyBar = res.liczba_pozycji
+      ? `<div style="margin:0 0 12px"><button id="ceny-toggle" class="btn btn-outline btn-sm">📈 Pokaż zmiany cen dla „${esc(q)}"</button></div>
+         <div id="ceny-panel" style="display:none;margin-bottom:14px"></div>`
+      : '';
     const rows = w.map(x => `
       <tr>
         <td>${x.data}</td>
@@ -694,13 +699,105 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         <td style="text-align:right;font-weight:600">${fmt(x.suma)}</td>
         <td><button class="btn btn-outline btn-sm" onclick="editWydatek(${x.id})">Edytuj</button></td>
       </tr>`).join('');
-    szukajWyniki.innerHTML = podsum + `
+    szukajWyniki.innerHTML = podsum + cenyBar + `
       <div class="table-wrap">
         <table>
           <thead><tr><th>Data</th><th>Sklep / trafienia</th><th>Osoba</th><th style="text-align:right">Suma</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`;
+    const ct = document.getElementById('ceny-toggle');
+    if (ct) ct.addEventListener('click', () => loadCeny(q));
+  }
+
+  async function loadCeny(q) {
+    const panel = document.getElementById('ceny-panel');
+    const toggle = document.getElementById('ceny-toggle');
+    if (!panel) return;
+    if (panel.style.display === 'block') {
+      panel.style.display = 'none';
+      if (toggle) toggle.textContent = `📈 Pokaż zmiany cen dla „${q}"`;
+      return;
+    }
+    panel.style.display = 'block';
+    if (toggle) toggle.textContent = '📉 Ukryj ceny';
+    panel.innerHTML = '<p style="color:var(--muted);font-size:13px">Ładuję ceny…</p>';
+    let res;
+    try {
+      res = await authFetch('/api/ceny?q=' + encodeURIComponent(q)).then(r => r.json());
+    } catch (e) {
+      panel.innerHTML = '<p style="color:#d32f2f;font-size:13px">Błąd: ' + esc(e.message) + '</p>';
+      return;
+    }
+    renderCeny(res, q);
+  }
+
+  function renderCeny(res, q) {
+    const panel = document.getElementById('ceny-panel');
+    const pts = res.punkty || [];
+    if (pts.length < 1) {
+      panel.innerHTML = `<p style="color:var(--muted);font-size:14px">Brak danych cenowych dla „${esc(q)}".</p>`;
+      return;
+    }
+    const ps = res.podsumowanie || {};
+    const zmiana = ps.zmiana_proc || 0;
+    const trendTxt = zmiana > 0 ? `wzrost o ${zmiana}%` : (zmiana < 0 ? `spadek o ${Math.abs(zmiana)}%` : 'bez zmian');
+    const trendColor = zmiana > 0 ? '#c0392b' : (zmiana < 0 ? '#2e7d32' : '#666');
+    const summary = ps.pierwsza != null ? `
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px;line-height:1.7">
+        Cena jednostkowa (za szt./kg) w czasie — <strong>${pts.length}</strong> ${pts.length === 1 ? 'pomiar' : 'pomiarów'}.<br>
+        Najtaniej: <strong>${fmt(ps.min.cena)}</strong> (${esc(ps.min.sklep || '—')}, ${ps.min.data}) •
+        Najdrożej: <strong>${fmt(ps.max.cena)}</strong> (${esc(ps.max.sklep || '—')}, ${ps.max.data}) •
+        Od pierwszego do ostatniego: <strong style="color:${trendColor}">${trendTxt}</strong> (${fmt(ps.pierwsza)} → ${fmt(ps.ostatnia)})
+      </div>` : '';
+    const sklepy = res.sklepy || [];
+    const sklepyTbl = sklepy.length > 1 ? `
+      <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 6px">Gdzie taniej (średnia cena jednostkowa)</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Sklep</th><th style="text-align:right">Średnio</th><th style="text-align:right">Min</th><th style="text-align:right">Max</th><th style="text-align:right">Pomiarów</th></tr></thead>
+        <tbody>${sklepy.map(s => `<tr>
+          <td>${esc(s.sklep)}</td>
+          <td style="text-align:right;font-weight:600">${fmt(s.srednia)}</td>
+          <td style="text-align:right;color:var(--muted)">${fmt(s.min)}</td>
+          <td style="text-align:right;color:var(--muted)">${fmt(s.max)}</td>
+          <td style="text-align:right;color:var(--muted)">${s.liczba}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : '';
+    panel.innerHTML = summary
+      + `<div style="height:220px"><canvas id="ceny-chart"></canvas></div>`
+      + sklepyTbl
+      + `<p style="font-size:11px;color:var(--muted);margin-top:8px">Uwaga: łączy różne warianty/rozmiary pasujące do „${esc(q)}" (np. inne gramatury) — zawęź wpisując dokładniejszą nazwę.</p>`;
+
+    if (cenyChart) { cenyChart.destroy(); cenyChart = null; }
+    const ctx = document.getElementById('ceny-chart').getContext('2d');
+    cenyChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: pts.map(p => p.data),
+        datasets: [{
+          data: pts.map(p => p.cena),
+          borderColor: '#4f7ef8',
+          backgroundColor: 'rgba(79,126,248,.12)',
+          pointRadius: 3,
+          pointBackgroundColor: '#4f7ef8',
+          tension: 0.2,
+          fill: true,
+        }],
+      },
+      options: {
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: c => ` ${fmt(c.raw)}`,
+              afterLabel: c => { const p = pts[c.dataIndex]; return `${p.nazwa}${p.sklep ? ' — ' + p.sklep : ''}`; },
+            },
+          },
+        },
+        scales: { y: { beginAtZero: false, ticks: { callback: v => fmt(v) } } },
+      },
+    });
   }
 
   async function runSearch() {

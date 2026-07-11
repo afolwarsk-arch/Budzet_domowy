@@ -499,6 +499,16 @@ def szukaj(q: str = "", current_user: dict = Depends(get_current_user)):
     return wynik
 
 
+@app.get("/api/ceny")
+def ceny(q: str = "", current_user: dict = Depends(get_current_user)):
+    q = (q or "").strip()
+    if len(q) < 2 or not current_user["household_id"]:
+        return {"punkty": [], "sklepy": [], "podsumowanie": {}, "liczba": 0, "q": q}
+    wynik = database.historia_cen(q, current_user["household_id"])
+    wynik["q"] = q
+    return wynik
+
+
 @app.get("/api/wydatki/{wydatek_id}")
 def get_wydatek(wydatek_id: int, current_user: dict = Depends(get_current_user)):
     row = database.get_wydatek(wydatek_id)

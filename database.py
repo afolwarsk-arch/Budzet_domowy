@@ -408,6 +408,50 @@ def szukaj_wydatki(q: str, household_id: int | None, limit: int = 300) -> dict:
     }
 
 
+def historia_cen(q: str, household_id: int | None, limit: int = 500) -> dict:
+    """Historia cen JEDNOSTKOWYCH (pozycje.cena = cena za 1 szt/kg) produktów
+    pasujących do zapytania (ILIKE po nazwie). Zwraca punkty w czasie, porównanie
+    średniej ceny per sklep (gdzie taniej) oraz podsumowanie zmiany w czasie."""
+    like = f"%{q}%"
+    with get_db() as cur:
+        cur.execute(
+            """
+            SELECT p.nazwa, p.cena, p.ilosc, w.data, w.sklep
+              FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
+             WHERE w.household_id = %s AND p.nazwa ILIKE %s AND p.cena > 0
+             ORDER BY w.data ASC, p.id ASC
+             LIMIT %s
+            """,
+            (household_id, like, limit),
+        )
+        punkty = [dict(r) for r in cur.fetchall()]
+
+    grp: dict[str, list[float]] = {}
+    for p in punkty:
+        grp.setdefault(p["sklep"] or "—", []).append(float(p["cena"]))
+    sklepy = [
+        {"sklep": s, "srednia": round(sum(v) / len(v), 2),
+         "min": round(min(v), 2), "max": round(max(v), 2), "liczba": len(v)}
+        for s, v in grp.items()
+    ]
+    sklepy.sort(key=lambda x: x["srednia"])
+
+    podsum: dict = {}
+    if punkty:
+        pmin = min(punkty, key=lambda p: float(p["cena"]))
+        pmax = max(punkty, key=lambda p: float(p["cena"]))
+        pierwsza = float(punkty[0]["cena"])
+        ostatnia = float(punkty[-1]["cena"])
+        podsum = {
+            "min": {"cena": round(float(pmin["cena"]), 2), "sklep": pmin["sklep"], "data": pmin["data"]},
+            "max": {"cena": round(float(pmax["cena"]), 2), "sklep": pmax["sklep"], "data": pmax["data"]},
+            "pierwsza": round(pierwsza, 2),
+            "ostatnia": round(ostatnia, 2),
+            "zmiana_proc": round((ostatnia - pierwsza) / pierwsza * 100, 1) if pierwsza else 0,
+        }
+    return {"punkty": punkty, "sklepy": sklepy, "podsumowanie": podsum, "liczba": len(punkty)}
+
+
 def update_wydatek(wydatek_id: int, data: str, sklep: str | None, suma: float,
                    osoba: str, notatki: str | None, pozycje: list[dict],
                    okazja: str | None = None, kontekst_kategoria: str | None = None,
