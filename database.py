@@ -367,6 +367,47 @@ def get_wydatek(wydatek_id: int) -> dict | None:
         return result
 
 
+def szukaj_wydatki(q: str, household_id: int | None, limit: int = 300) -> dict:
+    """Wyszukiwanie (ILIKE) po nazwach produktów, sklepie i notatkach.
+    Zwraca pasujące wydatki (z listą trafionych nazw pozycji) + podsumowanie
+    kwotowe wszystkich trafionych pozycji (np. ile łącznie na 'kawa')."""
+    like = f"%{q}%"
+    with get_db() as cur:
+        cur.execute(
+            """
+            SELECT w.id, w.data, w.sklep, w.suma, w.osoba, w.notatki,
+                   (SELECT string_agg(p.nazwa, ' • ' ORDER BY p.id)
+                      FROM pozycje p
+                     WHERE p.wydatek_id = w.id AND p.nazwa ILIKE %s) AS trafienia
+              FROM wydatki w
+             WHERE w.household_id = %s
+               AND ( w.sklep ILIKE %s
+                  OR w.notatki ILIKE %s
+                  OR EXISTS (SELECT 1 FROM pozycje p2
+                              WHERE p2.wydatek_id = w.id AND p2.nazwa ILIKE %s) )
+             ORDER BY w.data DESC, w.id DESC
+             LIMIT %s
+            """,
+            (like, household_id, like, like, like, limit),
+        )
+        wydatki = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            """
+            SELECT COALESCE(SUM(p.cena * p.ilosc), 0) AS suma_pozycji,
+                   COUNT(*) AS liczba_pozycji
+              FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
+             WHERE w.household_id = %s AND p.nazwa ILIKE %s
+            """,
+            (household_id, like),
+        )
+        agg = dict(cur.fetchone())
+    return {
+        "wydatki": wydatki,
+        "suma_pozycji": float(agg["suma_pozycji"] or 0),
+        "liczba_pozycji": int(agg["liczba_pozycji"] or 0),
+    }
+
+
 def update_wydatek(wydatek_id: int, data: str, sklep: str | None, suma: float,
                    osoba: str, notatki: str | None, pozycje: list[dict],
                    okazja: str | None = None, kontekst_kategoria: str | None = None,

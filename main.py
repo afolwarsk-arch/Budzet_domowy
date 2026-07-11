@@ -489,6 +489,16 @@ def list_wydatki(month: str | None = None, osoba: str | None = None,
                                 household_id=current_user["household_id"])
 
 
+@app.get("/api/szukaj")
+def szukaj(q: str = "", current_user: dict = Depends(get_current_user)):
+    q = (q or "").strip()
+    if len(q) < 2 or not current_user["household_id"]:
+        return {"wydatki": [], "suma_pozycji": 0, "liczba_pozycji": 0, "q": q}
+    wynik = database.szukaj_wydatki(q, current_user["household_id"])
+    wynik["q"] = q
+    return wynik
+
+
 @app.get("/api/wydatki/{wydatek_id}")
 def get_wydatek(wydatek_id: int, current_user: dict = Depends(get_current_user)):
     row = database.get_wydatek(wydatek_id)

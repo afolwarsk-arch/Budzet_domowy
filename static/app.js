@@ -666,6 +666,72 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       btnRun.textContent = 'Przelicz';
     }
   });
+  // ── Wyszukiwarka wydatków / produktów ──
+  const szukajInput = document.getElementById('szukaj-input');
+  const szukajBtn = document.getElementById('szukaj-btn');
+  const szukajClear = document.getElementById('szukaj-clear');
+  const szukajWyniki = document.getElementById('szukaj-wyniki');
+
+  function renderSearchResults(res, q) {
+    const w = res.wydatki || [];
+    if (!w.length) {
+      szukajWyniki.innerHTML = `<p style="color:var(--muted);font-size:14px">Brak wyników dla „${esc(q)}".</p>`;
+      return;
+    }
+    const nParagon = w.length === 1 ? 'paragon' : (w.length < 5 ? 'paragony' : 'paragonów');
+    const podsum = res.liczba_pozycji
+      ? `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Znaleziono <strong>${w.length}</strong> ${nParagon}. Produkty pasujące do „${esc(q)}": <strong>${res.liczba_pozycji}</strong> na łącznie <strong>${fmt(res.suma_pozycji)}</strong>.</div>`
+      : `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Znaleziono <strong>${w.length}</strong> ${nParagon}.</div>`;
+    const rows = w.map(x => `
+      <tr>
+        <td>${x.data}</td>
+        <td>
+          <span class="sklep-name">${esc(x.sklep) || '—'}</span>
+          ${x.trafienia ? `<div class="notatka-hint">${esc(x.trafienia)}</div>` : ''}
+          ${x.notatki ? `<div class="notatka-hint" style="color:#8a8f9c">📝 ${esc(x.notatki)}</div>` : ''}
+        </td>
+        <td><span class="badge ${x.osoba === 'Ola' ? 'ola' : ''}">${esc(x.osoba)}</span></td>
+        <td style="text-align:right;font-weight:600">${fmt(x.suma)}</td>
+        <td><button class="btn btn-outline btn-sm" onclick="editWydatek(${x.id})">Edytuj</button></td>
+      </tr>`).join('');
+    szukajWyniki.innerHTML = podsum + `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Data</th><th>Sklep / trafienia</th><th>Osoba</th><th style="text-align:right">Suma</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  async function runSearch() {
+    const q = (szukajInput.value || '').trim();
+    szukajWyniki.style.display = 'block';
+    szukajClear.style.display = '';
+    if (q.length < 2) {
+      szukajWyniki.innerHTML = '<p style="color:var(--muted);font-size:13px">Wpisz co najmniej 2 znaki.</p>';
+      return;
+    }
+    szukajWyniki.innerHTML = '<p style="color:var(--muted);font-size:13px">Szukam…</p>';
+    let res;
+    try {
+      res = await authFetch('/api/szukaj?q=' + encodeURIComponent(q)).then(r => r.json());
+    } catch (e) {
+      szukajWyniki.innerHTML = '<p style="color:#d32f2f;font-size:13px">Błąd wyszukiwania: ' + esc(e.message) + '</p>';
+      return;
+    }
+    renderSearchResults(res, q);
+  }
+
+  szukajBtn?.addEventListener('click', runSearch);
+  szukajInput?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runSearch(); } });
+  szukajClear?.addEventListener('click', () => {
+    szukajInput.value = '';
+    szukajWyniki.style.display = 'none';
+    szukajWyniki.innerHTML = '';
+    szukajClear.style.display = 'none';
+    szukajInput.focus();
+  });
+
   loadDashboard();
 }); }
 
