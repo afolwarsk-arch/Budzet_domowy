@@ -138,7 +138,7 @@ function pokazSamouczek(pierwszyRaz) {
     const ostatni = idx === _SAMOUCZEK_SLAJDY.length - 1;
     overlay.innerHTML = `
       <div style="background:#fff;border-radius:18px;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,.3)">
-        <img src="${s.obraz}" alt="" style="width:100%;display:block;border-radius:18px 18px 0 0;border-bottom:1px solid #e5e9f0" onerror="this.remove()">
+        <img src="${s.obraz}" alt="" style="width:100%;max-height:300px;object-fit:cover;object-position:top;display:block;border-radius:18px 18px 0 0;border-bottom:1px solid #e5e9f0" onerror="this.remove()">
         <div style="padding:20px 26px 18px">
           <div style="font-size:28px;margin-bottom:4px">${s.emoji}</div>
           <h3 style="font-size:1.15rem;margin:0 0 8px;color:#1a1f2e">${s.tytul}</h3>
@@ -167,6 +167,7 @@ window.pokazSamouczek = pokazSamouczek;
 const _BOTTOM_NAV_ITEMS = [
   { href: '/',              icon: '📊', label: 'Pulpit' },
   { href: '/upload',        icon: '➕', label: 'Dodaj' },
+  { href: '/lista',         icon: '🛒', label: 'Lista' },
   { href: '/konta',         icon: '💳', label: 'Konta' },
   { href: '/kategorie',     icon: '🏷️', label: 'Kategorie' },
   { href: '/analiza',       icon: '📈', label: 'Analiza' },
