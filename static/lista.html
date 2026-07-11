@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lista zakupów — Budżet domowy</title>
+  <title>Listy zakupów — Budżet domowy</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#4f7ef8">
@@ -12,9 +12,20 @@
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com">
   <link rel="preconnect" href="https://securetoken.googleapis.com">
   <style>
+    .lz-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+    .lz-tab { padding:7px 13px; border:1px solid var(--border); border-radius:20px; background:var(--card,#fff); color:inherit;
+              cursor:pointer; font-size:13.5px; white-space:nowrap; display:inline-flex; align-items:center; gap:6px; }
+    .lz-tab.active { background:#4f7ef8; color:#fff; border-color:#4f7ef8; }
+    .lz-tab-new { padding:7px 13px; border:1px dashed #9db4e8; border-radius:20px; background:none; color:#4f7ef8; cursor:pointer; font-size:13.5px; }
+    .lz-badge { background:rgba(0,0,0,.12); border-radius:10px; padding:0 7px; font-size:12px; min-width:18px; text-align:center; }
+    .lz-tab.active .lz-badge { background:rgba(255,255,255,.3); }
+    .lz-head { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+    .lz-title { margin:0; font-size:1.15rem; flex:1; word-break:break-word; }
+    .lz-actions { display:flex; gap:5px; flex:none; }
+    .lz-actions button { border:1px solid var(--border); background:var(--card,#fff); border-radius:8px; padding:5px 9px; font-size:14px; cursor:pointer; line-height:1; }
     .lz-add { display:flex; gap:8px; margin-bottom:8px; }
     .lz-add input { flex:1; min-width:0; padding:13px 15px; border:1px solid var(--border); border-radius:12px; font-size:16px; outline:none; }
-    .lz-status { font-size:12.5px; color:var(--muted); margin:2px 2px 18px; display:flex; align-items:center; gap:6px; }
+    .lz-status { font-size:12.5px; color:var(--muted); display:flex; align-items:center; gap:6px; }
     .lz-dot { width:9px; height:9px; border-radius:50%; background:#bbb; flex:none; }
     .lz-dot.on { background:#22b866; }
     .lz-dot.wait { background:#f0ad3c; animation:lzpulse 1s infinite; }
@@ -34,7 +45,8 @@
     .lz-row.pending { opacity:.55; }
     .lz-drag-ghost { opacity:.35; }
     .lz-sekcja { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:18px 2px 8px; }
-    .lz-empty { text-align:center; color:var(--muted); padding:32px 12px; font-size:15px; }
+    .lz-empty { text-align:center; color:var(--muted); padding:28px 12px; font-size:15px; }
+    .lz-arch-row { display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; margin-bottom:6px; }
   </style>
 </head>
 <body>
@@ -55,53 +67,75 @@
 </nav>
 
 <main style="max-width:640px">
-  <h1 style="margin-bottom:14px">🛒 Lista zakupów</h1>
-
-  <div class="lz-add">
-    <input id="add-input" type="text" placeholder="Dodaj produkt… (np. mleko)" maxlength="200" enterkeyhint="done" autocomplete="off">
-    <button id="add-btn" class="btn btn-primary" style="padding:0 20px">Dodaj</button>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <h1 style="margin:0">🛒 Listy zakupów</h1>
+    <div class="lz-status"><span id="lz-dot" class="lz-dot wait"></span><span id="lz-status-txt">Łączę…</span></div>
   </div>
-  <div class="lz-status"><span id="lz-dot" class="lz-dot wait"></span><span id="lz-status-txt">Łączę…</span></div>
-
-  <div id="lista-wrap"></div>
+  <div id="lz-tabs" class="lz-tabs"></div>
+  <div id="lz-panel"></div>
+  <div id="lz-archiwum"></div>
 </main>
 
 <script>
 const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-let items = [];
-let ws = null;
-let wsWanted = true;
-let reconnectTimer = null;
-let pingTimer = null;
-let pollTimer = null;
-let sortable = null;
+let stan = [];                                             // [{id,nazwa,status,pozycja,pozycje:[...]}]
+let selId = parseInt(localStorage.getItem('listaSel') || '0', 10) || null;
+let ws = null, wsWanted = true, reconnectTimer = null, pingTimer = null, pollTimer = null, sortable = null;
 
-const wrap = document.getElementById('lista-wrap');
-const addInput = document.getElementById('add-input');
-const addBtn = document.getElementById('add-btn');
+const tabsEl = document.getElementById('lz-tabs');
+const panelEl = document.getElementById('lz-panel');
+const archEl = document.getElementById('lz-archiwum');
 
 function wsOpen() { return ws && ws.readyState === 1; }
+function listaById(id) { return stan.find(l => l.id === Number(id)); }
+function aktywne() { return stan.filter(l => l.status === 'aktywna'); }
+
+function selected() {
+  let l = stan.find(x => x.id === selId && x.status === 'aktywna');
+  if (!l) { l = aktywne()[0] || null; selId = l ? l.id : null; }
+  return l;
+}
 
 function setStatus(state) {
   const dot = document.getElementById('lz-dot');
   const txt = document.getElementById('lz-status-txt');
   dot.className = 'lz-dot ' + (state === 'online' ? 'on' : state === 'wait' ? 'wait' : '');
-  txt.textContent = state === 'online' ? 'Na żywo — zmiany widać u drugiej osoby od razu'
-    : state === 'wait' ? 'Łączę…'
-    : 'Offline — próbuję połączyć ponownie';
+  txt.textContent = state === 'online' ? 'Na żywo' : state === 'wait' ? 'Łączę…' : 'Offline — łączę ponownie';
 }
 
-function render() {
-  const doKupienia = items.filter(x => !x.kupione);
-  const wKoszyku = items.filter(x => x.kupione);
+// ── render ──
 
-  if (sortable) { sortable.destroy(); sortable = null; }
+function renderAll() { renderTabs(); renderPanel(); renderArch(); }
 
-  if (!items.length) {
-    wrap.innerHTML = '<div class="lz-empty">Lista jest pusta.<br>Dodaj pierwszy produkt powyżej. 🛒</div>';
+function renderTabs() {
+  const a = aktywne();
+  const sel = selected();
+  tabsEl.innerHTML = a.map(l => {
+    const n = l.pozycje.filter(p => !p.kupione).length;
+    return `<button class="lz-tab ${sel && l.id === sel.id ? 'active' : ''}" data-sel="${l.id}">${esc(l.nazwa)}${n ? ` <span class="lz-badge">${n}</span>` : ''}</button>`;
+  }).join('') + `<button class="lz-tab-new" id="btn-nowa">+ Nowa lista</button>`;
+  tabsEl.querySelectorAll('[data-sel]').forEach(b => b.addEventListener('click', () => {
+    selId = parseInt(b.dataset.sel); localStorage.setItem('listaSel', String(selId)); renderAll();
+  }));
+  document.getElementById('btn-nowa').addEventListener('click', nowaLista);
+}
+
+function renderPanel() {
+  // zachowaj wpisywany tekst i fokus pola dodawania przez przebudowę
+  const prev = document.getElementById('add-input');
+  const prevVal = prev ? prev.value : null;
+  const hadFocus = prev && document.activeElement === prev;
+
+  const l = selected();
+  if (!l) {
+    if (sortable) { sortable.destroy(); sortable = null; }
+    panelEl.innerHTML = '<div class="lz-empty">Nie masz aktywnych list.<br>Kliknij „+ Nowa lista", aby zacząć. 🛒</div>';
     return;
   }
+
+  const doKupienia = l.pozycje.filter(x => !x.kupione);
+  const wKoszyku = l.pozycje.filter(x => x.kupione);
 
   const rowHTML = (x, done) => `
     <div class="lz-row ${done ? 'done' : ''} ${x._pending ? 'pending' : ''}" data-id="${x.id}">
@@ -114,149 +148,231 @@ function render() {
       <button class="lz-del" data-del="${x.id}" title="Usuń">×</button>
     </div>`;
 
-  let html = `<div id="lz-do">${doKupienia.map(x => rowHTML(x, false)).join('')}</div>`;
-  html += '<div id="lz-koszyk">';
-  if (wKoszyku.length) {
-    html += `<div class="lz-sekcja">W koszyku (${wKoszyku.length})</div>`;
-    html += wKoszyku.map(x => rowHTML(x, true)).join('');
-    html += `<button id="clear-btn" class="btn btn-outline btn-sm" style="margin-top:10px">Usuń kupione (${wKoszyku.length})</button>`;
-  }
-  html += '</div>';
-  wrap.innerHTML = html;
+  let html = `
+    <div class="lz-head">
+      <h2 class="lz-title">${esc(l.nazwa)}</h2>
+      <div class="lz-actions">
+        <button data-act="rename" title="Zmień nazwę">✏</button>
+        <button data-act="wstrzymaj" title="Wstrzymaj listę">⏸</button>
+        <button data-act="zamknij" title="Zamknij (zakończ) listę">✓</button>
+        <button data-act="usun" title="Usuń listę" style="color:#c0392b">🗑</button>
+      </div>
+    </div>
+    <div class="lz-add">
+      <input id="add-input" type="text" placeholder="Dodaj produkt…" maxlength="200" enterkeyhint="done" autocomplete="off">
+      <button id="add-btn" class="btn btn-primary" style="padding:0 20px">Dodaj</button>
+    </div>`;
 
-  wrap.querySelectorAll('.lz-row').forEach(row => {
+  if (!l.pozycje.length) {
+    html += '<div class="lz-empty">Lista pusta — dodaj pierwszy produkt. 🛒</div>';
+  } else {
+    html += `<div id="lz-do">${doKupienia.map(x => rowHTML(x, false)).join('')}</div><div id="lz-koszyk">`;
+    if (wKoszyku.length) {
+      html += `<div class="lz-sekcja">W koszyku (${wKoszyku.length})</div>`;
+      html += wKoszyku.map(x => rowHTML(x, true)).join('');
+      html += `<button id="clear-btn" class="btn btn-outline btn-sm" style="margin-top:10px">Usuń kupione (${wKoszyku.length})</button>`;
+    }
+    html += '</div>';
+  }
+  panelEl.innerHTML = html;
+
+  // przywróć pole dodawania
+  if (prevVal !== null) {
+    const na = document.getElementById('add-input');
+    if (na) { na.value = prevVal; if (hadFocus) { na.focus(); try { na.setSelectionRange(na.value.length, na.value.length); } catch {} } }
+  }
+
+  // akcje listy
+  panelEl.querySelector('[data-act="rename"]').addEventListener('click', () => zmienNazwe(l.id));
+  panelEl.querySelector('[data-act="wstrzymaj"]').addEventListener('click', () => zmienStatus(l.id, 'wstrzymana'));
+  panelEl.querySelector('[data-act="zamknij"]').addEventListener('click', () => zmienStatus(l.id, 'zamknieta'));
+  panelEl.querySelector('[data-act="usun"]').addEventListener('click', () => usunListe(l.id));
+
+  // dodawanie pozycji
+  document.getElementById('add-btn').addEventListener('click', () => addItem(l.id));
+  document.getElementById('add-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addItem(l.id); } });
+
+  // odhaczanie / usuwanie pozycji
+  panelEl.querySelectorAll('.lz-row').forEach(row => {
     row.addEventListener('click', e => {
       if (e.target.closest('.lz-del') || e.target.closest('.lz-handle')) return;
-      const it = items.find(x => String(x.id) === String(row.dataset.id));
+      const it = l.pozycje.find(x => String(x.id) === String(row.dataset.id));
       if (it && !it._pending) toggle(it);
     });
   });
-  wrap.querySelectorAll('[data-del]').forEach(btn => {
-    btn.addEventListener('click', e => { e.stopPropagation(); del(btn.dataset.del); });
-  });
+  panelEl.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); del(btn.dataset.del); }));
   const clearBtn = document.getElementById('clear-btn');
-  if (clearBtn) clearBtn.addEventListener('click', clearKupione);
+  if (clearBtn) clearBtn.addEventListener('click', () => clearKupione(l.id));
 
+  // przeciąganie kolejności (tylko sekcja "do kupienia")
+  if (sortable) { sortable.destroy(); sortable = null; }
   const doEl = document.getElementById('lz-do');
   if (doEl && window.Sortable) {
     sortable = window.Sortable.create(doEl, {
-      animation: 150,
-      // przytrzymanie (ok. 0,2 s) w DOWOLNYM miejscu wiersza = przenoszenie;
-      // szybki tap dalej odhacza. Bez celowania w mały uchwyt.
-      delay: 220,
-      delayOnTouchOnly: true,
-      touchStartThreshold: 6,
-      forceFallback: true,      // własny silnik drag — czulszy i spójny na telefonie
-      fallbackTolerance: 4,
-      ghostClass: 'lz-drag-ghost',
-      onEnd: saveOrder,
+      animation: 150, delay: 220, delayOnTouchOnly: true, touchStartThreshold: 6,
+      forceFallback: true, fallbackTolerance: 4, ghostClass: 'lz-drag-ghost',
+      onEnd: () => saveOrder(l.id),
     });
   }
 }
 
-async function saveOrder() {
+function renderArch() {
+  const arch = stan.filter(l => l.status !== 'aktywna');
+  if (!arch.length) { archEl.innerHTML = ''; return; }
+  const ety = l => l.status === 'wstrzymana' ? '⏸ wstrzymana' : '✓ zamknięta';
+  archEl.innerHTML = `
+    <details class="card" style="margin-top:16px">
+      <summary style="cursor:pointer;font-weight:600;font-size:14px">Wstrzymane i zamknięte (${arch.length})</summary>
+      <div style="margin-top:10px">
+        ${arch.map(l => `
+          <div class="lz-arch-row">
+            <span style="flex:1">${esc(l.nazwa)} <span style="color:var(--muted);font-size:12px">· ${ety(l)} · ${l.pozycje.length} poz.</span></span>
+            <button data-wznow="${l.id}" class="btn btn-outline btn-sm">Wznów</button>
+            <button data-del-lista="${l.id}" class="btn btn-danger btn-sm">Usuń</button>
+          </div>`).join('')}
+      </div>
+    </details>`;
+  archEl.querySelectorAll('[data-wznow]').forEach(b => b.addEventListener('click', () => {
+    selId = parseInt(b.dataset.wznow); localStorage.setItem('listaSel', String(selId));
+    zmienStatus(selId, 'aktywna');
+  }));
+  archEl.querySelectorAll('[data-del-lista]').forEach(b => b.addEventListener('click', () => usunListe(parseInt(b.dataset.delLista))));
+}
+
+// ── operacje na listach (rzadkie → po zapisie zawsze pełny refresh) ──
+
+async function nowaLista() {
+  const nazwa = (prompt('Nazwa nowej listy:') || '').trim();
+  if (!nazwa) return;
+  try {
+    const res = await authFetch('/api/listy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nazwa }) });
+    if (!res.ok) throw new Error();
+    const nowa = await res.json();
+    selId = nowa.id; localStorage.setItem('listaSel', String(selId));
+    await refresh();
+  } catch { alert('Nie udało się utworzyć listy.'); }
+}
+
+async function zmienNazwe(id) {
+  const l = listaById(id); if (!l) return;
+  const nazwa = (prompt('Nazwa listy:', l.nazwa) || '').trim();
+  if (!nazwa || nazwa === l.nazwa) return;
+  await patchLista(id, { nazwa });
+}
+
+async function zmienStatus(id, status) { await patchLista(id, { status }); }
+
+async function patchLista(id, body) {
+  try {
+    const res = await authFetch('/api/listy/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error();
+  } catch { alert('Nie udało się zapisać zmiany.'); }
+  await refresh();
+}
+
+async function usunListe(id) {
+  const l = listaById(id);
+  const nazwa = l ? l.nazwa : 'tę listę';
+  if (!confirm(`Usunąć listę „${nazwa}" wraz z pozycjami? Tego nie da się cofnąć.`)) return;
+  try {
+    const res = await authFetch('/api/listy/' + id, { method: 'DELETE' });
+    if (!res.ok) throw new Error();
+    if (selId === id) selId = null;
+  } catch { alert('Nie udało się usunąć listy.'); }
+  await refresh();
+}
+
+// ── operacje na pozycjach (optymistyczne) ──
+
+async function addItem(listId) {
+  const ai = document.getElementById('add-input');
+  if (!ai) return;
+  const nazwa = ai.value.trim();
+  if (!nazwa) return;
+  ai.value = '';
+  const l = listaById(listId);
+  if (!l) return;
+  const temp = { id: 'tmp-' + Date.now(), lista_id: listId, nazwa, kupione: false, dodane_przez: null, _pending: true };
+  l.pozycje.push(temp);
+  renderAll();
+  document.getElementById('add-input')?.focus();
+  try {
+    const res = await authFetch('/api/listy/' + listId + '/pozycje', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nazwa }) });
+    if (!res.ok) throw new Error();
+    if (!wsOpen()) await refresh();
+  } catch {
+    l.pozycje = l.pozycje.filter(x => x.id !== temp.id);
+    renderAll();
+    alert('Nie udało się dodać. Sprawdź połączenie.');
+  }
+}
+
+async function toggle(it) {
+  if (String(it.id).startsWith('tmp-')) return;
+  it.kupione = !it.kupione;
+  renderAll();
+  try {
+    const res = await authFetch('/api/pozycje/' + it.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kupione: it.kupione }) });
+    if (!res.ok) throw new Error();
+    if (!wsOpen()) await refresh();
+  } catch { it.kupione = !it.kupione; renderAll(); }
+}
+
+async function del(id) {
+  if (String(id).startsWith('tmp-')) return;
+  const l = selected();
+  if (!l) return;
+  const before = l.pozycje;
+  l.pozycje = l.pozycje.filter(x => String(x.id) !== String(id));
+  renderAll();
+  try {
+    const res = await authFetch('/api/pozycje/' + id, { method: 'DELETE' });
+    if (!res.ok) throw new Error();
+    if (!wsOpen()) await refresh();
+  } catch { l.pozycje = before; renderAll(); }
+}
+
+async function clearKupione(listId) {
+  const l = listaById(listId);
+  if (!l) return;
+  const before = l.pozycje;
+  l.pozycje = l.pozycje.filter(x => !x.kupione);
+  renderAll();
+  try {
+    const res = await authFetch('/api/listy/' + listId + '/wyczysc-kupione', { method: 'POST' });
+    if (!res.ok) throw new Error();
+    if (!wsOpen()) await refresh();
+  } catch { l.pozycje = before; renderAll(); }
+}
+
+async function saveOrder(listId) {
   const doEl = document.getElementById('lz-do');
   if (!doEl) return;
-  const ids = [...doEl.querySelectorAll('.lz-row')]
-    .map(r => r.dataset.id)
-    .filter(id => !String(id).startsWith('tmp-'));
-  // uporządkuj lokalnie tak jak w DOM (kupione zostają na dole)
+  const ids = [...doEl.querySelectorAll('.lz-row')].map(r => r.dataset.id).filter(id => !String(id).startsWith('tmp-'));
+  const l = listaById(listId);
+  if (!l) return;
   const pos = new Map(ids.map((id, i) => [String(id), i]));
-  items.sort((a, b) => {
+  l.pozycje.sort((a, b) => {
     const ka = a.kupione ? 1 : 0, kb = b.kupione ? 1 : 0;
     if (ka !== kb) return ka - kb;
     if (!a.kupione) return (pos.get(String(a.id)) ?? 0) - (pos.get(String(b.id)) ?? 0);
     return 0;
   });
   try {
-    const res = await authFetch('/api/lista/kolejnosc', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: ids.map(Number) }),
-    });
+    const res = await authFetch('/api/listy/' + listId + '/kolejnosc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ids.map(Number) }) });
     if (!res.ok) throw new Error();
     if (!wsOpen()) await refresh();
   } catch { await refresh(); }
 }
 
-// ── zapisy (przez HTTP — działają nawet gdy WS chwilowo padnie) ──
-
-async function addItem() {
-  const nazwa = addInput.value.trim();
-  if (!nazwa) return;
-  addInput.value = '';
-  addInput.focus();
-  const temp = { id: 'tmp-' + Date.now(), nazwa, kupione: false, dodane_przez: null, _pending: true };
-  items.push(temp);
-  render();
-  try {
-    const res = await authFetch('/api/lista', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nazwa }),
-    });
-    if (!res.ok) throw new Error();
-    if (!wsOpen()) await refresh();
-  } catch {
-    items = items.filter(x => x.id !== temp.id);
-    render();
-    alert('Nie udało się dodać. Sprawdź połączenie i spróbuj ponownie.');
-  }
-}
-
-async function toggle(it) {
-  if (String(it.id).startsWith('tmp-')) return;
-  const nowy = !it.kupione;
-  it.kupione = nowy;
-  render();
-  try {
-    const res = await authFetch('/api/lista/' + it.id, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kupione: nowy }),
-    });
-    if (!res.ok) throw new Error();
-    if (!wsOpen()) await refresh();
-  } catch {
-    it.kupione = !nowy;
-    render();
-  }
-}
-
-async function del(id) {
-  if (String(id).startsWith('tmp-')) return;
-  const before = items;
-  items = items.filter(x => String(x.id) !== String(id));
-  render();
-  try {
-    const res = await authFetch('/api/lista/' + id, { method: 'DELETE' });
-    if (!res.ok) throw new Error();
-    if (!wsOpen()) await refresh();
-  } catch {
-    items = before;
-    render();
-  }
-}
-
-async function clearKupione() {
-  const before = items;
-  items = items.filter(x => !x.kupione);
-  render();
-  try {
-    const res = await authFetch('/api/lista/wyczysc-kupione', { method: 'POST' });
-    if (!res.ok) throw new Error();
-    if (!wsOpen()) await refresh();
-  } catch {
-    items = before;
-    render();
-  }
-}
-
 async function refresh() {
   try {
-    const data = await authFetch('/api/lista').then(r => r.json());
-    if (Array.isArray(data)) { items = data; render(); }
+    const data = await authFetch('/api/listy').then(r => r.json());
+    if (Array.isArray(data)) { stan = data; renderAll(); }
   } catch {}
 }
 
-// ── WebSocket: natychmiastowy push zmian + samo-naprawianie ──
+// ── WebSocket: push na żywo + samo-naprawianie ──
 
 function connectWs() {
   if (!wsWanted) return;
@@ -264,13 +380,12 @@ function connectWs() {
   authGetToken().then(token => {
     if (!wsWanted) return;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    try {
-      ws = new WebSocket(`${proto}://${location.host}/ws/lista?token=${encodeURIComponent(token)}`);
-    } catch { scheduleReconnect(); return; }
+    try { ws = new WebSocket(`${proto}://${location.host}/ws/lista?token=${encodeURIComponent(token)}`); }
+    catch { scheduleReconnect(); return; }
     ws.onopen = () => { setStatus('online'); startPing(); };
     ws.onmessage = ev => {
-      let msg; try { msg = JSON.parse(ev.data); } catch { return; }
-      if (msg.typ === 'lista') { items = msg.items || []; render(); }
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.typ === 'stan') { stan = m.listy || []; renderAll(); }
     };
     ws.onclose = () => { setStatus('offline'); stopPing(); scheduleReconnect(); };
     ws.onerror = () => { try { ws.close(); } catch {} };
@@ -282,38 +397,20 @@ function scheduleReconnect() {
   clearTimeout(reconnectTimer);
   reconnectTimer = setTimeout(connectWs, 2500);
 }
-
-function startPing() {
-  stopPing();
-  pingTimer = setInterval(() => { if (wsOpen()) { try { ws.send('ping'); } catch {} } }, 25000);
-}
+function startPing() { stopPing(); pingTimer = setInterval(() => { if (wsOpen()) { try { ws.send('ping'); } catch {} } }, 25000); }
 function stopPing() { clearInterval(pingTimer); }
+function startPoll() { clearInterval(pollTimer); pollTimer = setInterval(() => { if (!wsOpen()) refresh(); }, 15000); }
 
-// zapasowy cichy poll — na wypadek gdyby WS "zawisł" bez zdarzenia onclose
-function startPoll() {
-  clearInterval(pollTimer);
-  pollTimer = setInterval(() => { if (!wsOpen()) refresh(); }, 15000);
-}
-
-// po odblokowaniu ekranu / powrocie do karty — natychmiast odśwież i wznów łącze
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     refresh();
     if (!wsOpen()) { clearTimeout(reconnectTimer); connectWs(); }
   }
 });
-
 window.addEventListener('beforeunload', () => { wsWanted = false; try { ws && ws.close(); } catch {} });
 
-addBtn.addEventListener('click', addItem);
-addInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addItem(); } });
-
 window.addEventListener('DOMContentLoaded', () => {
-  authRequireHousehold().then(() => {
-    refresh();      // szybki pierwszy render z REST
-    connectWs();    // potem łącze na żywo
-    startPoll();    // siatka bezpieczeństwa
-  });
+  authRequireHousehold().then(() => { refresh(); connectWs(); startPoll(); });
 });
 </script>
 </body>

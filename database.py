@@ -270,6 +270,24 @@ def init_db():
             created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""")
         cur.execute("ALTER TABLE lista_zakupow ADD COLUMN IF NOT EXISTS pozycja INTEGER NOT NULL DEFAULT 0")
+        cur.execute("""CREATE TABLE IF NOT EXISTS listy_zakupow (
+            id           SERIAL PRIMARY KEY,
+            household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            nazwa        TEXT NOT NULL,
+            status       TEXT NOT NULL DEFAULT 'aktywna',
+            pozycja      INTEGER NOT NULL DEFAULT 0,
+            created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute("ALTER TABLE lista_zakupow ADD COLUMN IF NOT EXISTS lista_id INTEGER REFERENCES listy_zakupow(id) ON DELETE CASCADE")
+        # migracja z pojedynczej listy: osierocone pozycje -> domyślna lista "Zakupy"
+        cur.execute("""INSERT INTO listy_zakupow (household_id, nazwa, status)
+            SELECT DISTINCT household_id, 'Zakupy', 'aktywna'
+            FROM lista_zakupow WHERE lista_id IS NULL""")
+        cur.execute("""UPDATE lista_zakupow li SET lista_id = (
+                SELECT l.id FROM listy_zakupow l
+                WHERE l.household_id = li.household_id AND l.nazwa = 'Zakupy'
+                ORDER BY l.id LIMIT 1)
+            WHERE li.lista_id IS NULL""")
         # migracja starego kształtu (jeden raport na gospodarstwo, PK na household_id)
         cur.execute("ALTER TABLE raporty_ai ADD COLUMN IF NOT EXISTS id SERIAL")
         cur.execute("""DO $$
@@ -1767,36 +1785,108 @@ def create_inwentaryzacja(konto_id: int, household_id: int, data: str,
         return dict(cur.fetchone())
 
 
-# ── Wspólna lista zakupów (współdzielona w gospodarstwie, sync na żywo) ──
+# ── Listy zakupów (wiele nazwanych list per gospodarstwo, sync na żywo) ──
+# status listy: 'aktywna' | 'wstrzymana' | 'zamknieta'
+_STATUSY_LISTY = {"aktywna", "wstrzymana", "zamknieta"}
 
-def get_lista(household_id: int) -> list[dict]:
+
+def get_stan_list(household_id: int) -> list[dict]:
+    """Pełny stan: wszystkie listy gospodarstwa (każdego statusu) z zagnieżdżonymi
+    pozycjami. Klient wybiera i renderuje aktualnie oglądaną listę."""
     with get_db() as cur:
         cur.execute(
-            "SELECT id, nazwa, kupione, dodane_przez FROM lista_zakupow "
+            "SELECT id, nazwa, status, pozycja FROM listy_zakupow "
+            "WHERE household_id = %s ORDER BY pozycja ASC, id ASC",
+            (household_id,),
+        )
+        listy = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            "SELECT id, lista_id, nazwa, kupione, dodane_przez FROM lista_zakupow "
             "WHERE household_id = %s ORDER BY kupione ASC, pozycja ASC, id ASC",
             (household_id,),
         )
-        return [dict(r) for r in cur.fetchall()]
+        pozycje = [dict(r) for r in cur.fetchall()]
+    wg_listy: dict[int, list[dict]] = {}
+    for p in pozycje:
+        wg_listy.setdefault(p["lista_id"], []).append(p)
+    for l in listy:
+        l["pozycje"] = wg_listy.get(l["id"], [])
+    return listy
 
 
-def add_pozycja_listy(household_id: int, nazwa: str, dodane_przez: str | None) -> dict:
+def get_lista_meta(lista_id: int, household_id: int) -> dict | None:
     with get_db() as cur:
         cur.execute(
-            "INSERT INTO lista_zakupow (household_id, nazwa, dodane_przez, pozycja) "
-            "VALUES (%s, %s, %s, COALESCE((SELECT MAX(pozycja) FROM lista_zakupow WHERE household_id=%s), 0) + 1) "
-            "RETURNING id, nazwa, kupione, dodane_przez",
-            (household_id, nazwa, dodane_przez, household_id),
+            "SELECT id, nazwa, status FROM listy_zakupow WHERE id = %s AND household_id = %s",
+            (lista_id, household_id),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def create_lista(household_id: int, nazwa: str) -> dict:
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO listy_zakupow (household_id, nazwa, pozycja) "
+            "VALUES (%s, %s, COALESCE((SELECT MAX(pozycja) FROM listy_zakupow WHERE household_id=%s), 0) + 1) "
+            "RETURNING id, nazwa, status, pozycja",
+            (household_id, nazwa, household_id),
+        )
+        r = dict(cur.fetchone())
+    r["pozycje"] = []
+    return r
+
+
+def rename_lista(lista_id: int, household_id: int, nazwa: str) -> bool:
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE listy_zakupow SET nazwa = %s WHERE id = %s AND household_id = %s",
+            (nazwa, lista_id, household_id),
+        )
+        return cur.rowcount > 0
+
+
+def set_lista_status(lista_id: int, household_id: int, status: str) -> bool:
+    if status not in _STATUSY_LISTY:
+        return False
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE listy_zakupow SET status = %s WHERE id = %s AND household_id = %s",
+            (status, lista_id, household_id),
+        )
+        return cur.rowcount > 0
+
+
+def delete_lista(lista_id: int, household_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute(
+            "DELETE FROM listy_zakupow WHERE id = %s AND household_id = %s",
+            (lista_id, household_id),
+        )
+        return cur.rowcount > 0
+
+
+def add_pozycja_listy(household_id: int, lista_id: int, nazwa: str, dodane_przez: str | None) -> dict | None:
+    with get_db() as cur:
+        cur.execute("SELECT 1 FROM listy_zakupow WHERE id = %s AND household_id = %s", (lista_id, household_id))
+        if not cur.fetchone():
+            return None
+        cur.execute(
+            "INSERT INTO lista_zakupow (household_id, lista_id, nazwa, dodane_przez, pozycja) "
+            "VALUES (%s, %s, %s, %s, COALESCE((SELECT MAX(pozycja) FROM lista_zakupow WHERE lista_id=%s), 0) + 1) "
+            "RETURNING id, lista_id, nazwa, kupione, dodane_przez",
+            (household_id, lista_id, nazwa, dodane_przez, lista_id),
         )
         return dict(cur.fetchone())
 
 
-def reorder_lista(household_id: int, ids: list[int]) -> None:
-    """Ustawia kolejność pozycji listy wg podanej sekwencji id (pozycja = indeks)."""
+def reorder_lista(household_id: int, lista_id: int, ids: list[int]) -> None:
+    """Ustawia kolejność pozycji w obrębie jednej listy (pozycja = indeks)."""
     with get_db() as cur:
         for i, item_id in enumerate(ids):
             cur.execute(
-                "UPDATE lista_zakupow SET pozycja = %s WHERE id = %s AND household_id = %s",
-                (i, item_id, household_id),
+                "UPDATE lista_zakupow SET pozycja = %s WHERE id = %s AND lista_id = %s AND household_id = %s",
+                (i, item_id, lista_id, household_id),
             )
 
 
@@ -1818,10 +1908,10 @@ def delete_pozycja_listy(item_id: int, household_id: int) -> bool:
         return cur.rowcount > 0
 
 
-def clear_kupione_listy(household_id: int) -> int:
+def clear_kupione_listy(household_id: int, lista_id: int) -> int:
     with get_db() as cur:
         cur.execute(
-            "DELETE FROM lista_zakupow WHERE household_id = %s AND kupione = TRUE",
-            (household_id,),
+            "DELETE FROM lista_zakupow WHERE household_id = %s AND lista_id = %s AND kupione = TRUE",
+            (household_id, lista_id),
         )
         return cur.rowcount

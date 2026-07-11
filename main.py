@@ -134,8 +134,8 @@ _lista_mgr = _ListaManager()
 
 
 async def _broadcast_lista(hid: int):
-    items = await run_in_threadpool(database.get_lista, hid)
-    await _lista_mgr.broadcast(hid, {"typ": "lista", "items": items})
+    listy = await run_in_threadpool(database.get_stan_list, hid)
+    await _lista_mgr.broadcast(hid, {"typ": "stan", "listy": listy})
 
 
 @app.websocket("/ws/lista")
@@ -147,8 +147,8 @@ async def ws_lista(websocket: WebSocket, token: str = ""):
     hid = user["household_id"]
     await _lista_mgr.connect(hid, websocket)
     try:
-        items = await run_in_threadpool(database.get_lista, hid)
-        await websocket.send_json({"typ": "lista", "items": items})
+        listy = await run_in_threadpool(database.get_stan_list, hid)
+        await websocket.send_json({"typ": "stan", "listy": listy})
         while True:
             # klient wysyła okresowy "ping" dla utrzymania łącza — treść ignorujemy
             await websocket.receive_text()
@@ -160,31 +160,99 @@ async def ws_lista(websocket: WebSocket, token: str = ""):
         _lista_mgr.disconnect(hid, websocket)
 
 
-@app.get("/api/lista")
-def lista_get(current_user: dict = Depends(get_current_user)):
-    if not current_user["household_id"]:
-        return []
-    return database.get_lista(current_user["household_id"])
-
-
-@app.post("/api/lista", status_code=201)
-async def lista_add(body: dict, current_user: dict = Depends(get_current_user)):
+def _wymagaj_hid(current_user: dict) -> int:
     hid = current_user["household_id"]
     if not hid:
         raise HTTPException(400, "Brak gospodarstwa")
+    return hid
+
+
+# --- Listy (nagłówki) ---
+
+@app.get("/api/listy")
+def listy_get(current_user: dict = Depends(get_current_user)):
+    if not current_user["household_id"]:
+        return []
+    return database.get_stan_list(current_user["household_id"])
+
+
+@app.post("/api/listy", status_code=201)
+async def listy_create(body: dict, current_user: dict = Depends(get_current_user)):
+    hid = _wymagaj_hid(current_user)
     nazwa = (body.get("nazwa") or "").strip()
     if not nazwa:
         raise HTTPException(400, "Pusta nazwa")
-    item = await run_in_threadpool(database.add_pozycja_listy, hid, nazwa[:200], current_user["display_name"])
+    lista = await run_in_threadpool(database.create_lista, hid, nazwa[:60])
+    await _broadcast_lista(hid)
+    return lista
+
+
+@app.patch("/api/listy/{lista_id}")
+async def listy_update(lista_id: int, body: dict, current_user: dict = Depends(get_current_user)):
+    hid = _wymagaj_hid(current_user)
+    if "nazwa" in body:
+        nazwa = (body.get("nazwa") or "").strip()
+        if not nazwa:
+            raise HTTPException(400, "Pusta nazwa")
+        ok = await run_in_threadpool(database.rename_lista, lista_id, hid, nazwa[:60])
+        if not ok:
+            raise HTTPException(404, "Nie znaleziono")
+    if "status" in body:
+        ok = await run_in_threadpool(database.set_lista_status, lista_id, hid, body.get("status"))
+        if not ok:
+            raise HTTPException(400, "Nieprawidłowy status lub lista")
+    await _broadcast_lista(hid)
+    return {"ok": True}
+
+
+@app.delete("/api/listy/{lista_id}")
+async def listy_delete(lista_id: int, current_user: dict = Depends(get_current_user)):
+    hid = _wymagaj_hid(current_user)
+    ok = await run_in_threadpool(database.delete_lista, lista_id, hid)
+    if not ok:
+        raise HTTPException(404, "Nie znaleziono")
+    await _broadcast_lista(hid)
+    return {"ok": True}
+
+
+# --- Pozycje w obrębie listy ---
+
+@app.post("/api/listy/{lista_id}/pozycje", status_code=201)
+async def pozycja_add(lista_id: int, body: dict, current_user: dict = Depends(get_current_user)):
+    hid = _wymagaj_hid(current_user)
+    nazwa = (body.get("nazwa") or "").strip()
+    if not nazwa:
+        raise HTTPException(400, "Pusta nazwa")
+    item = await run_in_threadpool(database.add_pozycja_listy, hid, lista_id, nazwa[:200], current_user["display_name"])
+    if item is None:
+        raise HTTPException(404, "Nie znaleziono listy")
     await _broadcast_lista(hid)
     return item
 
 
-@app.patch("/api/lista/{item_id}")
-async def lista_toggle(item_id: int, body: dict, current_user: dict = Depends(get_current_user)):
-    hid = current_user["household_id"]
-    if not hid:
-        raise HTTPException(400, "Brak gospodarstwa")
+@app.post("/api/listy/{lista_id}/kolejnosc")
+async def pozycja_reorder(lista_id: int, body: dict, current_user: dict = Depends(get_current_user)):
+    hid = _wymagaj_hid(current_user)
+    try:
+        ids = [int(x) for x in (body.get("ids") or [])]
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Nieprawidłowa lista id")
+    await run_in_threadpool(database.reorder_lista, hid, lista_id, ids)
+    await _broadcast_lista(hid)
+    return {"ok": True}
+
+
+@app.post("/api/listy/{lista_id}/wyczysc-kupione")
+async def pozycja_clear(lista_id: int, current_user: dict = Depends(get_current_user)):
+    hid = _wymagaj_hid(current_user)
+    n = await run_in_threadpool(database.clear_kupione_listy, hid, lista_id)
+    await _broadcast_lista(hid)
+    return {"usuniete": n}
+
+
+@app.patch("/api/pozycje/{item_id}")
+async def pozycja_toggle(item_id: int, body: dict, current_user: dict = Depends(get_current_user)):
+    hid = _wymagaj_hid(current_user)
     ok = await run_in_threadpool(database.set_pozycja_kupione, item_id, hid, bool(body.get("kupione")))
     if not ok:
         raise HTTPException(404, "Nie znaleziono")
@@ -192,40 +260,14 @@ async def lista_toggle(item_id: int, body: dict, current_user: dict = Depends(ge
     return {"ok": True}
 
 
-@app.delete("/api/lista/{item_id}")
-async def lista_delete(item_id: int, current_user: dict = Depends(get_current_user)):
-    hid = current_user["household_id"]
-    if not hid:
-        raise HTTPException(400, "Brak gospodarstwa")
+@app.delete("/api/pozycje/{item_id}")
+async def pozycja_delete(item_id: int, current_user: dict = Depends(get_current_user)):
+    hid = _wymagaj_hid(current_user)
     ok = await run_in_threadpool(database.delete_pozycja_listy, item_id, hid)
     if not ok:
         raise HTTPException(404, "Nie znaleziono")
     await _broadcast_lista(hid)
     return {"ok": True}
-
-
-@app.post("/api/lista/kolejnosc")
-async def lista_reorder(body: dict, current_user: dict = Depends(get_current_user)):
-    hid = current_user["household_id"]
-    if not hid:
-        raise HTTPException(400, "Brak gospodarstwa")
-    try:
-        ids = [int(x) for x in (body.get("ids") or [])]
-    except (TypeError, ValueError):
-        raise HTTPException(400, "Nieprawidłowa lista id")
-    await run_in_threadpool(database.reorder_lista, hid, ids)
-    await _broadcast_lista(hid)
-    return {"ok": True}
-
-
-@app.post("/api/lista/wyczysc-kupione")
-async def lista_clear(current_user: dict = Depends(get_current_user)):
-    hid = current_user["household_id"]
-    if not hid:
-        raise HTTPException(400, "Brak gospodarstwa")
-    n = await run_in_threadpool(database.clear_kupione_listy, hid)
-    await _broadcast_lista(hid)
-    return {"usuniete": n}
 
 
 # --- Auth & Household routes ---
