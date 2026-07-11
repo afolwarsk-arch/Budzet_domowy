@@ -190,6 +190,85 @@ function _injectBottomNav(me) {
   if (act && act.scrollIntoView) act.scrollIntoView({ inline: 'center', block: 'nearest' });
 }
 
+// ── Wskazówki kontekstowe (różne per zakładka) ──
+const _TIPS_OGOLNE = [
+  'Samouczek jest zawsze pod przyciskiem ❓ na górnym pasku — wrócisz do niego kiedy chcesz.',
+  'Na telefonie wybierz „Dodaj do ekranu głównego" — apka działa jak natywna, z dolnym paskiem i aparatem.',
+  'Kliknij swój pseudonim na górnym pasku, żeby go zmienić.',
+  'Budżet prowadzicie wspólnie — zaproś drugą osobę przyciskiem 👥 na dashboardzie.',
+  'Osobę bez konta Google (np. dziecko) dodasz jako „członka bez konta".',
+  'Backup całego budżetu pobierzesz przyciskiem ↓ Backup — to plik, który możesz zachować.',
+];
+const _TIPS_STRONY = {
+  '/': [
+    'Kliknij segment wykresu kategorii → zejdziesz do podkategorii, a potem do konkretnych produktów.',
+    'Wyszukiwarka u góry przeszukuje całą historię — wpisz produkt, sklep albo fragment notatki.',
+    'Po wyszukaniu produktu kliknij „📈 Pokaż zmiany cen" — zobaczysz gdzie taniej i jak cena rosła w czasie.',
+    'Przełącznik Pierwotne / Kontekstowe zmienia sposób liczenia kategorii dla wydatków z okazji.',
+    'Filtruj po miesiącu, osobie i kategorii — jest też tryb dowolnego zakresu dat.',
+    'Wykres trendów miesięcznych przełączysz między „Osobno" (per osoba) a „Łącznie".',
+    'Przypomnienie o płatności możesz zamknąć ✕ na tę sesję — wróci następnym razem, aż je zrobisz.',
+    '„Top sklepy" pokazują, gdzie zostawiacie najwięcej pieniędzy.',
+  ],
+  '/upload': [
+    'Zrób zdjęcie paragonu — Claude odczyta sklep, pozycje, ceny i sam przypisze kategorie.',
+    'Możesz wrzucić kilka zdjęć naraz — każde stanie się osobnym wydatkiem.',
+    'Nie masz paragonu? Wpisz wydatki zwykłą notatką w drugiej zakładce.',
+    'Zanim zapiszesz, wszystko poprawisz — pozycje, ceny, ilości i kategorie.',
+    'Ustaw „okazję" (np. urodziny) — taki wydatek nie zaburzy statystyk Waszych zwykłych nawyków.',
+    '„Kontekst kategorii" wrzuci cały paragon do jednej kategorii (np. całą imprezę do Rozrywki).',
+    'Przypisz paragon do konta, żeby saldo tego konta samo się zgadzało.',
+  ],
+  '/lista': [
+    'Tapnięcie na produkcie oznacza go jako kupiony i przenosi do koszyka na dole.',
+    'Przeciągnij produkt za uchwyt ⠿, żeby ustawić kolejność — np. wg alejek w Twoim sklepie.',
+    'Lista jest wspólna i działa na żywo — druga osoba widzi Twoje zmiany od razu.',
+    'Po zakupach kliknij „Usuń kupione", żeby jednym ruchem wyczyścić koszyk.',
+    'Zielona kropka = połączenie na żywo. Żółta = łączę ponownie (np. po słabym zasięgu).',
+  ],
+  '/konta': [
+    'Dodaj konta (bank, gotówka, oszczędności) i miej salda zawsze pod ręką.',
+    'Subskrypcje i raty ustaw jako wydatki cykliczne — naliczą się same.',
+    'Cykliczny przelew na konto oszczędnościowe też ustawisz tutaj (Rodzaj: przelew).',
+    'Przelewy między kontami i inwentaryzacje (spis rzeczywistego stanu) robisz na tej stronie.',
+    'Dodawaj wpływy (np. pensję), żeby bilans gospodarstwa był pełny.',
+    'Wpływ albo przelew edytujesz ikonką ✏ w historii konta — bez usuwania i dodawania od nowa.',
+  ],
+  '/kategorie': [
+    'Dopasuj kategorie i podkategorie do swojego gospodarstwa — apka nie narzuca Ci sztywnej listy.',
+    'Zmiany w kategoriach od razu wpływają na wykresy, filtry i analizy.',
+  ],
+  '/analiza': [
+    'Doradca AI przeanalizuje Wasze wydatki i wskaże, gdzie realnie da się zaoszczędzić — z kwotami.',
+    'Odpowiadaj na pytania doradcy — buduje profil gospodarstwa i z każdą analizą zna Was lepiej.',
+    'Zapisane raporty znajdziesz w historii analiz — możesz wrócić do wcześniejszych wniosków.',
+  ],
+  '/powiadomienia': [
+    'To jest archiwum płatności — potwierdzone ręczne przelewy i automatyczne naliczenia.',
+    'Po zrobieniu ręcznego przelewu klikaj „✓ Zrobione", żeby zszedł z aktywnych.',
+  ],
+};
+
+function _injectTip() {
+  if (localStorage.getItem('tipsOff') === '1') return;
+  const main = document.querySelector('main');
+  if (!main) return;
+  const pula = [...(_TIPS_STRONY[location.pathname] || []), ..._TIPS_OGOLNE];
+  if (!pula.length) return;
+  const i = parseInt(localStorage.getItem('tipIdx') || '0', 10) || 0;
+  localStorage.setItem('tipIdx', String(i + 1));
+  const tekst = pula[i % pula.length];
+  const el = document.createElement('div');
+  el.id = 'tip-dnia';
+  el.style.cssText = 'margin-bottom:14px';
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;background:#f0f7ff;border:1px solid #d5e5fb;color:#2c5aa0;border-radius:10px;padding:9px 14px;font-size:13.5px">
+      <span>💡 ${tekst}</span><span style="flex:1"></span>
+      <button onclick="localStorage.setItem('tipsOff','1');this.closest('#tip-dnia').remove()" style="background:none;border:none;color:#98a0b3;cursor:pointer;font-size:12px;white-space:nowrap">nie pokazuj więcej</button>
+      <button onclick="this.closest('#tip-dnia').remove()" style="background:none;border:none;color:#2c5aa0;cursor:pointer;font-size:16px;line-height:1;padding:0 2px">✕</button>
+    </div>`;
+  main.insertBefore(el, main.firstChild);
+}
+
 async function authRequireHousehold() {
   return new Promise((resolve, reject) => {
     _auth.onAuthStateChanged(async (user) => {
@@ -211,6 +290,7 @@ async function authRequireHousehold() {
         window._currentUser = me;
         _injectProfileButton(me);
         _injectBottomNav(me);
+        _injectTip();
         if (me.samouczek === false) setTimeout(() => pokazSamouczek(true), 600);
         resolve(me);
       } catch {

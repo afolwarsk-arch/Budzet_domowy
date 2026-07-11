@@ -105,7 +105,7 @@ function render() {
 
   const rowHTML = (x, done) => `
     <div class="lz-row ${done ? 'done' : ''} ${x._pending ? 'pending' : ''}" data-id="${x.id}">
-      ${done ? '' : '<span class="lz-handle" title="Przeciągnij, aby zmienić kolejność">⠿</span>'}
+      ${done ? '' : '<span class="lz-handle" title="Przytrzymaj i przeciągnij, aby zmienić kolejność">⠿</span>'}
       <div class="lz-check">${done ? '✓' : ''}</div>
       <div style="flex:1;min-width:0">
         <div class="lz-name">${esc(x.nazwa)}</div>
@@ -140,8 +140,14 @@ function render() {
   const doEl = document.getElementById('lz-do');
   if (doEl && window.Sortable) {
     sortable = window.Sortable.create(doEl, {
-      handle: '.lz-handle',
       animation: 150,
+      // przytrzymanie (ok. 0,2 s) w DOWOLNYM miejscu wiersza = przenoszenie;
+      // szybki tap dalej odhacza. Bez celowania w mały uchwyt.
+      delay: 220,
+      delayOnTouchOnly: true,
+      touchStartThreshold: 6,
+      forceFallback: true,      // własny silnik drag — czulszy i spójny na telefonie
+      fallbackTolerance: 4,
       ghostClass: 'lz-drag-ghost',
       onEnd: saveOrder,
     });
