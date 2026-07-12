@@ -43,6 +43,7 @@
     <div class="tabs">
       <button class="tab-btn active" id="tab-image">Zdjęcie paragonu</button>
       <button class="tab-btn" id="tab-text">Notatka tekstowa</button>
+      <button class="tab-btn" id="tab-manual">✍️ Ręcznie (bez AI)</button>
     </div>
 
     <div id="panel-image">
@@ -63,7 +64,16 @@
       </div>
     </div>
 
-    <div class="form-group" style="margin-top:12px;margin-bottom:4px">
+    <div id="panel-manual" class="hidden">
+      <p style="font-size:14px;color:var(--muted);margin:4px 0 14px;line-height:1.5">
+        Wpisz wydatek samodzielnie — <strong>bez wysyłania do Claude AI</strong>. Nie zużywa API,
+        działa bez limitów. Podaj sklep, pozycje z kategoriami i kwotę, a potem zapisz. Sumę policzę
+        z pozycji, jeśli jej nie wpiszesz.
+      </p>
+      <button class="btn btn-primary" id="btn-manual-start">+ Nowy wpis ręczny</button>
+    </div>
+
+    <div class="form-group" id="ai-hint-group" style="margin-top:12px;margin-bottom:4px">
       <label>Wskazówka dla AI <span style="font-weight:400;color:var(--muted)">(opcjonalnie)</span></label>
       <input type="text" id="kontekst-input" placeholder="np. meble na Gałczyńskiego, zakupy dla dziecka..." style="width:100%">
     </div>

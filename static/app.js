@@ -852,6 +852,10 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   const tabText = document.getElementById('tab-text');
   const panelImage = document.getElementById('panel-image');
   const panelText = document.getElementById('panel-text');
+  const tabManual = document.getElementById('tab-manual');
+  const panelManual = document.getElementById('panel-manual');
+  const aiHintGroup = document.getElementById('ai-hint-group');
+  const btnManualStart = document.getElementById('btn-manual-start');
   const cardsContainer = document.getElementById('paragony-cards');
   const saveAllBtn = document.getElementById('btn-save-all');
 
@@ -884,16 +888,40 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
     // nie ma edycji — init od razu (nie potrzebujemy HIERARCHIA przed akcją usera)
   }
 
-  // tabs
-  tabImage.addEventListener('click', () => {
-    tabImage.classList.add('active'); tabText.classList.remove('active');
-    panelImage.classList.remove('hidden'); panelText.classList.add('hidden');
-    analyzeBtn.disabled = !selectedFiles.length;
-  });
-  tabText.addEventListener('click', () => {
-    tabText.classList.add('active'); tabImage.classList.remove('active');
-    panelText.classList.remove('hidden'); panelImage.classList.add('hidden');
-    analyzeBtn.disabled = !textInput.value.trim();
+  // tabs (zdjęcie / notatka = AI; ręcznie = bez AI)
+  function setTab(which) {
+    tabImage.classList.toggle('active', which === 'image');
+    tabText.classList.toggle('active', which === 'text');
+    tabManual.classList.toggle('active', which === 'manual');
+    panelImage.classList.toggle('hidden', which !== 'image');
+    panelText.classList.toggle('hidden', which !== 'text');
+    panelManual.classList.toggle('hidden', which !== 'manual');
+    const ai = which !== 'manual';
+    aiHintGroup.style.display = ai ? '' : 'none';
+    analyzeBtn.style.display = ai ? '' : 'none';
+    if (which === 'image') analyzeBtn.disabled = !selectedFiles.length;
+    if (which === 'text') analyzeBtn.disabled = !textInput.value.trim();
+  }
+  tabImage.addEventListener('click', () => setTab('image'));
+  tabText.addEventListener('click', () => setTab('text'));
+  tabManual.addEventListener('click', () => setTab('manual'));
+
+  // ── tryb ręczny: pusty wpis, zero wywołań Claude AI ──
+  btnManualStart.addEventListener('click', () => {
+    if (!GLOWNE.length) { setAlert('Chwila — ładuję kategorie…', 'error'); return; }
+    setAlert('');
+    editId = null;
+    const glowna = GLOWNE[0];
+    const sub = (HIERARCHIA[glowna] || ['Inne'])[0];
+    receiptsData = [{
+      sklep: '', data: new Date().toISOString().slice(0, 10), suma: 0,
+      osoba: document.getElementById('osoba').value, notatki: '', okazja: '',
+      konto_id: myDefaultKontoId,
+      pozycje: [{ nazwa: '', cena: 0, ilosc: 1, kategoria_glowna: glowna, kategoria: sub }],
+    }];
+    renderCards();
+    resultSection.classList.remove('hidden');
+    resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
   textInput.addEventListener('input', () => {
@@ -1205,6 +1233,14 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
 
   saveAllBtn.addEventListener('click', async () => {
     if (!receiptsData.length) return;
+
+    // jeśli suma nie została wpisana — policz ją z pozycji (przydatne w trybie ręcznym)
+    for (const r of receiptsData) {
+      if ((!r.suma || r.suma <= 0) && Array.isArray(r.pozycje) && r.pozycje.length) {
+        const s = r.pozycje.reduce((a, p) => a + (parseFloat(p.cena) || 0) * (parseFloat(p.ilosc) || 1), 0);
+        if (s > 0) r.suma = Math.round(s * 100) / 100;
+      }
+    }
 
     for (const r of receiptsData) {
       if (!r.data || !r.suma) { setAlert('Uzupełnij datę i sumę we wszystkich paragonach', 'error'); return; }
