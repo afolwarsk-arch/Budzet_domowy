@@ -114,26 +114,33 @@ function _injectProfileButton(me) {
 
 const _SAMOUCZEK_SLAJDY = [
   { emoji: '👋', tytul: 'Witaj w Budżecie domowym!',
-    opis: 'Wspólny budżet Waszego gospodarstwa: paragony, konta, analizy i doradca AI. Ten krótki przewodnik pokaże najważniejsze możliwości — wrócisz do niego w każdej chwili przyciskiem ❓ na górnym pasku.',
-    obraz: '/static/tutorial/1-dashboard.png' },
-  { emoji: '📷', tytul: 'Dodawaj wydatki zdjęciem paragonu',
-    opis: 'Zakładka „Dodaj wydatek": zrób zdjęcie paragonu (można kilka naraz) — Claude odczyta sklep, pozycje, ceny i przypisze kategorie. Możesz też wpisać wydatki zwykłą notatką. Przed zapisem wszystko da się poprawić.',
-    obraz: '/static/tutorial/2-upload.png' },
+    opis: 'To wspólny budżet całego gospodarstwa: dodajesz wydatki (zdjęciem paragonu, notatką albo ręcznie), a apka pokazuje statystyki, pilnuje płatności i podpowiada, gdzie oszczędzić. Ten przewodnik przejdzie przez wszystkie funkcje — wrócisz do niego kiedy chcesz przyciskiem ❓ u góry.' },
+  { emoji: '📷', tytul: 'Paragon = zdjęcie',
+    opis: 'W „Dodaj wydatek" zrób zdjęcie paragonu — Claude AI sam odczyta sklep, datę, wszystkie pozycje z cenami i przypisze kategorie. Możesz wrzucić kilka paragonów naraz: każdy stanie się osobnym wydatkiem. Przed zapisem wszystko sprawdzisz i poprawisz.' },
+  { emoji: '✍️', tytul: 'Nie chcesz AI? Wpisz ręcznie',
+    opis: 'W „Dodaj wydatek" jest zakładka „Ręcznie (bez AI)" — wpisujesz wydatek sam, bez wysyłania do Claude i bez kosztów. Jest też „Notatka tekstowa": wypisujesz wydatki listą, a AI rozbije je na osobne wpisy. Wybierasz to, co Ci pasuje.' },
   { emoji: '📊', tytul: 'Dashboard — wszystko na oku',
-    opis: 'Filtruj po miesiącu, osobie i kategorii. Kliknij segment wykresu, aby zejść do podkategorii i konkretnych produktów. W tabeli wydatków edytujesz i usuwasz wpisy.',
-    obraz: '/static/tutorial/1-dashboard.png' },
-  { emoji: '💳', tytul: 'Konta, wpływy i wydatki cykliczne',
-    opis: 'Strona „Konta": salda, wpływy, przelewy między kontami i inwentaryzacje. Subskrypcje i raty ustaw jako wydatki cykliczne — naliczą się same. Cykliczny przelew na oszczędności też ustawisz tutaj.',
-    obraz: '/static/tutorial/4-konta.png' },
+    opis: 'Filtruj po miesiącu, osobie i kategorii (albo po dowolnym zakresie dat). Kliknij segment wykresu kołowego, żeby zejść do podkategorii, a potem do konkretnych produktów. Wykres trendów przełączysz na „Osobno / Łącznie", a każdy wydatek rozwiniesz do pozycji.' },
+  { emoji: '🔍', tytul: 'Wyszukiwarka i ceny produktów',
+    opis: 'Pole 🔍 na dashboardzie przeszukuje CAŁĄ historię — produkt, sklep, notatkę („ile wydaliśmy na kawę?"). Po wyszukaniu produktu kliknij „📈 Pokaż zmiany cen": zobaczysz gdzie kupujesz taniej i jak cena rosła w czasie.' },
+  { emoji: '🏷️', tytul: 'Kategorie po Twojemu',
+    opis: 'W „Kategorie" ułożysz własną hierarchię kategorii i podkategorii. Przy wydatku możesz dodać „okazję" (np. urodziny) — taki zakup nie zaburzy statystyk Waszych zwykłych nawyków. „Kontekst kategorii" wrzuci cały paragon do jednej kategorii (np. całą imprezę do Rozrywki).' },
+  { emoji: '💳', tytul: 'Konta i salda',
+    opis: 'W „Konta" prowadzisz konta (bank, gotówka, oszczędności) z aktualnymi saldami. Robisz przelewy między nimi, a inwentaryzacją (spisem rzeczywistego stanu) pilnujesz, czy wszystko się zgadza. Przypisując wydatek do konta, saldo liczy się samo.' },
+  { emoji: '💰', tytul: 'Wpływy i płatności cykliczne',
+    opis: 'Dodawaj wpływy (np. pensję), żeby bilans był pełny. Subskrypcje, rachunki i raty ustaw jako wydatki cykliczne — naliczą się automatycznie (z limitem naliczeń albo datą końca). Cykliczny przelew na oszczędności też ustawisz w Kontach.' },
   { emoji: '🔔', tytul: 'Przypomnienia o płatnościach',
-    opis: 'O ręcznych przelewach apka przypomina z wyprzedzeniem — po zrobieniu przelewu klikasz „Zrobione". Przy automatycznych dostaniesz znać, żeby zapewnić środki na koncie. Archiwum znajdziesz w „Powiadomieniach".',
-    obraz: '/static/tutorial/5-powiadomienia.png' },
+    opis: 'O ręcznych przelewach apka przypomni z wyprzedzeniem — po zrobieniu klikasz „✓ Zrobione". Przy automatycznych obciążeniach dostaniesz znać, żeby zapewnić środki. Całe archiwum jest w „Powiadomieniach", a pojedyncze przypomnienie schowasz ✕ na bieżącą sesję.' },
   { emoji: '🤖', tytul: 'Doradca budżetowy AI',
-    opis: 'Na stronie „Analiza" Claude przeanalizuje Wasze wydatki i wskaże, gdzie realnie można zaoszczędzić — z konkretnymi kwotami. Odpowiadaj na jego pytania: buduje profil gospodarstwa i z każdą analizą zna Was lepiej.',
-    obraz: '/static/tutorial/6-doradca.png' },
+    opis: 'W „Analiza" Claude przeanalizuje Wasze wydatki i wskaże konkretnie, gdzie da się zaoszczędzić — z kwotami. Odpowiadaj na jego pytania: buduje profil gospodarstwa i z każdą analizą zna Was lepiej. Raporty zapisują się w historii.' },
+  { emoji: '🛒', tytul: 'Listy zakupów na żywo',
+    opis: 'W „Lista" tworzysz wiele nazwanych list (np. „Biedronka", „Leroy"). Są wspólne i synchronizują się NA ŻYWO — jak odhaczysz mleko, druga osoba w sklepie od razu to widzi. Tap = kupione, przeciągnij za ⠿ = kolejność (np. wg alejek), a listę wstrzymasz, zamkniesz lub usuniesz.' },
+  { emoji: '👥', tytul: 'Wspólne gospodarstwo',
+    opis: 'Zaproś drugą osobę do gospodarstwa linkiem (przycisk 👥 na dashboardzie) — budżet prowadzicie razem. Kogoś bez konta Google (np. dziecko) dodasz jako „osobę bez konta". Każdy może też usunąć własne konto — jego wydatki zostają, bo należą do gospodarstwa.' },
+  { emoji: '💾', tytul: 'Twoje dane są bezpieczne',
+    opis: 'Cały budżet pobierzesz w każdej chwili przyciskiem „↓ Backup" (plik z danymi). Statystyki, filtry i pseudonimy dostosujesz pod siebie — kliknij swój pseudonim na górnym pasku, żeby go zmienić.' },
   { emoji: '📱', tytul: 'Miej budżet w kieszeni',
-    opis: 'Na telefonie wybierz w przeglądarce „Dodaj do ekranu głównego" — apka działa jak zwykła aplikacja: dolny pasek nawigacji i aparat do paragonów zawsze pod ręką. Miłego oszczędzania! 🎉',
-    obraz: '/static/tutorial/7-mobile.png' },
+    opis: 'Na telefonie wybierz w przeglądarce „Dodaj do ekranu głównego" — apka działa jak natywna: dolny pasek nawigacji i aparat do paragonów zawsze pod ręką. To wszystko — miłego oszczędzania! 🎉' },
 ];
 
 function pokazSamouczek(pierwszyRaz) {
@@ -150,12 +157,11 @@ function pokazSamouczek(pierwszyRaz) {
     const ostatni = idx === _SAMOUCZEK_SLAJDY.length - 1;
     overlay.innerHTML = `
       <div style="background:#fff;border-radius:18px;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,.3)">
-        <img src="${s.obraz}" alt="" style="width:100%;max-height:300px;object-fit:cover;object-position:top;display:block;border-radius:18px 18px 0 0;border-bottom:1px solid #e5e9f0" onerror="this.remove()">
-        <div style="padding:20px 26px 18px">
-          <div style="font-size:28px;margin-bottom:4px">${s.emoji}</div>
+        <div style="height:128px;display:flex;align-items:center;justify-content:center;font-size:58px;background:linear-gradient(135deg,hsl(${(idx * 29) % 360}, 78%, 63%),hsl(${(idx * 29 + 40) % 360}, 74%, 52%));border-radius:18px 18px 0 0">${s.emoji}</div>
+        <div style="padding:22px 26px 18px">
           <h3 style="font-size:1.15rem;margin:0 0 8px;color:#1a1f2e">${s.tytul}</h3>
-          <p style="font-size:14px;line-height:1.55;color:#444;margin:0 0 16px">${s.opis}</p>
-          <div style="display:flex;justify-content:center;gap:6px;margin-bottom:14px">
+          <p style="font-size:14px;line-height:1.6;color:#444;margin:0 0 16px">${s.opis}</p>
+          <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-bottom:14px">
             ${_SAMOUCZEK_SLAJDY.map((_, i) => `<span style="width:8px;height:8px;border-radius:50%;background:${i === idx ? '#4f7ef8' : '#dde3f0'}"></span>`).join('')}
           </div>
           <div style="display:flex;gap:8px;align-items:center">
@@ -263,8 +269,10 @@ const _TIPS_STRONY = {
 
 function _injectTip() {
   if (localStorage.getItem('tipsOff') === '1') return;
+  if (sessionStorage.getItem('tipShown') === '1') return;  // najwyżej jedna wskazówka na sesję — nie nachalnie
   const main = document.querySelector('main');
   if (!main) return;
+  sessionStorage.setItem('tipShown', '1');
   const pula = [...(_TIPS_STRONY[location.pathname] || []), ..._TIPS_OGOLNE];
   if (!pula.length) return;
   const i = parseInt(localStorage.getItem('tipIdx') || '0', 10) || 0;
