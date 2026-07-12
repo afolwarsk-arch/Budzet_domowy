@@ -267,23 +267,27 @@ const _TIPS_STRONY = {
   ],
 };
 
-function _injectTip() {
-  if (localStorage.getItem('tipsOff') === '1') return;
-  if (sessionStorage.getItem('tipShown') === '1') return;  // najwyżej jedna wskazówka na sesję — nie nachalnie
+function _injectTip(me) {
+  // stan wskazówek trzymany PER UŻYTKOWNIK — to, że jedna osoba je wyłączyła/widziała,
+  // nie zabiera ich drugiej (nawet na współdzielonej przeglądarce)
+  const uid = (me && me.user_id) ? me.user_id : 'x';
+  const kOff = 'tipsOff_' + uid, kIdx = 'tipIdx_' + uid, kSes = 'tipShown_' + uid;
+  if (localStorage.getItem(kOff) === '1') return;
+  if (sessionStorage.getItem(kSes) === '1') return;  // najwyżej jedna wskazówka na sesję — nie nachalnie
   const main = document.querySelector('main');
   if (!main) return;
-  sessionStorage.setItem('tipShown', '1');
+  sessionStorage.setItem(kSes, '1');
   const pula = [...(_TIPS_STRONY[location.pathname] || []), ..._TIPS_OGOLNE];
   if (!pula.length) return;
-  const i = parseInt(localStorage.getItem('tipIdx') || '0', 10) || 0;
-  localStorage.setItem('tipIdx', String(i + 1));
+  const i = parseInt(localStorage.getItem(kIdx) || '0', 10) || 0;
+  localStorage.setItem(kIdx, String(i + 1));
   const tekst = pula[i % pula.length];
   const el = document.createElement('div');
   el.id = 'tip-dnia';
   el.style.cssText = 'margin-bottom:14px';
   el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;background:#f0f7ff;border:1px solid #d5e5fb;color:#2c5aa0;border-radius:10px;padding:9px 14px;font-size:13.5px">
       <span>💡 ${tekst}</span><span style="flex:1"></span>
-      <button onclick="localStorage.setItem('tipsOff','1');this.closest('#tip-dnia').remove()" style="background:none;border:none;color:#98a0b3;cursor:pointer;font-size:12px;white-space:nowrap">nie pokazuj więcej</button>
+      <button onclick="localStorage.setItem('${kOff}','1');this.closest('#tip-dnia').remove()" style="background:none;border:none;color:#98a0b3;cursor:pointer;font-size:12px;white-space:nowrap">nie pokazuj więcej</button>
       <button onclick="this.closest('#tip-dnia').remove()" style="background:none;border:none;color:#2c5aa0;cursor:pointer;font-size:16px;line-height:1;padding:0 2px">✕</button>
     </div>`;
   main.insertBefore(el, main.firstChild);
@@ -320,7 +324,7 @@ async function authRequireHousehold() {
         window._currentUser = me;
         _injectProfileButton(me);
         _injectBottomNav(me);
-        _injectTip();
+        _injectTip(me);
         if (me.samouczek === false) setTimeout(() => pokazSamouczek(true), 600);
         resolve(me);
       } catch {

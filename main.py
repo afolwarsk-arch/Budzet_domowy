@@ -982,6 +982,8 @@ def export_data(current_user: dict = Depends(get_current_user)):
     hid = current_user["household_id"]
     if not hid:
         raise HTTPException(400, "Brak gospodarstwa")
+    if current_user.get("role") != "owner":
+        raise HTTPException(403, "Kopię zapasową może pobrać tylko właściciel gospodarstwa.")
     data = database.export_household_data(hid)
     data["exported_at"] = __import__("datetime").datetime.utcnow().isoformat() + "Z"
     data["household_id"] = hid

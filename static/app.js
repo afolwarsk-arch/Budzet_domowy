@@ -17,6 +17,12 @@ function esc(s) {
 if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(async (me) => {
   loadOsobaOptions('filter-osoba', true); // w tle — wykresy nie muszą na to czekać
 
+  // kopię zapasową pobiera tylko właściciel gospodarstwa
+  if (me && me.role !== 'owner') {
+    const bkp = document.getElementById('btn-backup');
+    if (bkp) bkp.style.display = 'none';
+  }
+
   // (wskazówki kontekstowe wstrzykuje teraz auth.js — _injectTip, różne per zakładka)
 
   // ── przypomnienia o płatnościach cyklicznych ──
