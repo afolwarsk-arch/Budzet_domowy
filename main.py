@@ -714,11 +714,14 @@ def szukaj(q: str = "", current_user: dict = Depends(get_current_user)):
 
 
 @app.get("/api/ceny")
-def ceny(q: str = "", current_user: dict = Depends(get_current_user)):
+def ceny(q: str = "", kategoria_glowna: str | None = None, kategoria: str | None = None,
+         current_user: dict = Depends(get_current_user)):
     q = (q or "").strip()
     if len(q) < 2 or not current_user["household_id"]:
-        return {"punkty": [], "sklepy": [], "podsumowanie": {}, "liczba": 0, "q": q}
-    wynik = database.historia_cen(q, current_user["household_id"])
+        return {"punkty": [], "sklepy": [], "podsumowanie": {}, "liczba": 0,
+                "odrzucone": 0, "kategorie": [], "q": q}
+    wynik = database.historia_cen(q, current_user["household_id"],
+                                  kategoria_glowna=kategoria_glowna, kategoria=kategoria)
     wynik["q"] = q
     return wynik
 

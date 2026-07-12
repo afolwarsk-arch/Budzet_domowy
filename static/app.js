@@ -713,7 +713,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     if (ct) ct.addEventListener('click', () => loadCeny(q));
   }
 
-  async function loadCeny(q) {
+  async function loadCeny(q) {  // przełącznik pokaż/ukryj
     const panel = document.getElementById('ceny-panel');
     const toggle = document.getElementById('ceny-toggle');
     if (!panel) return;
@@ -724,22 +724,56 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     }
     panel.style.display = 'block';
     if (toggle) toggle.textContent = '📉 Ukryj ceny';
+    await fetchCeny(q, null, null);
+  }
+
+  async function fetchCeny(q, kg, k) {  // pobierz (opcjonalnie zawężone do kategorii) i wyrenderuj
+    const panel = document.getElementById('ceny-panel');
+    if (!panel) return;
     panel.innerHTML = '<p style="color:var(--muted);font-size:13px">Ładuję ceny…</p>';
+    let url = '/api/ceny?q=' + encodeURIComponent(q);
+    if (kg) url += '&kategoria_glowna=' + encodeURIComponent(kg);
+    if (k) url += '&kategoria=' + encodeURIComponent(k);
     let res;
     try {
-      res = await authFetch('/api/ceny?q=' + encodeURIComponent(q)).then(r => r.json());
+      res = await authFetch(url).then(r => r.json());
     } catch (e) {
       panel.innerHTML = '<p style="color:#d32f2f;font-size:13px">Błąd: ' + esc(e.message) + '</p>';
       return;
     }
-    renderCeny(res, q);
+    renderCeny(res, q, kg, k);
   }
 
-  function renderCeny(res, q) {
+  function renderCeny(res, q, kg, k) {
     const panel = document.getElementById('ceny-panel');
     const pts = res.punkty || [];
+
+    // selektor kategorii/podkategorii — gdy trafienia są z >1 kategorii (np. LPG: paliwo vs przegląd)
+    const kategorie = res.kategorie || [];
+    let picker = '';
+    if (kategorie.length > 1) {
+      const opts = ['<option value="">Wszystkie kategorie</option>'].concat(
+        kategorie.map(c => {
+          const val = c.kategoria_glowna + '|||' + c.kategoria;
+          const sel = (kg === c.kategoria_glowna && k === c.kategoria) ? 'selected' : '';
+          return `<option value="${esc(val)}" ${sel}>${esc(c.kategoria_glowna)} › ${esc(c.kategoria)} (${c.liczba})</option>`;
+        }));
+      picker = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <label style="font-size:12px;color:var(--muted)">Zawęź do kategorii:</label>
+        <select id="ceny-kat" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;max-width:100%">${opts.join('')}</select>
+      </div>`;
+    }
+    const wireKat = () => {
+      const katSel = document.getElementById('ceny-kat');
+      if (katSel) katSel.addEventListener('change', () => {
+        const parts = katSel.value ? katSel.value.split('|||') : ['', ''];
+        fetchCeny(q, parts[0] || null, parts[1] || null);
+      });
+    };
+
     if (pts.length < 1) {
-      panel.innerHTML = `<p style="color:var(--muted);font-size:14px">Brak danych cenowych dla „${esc(q)}".</p>`;
+      panel.innerHTML = picker + `<p style="color:var(--muted);font-size:14px">Brak danych cenowych dla „${esc(q)}".</p>`;
+      wireKat();
       return;
     }
     const ps = res.podsumowanie || {};
@@ -771,11 +805,13 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
            Pominięto <strong>${res.odrzucone}</strong> ${res.odrzucone === 1 ? 'nietypowy pomiar' : 'nietypowych pomiarów'} odstający(ch) od reszty — prawdopodobnie wpis „na kwotę" (np. bez ilości), nie cena jednostkowa. Nie psuje wykresu.
          </div>`
       : '';
-    panel.innerHTML = summary
+    panel.innerHTML = picker
+      + summary
       + odrzuconeNote
       + `<div style="height:220px"><canvas id="ceny-chart"></canvas></div>`
       + sklepyTbl
-      + `<p style="font-size:11px;color:var(--muted);margin-top:8px">Uwaga: łączy różne warianty/rozmiary pasujące do „${esc(q)}" (np. inne gramatury) — zawęź wpisując dokładniejszą nazwę.</p>`;
+      + `<p style="font-size:11px;color:var(--muted);margin-top:8px">Uwaga: łączy różne warianty/rozmiary pasujące do „${esc(q)}" (np. inne gramatury) — zawęź kategorią powyżej lub wpisując dokładniejszą nazwę.</p>`;
+    wireKat();
 
     if (cenyChart) { cenyChart.destroy(); cenyChart = null; }
     const ctx = document.getElementById('ceny-chart').getContext('2d');

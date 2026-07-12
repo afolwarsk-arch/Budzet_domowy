@@ -437,15 +437,18 @@ def szukaj_wydatki(q: str, household_id: int | None, limit: int = 300) -> dict:
     }
 
 
-def historia_cen(q: str, household_id: int | None, limit: int = 500) -> dict:
+def historia_cen(q: str, household_id: int | None, kategoria_glowna: str | None = None,
+                 kategoria: str | None = None, limit: int = 500) -> dict:
     """Historia cen JEDNOSTKOWYCH (pozycje.cena = cena za 1 szt/kg) produktów
     pasujących do zapytania (ILIKE po nazwie). Zwraca punkty w czasie, porównanie
-    średniej ceny per sklep (gdzie taniej) oraz podsumowanie zmiany w czasie."""
+    średniej ceny per sklep (gdzie taniej), podsumowanie zmiany, listę kategorii
+    obecnych w trafieniach (do zawężenia) oraz liczbę pominiętych pomiarów odstających.
+    Opcjonalnie zawęża do wybranej kategorii głównej / podkategorii."""
     like = f"%{q}%"
     with get_db() as cur:
         cur.execute(
             """
-            SELECT p.nazwa, p.cena, p.ilosc, w.data, w.sklep
+            SELECT p.nazwa, p.cena, p.ilosc, p.kategoria_glowna, p.kategoria, w.data, w.sklep
               FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
              WHERE w.household_id = %s AND p.nazwa ILIKE %s AND p.cena > 0
              ORDER BY w.data ASC, p.id ASC
@@ -453,7 +456,24 @@ def historia_cen(q: str, household_id: int | None, limit: int = 500) -> dict:
             """,
             (household_id, like, limit),
         )
-        wszystkie = [dict(r) for r in cur.fetchall()]
+        trafienia = [dict(r) for r in cur.fetchall()]
+
+    # lista kategorii/podkategorii obecnych w trafieniach — do zawężenia wykresu,
+    # gdy jedno hasło łapie różne rzeczy (np. "LPG" = paliwo, ale i przegląd instalacji)
+    kat_licz: dict[tuple, int] = {}
+    for p in trafienia:
+        klucz = (p["kategoria_glowna"], p["kategoria"])
+        kat_licz[klucz] = kat_licz.get(klucz, 0) + 1
+    kategorie = [{"kategoria_glowna": kg, "kategoria": k, "liczba": n}
+                 for (kg, k), n in kat_licz.items()]
+    kategorie.sort(key=lambda x: -x["liczba"])
+
+    # zawężenie do wybranej kategorii / podkategorii
+    wszystkie = trafienia
+    if kategoria_glowna:
+        wszystkie = [p for p in wszystkie if p["kategoria_glowna"] == kategoria_glowna]
+    if kategoria:
+        wszystkie = [p for p in wszystkie if p["kategoria"] == kategoria]
 
     # Odrzuć pomiary rażąco odstające od reszty (np. wpis „z pamięci" jako cała kwota
     # — ziemniaki 10 zł — gdy reszta to realna cena jednostkowa). Metoda IQR: liczy
@@ -499,7 +519,7 @@ def historia_cen(q: str, household_id: int | None, limit: int = 500) -> dict:
             "zmiana_proc": round((ostatnia - pierwsza) / pierwsza * 100, 1) if pierwsza else 0,
         }
     return {"punkty": punkty, "sklepy": sklepy, "podsumowanie": podsum,
-            "liczba": len(punkty), "odrzucone": odrzucone}
+            "liczba": len(punkty), "odrzucone": odrzucone, "kategorie": kategorie}
 
 
 def update_wydatek(wydatek_id: int, data: str, sklep: str | None, suma: float,
