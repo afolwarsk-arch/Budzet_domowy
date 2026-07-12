@@ -453,7 +453,27 @@ def historia_cen(q: str, household_id: int | None, limit: int = 500) -> dict:
             """,
             (household_id, like, limit),
         )
-        punkty = [dict(r) for r in cur.fetchall()]
+        wszystkie = [dict(r) for r in cur.fetchall()]
+
+    # Odrzuć pomiary rażąco odstające od reszty (np. wpis „z pamięci" jako cała kwota
+    # — ziemniaki 10 zł — gdy reszta to realna cena jednostkowa). Metoda IQR: liczy
+    # rozrzut typowych cen i odcina skrajne. Działa dopiero gdy jest dość danych.
+    punkty = wszystkie
+    odrzucone = 0
+    ceny_sort = sorted(float(p["cena"]) for p in wszystkie)
+    if len(ceny_sort) >= 5:
+        def _kwantyl(s: list[float], qtl: float) -> float:
+            i = qtl * (len(s) - 1)
+            lo = int(i)
+            hi = min(lo + 1, len(s) - 1)
+            return s[lo] + (s[hi] - s[lo]) * (i - lo)
+        q1 = _kwantyl(ceny_sort, 0.25)
+        q3 = _kwantyl(ceny_sort, 0.75)
+        iqr = q3 - q1
+        dol = q1 - 1.5 * iqr
+        gora = q3 + 1.5 * iqr
+        punkty = [p for p in wszystkie if dol <= float(p["cena"]) <= gora]
+        odrzucone = len(wszystkie) - len(punkty)
 
     grp: dict[str, list[float]] = {}
     for p in punkty:
@@ -478,7 +498,8 @@ def historia_cen(q: str, household_id: int | None, limit: int = 500) -> dict:
             "ostatnia": round(ostatnia, 2),
             "zmiana_proc": round((ostatnia - pierwsza) / pierwsza * 100, 1) if pierwsza else 0,
         }
-    return {"punkty": punkty, "sklepy": sklepy, "podsumowanie": podsum, "liczba": len(punkty)}
+    return {"punkty": punkty, "sklepy": sklepy, "podsumowanie": podsum,
+            "liczba": len(punkty), "odrzucone": odrzucone}
 
 
 def update_wydatek(wydatek_id: int, data: str, sklep: str | None, suma: float,

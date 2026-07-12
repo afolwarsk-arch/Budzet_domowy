@@ -766,7 +766,13 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
           <td style="text-align:right;color:var(--muted)">${s.liczba}</td>
         </tr>`).join('')}</tbody>
       </table></div>` : '';
+    const odrzuconeNote = res.odrzucone
+      ? `<div style="font-size:12px;color:#8a6d00;background:#fff8e1;border:1px solid #f0e3b0;border-radius:8px;padding:7px 11px;margin-bottom:10px">
+           Pominięto <strong>${res.odrzucone}</strong> ${res.odrzucone === 1 ? 'nietypowy pomiar' : 'nietypowych pomiarów'} odstający(ch) od reszty — prawdopodobnie wpis „na kwotę" (np. bez ilości), nie cena jednostkowa. Nie psuje wykresu.
+         </div>`
+      : '';
     panel.innerHTML = summary
+      + odrzuconeNote
       + `<div style="height:220px"><canvas id="ceny-chart"></canvas></div>`
       + sklepyTbl
       + `<p style="font-size:11px;color:var(--muted);margin-top:8px">Uwaga: łączy różne warianty/rozmiary pasujące do „${esc(q)}" (np. inne gramatury) — zawęź wpisując dokładniejszą nazwę.</p>`;
