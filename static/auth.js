@@ -35,10 +35,22 @@ function _showProfileModal() {
         <button id="_mc" style="flex:1;padding:10px;background:#f1f3f5;color:#333;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">Anuluj</button>
       </div>
       <div id="_me" style="color:#d32f2f;font-size:0.8rem;margin-top:8px;display:none"></div>
+      <div style="border-top:1px solid #eee;margin-top:16px;padding-top:12px">
+        <button id="_mdel" style="width:100%;padding:9px;background:#fff;color:#c0392b;border:1px solid #e6b0aa;border-radius:8px;cursor:pointer;font-size:0.85rem">Usuń moje konto</button>
+      </div>
     </div>`;
   document.body.appendChild(overlay);
   overlay.querySelector('#_mn').focus();
   overlay.querySelector('#_mc').onclick = () => overlay.remove();
+  overlay.querySelector('#_mdel').onclick = async () => {
+    if (!confirm('Usunąć Twoje konto? Stracisz dostęp do aplikacji (logowanie). Twoje wydatki ZOSTANĄ w gospodarstwie — staniesz się „osobą bez konta", więc dla pozostałych nic nie znika. Tej operacji nie da się cofnąć.')) return;
+    try {
+      const res = await authFetch('/api/me', { method: 'DELETE' });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Nie udało się usunąć konta.'); return; }
+      await _auth.signOut();
+      window.location.href = '/login';
+    } catch { alert('Błąd połączenia.'); }
+  };
   overlay.querySelector('#_ms').onclick = async () => {
     const val = overlay.querySelector('#_mn').value.trim();
     if (!val) return;
@@ -281,6 +293,16 @@ async function authRequireHousehold() {
         const res = await fetch("/api/me", {
           headers: { Authorization: "Bearer " + token },
         });
+        if (res.status === 403) {
+          const d = await res.json().catch(() => ({}));
+          document.body.innerHTML = `<div style="max-width:420px;margin:80px auto;padding:0 20px;text-align:center;font-family:system-ui">
+            <div style="font-size:44px;margin-bottom:12px">🚫</div>
+            <h2 style="margin:0 0 8px;color:#1a1f2e">Konto zawieszone</h2>
+            <p style="color:#555;line-height:1.5">${d.detail || 'Twoje konto zostało zawieszone przez administratora.'}</p>
+            <button onclick="authLogout()" style="margin-top:18px;padding:9px 18px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer">Wyloguj</button>
+          </div>`;
+          return reject();
+        }
         if (!res.ok) { window.location.href = "/login"; return reject(); }
         const me = await res.json();
         if (!me.household_id) {

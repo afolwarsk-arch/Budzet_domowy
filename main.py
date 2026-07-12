@@ -15,7 +15,7 @@ load_dotenv(BASE_DIR / ".env")
 
 import ai_processor
 import database
-from auth import get_current_user, require_admin, user_from_token
+from auth import get_current_user, require_admin, user_from_token, delete_firebase_user
 
 database.init_db()
 
@@ -303,6 +303,21 @@ def update_me(body: dict, current_user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+@app.delete("/api/me")
+async def delete_me(current_user: dict = Depends(get_current_user)):
+    """Użytkownik usuwa własne konto (login + członkostwo). Jego wydatki zostają
+    w gospodarstwie — osoba zamienia się w „członka bez konta", więc dla pozostałych
+    użytkowników nic nie znika."""
+    hid = current_user["household_id"]
+    nazwa = current_user.get("display_name")
+    if hid and nazwa:
+        await run_in_threadpool(database.konwertuj_na_wirtualnego, hid, nazwa)
+    fuid = await run_in_threadpool(database.delete_user, current_user["user_id"])
+    if fuid:
+        await run_in_threadpool(delete_firebase_user, fuid)
+    return {"ok": True}
+
+
 @app.post("/api/household", status_code=201)
 def create_household(body: dict, current_user: dict = Depends(get_current_user)):
     name = (body.get("name") or "").strip()
@@ -492,6 +507,24 @@ def admin_create_invite(request: Request, body: dict, admin: dict = Depends(requ
     return {"link": f"{base_url}/join/{code}", "code": code}
 
 
+@app.get("/api/admin/users")
+def admin_users(admin: dict = Depends(require_admin)):
+    return database.get_all_users()
+
+
+@app.patch("/api/admin/users/{user_id}")
+async def admin_user_update(user_id: int, body: dict, admin: dict = Depends(require_admin)):
+    if user_id == admin["user_id"]:
+        raise HTTPException(400, "Nie możesz zawiesić ani zablokować własnego konta administratora.")
+    if "status" in body:
+        ok = await run_in_threadpool(database.set_user_status, user_id, body.get("status"))
+        if not ok:
+            raise HTTPException(400, "Nieprawidłowy status")
+    if "ai_zablokowane" in body:
+        await run_in_threadpool(database.set_user_ai, user_id, bool(body.get("ai_zablokowane")))
+    return {"ok": True}
+
+
 # --- AI processing ---
 
 import anthropic as _anthropic
@@ -526,6 +559,13 @@ def _ai_http_error(e: Exception) -> HTTPException:
     return HTTPException(status_code=502, detail=f"Nieoczekiwany błąd analizy: {e}")
 
 
+def _blokada_ai(user: dict):
+    if user.get("ai_zablokowane"):
+        raise HTTPException(status_code=403, detail=(
+            "Funkcje AI zostały wyłączone dla Twojego konta przez administratora. "
+            "Możesz dodawać wydatki ręcznie (zakładka „Ręcznie” przy dodawaniu)."))
+
+
 @app.post("/api/process-image")
 async def process_image(
     file: UploadFile = File(...),
@@ -533,6 +573,7 @@ async def process_image(
     kontekst: str = Form(""),
     current_user: dict = Depends(get_current_user),
 ):
+    _blokada_ai(current_user)
     hid = current_user["household_id"]
     hier = database.get_household_hierarchia(hid) if hid else None
     content = await file.read()
@@ -549,6 +590,7 @@ async def process_image(
 
 @app.post("/api/process-text")
 async def process_text(payload: dict, current_user: dict = Depends(get_current_user)):
+    _blokada_ai(current_user)
     text = payload.get("text", "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Brak tekstu")
@@ -873,6 +915,7 @@ def delete_analiza_raport(raport_id: int, current_user: dict = Depends(get_curre
 @app.post("/api/analiza/raport")
 def generuj_analiza_raport(body: RaportIn, current_user: dict = Depends(get_current_user)):
     import json as _json
+    _blokada_ai(current_user)
     hid = current_user["household_id"]
     if not hid:
         raise HTTPException(400, "Brak gospodarstwa")

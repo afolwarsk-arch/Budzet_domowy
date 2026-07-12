@@ -44,6 +44,7 @@ def user_from_token(token: str) -> dict | None:
 
     user_id, display_name = database.create_or_update_user(firebase_uid, email, name, picture)
     household = database.get_user_household(user_id)
+    flags = database.get_user_flags(user_id)
 
     return {
         "firebase_uid": firebase_uid,
@@ -54,6 +55,8 @@ def user_from_token(token: str) -> dict | None:
         "user_id": user_id,
         "household_id": household["id"] if household else None,
         "role": household["role"] if household else None,
+        "status": flags["status"],
+        "ai_zablokowane": flags["ai_zablokowane"],
     }
 
 
@@ -65,7 +68,16 @@ def get_current_user(
     user = user_from_token(creds.credentials)
     if not user:
         raise HTTPException(status_code=401, detail="Nieprawidłowy token")
+    if user.get("status") == "zawieszony":
+        raise HTTPException(status_code=403, detail="Konto zostało zawieszone przez administratora.")
     return user
+
+
+def delete_firebase_user(uid: str) -> None:
+    try:
+        firebase_auth.delete_user(uid)
+    except Exception:
+        pass  # nawet jeśli konto Firebase już nie istnieje, kontynuujemy
 
 
 def require_admin(user: dict = Depends(get_current_user)) -> dict:

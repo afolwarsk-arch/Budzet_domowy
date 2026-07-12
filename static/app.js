@@ -906,6 +906,17 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   tabText.addEventListener('click', () => setTab('text'));
   tabManual.addEventListener('click', () => setTab('manual'));
 
+  // konto z wyłączonym AI (np. wersja podstawowa) — tylko tryb ręczny
+  if (me && me.ai_zablokowane) {
+    tabImage.style.display = 'none';
+    tabText.style.display = 'none';
+    setTab('manual');
+    const note = document.createElement('p');
+    note.style.cssText = 'font-size:13px;color:var(--muted);margin:0 0 10px';
+    note.textContent = 'Funkcje AI są wyłączone dla Twojego konta — dodawaj wydatki ręcznie.';
+    panelManual.prepend(note);
+  }
+
   // ── tryb ręczny: pusty wpis, zero wywołań Claude AI ──
   btnManualStart.addEventListener('click', () => {
     if (!GLOWNE.length) { setAlert('Chwila — ładuję kategorie…', 'error'); return; }

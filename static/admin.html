@@ -86,6 +86,12 @@
     </div>
   </div>
 
+  <div class="card" style="margin-bottom:24px;padding:20px">
+    <h3 style="margin-bottom:4px;font-size:1rem">Użytkownicy</h3>
+    <p style="font-size:0.8rem;color:#888;margin-bottom:12px">Zawieś konto (blokuje logowanie i korzystanie z apki) albo wyłącz danemu użytkownikowi funkcje AI (wersja podstawowa).</p>
+    <div id="users-list">Ładowanie…</div>
+  </div>
+
   <div id="stats-container">Ładowanie...</div>
 </main>
 
@@ -98,6 +104,7 @@ function fmtDate(dt) {
   if (!dt) return '—';
   return new Date(dt).toLocaleDateString('pl', { day:'2-digit', month:'2-digit', year:'numeric' });
 }
+const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
 window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(async (me) => {
   if (me.email !== 'a.folwarsk@gmail.com') {
@@ -114,6 +121,42 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
     } catch {}
   }
   loadOsoby();
+
+  async function loadUsers() {
+    const box = document.getElementById('users-list');
+    let users = [];
+    try { users = await authFetch('/api/admin/users').then(r => r.json()); }
+    catch { box.innerHTML = '<p style="color:#c0392b">Błąd ładowania.</p>'; return; }
+    if (!Array.isArray(users) || !users.length) { box.innerHTML = '<p style="color:#aaa">Brak użytkowników.</p>'; return; }
+    box.innerHTML = users.map(u => {
+      const zaw = u.status === 'zawieszony';
+      const aiBlok = u.ai_zablokowane;
+      const self = u.email === me.email;
+      const sBadge = zaw ? '<span class="badge badge-gray">zawieszony</span>' : '<span class="badge badge-green">aktywny</span>';
+      const aBadge = aiBlok ? '<span class="badge badge-gray">AI: wył.</span>' : '<span class="badge badge-green">AI: wł.</span>';
+      const akcje = self
+        ? '<span style="font-size:0.75rem;color:#aaa">to Ty (admin)</span>'
+        : `<button class="btn btn-outline btn-sm" data-zaw="${u.id}" data-val="${zaw ? 'aktywny' : 'zawieszony'}">${zaw ? 'Odwieś' : 'Zawieś'}</button>
+           <button class="btn btn-outline btn-sm" data-ai="${u.id}" data-val="${aiBlok ? 'false' : 'true'}">${aiBlok ? 'Odblokuj AI' : 'Zablokuj AI'}</button>`;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid #f4f4f4">
+        <div style="min-width:200px">
+          <div style="font-weight:500;color:#333">${esc(u.display_name) || '—'} ${sBadge} ${aBadge}</div>
+          <div style="font-size:0.78rem;color:#888">${esc(u.email)}${u.household_name ? ' · ' + esc(u.household_name) : ''}${u.role ? ' · ' + esc(u.role) : ''}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${akcje}</div>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('[data-zaw]').forEach(b => b.addEventListener('click', () => patchUser(b.dataset.zaw, { status: b.dataset.val })));
+    box.querySelectorAll('[data-ai]').forEach(b => b.addEventListener('click', () => patchUser(b.dataset.ai, { ai_zablokowane: b.dataset.val === 'true' })));
+  }
+  async function patchUser(id, body) {
+    try {
+      const res = await authFetch('/api/admin/users/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Błąd.'); return; }
+      await loadUsers();
+    } catch { alert('Błąd połączenia.'); }
+  }
+  loadUsers();
 
   document.getElementById('btn-rename').addEventListener('click', async () => {
     const stara = document.getElementById('rename-stara').value;

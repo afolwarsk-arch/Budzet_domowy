@@ -220,6 +220,8 @@ def init_db():
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS samouczek BOOLEAN NOT NULL DEFAULT FALSE")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'aktywny'")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_zablokowane BOOLEAN NOT NULL DEFAULT FALSE")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS okazja TEXT")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS kontekst_kategoria TEXT")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS kontekst_podkategoria TEXT")
@@ -959,6 +961,74 @@ def create_or_update_user(firebase_uid: str, email: str, name: str, picture: str
 def update_user_display_name(user_id: int, display_name: str) -> None:
     with get_db() as cur:
         cur.execute("UPDATE users SET display_name=%s WHERE id=%s", (display_name, user_id))
+
+
+# ── Zarządzanie kontami (status + blokada AI + usuwanie) ──
+_STATUSY_USERA = {"aktywny", "zawieszony"}
+
+
+def get_user_flags(user_id: int) -> dict:
+    with get_db() as cur:
+        cur.execute("SELECT status, ai_zablokowane FROM users WHERE id=%s", (user_id,))
+        row = cur.fetchone()
+    if not row:
+        return {"status": "aktywny", "ai_zablokowane": False}
+    return {"status": row["status"], "ai_zablokowane": bool(row["ai_zablokowane"])}
+
+
+def set_user_status(user_id: int, status: str) -> bool:
+    if status not in _STATUSY_USERA:
+        return False
+    with get_db() as cur:
+        cur.execute("UPDATE users SET status=%s WHERE id=%s", (status, user_id))
+        return cur.rowcount > 0
+
+
+def set_user_ai(user_id: int, zablokowane: bool) -> bool:
+    with get_db() as cur:
+        cur.execute("UPDATE users SET ai_zablokowane=%s WHERE id=%s", (zablokowane, user_id))
+        return cur.rowcount > 0
+
+
+def get_all_users() -> list[dict]:
+    with get_db() as cur:
+        cur.execute("""
+            SELECT u.id, u.email, u.display_name, u.status, u.ai_zablokowane, u.last_login,
+                   h.name AS household_name, m.role
+            FROM users u
+            LEFT JOIN memberships m ON m.user_id = u.id
+            LEFT JOIN households h ON h.id = m.household_id
+            ORDER BY u.last_login DESC NULLS LAST, u.id
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def konwertuj_na_wirtualnego(household_id: int, nazwa: str) -> None:
+    """Przy usuwaniu konta: zachowaj osobę jako „członka bez konta", żeby jej
+    wydatki nie osierociły i dalej była widoczna na liście osób gospodarstwa."""
+    if not nazwa:
+        return
+    with get_db() as cur:
+        cur.execute("SELECT 1 FROM virtual_members WHERE household_id=%s AND name=%s", (household_id, nazwa))
+        if cur.fetchone():
+            return
+        cur.execute("INSERT INTO virtual_members (household_id, name) VALUES (%s, %s)", (household_id, nazwa))
+
+
+def delete_user(user_id: int) -> str | None:
+    """Usuwa użytkownika i jego powiązania. Zwraca firebase_uid (do skasowania
+    konta w Firebase) albo None. Dane gospodarstwa (wydatki) zostają — są wspólne."""
+    with get_db() as cur:
+        cur.execute("SELECT firebase_uid FROM users WHERE id=%s", (user_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        fuid = row["firebase_uid"]
+        cur.execute("DELETE FROM invitations WHERE created_by=%s", (user_id,))
+        cur.execute("DELETE FROM konto_domyslne WHERE user_id=%s", (user_id,))
+        cur.execute("DELETE FROM memberships WHERE user_id=%s", (user_id,))
+        cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
+        return fuid
 
 
 def rename_osoba_in_household(stara: str, nowa: str, household_id: int) -> int:
