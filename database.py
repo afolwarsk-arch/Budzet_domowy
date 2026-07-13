@@ -2114,9 +2114,17 @@ def get_sklepy(household_id: int) -> list[str]:
         return [r["sklep"] for r in cur.fetchall()]
 
 
-def top_produkty_kalibracja(household_id: int, sklep: str | None = None, limit: int = 28) -> list[str]:
+_KALIBRACJA_STOP = {
+    "rabat", "opust", "kaucja", "karta", "paragon", "promocja", "zwrot", "suma",
+    "razem", "gratis", "punkt", "punkty", "vat", "ptu", "sztuka", "sztuk", "szt",
+    "opak", "bon", "kupon", "zaliczka", "dopłata", "dopłaty", "kg", "szt.",
+}
+
+
+def top_produkty_kalibracja(household_id: int, sklep: str | None = None, limit: int = 18) -> list[str]:
     """Najczęściej kupowane produkty (znormalizowane) — do prefill kalibracji.
-    Preferuje produkty z danego sklepu; dobiera z całości gdy za mało."""
+    Odfiltrowuje śmieci (rabaty/kaucje/liczby), preferuje kupowane ≥2 razy,
+    preferuje produkty z danego sklepu; dobiera z całości gdy za mało."""
     def _licz(where_sklep: bool) -> dict[str, int]:
         with get_db() as cur:
             if where_sklep and sklep:
@@ -2134,14 +2142,19 @@ def top_produkty_kalibracja(household_id: int, sklep: str | None = None, limit: 
             freq: dict[str, int] = {}
             for r in cur.fetchall():
                 norm = _norm_nazwa(r["nazwa"])
-                if len(norm) >= 2:
-                    freq[norm] = freq.get(norm, 0) + 1
+                if len(norm) < 3 or norm[0].isdigit() or norm in _KALIBRACJA_STOP:
+                    continue
+                freq[norm] = freq.get(norm, 0) + 1
             return freq
 
+    def _wybierz(freq: dict[str, int]) -> dict[str, int]:
+        czeste = {k: v for k, v in freq.items() if v >= 2}
+        return czeste if len(czeste) >= 8 else freq
+
     freq = _licz(True) if sklep else _licz(False)
-    produkty = [k for k, _ in sorted(freq.items(), key=lambda x: -x[1])[:limit]]
-    if sklep and len(produkty) < 15:
-        glob = sorted(_licz(False).items(), key=lambda x: -x[1])
+    produkty = [k for k, _ in sorted(_wybierz(freq).items(), key=lambda x: -x[1])[:limit]]
+    if sklep and len(produkty) < 10:
+        glob = sorted(_wybierz(_licz(False)).items(), key=lambda x: -x[1])
         for k, _ in glob:
             if k not in produkty:
                 produkty.append(k)
