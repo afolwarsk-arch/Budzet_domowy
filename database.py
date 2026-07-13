@@ -1,4 +1,5 @@
 import os
+import re
 from contextlib import contextmanager
 
 import psycopg2
@@ -290,6 +291,18 @@ def init_db():
                 WHERE l.household_id = li.household_id AND l.nazwa = 'Zakupy'
                 ORDER BY l.id LIMIT 1)
             WHERE li.lista_id IS NULL""")
+        cur.execute("ALTER TABLE listy_zakupow ADD COLUMN IF NOT EXISTS sklep TEXT")
+        # nauczona kolejność obchodu sklepu (per gospodarstwo + sklep + produkt);
+        # ranga 0..1 = wzgledna pozycja na liscie, srednia kroczaca z reczych ulozen
+        cur.execute("""CREATE TABLE IF NOT EXISTS kolejnosc_produktow (
+            household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            sklep        TEXT NOT NULL,
+            nazwa_znorm  TEXT NOT NULL,
+            ranga        REAL NOT NULL,
+            licznik      INTEGER NOT NULL DEFAULT 1,
+            updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (household_id, sklep, nazwa_znorm)
+        )""")
         # migracja starego kształtu (jeden raport na gospodarstwo, PK na household_id)
         cur.execute("ALTER TABLE raporty_ai ADD COLUMN IF NOT EXISTS id SERIAL")
         cur.execute("""DO $$
@@ -1906,7 +1919,7 @@ def get_stan_list(household_id: int) -> list[dict]:
     pozycjami. Klient wybiera i renderuje aktualnie oglądaną listę."""
     with get_db() as cur:
         cur.execute(
-            "SELECT id, nazwa, status, pozycja FROM listy_zakupow "
+            "SELECT id, nazwa, status, pozycja, sklep FROM listy_zakupow "
             "WHERE household_id = %s ORDER BY pozycja ASC, id ASC",
             (household_id,),
         )
@@ -1961,6 +1974,8 @@ def set_lista_status(lista_id: int, household_id: int, status: str) -> bool:
     if status not in _STATUSY_LISTY:
         return False
     with get_db() as cur:
+        if status == "zamknieta":
+            _naucz_kolejnosci_z_listy(cur, household_id, lista_id)
         cur.execute(
             "UPDATE listy_zakupow SET status = %s WHERE id = %s AND household_id = %s",
             (status, lista_id, household_id),
@@ -2021,8 +2036,144 @@ def delete_pozycja_listy(item_id: int, household_id: int) -> bool:
 
 def clear_kupione_listy(household_id: int, lista_id: int) -> int:
     with get_db() as cur:
+        # doucz kolejność obchodu z finalnego ułożenia, zanim pozycje znikną
+        _naucz_kolejnosci_z_listy(cur, household_id, lista_id)
         cur.execute(
             "DELETE FROM lista_zakupow WHERE household_id = %s AND lista_id = %s AND kupione = TRUE",
             (household_id, lista_id),
         )
         return cur.rowcount
+
+
+# ── Nauczona kolejność obchodu sklepu (bez AI) ──
+
+def _norm_nazwa(s: str | None) -> str:
+    """Normalizacja do klastra rodziny produktu: pierwsze słowo, małe litery.
+    „Mleko Łaciate 3.2%", „mleko" → „mleko" (żeby lista i historia się sklejały)."""
+    s = (s or "").strip().lower()
+    if not s:
+        return ""
+    czesci = [c for c in re.split(r"[\s,.;/()]+", s) if c]
+    return czesci[0] if czesci else s
+
+
+def _naucz_kolejnosci(cur, household_id: int, sklep: str, nazwy: list[str]) -> None:
+    """Aktualizuje nauczoną rangę (0..1) produktów wg podanej kolejności — średnia
+    krocząca po kolejnych ułożeniach. `nazwy` w kolejności od początku obchodu."""
+    if not sklep or len(nazwy) < 2:
+        return
+    n = len(nazwy)
+    for idx, nazwa in enumerate(nazwy):
+        norm = _norm_nazwa(nazwa)
+        if not norm:
+            continue
+        poz = idx / (n - 1)  # 0..1
+        cur.execute(
+            "SELECT ranga, licznik FROM kolejnosc_produktow "
+            "WHERE household_id=%s AND sklep=%s AND nazwa_znorm=%s",
+            (household_id, sklep, norm),
+        )
+        row = cur.fetchone()
+        if row:
+            nowa = (row["ranga"] * row["licznik"] + poz) / (row["licznik"] + 1)
+            cur.execute(
+                "UPDATE kolejnosc_produktow SET ranga=%s, licznik=%s, updated_at=CURRENT_TIMESTAMP "
+                "WHERE household_id=%s AND sklep=%s AND nazwa_znorm=%s",
+                (nowa, row["licznik"] + 1, household_id, sklep, norm),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO kolejnosc_produktow (household_id, sklep, nazwa_znorm, ranga) "
+                "VALUES (%s,%s,%s,%s)",
+                (household_id, sklep, norm, poz),
+            )
+
+
+def _naucz_kolejnosci_z_listy(cur, household_id: int, lista_id: int) -> None:
+    """Douczanie z finalnego ułożenia listy — jeśli lista ma przypisany sklep."""
+    cur.execute("SELECT sklep FROM listy_zakupow WHERE id=%s AND household_id=%s", (lista_id, household_id))
+    row = cur.fetchone()
+    sklep = (row and row["sklep"]) or None
+    if not sklep:
+        return
+    cur.execute(
+        "SELECT nazwa FROM lista_zakupow WHERE lista_id=%s AND household_id=%s ORDER BY pozycja ASC, id ASC",
+        (lista_id, household_id),
+    )
+    nazwy = [r["nazwa"] for r in cur.fetchall()]
+    _naucz_kolejnosci(cur, household_id, sklep, nazwy)
+
+
+def get_sklepy(household_id: int) -> list[str]:
+    with get_db() as cur:
+        cur.execute(
+            "SELECT DISTINCT sklep FROM wydatki "
+            "WHERE household_id=%s AND sklep IS NOT NULL AND sklep <> '' ORDER BY sklep",
+            (household_id,),
+        )
+        return [r["sklep"] for r in cur.fetchall()]
+
+
+def top_produkty_kalibracja(household_id: int, sklep: str | None = None, limit: int = 28) -> list[str]:
+    """Najczęściej kupowane produkty (znormalizowane) — do prefill kalibracji.
+    Preferuje produkty z danego sklepu; dobiera z całości gdy za mało."""
+    def _licz(where_sklep: bool) -> dict[str, int]:
+        with get_db() as cur:
+            if where_sklep and sklep:
+                cur.execute(
+                    "SELECT p.nazwa FROM pozycje p JOIN wydatki w ON w.id=p.wydatek_id "
+                    "WHERE w.household_id=%s AND w.sklep=%s",
+                    (household_id, sklep),
+                )
+            else:
+                cur.execute(
+                    "SELECT p.nazwa FROM pozycje p JOIN wydatki w ON w.id=p.wydatek_id "
+                    "WHERE w.household_id=%s",
+                    (household_id,),
+                )
+            freq: dict[str, int] = {}
+            for r in cur.fetchall():
+                norm = _norm_nazwa(r["nazwa"])
+                if len(norm) >= 2:
+                    freq[norm] = freq.get(norm, 0) + 1
+            return freq
+
+    freq = _licz(True) if sklep else _licz(False)
+    produkty = [k for k, _ in sorted(freq.items(), key=lambda x: -x[1])[:limit]]
+    if sklep and len(produkty) < 15:
+        glob = sorted(_licz(False).items(), key=lambda x: -x[1])
+        for k, _ in glob:
+            if k not in produkty:
+                produkty.append(k)
+            if len(produkty) >= limit:
+                break
+    return produkty
+
+
+def zapisz_kalibracje(household_id: int, sklep: str, nazwy: list[str]) -> None:
+    with get_db() as cur:
+        _naucz_kolejnosci(cur, household_id, sklep, nazwy)
+
+
+def uloz_liste(household_id: int, lista_id: int, sklep: str) -> bool:
+    """Ustawia kolejność pozycji „do kupienia" wg nauczonej rangi dla sklepu.
+    Zapisuje sklep na liście. Zwraca False gdy brak bazy (potrzebna kalibracja)."""
+    with get_db() as cur:
+        cur.execute("UPDATE listy_zakupow SET sklep=%s WHERE id=%s AND household_id=%s",
+                    (sklep, lista_id, household_id))
+        cur.execute("SELECT nazwa_znorm, ranga FROM kolejnosc_produktow WHERE household_id=%s AND sklep=%s",
+                    (household_id, sklep))
+        ranks = {r["nazwa_znorm"]: float(r["ranga"]) for r in cur.fetchall()}
+        if not ranks:
+            return False
+        cur.execute(
+            "SELECT id, nazwa FROM lista_zakupow "
+            "WHERE lista_id=%s AND household_id=%s AND kupione=FALSE",
+            (lista_id, household_id),
+        )
+        items = [dict(r) for r in cur.fetchall()]
+        items.sort(key=lambda it: ranks.get(_norm_nazwa(it["nazwa"]), 1.5))
+        for i, it in enumerate(items):
+            cur.execute("UPDATE lista_zakupow SET pozycja=%s WHERE id=%s", (i, it["id"]))
+    return True
+

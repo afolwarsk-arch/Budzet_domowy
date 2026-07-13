@@ -250,6 +250,46 @@ async def pozycja_clear(lista_id: int, current_user: dict = Depends(get_current_
     return {"usuniete": n}
 
 
+# --- Auto-układanie listy wg nauczonej kolejności obchodu (bez AI) ---
+
+@app.get("/api/sklepy")
+def api_sklepy(current_user: dict = Depends(get_current_user)):
+    if not current_user["household_id"]:
+        return []
+    return database.get_sklepy(current_user["household_id"])
+
+
+@app.get("/api/kalibracja/produkty")
+def kalibracja_produkty(sklep: str = "", current_user: dict = Depends(get_current_user)):
+    if not current_user["household_id"]:
+        return {"produkty": []}
+    return {"produkty": database.top_produkty_kalibracja(current_user["household_id"], (sklep or "").strip() or None)}
+
+
+@app.post("/api/kalibracja")
+async def kalibracja_zapisz(body: dict, current_user: dict = Depends(get_current_user)):
+    hid = _wymagaj_hid(current_user)
+    sklep = (body.get("sklep") or "").strip()
+    nazwy = [str(x) for x in (body.get("nazwy") or []) if str(x).strip()]
+    if not sklep or len(nazwy) < 2:
+        raise HTTPException(400, "Podaj sklep i co najmniej 2 produkty")
+    await run_in_threadpool(database.zapisz_kalibracje, hid, sklep, nazwy)
+    return {"ok": True}
+
+
+@app.post("/api/listy/{lista_id}/uloz")
+async def lista_uloz(lista_id: int, body: dict, current_user: dict = Depends(get_current_user)):
+    hid = _wymagaj_hid(current_user)
+    sklep = (body.get("sklep") or "").strip()
+    if not sklep:
+        raise HTTPException(400, "Podaj sklep")
+    ok = await run_in_threadpool(database.uloz_liste, hid, lista_id, sklep)
+    await _broadcast_lista(hid)  # zapis sklepu na liście też ma dolecieć
+    if not ok:
+        return {"kalibracja_potrzebna": True, "sklep": sklep}
+    return {"ok": True}
+
+
 @app.patch("/api/pozycje/{item_id}")
 async def pozycja_toggle(item_id: int, body: dict, current_user: dict = Depends(get_current_user)):
     hid = _wymagaj_hid(current_user)

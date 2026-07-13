@@ -161,7 +161,11 @@ function renderPanel() {
     <div class="lz-add">
       <input id="add-input" type="text" placeholder="Dodaj produkt…" maxlength="200" enterkeyhint="done" autocomplete="off">
       <button id="add-btn" class="btn btn-primary" style="padding:0 20px">Dodaj</button>
-    </div>`;
+    </div>
+    ${doKupienia.length >= 2 ? `<div style="margin:0 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <button id="uloz-btn" class="btn btn-outline btn-sm">🧭 Ułóż jak zwykle</button>
+      ${l.sklep ? `<span style="font-size:11px;color:var(--muted)">ostatnio: ${esc(l.sklep)}</span>` : ''}
+    </div>` : ''}`;
 
   if (!l.pozycje.length) {
     html += '<div class="lz-empty">Lista pusta — dodaj pierwszy produkt. 🛒</div>';
@@ -191,6 +195,7 @@ function renderPanel() {
   // dodawanie pozycji
   document.getElementById('add-btn').addEventListener('click', () => addItem(l.id));
   document.getElementById('add-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addItem(l.id); } });
+  document.getElementById('uloz-btn')?.addEventListener('click', () => ulozJakZwykle(l));
 
   // odhaczanie / usuwanie pozycji
   panelEl.querySelectorAll('.lz-row').forEach(row => {
@@ -370,6 +375,83 @@ async function refresh() {
     const data = await authFetch('/api/listy').then(r => r.json());
     if (Array.isArray(data)) { stan = data; renderAll(); }
   } catch {}
+}
+
+// ── Auto-układanie wg nauczonej kolejności obchodu (bez AI) ──
+
+let _kalSortable = null;
+
+async function ulozJakZwykle(l) {
+  let znane = [];
+  try { znane = await authFetch('/api/sklepy').then(r => r.json()); } catch {}
+  const domysl = l.sklep || l.nazwa || '';
+  const hint = (Array.isArray(znane) && znane.length) ? '\n\nZnane sklepy: ' + znane.join(', ') : '';
+  const sklep = (prompt('Dla którego sklepu ułożyć listę?' + hint, domysl) || '').trim();
+  if (!sklep) return;
+  let res;
+  try {
+    res = await authFetch('/api/listy/' + l.id + '/uloz', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sklep }),
+    }).then(r => r.json());
+  } catch { alert('Nie udało się ułożyć listy.'); return; }
+  if (res && res.kalibracja_potrzebna) { otworzKalibracje(l.id, sklep); return; }
+  if (!wsOpen()) await refresh();
+}
+
+async function otworzKalibracje(listId, sklep) {
+  let produkty = [];
+  try {
+    const r = await authFetch('/api/kalibracja/produkty?sklep=' + encodeURIComponent(sklep)).then(x => x.json());
+    produkty = r.produkty || [];
+  } catch {}
+  if (!produkty.length) produkty = ['mleko', 'chleb', 'masło', 'jajka', 'ser', 'wędliny', 'warzywa', 'owoce', 'napoje', 'słodycze', 'chemia', 'higiena'];
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,20,40,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;max-width:460px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,.3);padding:20px 22px">
+      <h3 style="margin:0 0 6px;font-size:1.1rem;color:#1a1f2e">Ustaw kolejność — ${esc(sklep)}</h3>
+      <p style="font-size:13px;color:#555;line-height:1.5;margin:0 0 14px">Przeciągnij produkty (za ⠿) w kolejności, w jakiej robisz obchód sklepu — od wejścia do kasy. To jednorazowa baza; potem apka sama się dostraja przy każdych zakupach.</p>
+      <div id="kal-list"></div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button id="kal-save" class="btn btn-primary" style="flex:1">Zapisz kolejność</button>
+        <button id="kal-cancel" class="btn btn-outline">Anuluj</button>
+      </div>
+    </div>`;
+  const listEl = overlay.querySelector('#kal-list');
+  listEl.innerHTML = produkty.map(p => `
+    <div class="lz-row" data-nazwa="${esc(p)}">
+      <span class="lz-handle">⠿</span>
+      <div class="lz-name" style="flex:1">${esc(p)}</div>
+      <button class="lz-del" data-kdel title="Usuń">×</button>
+    </div>`).join('');
+  document.body.appendChild(overlay);
+
+  if (window.Sortable) {
+    _kalSortable = window.Sortable.create(listEl, {
+      handle: '.lz-handle', animation: 150, delay: 180, delayOnTouchOnly: true,
+      forceFallback: true, fallbackTolerance: 4, ghostClass: 'lz-drag-ghost',
+    });
+  }
+  listEl.querySelectorAll('[data-kdel]').forEach(b => b.addEventListener('click', () => b.closest('.lz-row').remove()));
+  overlay.querySelector('#kal-cancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#kal-save').addEventListener('click', async () => {
+    const nazwy = [...listEl.querySelectorAll('.lz-row')].map(r => r.dataset.nazwa);
+    if (nazwy.length < 2) { alert('Zostaw co najmniej 2 produkty.'); return; }
+    try {
+      const res = await authFetch('/api/kalibracja', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sklep, nazwy }),
+      });
+      if (!res.ok) throw new Error();
+    } catch { alert('Nie udało się zapisać kolejności.'); return; }
+    overlay.remove();
+    try {
+      await authFetch('/api/listy/' + listId + '/uloz', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sklep }),
+      });
+    } catch {}
+    if (!wsOpen()) await refresh();
+  });
 }
 
 // ── WebSocket: push na żywo + samo-naprawianie ──
