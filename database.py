@@ -2306,3 +2306,78 @@ def reorder_dzialy(ids: list[int]) -> None:
         for i, dzial_id in enumerate(ids):
             cur.execute("UPDATE dzialy SET pozycja=%s WHERE id=%s", (i, dzial_id))
 
+
+# ── Układanie listy wg kolejności działów (z bazy admina) ──
+
+_STOP_SLOWA = {"do", "na", "dla", "bez", "the", "typu", "duze", "male"}
+
+
+def _slowa(txt: str) -> list[str]:
+    return [w for w in re.split(r"[\s,./()%-]+", (txt or "").lower())
+            if len(w) >= 3 and w not in _STOP_SLOWA]
+
+
+def _buduj_indeks_dzialow(dz_list: list[dict]) -> tuple[list, dict]:
+    """Z listy działów buduje: (pełne klucze wieloczłonowe [set słów, pozycja, dł.],
+    indeks pojedynczych słów {słowo: pozycja})."""
+    pelne = []
+    slowo_poz: dict[str, int] = {}
+    for d in dz_list:
+        poz = d["pozycja"]
+        for kw in (d["slowa"] or "").split(","):
+            ws = _slowa(kw)
+            if not ws:
+                continue
+            pelne.append((set(ws), poz, len(ws)))
+            for w in ws:
+                slowo_poz.setdefault(w, poz)
+    pelne.sort(key=lambda x: -x[2])  # dłuższe (bardziej specyficzne) klucze pierwsze
+    return pelne, slowo_poz
+
+
+def _dzial_pozycja(nazwa: str, pelne: list, slowo_poz: dict) -> int | None:
+    ws = _slowa(nazwa)
+    if not ws:
+        return None
+    zb = set(ws)
+    for kwset, poz, _ in pelne:          # 1) pełne dopasowanie klucza wieloczłonowego
+        if kwset.issubset(zb):
+            return poz
+    for w in ws:                         # 2) pierwsze słowo produktu trafione w indeksie
+        if w in slowo_poz:
+            return slowo_poz[w]
+    return None
+
+
+def uloz_liste_wg_dzialow(household_id: int, lista_id: int) -> dict:
+    """Układa pozycje „do kupienia" wg globalnej kolejności działów (panel admina).
+    Produkt → dział: słowa-klucze z bazy, a gdy brak — podkategoria z historii paragonów."""
+    pelne, slowo_poz = _buduj_indeks_dzialow(get_dzialy())
+    with get_db() as cur:
+        cur.execute(
+            "SELECT id, nazwa FROM lista_zakupow "
+            "WHERE lista_id=%s AND household_id=%s AND kupione=FALSE",
+            (lista_id, household_id),
+        )
+        items = [dict(r) for r in cur.fetchall()]
+        rozpoznane = 0
+        for it in items:
+            poz = _dzial_pozycja(it["nazwa"], pelne, slowo_poz)
+            if poz is None:  # fallback: historia zakupów → podkategoria → dział
+                cur.execute(
+                    "SELECT kategoria FROM pozycje p JOIN wydatki w ON w.id=p.wydatek_id "
+                    "WHERE w.household_id=%s AND p.nazwa ILIKE %s LIMIT 5",
+                    (household_id, f"%{it['nazwa']}%"),
+                )
+                for r in cur.fetchall():
+                    poz = _dzial_pozycja(r["kategoria"], pelne, slowo_poz)
+                    if poz is not None:
+                        break
+            it["_poz"] = poz if poz is not None else 99999
+            if poz is not None:
+                rozpoznane += 1
+        items.sort(key=lambda it: (it["_poz"], (it["nazwa"] or "").lower()))
+        for i, it in enumerate(items):
+            cur.execute("UPDATE lista_zakupow SET pozycja=%s WHERE id=%s", (i, it["id"]))
+    return {"rozpoznane": rozpoznane, "wszystkich": len(items)}
+

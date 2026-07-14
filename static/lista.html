@@ -166,9 +166,8 @@ function renderPanel() {
       <input id="add-input" type="text" placeholder="Dodaj produkt…" maxlength="200" enterkeyhint="done" autocomplete="off">
       <button id="add-btn" class="btn btn-primary" style="padding:0 20px">Dodaj</button>
     </div>
-    ${doKupienia.length >= 2 ? `<div style="margin:0 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <button id="uloz-btn" class="btn btn-outline btn-sm">🧭 Ułóż jak zwykle</button>
-      ${l.sklep ? `<span style="font-size:11px;color:var(--muted)">ostatnio: ${esc(l.sklep)}</span>` : ''}
+    ${doKupienia.length >= 2 ? `<div style="margin:0 0 10px">
+      <button id="uloz-btn" class="btn btn-outline btn-sm">🧭 Poukładaj</button>
     </div>` : ''}`;
 
   if (!l.pozycje.length) {
@@ -199,7 +198,7 @@ function renderPanel() {
   // dodawanie pozycji
   document.getElementById('add-btn').addEventListener('click', () => addItem(l.id));
   document.getElementById('add-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addItem(l.id); } });
-  document.getElementById('uloz-btn')?.addEventListener('click', () => ulozJakZwykle(l));
+  document.getElementById('uloz-btn')?.addEventListener('click', () => poukladaj(l.id));
 
   // odhaczanie / usuwanie pozycji
   panelEl.querySelectorAll('.lz-row').forEach(row => {
@@ -381,28 +380,22 @@ async function refresh() {
   } catch {}
 }
 
-// ── Auto-układanie wg nauczonej kolejności obchodu (bez AI) ──
+// ── Układanie listy wg kolejności działów (ustawienia z panelu admina) ──
 
-let _kalSortable = null;
-
-async function ulozJakZwykle(l) {
-  let znane = [];
-  try { znane = await authFetch('/api/sklepy').then(r => r.json()); } catch {}
-  const domysl = l.sklep || l.nazwa || '';
-  const hint = (Array.isArray(znane) && znane.length) ? '\n\nZnane sklepy: ' + znane.join(', ') : '';
-  const sklep = (prompt('Dla którego sklepu ułożyć listę?' + hint, domysl) || '').trim();
-  if (!sklep) return;
-  let res;
+async function poukladaj(listId) {
+  const btn = document.getElementById('uloz-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Układam…'; }
   try {
-    res = await authFetch('/api/listy/' + l.id + '/uloz', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sklep }),
-    }).then(r => r.json());
-  } catch { alert('Nie udało się ułożyć listy.'); return; }
-  if (res && res.kalibracja_potrzebna) { otworzKalibracje(l.id, sklep); return; }
-  if (!wsOpen()) await refresh();
+    const res = await authFetch('/api/listy/' + listId + '/poukladaj', { method: 'POST' });
+    if (!res.ok) throw new Error();
+    if (!wsOpen()) await refresh();
+  } catch {
+    alert('Nie udało się poukładać listy.');
+    if (btn) { btn.disabled = false; btn.textContent = '🧭 Poukładaj'; }
+  }
 }
 
-async function otworzKalibracje(listId, sklep) {
+async function _otworzKalibracje_NIEUZYWANE(listId, sklep) {
   let produkty = [];
   try {
     const r = await authFetch('/api/kalibracja/produkty?sklep=' + encodeURIComponent(sklep)).then(x => x.json());

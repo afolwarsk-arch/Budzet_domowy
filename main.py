@@ -250,6 +250,14 @@ async def pozycja_clear(lista_id: int, current_user: dict = Depends(get_current_
     return {"usuniete": n}
 
 
+@app.post("/api/listy/{lista_id}/poukladaj")
+async def lista_poukladaj(lista_id: int, current_user: dict = Depends(get_current_user)):
+    hid = _wymagaj_hid(current_user)
+    wynik = await run_in_threadpool(database.uloz_liste_wg_dzialow, hid, lista_id)
+    await _broadcast_lista(hid)
+    return wynik
+
+
 # --- Auto-układanie listy wg nauczonej kolejności obchodu (bez AI) ---
 
 @app.get("/api/sklepy")
