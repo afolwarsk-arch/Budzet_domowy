@@ -33,8 +33,9 @@
     .ust-row:last-of-type { border-bottom:none; }
     .ust-sub { display:block; font-size:0.74rem; color:#999; margin-top:1px; }
     .ust-row input { width:84px; padding:7px 10px; border:1px solid #ddd; border-radius:6px; text-align:center; font-size:0.9rem; flex-shrink:0; }
-    .dz-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #eee; border-radius:8px; margin-bottom:5px; background:#fff; }
-    .dz-grip { cursor:grab; color:#bbb; font-size:16px; flex:none; }
+    .dz-row { display:flex; align-items:center; gap:10px; padding:10px 10px; border:1px solid #eee; border-radius:8px; margin-bottom:5px; background:#fff; cursor:grab; -webkit-tap-highlight-color:transparent; }
+    .dz-row:active { cursor:grabbing; background:#f7f9ff; }
+    .dz-grip { color:#bbb; font-size:16px; flex:none; }
     .dz-idx { font-variant-numeric:tabular-nums; font-size:11px; color:#4361ee; background:#eef1fb; border-radius:6px; padding:2px 7px; flex:none; min-width:26px; text-align:center; }
     .dz-main { flex:1; min-width:0; }
     .dz-nazwa { font-weight:500; color:#222; font-size:0.9rem; }
@@ -202,7 +203,13 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
     box.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => usunDzial(b.dataset.del)));
     if (window.Sortable) {
       if (dzSortable) dzSortable.destroy();
-      dzSortable = window.Sortable.create(box, { handle: '.dz-grip', animation: 150, ghostClass: 'dz-drag-ghost', onEnd: zapiszKolejnoscDzialow });
+      dzSortable = window.Sortable.create(box, {
+        animation: 150, ghostClass: 'dz-drag-ghost',
+        forceFallback: true, fallbackTolerance: 3,   // czulsze i spójne przeciąganie
+        delayOnTouchOnly: true, delay: 140,           // na dotyku krótkie przytrzymanie (żeby dało się scrollować)
+        filter: 'button', preventOnFilter: false,     // łap za CAŁY wiersz; przyciski ✏/🗑 nadal klikalne
+        onEnd: zapiszKolejnoscDzialow,
+      });
     }
   }
 
