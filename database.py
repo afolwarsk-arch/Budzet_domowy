@@ -318,6 +318,19 @@ def init_db():
                     "INSERT INTO dzialy (strefa, nazwa, slowa, pozycja) VALUES (%s,%s,%s,%s)",
                     (strefa, nazwa, slowa, i),
                 )
+        else:
+            # dosyp ulepszenia słownika z seedu do istniejących działów (union — bez kasowania edycji admina)
+            for _strefa, _nazwa, _slowa in _DZIALY_SEED:
+                cur.execute("SELECT id, slowa FROM dzialy WHERE nazwa=%s", (_nazwa,))
+                row = cur.fetchone()
+                if not row:
+                    continue
+                istn = {s.strip().lower() for s in (row["slowa"] or "").split(",") if s.strip()}
+                nowe = [s.strip() for s in _slowa.split(",") if s.strip() and s.strip().lower() not in istn]
+                if nowe:
+                    baza = (row["slowa"] or "").strip().rstrip(",")
+                    cur.execute("UPDATE dzialy SET slowa=%s WHERE id=%s",
+                                ((baza + ", " + ", ".join(nowe)) if baza else ", ".join(nowe), row["id"]))
         # migracja starego kształtu (jeden raport na gospodarstwo, PK na household_id)
         cur.execute("ALTER TABLE raporty_ai ADD COLUMN IF NOT EXISTS id SERIAL")
         cur.execute("""DO $$
@@ -2230,7 +2243,7 @@ _DZIALY_SEED = [
     ("Spiżarnia (suche)", "Przetwory owocowe i dżemy", "dżem, konfitura, powidła, marmolada, miód, brzoskwinie w syropie, ananas w puszce, mus jabłkowy, kompot, owoce w syropie, nutella, masło orzechowe, krem czekoladowy, syrop klonowy"),
     ("Spiżarnia (suche)", "Przyprawy, zioła i octy", "sól, pieprz, papryka mielona, przyprawa do kurczaka, zioła prowansalskie, majeranek, cynamon, curry, kurkuma, liść laurowy, ziele angielskie, kminek, oregano, bazylia suszona, ocet, ocet balsamiczny, vegeta, maggi, kostki rosołowe"),
     ("Spiżarnia (suche)", "Oliwy, oleje i sosy sałatkowe", "olej rzepakowy, olej słonecznikowy, oliwa z oliwek, olej lniany, olej kokosowy, sos vinegret, sos sałatkowy, dressing, sos czosnkowy, sos jogurtowy, oliwa smakowa"),
-    ("Spiżarnia (suche)", "Sosy do dań gorących (ketchup, musztarda)", "ketchup, musztarda, majonez, sos sojowy, sos barbecue, sos słodko-kwaśny, sos teriyaki, chrzan, sos tatarski, sos grzybowy, sos pieczeniowy, fix, sos do spaghetti, sos meksykański"),
+    ("Spiżarnia (suche)", "Sosy do dań gorących (ketchup, musztarda)", "ketchup, keczup, keczup pikantny, musztarda, majonez, majonezik, sos sojowy, sos barbecue, sos słodko-kwaśny, sos teriyaki, chrzan, sos tatarski, sos grzybowy, sos pieczeniowy, fix, sos do spaghetti, sos meksykański"),
     ("Napoje i alkohole", "Woda mineralna i źródlana", "woda niegazowana, woda gazowana, woda mineralna, woda źródlana, woda smakowa, woda kokosowa"),
     ("Napoje i alkohole", "Soki, nektary i napoje owocowe", "sok pomarańczowy, sok jabłkowy, sok multiwitamina, nektar, sok pomidorowy, sok z marchwi, napój owocowy, sok grejpfrutowy, sok winogronowy, kubuś, sok wyciskany, lemoniada"),
     ("Napoje i alkohole", "Napoje gazowane i energetyki", "cola, pepsi, sprite, fanta, tonik, oranżada, napój gazowany, energetyk, red bull, tiger, monster, izotonik"),
@@ -2253,7 +2266,7 @@ _DZIALY_SEED = [
     ("Higiena i uroda", "Higiena jamy ustnej i golenie", "pasta do zębów, szczoteczka, nić dentystyczna, płyn do płukania ust, maszynki do golenia, pianka do golenia, żel do golenia, płyn po goleniu, wkłady do maszynek"),
     ("Higiena i uroda", "Dezodoranty i zapachy", "dezodorant, antyperspirant, perfumy, woda toaletowa, spray zapachowy, dezodorant w kulce, mgiełka"),
     ("Higiena i uroda", "Pielęgnacja ciała i kąpiel", "żel pod prysznic, mydło, płyn do kąpieli, balsam do ciała, krem, peeling, mydło w płynie, chusteczki nawilżane, wata, patyczki higieniczne, płatki kosmetyczne, krem do rąk"),
-    ("Higiena i uroda", "Artykuły dla dzieci i niemowląt", "pieluchy, pieluszki, mokre chusteczki, kaszka, mleko modyfikowane, słoiczki, deserek, oliwka dla dzieci, krem pielęgnacyjny, butelka, smoczek"),
+    ("Higiena i uroda", "Artykuły dla dzieci i niemowląt", "pieluchy, pieluszki, pampers, pampersy, mokre chusteczki, kaszka, mleko modyfikowane, słoiczki, deserek, oliwka dla dzieci, krem pielęgnacyjny, butelka, smoczek"),
     ("Dom i przemysł", "Chemia do prania i płukania", "proszek do prania, kapsułki do prania, żel do prania, płyn do płukania, płyn do prania, odplamiacz, wybielacz, płyn do tkanin, perełki zapachowe"),
     ("Dom i przemysł", "Chemia do sprzątania powierzchni", "płyn uniwersalny, mleczko czyszczące, płyn do podłóg, spray do kuchni, odtłuszczacz, płyn do szyb, cif, ajax, płyn do mebli, płyn do naczyń, tabletki do zmywarki, sól do zmywarki, nabłyszczacz"),
     ("Dom i przemysł", "Chemia do łazienki i toalety", "płyn do wc, kostka wc, domestos, żel do toalety, płyn do łazienki, odkamieniacz, spray do kabin, odświeżacz powietrza, kostka zapachowa"),
@@ -2317,9 +2330,10 @@ def _slowa(txt: str) -> list[str]:
             if len(w) >= 3 and w not in _STOP_SLOWA]
 
 
-def _buduj_indeks_dzialow(dz_list: list[dict]) -> tuple[list, dict]:
+def _buduj_indeks_dzialow(dz_list: list[dict]) -> tuple[list, dict, list]:
     """Z listy działów buduje: (pełne klucze wieloczłonowe [set słów, pozycja, dł.],
-    indeks pojedynczych słów {słowo: pozycja})."""
+    indeks pojedynczych słów {słowo: pozycja}, lista słów posortowana wg długości
+    malejąco — do dopasowania po rdzeniu)."""
     pelne = []
     slowo_poz: dict[str, int] = {}
     for d in dz_list:
@@ -2332,10 +2346,23 @@ def _buduj_indeks_dzialow(dz_list: list[dict]) -> tuple[list, dict]:
             for w in ws:
                 slowo_poz.setdefault(w, poz)
     pelne.sort(key=lambda x: -x[2])  # dłuższe (bardziej specyficzne) klucze pierwsze
-    return pelne, slowo_poz
+    slowo_lista = sorted(slowo_poz.items(), key=lambda x: -len(x[0]))
+    return pelne, slowo_poz, slowo_lista
 
 
-def _dzial_pozycja(nazwa: str, pelne: list, slowo_poz: dict) -> int | None:
+def _rdzen_pasuje(a: str, b: str) -> bool:
+    """Dopasowanie po wspólnym rdzeniu — łapie polskie odmiany/liczbę mnogą/zdrobnienia:
+    marchew↔marchewka, ziemniak↔ziemniaki, jabłko↔jabłka, bułka↔bułki."""
+    if a == b:
+        return True
+    n = 0
+    m = min(len(a), len(b))
+    while n < m and a[n] == b[n]:
+        n += 1
+    return n >= 4 and n >= m - 2  # długi wspólny początek pokrywający prawie całe krótsze słowo
+
+
+def _dzial_pozycja(nazwa: str, pelne: list, slowo_poz: dict, slowo_lista: list) -> int | None:
     ws = _slowa(nazwa)
     if not ws:
         return None
@@ -2343,16 +2370,20 @@ def _dzial_pozycja(nazwa: str, pelne: list, slowo_poz: dict) -> int | None:
     for kwset, poz, _ in pelne:          # 1) pełne dopasowanie klucza wieloczłonowego
         if kwset.issubset(zb):
             return poz
-    for w in ws:                         # 2) pierwsze słowo produktu trafione w indeksie
+    for w in ws:                         # 2) dokładne trafienie słowa w indeksie
         if w in slowo_poz:
             return slowo_poz[w]
+    for w in ws:                         # 3) dopasowanie po rdzeniu (odmiany) — dopiero gdy dokładne zawiodło
+        for kw, poz in slowo_lista:
+            if _rdzen_pasuje(w, kw):
+                return poz
     return None
 
 
 def uloz_liste_wg_dzialow(household_id: int, lista_id: int) -> dict:
     """Układa pozycje „do kupienia" wg globalnej kolejności działów (panel admina).
     Produkt → dział: słowa-klucze z bazy, a gdy brak — podkategoria z historii paragonów."""
-    pelne, slowo_poz = _buduj_indeks_dzialow(get_dzialy())
+    pelne, slowo_poz, slowo_lista = _buduj_indeks_dzialow(get_dzialy())
     with get_db() as cur:
         cur.execute(
             "SELECT id, nazwa FROM lista_zakupow "
@@ -2362,7 +2393,7 @@ def uloz_liste_wg_dzialow(household_id: int, lista_id: int) -> dict:
         items = [dict(r) for r in cur.fetchall()]
         rozpoznane = 0
         for it in items:
-            poz = _dzial_pozycja(it["nazwa"], pelne, slowo_poz)
+            poz = _dzial_pozycja(it["nazwa"], pelne, slowo_poz, slowo_lista)
             if poz is None:  # fallback: historia zakupów → podkategoria → dział
                 cur.execute(
                     "SELECT kategoria FROM pozycje p JOIN wydatki w ON w.id=p.wydatek_id "
@@ -2370,7 +2401,7 @@ def uloz_liste_wg_dzialow(household_id: int, lista_id: int) -> dict:
                     (household_id, f"%{it['nazwa']}%"),
                 )
                 for r in cur.fetchall():
-                    poz = _dzial_pozycja(r["kategoria"], pelne, slowo_poz)
+                    poz = _dzial_pozycja(r["kategoria"], pelne, slowo_poz, slowo_lista)
                     if poz is not None:
                         break
             it["_poz"] = poz if poz is not None else 99999
