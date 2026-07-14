@@ -33,11 +33,20 @@
     .ust-row:last-of-type { border-bottom:none; }
     .ust-sub { display:block; font-size:0.74rem; color:#999; margin-top:1px; }
     .ust-row input { width:84px; padding:7px 10px; border:1px solid #ddd; border-radius:6px; text-align:center; font-size:0.9rem; flex-shrink:0; }
+    .dz-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid #eee; border-radius:8px; margin-bottom:5px; background:#fff; }
+    .dz-grip { cursor:grab; color:#bbb; font-size:16px; flex:none; }
+    .dz-idx { font-variant-numeric:tabular-nums; font-size:11px; color:#4361ee; background:#eef1fb; border-radius:6px; padding:2px 7px; flex:none; min-width:26px; text-align:center; }
+    .dz-main { flex:1; min-width:0; }
+    .dz-nazwa { font-weight:500; color:#222; font-size:0.9rem; }
+    .dz-meta { font-size:0.72rem; color:#999; margin-top:1px; }
+    .dz-strefa-h { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#aaa; margin:14px 0 6px; }
+    .dz-drag-ghost { opacity:.4; }
   </style>
 </head>
 <body>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script defer src="/static/auth.js"></script>
 <nav>
   <a href="/" class="logo">🏠 Budżet</a>
@@ -90,6 +99,15 @@
     <h3 style="margin-bottom:4px;font-size:1rem">Użytkownicy</h3>
     <p style="font-size:0.8rem;color:#888;margin-bottom:12px">Zawieś konto (blokuje logowanie i korzystanie z apki) albo wyłącz danemu użytkownikowi funkcje AI (wersja podstawowa).</p>
     <div id="users-list">Ładowanie…</div>
+  </div>
+
+  <div class="card" style="margin-bottom:24px;padding:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+      <h3 style="margin:0;font-size:1rem">Działy sklepowe — domyślna kolejność</h3>
+      <button id="btn-dzial-add" class="btn btn-primary" style="padding:7px 14px">+ Dodaj dział</button>
+    </div>
+    <p style="font-size:0.8rem;color:#888;margin-bottom:12px">Przeciągnij za <b>⠿</b>, by ustawić domyślną kolejność obchodu. Kliknij ✏, by zmienić nazwę/strefę/słowa-klucze. To wzorzec dla wszystkich — użytkownik i tak dostosuje kolejność pod swój sklep.</p>
+    <div id="dzialy-list">Ładowanie…</div>
   </div>
 
   <div id="stats-container">Ładowanie...</div>
@@ -157,6 +175,89 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
     } catch { alert('Błąd połączenia.'); }
   }
   loadUsers();
+
+  // ── Działy sklepowe (domyślna baza) ──
+  let dzSortable = null;
+
+  async function loadDzialy() {
+    const box = document.getElementById('dzialy-list');
+    let dz = [];
+    try { dz = await authFetch('/api/admin/dzialy').then(r => r.json()); }
+    catch { box.innerHTML = '<p style="color:#c0392b">Błąd ładowania.</p>'; return; }
+    if (!Array.isArray(dz) || !dz.length) { box.innerHTML = '<p style="color:#aaa">Brak działów.</p>'; return; }
+    box.innerHTML = dz.map((d, i) => {
+      const nSlow = d.slowa ? d.slowa.split(',').filter(x => x.trim()).length : 0;
+      return `<div class="dz-row" data-id="${d.id}">
+        <span class="dz-grip">⠿</span>
+        <span class="dz-idx">${i + 1}</span>
+        <div class="dz-main">
+          <div class="dz-nazwa">${esc(d.nazwa)}</div>
+          <div class="dz-meta">${esc(d.strefa) || '—'} · ${nSlow} słów-kluczy</div>
+        </div>
+        <button class="btn btn-outline btn-sm" data-edit="${d.id}">✏</button>
+        <button class="btn btn-danger btn-sm" data-del="${d.id}">🗑</button>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => otworzEdytorDzialu(dz.find(x => String(x.id) === b.dataset.edit))));
+    box.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => usunDzial(b.dataset.del)));
+    if (window.Sortable) {
+      if (dzSortable) dzSortable.destroy();
+      dzSortable = window.Sortable.create(box, { handle: '.dz-grip', animation: 150, ghostClass: 'dz-drag-ghost', onEnd: zapiszKolejnoscDzialow });
+    }
+  }
+
+  async function zapiszKolejnoscDzialow() {
+    const ids = [...document.querySelectorAll('#dzialy-list .dz-row')].map(r => parseInt(r.dataset.id));
+    try {
+      await authFetch('/api/admin/dzialy/kolejnosc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+    } catch {}
+    loadDzialy();
+  }
+
+  async function usunDzial(id) {
+    if (!confirm('Usunąć ten dział z bazy?')) return;
+    try { await authFetch('/api/admin/dzialy/' + id, { method: 'DELETE' }); } catch {}
+    loadDzialy();
+  }
+
+  function otworzEdytorDzialu(d) {
+    const nowy = !d;
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:14px;max-width:460px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.2);padding:22px">
+        <h3 style="margin:0 0 14px;font-size:1.05rem">${nowy ? 'Nowy dział' : 'Edytuj dział'}</h3>
+        <label style="font-size:0.8rem;color:#666">Nazwa działu</label>
+        <input id="ed-nazwa" value="${esc(d ? d.nazwa : '')}" style="width:100%;padding:9px 12px;border:1px solid #dadce0;border-radius:8px;margin:4px 0 12px;box-sizing:border-box">
+        <label style="font-size:0.8rem;color:#666">Strefa</label>
+        <input id="ed-strefa" value="${esc(d ? d.strefa : '')}" placeholder="np. Świeża żywność" style="width:100%;padding:9px 12px;border:1px solid #dadce0;border-radius:8px;margin:4px 0 12px;box-sizing:border-box">
+        <label style="font-size:0.8rem;color:#666">Słowa-klucze (produkty, po przecinku)</label>
+        <textarea id="ed-slowa" rows="5" style="width:100%;padding:9px 12px;border:1px solid #dadce0;border-radius:8px;margin:4px 0 14px;box-sizing:border-box;font-size:0.85rem;resize:vertical">${esc(d ? d.slowa : '')}</textarea>
+        <div style="display:flex;gap:8px">
+          <button id="ed-save" class="btn btn-primary" style="flex:1;padding:9px">Zapisz</button>
+          <button id="ed-cancel" class="btn btn-outline" style="padding:9px 16px">Anuluj</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#ed-nazwa').focus();
+    overlay.querySelector('#ed-cancel').onclick = () => overlay.remove();
+    overlay.querySelector('#ed-save').onclick = async () => {
+      const nazwa = overlay.querySelector('#ed-nazwa').value.trim();
+      const strefa = overlay.querySelector('#ed-strefa').value.trim();
+      const slowa = overlay.querySelector('#ed-slowa').value.trim();
+      if (!nazwa) { alert('Podaj nazwę działu.'); return; }
+      try {
+        const url = nowy ? '/api/admin/dzialy' : '/api/admin/dzialy/' + d.id;
+        const res = await authFetch(url, { method: nowy ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nazwa, strefa, slowa }) });
+        if (!res.ok) throw new Error();
+      } catch { alert('Nie udało się zapisać.'); return; }
+      overlay.remove();
+      loadDzialy();
+    };
+  }
+
+  document.getElementById('btn-dzial-add').addEventListener('click', () => otworzEdytorDzialu(null));
+  loadDzialy();
 
   document.getElementById('btn-rename').addEventListener('click', async () => {
     const stara = document.getElementById('rename-stara').value;

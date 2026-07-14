@@ -303,6 +303,21 @@ def init_db():
             updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (household_id, sklep, nazwa_znorm)
         )""")
+        # globalna, wzorcowa baza dzialow sklepowych (zarzadzana w panelu admina)
+        cur.execute("""CREATE TABLE IF NOT EXISTS dzialy (
+            id       SERIAL PRIMARY KEY,
+            strefa   TEXT NOT NULL DEFAULT '',
+            nazwa    TEXT NOT NULL,
+            slowa    TEXT NOT NULL DEFAULT '',
+            pozycja  INTEGER NOT NULL DEFAULT 0
+        )""")
+        cur.execute("SELECT COUNT(*) AS n FROM dzialy")
+        if cur.fetchone()["n"] == 0:
+            for i, (strefa, nazwa, slowa) in enumerate(_DZIALY_SEED):
+                cur.execute(
+                    "INSERT INTO dzialy (strefa, nazwa, slowa, pozycja) VALUES (%s,%s,%s,%s)",
+                    (strefa, nazwa, slowa, i),
+                )
         # migracja starego kształtu (jeden raport na gospodarstwo, PK na household_id)
         cur.execute("ALTER TABLE raporty_ai ADD COLUMN IF NOT EXISTS id SERIAL")
         cur.execute("""DO $$
@@ -2189,4 +2204,105 @@ def uloz_liste(household_id: int, lista_id: int, sklep: str) -> bool:
         for i, it in enumerate(items):
             cur.execute("UPDATE lista_zakupow SET pozycja=%s WHERE id=%s", (i, it["id"]))
     return True
+
+
+# ── Wzorcowa baza działów sklepowych (globalna, zarządzana w adminie) ──
+
+_DZIALY_SEED = [
+    ("Świeża żywność", "Warzywa korzeniowe i kapustne", "ziemniaki, marchew, pietruszka korzeń, seler, burak, rzodkiew, cebula, czosnek, por, kapusta biała, kapusta czerwona, kapusta pekińska, brokuł, kalafior, brukselka, kalarepa, chrzan, batat"),
+    ("Świeża żywność", "Warzywa liściaste i zioła świeże", "sałata, roszponka, rukola, szpinak, jarmuż, botwinka, natka pietruszki, koperek, szczypiorek, bazylia, mięta, kolendra, tymianek, rozmaryn, seler naciowy, cykoria, mangold"),
+    ("Świeża żywność", "Owoce krajowe i sezonowe", "jabłka, gruszki, śliwki, truskawki, maliny, borówki, porzeczki, agrest, wiśnie, czereśnie, morele, brzoskwinie, nektarynki, arbuz, melon, winogrona, rabarbar, aronia"),
+    ("Świeża żywność", "Owoce egzotyczne", "banany, pomarańcze, mandarynki, cytryny, limonki, grejpfrut, kiwi, ananas, mango, awokado, granat, papaja, liczi, kokos, figi, marakuja, pitaja"),
+    ("Świeża żywność", "Mięso czerwone (wołowina/wieprzowina)", "schab, karkówka, łopatka, boczek, żeberka, szynka surowa, wołowina, antrykot, rostbef, mielone wieprzowe, mielone wołowe, gulaszowe, polędwica wieprzowa, golonka, podgardle, wątróbka"),
+    ("Świeża żywność", "Drób", "kurczak, filet z kurczaka, pierś z kurczaka, udka, podudzia, skrzydełka, ćwiartki, indyk, filet z indyka, wątróbka drobiowa, żołądki, korpusy, kaczka, mielone drobiowe, porcje rosołowe"),
+    ("Świeża żywność", "Wędliny (krojone i na wagę)", "szynka, kiełbasa, parówki, kabanosy, salami, mortadela, polędwica, boczek wędzony, baleron, pasztetowa, kaszanka, salceson, metka, kiełbasa krakowska, kiełbasa śląska, frankfurterki"),
+    ("Świeża żywność", "Ryby świeże i owoce morza", "łosoś, dorsz, pstrąg, karp, śledź, makrela, tuńczyk świeży, sandacz, panga, tilapia, mintaj, krewetki, małże, kalmary, ośmiornica, filet rybny, ryba wędzona"),
+    ("Świeża żywność", "Nabiał (mleko, kefiry, jogurty)", "mleko, kefir, jogurt naturalny, jogurt owocowy, maślanka, śmietana, śmietanka, serek wiejski, skyr, jogurt pitny, jogurt grecki, budyń, deser mleczny, twaróg, masło, margaryna"),
+    ("Świeża żywność", "Sery żółte i pleśniowe", "ser żółty, gouda, edamski, cheddar, mozzarella, parmezan, camembert, brie, ser pleśniowy, feta, ser kozi, oscypek, ser wędzony, ser topiony, plastry sera, mascarpone"),
+    ("Pieczywo i cukiernia", "Pieczywo chrupiące (świeże)", "chleb, bułki, kajzerka, bagietka, ciabatta, chleb żytni, chleb razowy, chleb pszenny, chleb wieloziarnisty, rogal, chałka, grahamka, bułka maślana, chleb na zakwasie, bułka kukurydziana"),
+    ("Pieczywo i cukiernia", "Pieczywo paczkowane i tostowe", "chleb tostowy, pieczywo pakowane, bułka tarta, tortille, pity, wrapy, pieczywo chrupkie, sucharki, grzanki, wafle ryżowe, pieczywo bezglutenowe, pumpernikiel, maca"),
+    ("Pieczywo i cukiernia", "Cukiernia i słodkie wypieki", "drożdżówka, pączek, jagodzianka, sernik, ciasto, babka, muffin, rogalik, croissant, tarta, brownie, eklerka, napoleonka, wuzetka, biszkopt, strucla"),
+    ("Pieczywo i cukiernia", "Przekąski słone (pizzerki, zapiekanki)", "pizzerka, zapiekanka, paluch, bułka z pieczarkami, roladka, mini pizza, precel, bułka drożdżowa z serem, ptysie, tartaletki"),
+    ("Spiżarnia (suche)", "Kasze, ryże i rośliny strączkowe", "ryż, kasza gryczana, kasza jaglana, kasza jęczmienna, kasza manna, bulgur, kuskus, płatki owsiane, komosa, fasola, groch, soczewica, ciecierzyca, ryż basmati, ryż jaśminowy, ryż brązowy"),
+    ("Spiżarnia (suche)", "Makarony", "makaron, spaghetti, penne, świderki, kokardki, nitki, łazanki, tagliatelle, makaron ryżowy, makaron pełnoziarnisty, lasagne, makaron jajeczny, muszelki, rurki, gniazda"),
+    ("Spiżarnia (suche)", "Mąki, cukry i dodatki do pieczenia", "mąka pszenna, mąka razowa, mąka ziemniaczana, mąka kukurydziana, cukier, cukier puder, cukier waniliowy, drożdże, proszek do pieczenia, soda, budyń, kisiel, żelatyna, kakao, wiórki kokosowe, mak, polewa, aromat"),
+    ("Spiżarnia (suche)", "Przetwory warzywne (słoiki/puszki)", "kukurydza, groszek konserwowy, fasola konserwowa, pomidory w puszce, passata, przecier pomidorowy, koncentrat pomidorowy, ogórki konserwowe, ogórki kiszone, kapusta kiszona, buraczki, ćwikła, pieczarki marynowane, papryka konserwowa, oliwki, sałatka warzywna"),
+    ("Spiżarnia (suche)", "Przetwory owocowe i dżemy", "dżem, konfitura, powidła, marmolada, miód, brzoskwinie w syropie, ananas w puszce, mus jabłkowy, kompot, owoce w syropie, nutella, masło orzechowe, krem czekoladowy, syrop klonowy"),
+    ("Spiżarnia (suche)", "Przyprawy, zioła i octy", "sól, pieprz, papryka mielona, przyprawa do kurczaka, zioła prowansalskie, majeranek, cynamon, curry, kurkuma, liść laurowy, ziele angielskie, kminek, oregano, bazylia suszona, ocet, ocet balsamiczny, vegeta, maggi, kostki rosołowe"),
+    ("Spiżarnia (suche)", "Oliwy, oleje i sosy sałatkowe", "olej rzepakowy, olej słonecznikowy, oliwa z oliwek, olej lniany, olej kokosowy, sos vinegret, sos sałatkowy, dressing, sos czosnkowy, sos jogurtowy, oliwa smakowa"),
+    ("Spiżarnia (suche)", "Sosy do dań gorących (ketchup, musztarda)", "ketchup, musztarda, majonez, sos sojowy, sos barbecue, sos słodko-kwaśny, sos teriyaki, chrzan, sos tatarski, sos grzybowy, sos pieczeniowy, fix, sos do spaghetti, sos meksykański"),
+    ("Napoje i alkohole", "Woda mineralna i źródlana", "woda niegazowana, woda gazowana, woda mineralna, woda źródlana, woda smakowa, woda kokosowa"),
+    ("Napoje i alkohole", "Soki, nektary i napoje owocowe", "sok pomarańczowy, sok jabłkowy, sok multiwitamina, nektar, sok pomidorowy, sok z marchwi, napój owocowy, sok grejpfrutowy, sok winogronowy, kubuś, sok wyciskany, lemoniada"),
+    ("Napoje i alkohole", "Napoje gazowane i energetyki", "cola, pepsi, sprite, fanta, tonik, oranżada, napój gazowany, energetyk, red bull, tiger, monster, izotonik"),
+    ("Napoje i alkohole", "Alkohole słabe (piwa, cydry)", "piwo, piwo bezalkoholowe, cydr, piwo smakowe, radler, kraft, lager, pszeniczne, porter"),
+    ("Napoje i alkohole", "Wina (białe, czerwone, musujące)", "wino czerwone, wino białe, wino różowe, wino musujące, prosecco, szampan, wino wytrawne, wino półsłodkie"),
+    ("Napoje i alkohole", "Alkohole mocne (wódki, whisky, giny)", "wódka, whisky, gin, rum, likier, koniak, brandy, tequila, nalewka, jägermeister, martini"),
+    ("Przekąski i słodycze", "Czekolady i batony", "czekolada, czekolada mleczna, czekolada gorzka, baton, snickers, mars, twix, kitkat, prince polo, milky way, delicje, baton zbożowy, tabliczka"),
+    ("Przekąski i słodycze", "Bombonierki i praliny", "bombonierka, praliny, merci, ferrero rocher, michałki, śliwka w czekoladzie, wiśnie w likierze, toffi, trufle"),
+    ("Przekąski i słodycze", "Cukierki, żelki i pianki", "cukierki, żelki, landrynki, krówki, ptasie mleczko, pianki, guma do żucia, lizak, draże, mentos, galaretki, marshmallow, cukierki miętowe"),
+    ("Przekąski i słodycze", "Chipsy i przekąski smażone", "chipsy, lays, pringles, chrupki kukurydziane, chipsy ziemniaczane, nachos, tortilla chips, chrupki, cheetos, chipsy pieczone"),
+    ("Przekąski i słodycze", "Paluszki, krakersy i słone wypieki", "paluszki, krakersy, precelki, tuc, krakersy serowe, grissini, snacki, słone ciasteczka, chrupki solone"),
+    ("Przekąski i słodycze", "Orzechy i pestki", "orzechy włoskie, orzechy laskowe, nerkowce, migdały, orzeszki ziemne, pistacje, orzechy solone, pestki dyni, pestki słonecznika, mix orzechów"),
+    ("Przekąski i słodycze", "Bakalie i owoce suszone", "rodzynki, żurawina suszona, morele suszone, śliwki suszone, daktyle, figi suszone, wiórki kokosowe, banany suszone, mango suszone, mix bakalii, sezam, siemię lniane"),
+    ("Mrożonki", "Warzywa i owoce mrożone", "warzywa mrożone, mieszanka warzywna, groszek mrożony, fasolka szparagowa, brokuł mrożony, szpinak mrożony, truskawki mrożone, maliny mrożone, owoce mrożone, włoszczyzna mrożona, kukurydza mrożona"),
+    ("Mrożonki", "Dania gotowe mrożone (pizza, frytki)", "pizza mrożona, frytki, talarki, krążki cebulowe, nuggetsy, dania gotowe mrożone, zapiekanka mrożona, placki ziemniaczane, lasagne mrożona"),
+    ("Mrożonki", "Ryby i owoce morza mrożone", "ryba mrożona, filet rybny mrożony, paluszki rybne, krewetki mrożone, mintaj mrożony, dorsz mrożony, łosoś mrożony, owoce morza mrożone"),
+    ("Mrożonki", "Garmażeria mrożona (pierogi, krokiety)", "pierogi mrożone, krokiety, uszka, kopytka, naleśniki mrożone, gołąbki, klopsiki, knedle, pyzy"),
+    ("Mrożonki", "Lody i desery mrożone", "lody, lód, lody familijne, rożek, ekierka, lody na patyku, sorbet, deser lodowy"),
+    ("Higiena i uroda", "Pielęgnacja włosów (szampony, odżywki)", "szampon, odżywka do włosów, maska do włosów, lakier do włosów, żel do włosów, farba do włosów, pianka do włosów, szampon suchy, spray do włosów"),
+    ("Higiena i uroda", "Higiena jamy ustnej i golenie", "pasta do zębów, szczoteczka, nić dentystyczna, płyn do płukania ust, maszynki do golenia, pianka do golenia, żel do golenia, płyn po goleniu, wkłady do maszynek"),
+    ("Higiena i uroda", "Dezodoranty i zapachy", "dezodorant, antyperspirant, perfumy, woda toaletowa, spray zapachowy, dezodorant w kulce, mgiełka"),
+    ("Higiena i uroda", "Pielęgnacja ciała i kąpiel", "żel pod prysznic, mydło, płyn do kąpieli, balsam do ciała, krem, peeling, mydło w płynie, chusteczki nawilżane, wata, patyczki higieniczne, płatki kosmetyczne, krem do rąk"),
+    ("Higiena i uroda", "Artykuły dla dzieci i niemowląt", "pieluchy, pieluszki, mokre chusteczki, kaszka, mleko modyfikowane, słoiczki, deserek, oliwka dla dzieci, krem pielęgnacyjny, butelka, smoczek"),
+    ("Dom i przemysł", "Chemia do prania i płukania", "proszek do prania, kapsułki do prania, żel do prania, płyn do płukania, płyn do prania, odplamiacz, wybielacz, płyn do tkanin, perełki zapachowe"),
+    ("Dom i przemysł", "Chemia do sprzątania powierzchni", "płyn uniwersalny, mleczko czyszczące, płyn do podłóg, spray do kuchni, odtłuszczacz, płyn do szyb, cif, ajax, płyn do mebli, płyn do naczyń, tabletki do zmywarki, sól do zmywarki, nabłyszczacz"),
+    ("Dom i przemysł", "Chemia do łazienki i toalety", "płyn do wc, kostka wc, domestos, żel do toalety, płyn do łazienki, odkamieniacz, spray do kabin, odświeżacz powietrza, kostka zapachowa"),
+    ("Dom i przemysł", "Artykuły papierowe i higieniczne", "papier toaletowy, ręcznik papierowy, chusteczki higieniczne, serwetki, ręczniki kuchenne, worki na śmieci, folia aluminiowa, folia spożywcza, papier do pieczenia, torebki śniadaniowe, rękaw do pieczenia"),
+    ("Dom i przemysł", "Akcesoria kuchenne (gotowanie)", "gąbki, zmywak, ścierka, druciak, rękawice kuchenne, foremki, pojemniki, słoiki, deska do krojenia, tarka, obieraczka, łyżki drewniane"),
+    ("Dom i przemysł", "Zastawa stołowa i szkło", "talerze, kubki, szklanki, sztućce, miski, kieliszki, filiżanki, dzbanek, salaterka, garnek, patelnia"),
+    ("Dom i przemysł", "Tekstylia domowe", "ręcznik, ścierki, pościel, obrus, poszewka, koc, dywanik, firana, prześcieradło, mata"),
+    ("Dom i przemysł", "Oświetlenie i elektryka", "żarówka, bateria, przedłużacz, świeczka, znicz, zapalniczka, zapałki, taśma, żarówka led, listwa"),
+    ("Dom i przemysł", "Ogród i narzędzia", "nasiona, ziemia, doniczka, nawóz, rękawice ogrodowe, sekator, wąż ogrodowy, konewka, taśma malarska, śruby"),
+    ("Dom i przemysł", "Kultura i rozrywka", "gazeta, czasopismo, książka, gra, karty, puzzle, płyta, bilet, krzyżówki"),
+    ("Dom i przemysł", "Przybory szkolne i biurowe", "zeszyt, długopis, ołówek, kredki, blok, klej, nożyczki, taśma klejąca, plastelina, gumka, temperówka, marker, koperty, papier ksero"),
+    ("Dom i przemysł", "Zabawki i akcesoria dla dzieci", "zabawka, klocki, lalka, samochodzik, pluszak, gra dla dzieci, bańki, malowanka, piłka"),
+]
+
+
+def get_dzialy() -> list[dict]:
+    with get_db() as cur:
+        cur.execute("SELECT id, strefa, nazwa, slowa, pozycja FROM dzialy ORDER BY pozycja ASC, id ASC")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def add_dzial(strefa: str, nazwa: str, slowa: str) -> dict:
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO dzialy (strefa, nazwa, slowa, pozycja) "
+            "VALUES (%s,%s,%s, COALESCE((SELECT MAX(pozycja) FROM dzialy),0)+1) "
+            "RETURNING id, strefa, nazwa, slowa, pozycja",
+            (strefa, nazwa, slowa),
+        )
+        return dict(cur.fetchone())
+
+
+def update_dzial(dzial_id: int, strefa: str, nazwa: str, slowa: str) -> bool:
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE dzialy SET strefa=%s, nazwa=%s, slowa=%s WHERE id=%s",
+            (strefa, nazwa, slowa, dzial_id),
+        )
+        return cur.rowcount > 0
+
+
+def delete_dzial(dzial_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("DELETE FROM dzialy WHERE id=%s", (dzial_id,))
+        return cur.rowcount > 0
+
+
+def reorder_dzialy(ids: list[int]) -> None:
+    with get_db() as cur:
+        for i, dzial_id in enumerate(ids):
+            cur.execute("UPDATE dzialy SET pozycja=%s WHERE id=%s", (i, dzial_id))
 

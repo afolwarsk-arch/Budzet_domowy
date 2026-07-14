@@ -565,6 +565,49 @@ async def admin_user_update(user_id: int, body: dict, admin: dict = Depends(requ
     return {"ok": True}
 
 
+# --- Działy sklepowe (wzorcowa baza, zarządzana przez admina) ---
+
+@app.get("/api/admin/dzialy")
+def admin_dzialy(admin: dict = Depends(require_admin)):
+    return database.get_dzialy()
+
+
+@app.post("/api/admin/dzialy", status_code=201)
+def admin_dzial_add(body: dict, admin: dict = Depends(require_admin)):
+    nazwa = (body.get("nazwa") or "").strip()
+    if not nazwa:
+        raise HTTPException(400, "Podaj nazwę działu")
+    return database.add_dzial((body.get("strefa") or "").strip(), nazwa[:80], (body.get("slowa") or "").strip())
+
+
+@app.put("/api/admin/dzialy/{dzial_id}")
+def admin_dzial_update(dzial_id: int, body: dict, admin: dict = Depends(require_admin)):
+    nazwa = (body.get("nazwa") or "").strip()
+    if not nazwa:
+        raise HTTPException(400, "Podaj nazwę działu")
+    ok = database.update_dzial(dzial_id, (body.get("strefa") or "").strip(), nazwa[:80], (body.get("slowa") or "").strip())
+    if not ok:
+        raise HTTPException(404, "Nie znaleziono")
+    return {"ok": True}
+
+
+@app.delete("/api/admin/dzialy/{dzial_id}")
+def admin_dzial_delete(dzial_id: int, admin: dict = Depends(require_admin)):
+    if not database.delete_dzial(dzial_id):
+        raise HTTPException(404, "Nie znaleziono")
+    return {"ok": True}
+
+
+@app.post("/api/admin/dzialy/kolejnosc")
+def admin_dzialy_reorder(body: dict, admin: dict = Depends(require_admin)):
+    try:
+        ids = [int(x) for x in (body.get("ids") or [])]
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Nieprawidłowa lista id")
+    database.reorder_dzialy(ids)
+    return {"ok": True}
+
+
 # --- AI processing ---
 
 import anthropic as _anthropic
