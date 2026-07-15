@@ -2222,7 +2222,7 @@ def uloz_liste(household_id: int, lista_id: int, sklep: str) -> bool:
 # ── Wzorcowa baza działów sklepowych (globalna, zarządzana w adminie) ──
 
 _DZIALY_SEED = [
-    ("Świeża żywność", "Warzywa korzeniowe i kapustne", "ziemniaki, marchew, pietruszka korzeń, seler, burak, rzodkiew, cebula, czosnek, por, kapusta biała, kapusta czerwona, kapusta pekińska, brokuł, kalafior, brukselka, kalarepa, chrzan, batat"),
+    ("Świeża żywność", "Warzywa korzeniowe i kapustne", "ziemniaki, marchew, pietruszka korzeń, seler, burak, rzodkiew, cebula, czosnek, por, kapusta biała, kapusta czerwona, kapusta pekińska, brokuł, kalafior, brukselka, kalarepa, chrzan, batat, pomidor, pomidory, pomidorki, ogórek, ogórki, papryka, cukinia, bakłażan, dynia, kabaczek"),
     ("Świeża żywność", "Warzywa liściaste i zioła świeże", "sałata, roszponka, rukola, szpinak, jarmuż, botwinka, natka pietruszki, koperek, szczypiorek, bazylia, mięta, kolendra, tymianek, rozmaryn, seler naciowy, cykoria, mangold"),
     ("Świeża żywność", "Owoce krajowe i sezonowe", "jabłka, gruszki, śliwki, truskawki, maliny, borówki, porzeczki, agrest, wiśnie, czereśnie, morele, brzoskwinie, nektarynki, arbuz, melon, winogrona, rabarbar, aronia"),
     ("Świeża żywność", "Owoce egzotyczne", "banany, pomarańcze, mandarynki, cytryny, limonki, grejpfrut, kiwi, ananas, mango, awokado, granat, papaja, liczi, kokos, figi, marakuja, pitaja"),
