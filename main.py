@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -786,11 +786,13 @@ async def create_wydatek_z_plikiem(
 def list_wydatki(month: str | None = None, osoba: str | None = None,
                  kategoria: str | None = None, od: str | None = None, do: str | None = None,
                  okazja: str | None = None, kontekst: bool = False,
+                 wyklucz: list[str] = Query(default=[]),
                  current_user: dict = Depends(get_current_user)):
     if current_user["household_id"]:
         database.naliczaj_cykliczne(current_user["household_id"])
     return database.get_wydatki(month=month, osoba=osoba, kategoria=kategoria,
                                 od=od, do=do, okazja=okazja, kontekst=kontekst,
+                                wyklucz=wyklucz or None,
                                 household_id=current_user["household_id"])
 
 
@@ -1130,8 +1132,10 @@ def stats_subkategorie_all(month: str | None = None, osoba: str | None = None,
 
 @app.get("/api/stats/miesiace")
 def stats_miesiace(n: int = 6, osoba: str | None = None, kategoria: str | None = None,
+                   wyklucz: list[str] = Query(default=[]),
                    current_user: dict = Depends(get_current_user)):
     return database.stats_miesiace(n=n, osoba=osoba, kategoria=kategoria,
+                                   wyklucz=wyklucz or None,
                                    household_id=current_user["household_id"])
 
 
@@ -1139,9 +1143,11 @@ def stats_miesiace(n: int = 6, osoba: str | None = None, kategoria: str | None =
 def stats_sklepy(month: str | None = None, osoba: str | None = None,
                  limit: int = 10, kategoria: str | None = None,
                  od: str | None = None, do: str | None = None,
+                 wyklucz: list[str] = Query(default=[]),
                  current_user: dict = Depends(get_current_user)):
     return database.stats_sklepy(month=month, osoba=osoba, limit=limit, kategoria=kategoria,
-                                 od=od, do=do, household_id=current_user["household_id"])
+                                 od=od, do=do, wyklucz=wyklucz or None,
+                                 household_id=current_user["household_id"])
 
 
 @app.get("/api/stats/top-produkt")
@@ -1151,6 +1157,21 @@ def stats_top_produkt(kategoria: str, month: str | None = None, osoba: str | Non
     result = database.stats_top_produkt(kategoria=kategoria, month=month, osoba=osoba,
                                         od=od, do=do, household_id=current_user["household_id"])
     return result or {}
+
+
+@app.get("/api/analiza/wykluczenia")
+def get_analiza_wykluczenia(current_user: dict = Depends(get_current_user)):
+    """Kategorie główne pomijane w analizie na dashboardzie (ustawienie gospodarstwa)."""
+    return {"kategorie": database.get_analiza_wyklucz(current_user["household_id"])}
+
+
+@app.put("/api/analiza/wykluczenia")
+def put_analiza_wykluczenia(body: dict, current_user: dict = Depends(get_current_user)):
+    kat = body.get("kategorie", [])
+    if not isinstance(kat, list) or not all(isinstance(x, str) for x in kat):
+        raise HTTPException(400, "kategorie musi być listą nazw kategorii")
+    database.set_analiza_wyklucz(current_user["household_id"], kat)
+    return {"ok": True}
 
 
 # --- Konta ---

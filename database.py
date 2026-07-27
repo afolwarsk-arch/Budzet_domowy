@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from contextlib import contextmanager
@@ -391,7 +392,8 @@ _SUB = "CASE WHEN p.poza_kontekstem THEN p.kategoria ELSE COALESCE(w.kontekst_po
 def get_wydatki(month: str | None = None, osoba: str | None = None,
                 kategoria: str | None = None, household_id: int | None = None,
                 od: str | None = None, do: str | None = None,
-                okazja: str | None = None, kontekst: bool = False) -> list[dict]:
+                okazja: str | None = None, kontekst: bool = False,
+                wyklucz: list[str] | None = None) -> list[dict]:
     conditions, params = [], []
     if household_id is not None:
         conditions.append("w.household_id = %s"); params.append(household_id)
@@ -405,6 +407,8 @@ def get_wydatki(month: str | None = None, osoba: str | None = None,
         conditions.append("w.osoba = %s"); params.append(osoba)
     if okazja:
         conditions.append("w.okazja = %s"); params.append(okazja)
+    if wyklucz:
+        conditions.append(_WYKLUCZ_SQL); params.append(list(wyklucz))
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     if kategoria:
@@ -641,6 +645,13 @@ def delete_wydatek(wydatek_id: int, household_id: int | None = None) -> bool:
 
 # --- statystyki ---
 
+# Klauzula wykluczająca całe paragony należące do wskazanych kategorii głównych
+# (koszty przelotowe/zwracane pomijane w analizie na dashboardzie). Działa na
+# poziomie paragonu — czynsz/opłaty za lokal to osobne paragony, więc znikają
+# w całości i suma pozostaje spójna z sumą słupków.
+_WYKLUCZ_SQL = "w.id NOT IN (SELECT wydatek_id FROM pozycje WHERE kategoria_glowna = ANY(%s))"
+
+
 def _where_params(month, osoba, household_id=None, od=None, do=None, okazja=None):
     conditions, params = [], []
     if household_id is not None:
@@ -730,7 +741,7 @@ def stats_subkategorie_all(month=None, osoba=None, household_id=None, od=None, d
         return [dict(r) for r in cur.fetchall()]
 
 
-def stats_miesiace(n=6, osoba=None, kategoria=None, household_id=None) -> list[dict]:
+def stats_miesiace(n=6, osoba=None, kategoria=None, household_id=None, wyklucz=None) -> list[dict]:
     params = []
     hid_cond = f"w.household_id = {int(household_id)} AND " if household_id is not None else ""
     if kategoria:
@@ -754,6 +765,8 @@ def stats_miesiace(n=6, osoba=None, kategoria=None, household_id=None) -> list[d
             extra.append(f"w.household_id = {int(household_id)}")
         if osoba:
             extra.append("w.osoba = %s"); params.append(osoba)
+        if wyklucz:
+            extra.append(_WYKLUCZ_SQL); params.append(list(wyklucz))
         extra_sql = ("AND " + " AND ".join(extra)) if extra else ""
         query = f"""
             SELECT TO_CHAR(w.data, 'YYYY-MM') AS miesiac, w.osoba,
@@ -766,7 +779,7 @@ def stats_miesiace(n=6, osoba=None, kategoria=None, household_id=None) -> list[d
         return [dict(r) for r in cur.fetchall()]
 
 
-def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None, household_id=None, od=None, do=None) -> list[dict]:
+def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None, household_id=None, od=None, do=None, wyklucz=None) -> list[dict]:
     def _date_conds(conditions, params):
         if month:
             conditions.append("TO_CHAR(w.data, 'YYYY-MM') = %s"); params.append(month)
@@ -798,6 +811,8 @@ def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None, household_id=
         _date_conds(conditions, params)
         if osoba:
             conditions.append("w.osoba = %s"); params.append(osoba)
+        if wyklucz:
+            conditions.append(_WYKLUCZ_SQL); params.append(list(wyklucz))
         where = "WHERE " + " AND ".join(conditions)
         params.append(limit)
         query = f"""
@@ -1585,6 +1600,23 @@ def set_ustawienie(klucz: str, wartosc: str) -> None:
         cur.execute("""INSERT INTO ustawienia (klucz, wartosc) VALUES (%s,%s)
                        ON CONFLICT (klucz) DO UPDATE SET wartosc=EXCLUDED.wartosc""",
                     (klucz, wartosc))
+
+
+# --- kategorie pomijane w analizie (per gospodarstwo) ---
+# Klucz namespace'owany household_id, bo tabela ustawienia jest globalna (klucz PK).
+
+def get_analiza_wyklucz(household_id: int) -> list[str]:
+    raw = get_ustawienie(f"analiza_wyklucz:{household_id}", "[]")
+    try:
+        val = json.loads(raw)
+        return [str(x) for x in val] if isinstance(val, list) else []
+    except (ValueError, TypeError):
+        return []
+
+
+def set_analiza_wyklucz(household_id: int, kategorie: list[str]) -> None:
+    set_ustawienie(f"analiza_wyklucz:{household_id}",
+                   json.dumps(list(kategorie), ensure_ascii=False))
 
 
 # --- wydatki cykliczne ---

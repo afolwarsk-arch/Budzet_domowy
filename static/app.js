@@ -102,6 +102,8 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   let miesiaceLacznie = false;
   let lastMiesData = null;
   let lastMiesKat = null;
+  let wykluczone = new Set();   // kategorie główne pomijane w analizie (ustawienie gospodarstwa)
+  let pokazWszystko = false;    // jednorazowy podgląd „pokaż wszystko" (nie kasuje ustawienia)
 
   const monthInput = document.getElementById('filter-month');
   const osobaSelect = document.getElementById('filter-osoba');
@@ -160,6 +162,15 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
 
     const qKat = new URLSearchParams(q);
     if (katMode === 'kontekst') qKat.set('kontekst', '1');
+
+    // Pomijane kategorie stosujemy tylko do widoku zbiorczego: nie gdy wybrano
+    // konkretną kategorię (podgląd drill-in) ani gdy włączony „pokaż wszystko".
+    // Wykres kategorii (qKat) zawsze pobiera pełne dane — pomijane wyszarzamy
+    // w legendzie po stronie frontu, żeby dało się je odkliknąć z powrotem.
+    const aktywneWyklucz = (!kategoria && !pokazWszystko) ? [...wykluczone] : [];
+    for (const w of aktywneWyklucz) { q.append('wyklucz', w); qMies.append('wyklucz', w); }
+    renderWykluczBanner();
+
     const fetches = [
       authFetch('/api/stats/kategorie?' + qKat).then(r => r.json()),
       authFetch('/api/stats/miesiace?' + qMies).then(r => r.json()),
@@ -207,7 +218,10 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       document.getElementById('stat-topkat').textContent = `${topProdukt.nazwa} (${fmt(topProdukt.suma_total)})`;
       if (statLabel) statLabel.textContent = 'Najdroższy produkt';
     } else {
-      const topKat = statKat[0];
+      // pomijane kategorie nie mogą wygrać kafelka „największa kategoria" (spójnie z wykresami)
+      const aktywne = (!kategoria && !pokazWszystko)
+        ? statKat.filter(k => !wykluczone.has(k.kategoria_glowna)) : statKat;
+      const topKat = aktywne[0];
       document.getElementById('stat-topkat').textContent = topKat ? `${topKat.kategoria_glowna} (${fmt(topKat.suma)})` : '—';
       if (statLabel) statLabel.textContent = 'Największa kategoria';
     }
@@ -252,6 +266,8 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       // tryb kategorii — poziomy słupkowy rozkład podkategorii
       subPanel.classList.add('hidden');
       hint.style.display = 'none';
+      const legBox = document.getElementById('kat-legenda');
+      if (legBox) legBox.innerHTML = '';  // legenda z checkboxami tylko w widoku zbiorczym
       const max = statSub[0]?.suma || 1;
       chartKat = new Chart(ctx, {
         type: 'bar',
@@ -274,33 +290,86 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         },
       });
     } else {
-      // tryb ogólny — kołowy
+      // tryb ogólny — kołowy + własna legenda HTML z checkboxami (patrz renderLegenda).
+      // Kółko rysujemy tylko z kategorii widocznych (pomijane wypadają, chyba że podgląd „pokaż wszystko").
+      const widoczne = pokazWszystko ? data : data.filter(d => !wykluczone.has(d.kategoria_glowna));
       chartKat = new Chart(ctx, {
         type: 'doughnut',
         data: {
-          labels: data.map(d => d.kategoria_glowna),
-          datasets: [{ data: data.map(d => d.suma), backgroundColor: data.map(d => katColor(d.kategoria_glowna)), borderWidth: 2 }],
+          labels: widoczne.map(d => d.kategoria_glowna),
+          datasets: [{ data: widoczne.map(d => d.suma), backgroundColor: widoczne.map(d => katColor(d.kategoria_glowna)), borderWidth: 2 }],
         },
         options: {
           plugins: {
-            legend: {
-              position: 'right',
-              labels: { boxWidth: 12, font: { size: 12 }, cursor: 'pointer' },
-              onClick: (e, legendItem) => showSubkategorie(legendItem.text),
-            },
+            legend: { display: false },  // legendę renderujemy samodzielnie
             tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)}` } },
           },
           cutout: '60%',
           onClick: (_, els) => {
             if (!els.length) return;
-            const glowna = data[els[0].index].kategoria_glowna;
-            showSubkategorie(glowna);
+            showSubkategorie(widoczne[els[0].index].kategoria_glowna);
           },
         },
       });
+      renderLegenda(data);
       hint.style.display = '';
     }
   }
+
+  // Własna legenda kołowego: kropka + nazwa (klik = wejście w kategorię) + checkbox
+  // (odklik = pomiń w analizie). Pomijane zostają wyszarzone i wciąż widoczne,
+  // więc zawsze można je włączyć z powrotem. Lista z pełnych danych (data).
+  function renderLegenda(data) {
+    const box = document.getElementById('kat-legenda');
+    if (!box) return;
+    box.innerHTML = data.map(d => {
+      const nazwa = d.kategoria_glowna;
+      const off = wykluczone.has(nazwa);
+      const enc = encodeURIComponent(nazwa);
+      return `<div class="kat-leg-row${off ? ' off' : ''}">
+        <span class="kat-leg-swatch" style="background:${katColor(nazwa)}"></span>
+        <span class="kat-leg-name" title="Kliknij, aby zobaczyć podkategorie" onclick="drillKat('${enc}')">${esc(nazwa)}</span>
+        <span class="kat-leg-kwota">${fmt(d.suma)}</span>
+        <input type="checkbox" class="kat-leg-cb" ${off ? '' : 'checked'}
+               title="${off ? 'Włącz z powrotem do analizy' : 'Pomiń tę kategorię w analizie'}"
+               onchange="toggleWyklucz('${enc}', this.checked)">
+      </div>`;
+    }).join('');
+  }
+
+  // Pasek nad wykresami, gdy coś jest pomijane (tylko w widoku zbiorczym).
+  function renderWykluczBanner() {
+    const el = document.getElementById('wyklucz-banner');
+    if (!el) return;
+    if (!wykluczone.size || katSelect.value) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    const lista = [...wykluczone].map(esc).join(', ');
+    el.classList.remove('hidden');
+    el.innerHTML = `<span>🚫 Pomijane w analizie: <strong>${lista}</strong></span>
+      <button onclick="togglePokazWszystko()">${pokazWszystko ? 'Ukryj z powrotem' : 'Pokaż wszystko'}</button>`;
+  }
+
+  window.drillKat = (enc) => showSubkategorie(decodeURIComponent(enc));
+
+  window.togglePokazWszystko = () => { pokazWszystko = !pokazWszystko; loadDashboard(); };
+
+  window.toggleWyklucz = async (enc, checked) => {
+    const nazwa = decodeURIComponent(enc);
+    const poprzednie = new Set(wykluczone);
+    if (checked) wykluczone.delete(nazwa); else wykluczone.add(nazwa);
+    pokazWszystko = false;
+    try {
+      const res = await authFetch('/api/analiza/wykluczenia', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kategorie: [...wykluczone] }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      wykluczone = poprzednie;  // cofnij przy błędzie zapisu
+      alert('Nie udało się zapisać ustawienia analizy. Spróbuj ponownie.');
+    }
+    loadDashboard();
+  };
 
   async function showSubkategorie(glowna) {
     activeGlowna = glowna;
@@ -883,7 +952,12 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     szukajInput.focus();
   });
 
-  loadDashboard();
+  // wczytaj zapisane wykluczenia (ustawienie gospodarstwa) przed pierwszym renderem
+  authFetch('/api/analiza/wykluczenia')
+    .then(r => r.json())
+    .then(d => { wykluczone = new Set(Array.isArray(d.kategorie) ? d.kategorie : []); })
+    .catch(() => {})
+    .finally(() => loadDashboard());
 }); }
 
 // ── UPLOAD PAGE ──────────────────────────────────────────────────────────────────────────────────────────────────────

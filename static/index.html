@@ -142,11 +142,15 @@
           <button id="kat-mode-kontekst" onclick="setKatMode('kontekst')" style="padding:5px 10px;border:none;cursor:pointer;font-size:12px;background:#fff;color:#555">Kontekstowe</button>
         </div>
       </div>
-      <div class="chart-wrap">
-        <canvas id="chart-kategorie"></canvas>
+      <div id="wyklucz-banner" class="wyklucz-banner hidden"></div>
+      <div class="kat-chart-layout">
+        <div class="chart-wrap">
+          <canvas id="chart-kategorie"></canvas>
+        </div>
+        <div id="kat-legenda" class="kat-legenda"></div>
       </div>
       <p id="chart-kategorie-hint" style="display:none;font-size:12px;color:var(--muted);margin-top:8px;text-align:center">
-        Kliknij segment aby zobaczyć podkategorie
+        Kliknij segment lub nazwę w legendzie, aby zobaczyć podkategorie. Odznacz kategorię, aby pominąć ją w analizie.
       </p>
       <div id="subkat-panel" class="subkat-panel hidden">
         <div class="subkat-header">
