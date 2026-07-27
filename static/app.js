@@ -327,12 +327,12 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       const off = wykluczone.has(nazwa);
       const enc = encodeURIComponent(nazwa);
       return `<div class="kat-leg-row${off ? ' off' : ''}">
-        <span class="kat-leg-swatch" style="background:${katColor(nazwa)}"></span>
-        <span class="kat-leg-name" title="Kliknij, aby zobaczyć podkategorie" onclick="drillKat('${enc}')">${esc(nazwa)}</span>
-        <span class="kat-leg-kwota">${fmt(d.suma)}</span>
         <input type="checkbox" class="kat-leg-cb" ${off ? '' : 'checked'}
                title="${off ? 'Włącz z powrotem do analizy' : 'Pomiń tę kategorię w analizie'}"
                onchange="toggleWyklucz('${enc}', this.checked)">
+        <span class="kat-leg-swatch" style="background:${katColor(nazwa)}"></span>
+        <span class="kat-leg-name" title="Kliknij, aby zobaczyć podkategorie" onclick="drillKat('${enc}')">${esc(nazwa)}</span>
+        <span class="kat-leg-kwota">${fmt(d.suma)}</span>
       </div>`;
     }).join('');
   }
