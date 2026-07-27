@@ -12,6 +12,15 @@ function esc(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/'/g, '&#39;');
 }
 
+// Zamienia surowe błędy sieciowe (np. "Failed to fetch") na zrozumiały komunikat.
+function bladSieci(e) {
+  const m = String(e && e.message || e || '');
+  if (/failed to fetch|networkerror|load failed|fetch/i.test(m)) {
+    return 'Brak połączenia z serwerem — sprawdź zasięg/internet i spróbuj ponownie za chwilę.';
+  }
+  return m || 'Nieznany błąd.';
+}
+
 // ── DASHBOARD ────────────────────────────────────────────────────
 
 if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(async (me) => {
@@ -1095,7 +1104,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
       renderCards();
       resultSection.classList.remove('hidden');
     } catch (e) {
-      setAlert('Błąd: ' + e.message, 'error');
+      setAlert('Błąd: ' + bladSieci(e), 'error');
     } finally {
       stopPraca();
       loadEl.classList.add('hidden');
@@ -1330,7 +1339,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
       setAlert(`Zapisano ${receiptsData.length} paragon${receiptsData.length === 1 ? '' : receiptsData.length < 5 ? 'y' : 'ów'}!`, 'success');
       setTimeout(() => { window.location.href = '/'; }, 1000);
     } catch (e) {
-      setAlert('Błąd zapisu: ' + e.message, 'error');
+      setAlert('Błąd zapisu: ' + bladSieci(e), 'error');
     } finally {
       saveAllBtn.disabled = false;
       saveAllBtn.textContent = editId ? 'Zapisz zmiany' : `Zapisz wszystkie (${receiptsData.length})`;
