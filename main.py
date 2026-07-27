@@ -1477,6 +1477,17 @@ def api_delete_wplyw(wplyw_id: int, current_user: dict = Depends(get_current_use
     return {"ok": True}
 
 
+@app.post("/api/wplywy/{wplyw_id}/do-salda-poczatkowego")
+def api_wplyw_do_salda(wplyw_id: int, current_user: dict = Depends(get_current_user)):
+    """Przenosi błędnie wpisany wpływ (faktyczne saldo startowe) do salda
+    początkowego konta — saldo bez zmian, kwota znika z przychodów/bilansu."""
+    try:
+        database.wplyw_do_salda_poczatkowego(wplyw_id, current_user["household_id"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
+
+
 @app.get("/api/me/konto-domyslne")
 def api_get_konto_domyslne(current_user: dict = Depends(get_current_user)):
     konto_id = database.get_konto_domyslne(current_user["user_id"])

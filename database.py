@@ -1482,6 +1482,28 @@ def delete_wplyw(wplyw_id: int, household_id: int) -> bool:
         return cur.rowcount > 0
 
 
+def wplyw_do_salda_poczatkowego(wplyw_id: int, household_id: int) -> bool:
+    """Przenosi wpływ do salda początkowego jego konta: dodaje kwotę do
+    saldo_poczatkowe i usuwa wpis wpływu. Saldo konta zostaje bez zmian, ale
+    kwota przestaje być liczona jako przychód (bilans). Dla błędnie wpisanych
+    kwot startowych („stan konta na dzień X" wpisany jako wpływ). Atomowo w
+    jednej transakcji."""
+    with get_db() as cur:
+        cur.execute("SELECT kwota, konto_id FROM wplywy WHERE id=%s AND household_id=%s",
+                    (wplyw_id, household_id))
+        row = cur.fetchone()
+        if not row:
+            raise ValueError("Wpływ nie istnieje")
+        if row["konto_id"] is None:
+            raise ValueError("Wpływ nie jest przypisany do konta — nie można przenieść do salda początkowego")
+        cur.execute("UPDATE konta SET saldo_poczatkowe = saldo_poczatkowe + %s WHERE id=%s AND household_id=%s",
+                    (row["kwota"], row["konto_id"], household_id))
+        if cur.rowcount == 0:
+            raise ValueError("Konto nie istnieje")
+        cur.execute("DELETE FROM wplywy WHERE id=%s AND household_id=%s", (wplyw_id, household_id))
+        return True
+
+
 # --- historia konta ---
 
 def get_historia_konta(konto_id: int, household_id: int, month: str | None = None) -> list[dict]:

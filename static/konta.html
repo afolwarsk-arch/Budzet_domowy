@@ -468,6 +468,17 @@ async function delWplyw(id) {
   if (activeKontoId) await loadHistoria();
 }
 
+async function wplywDoSalda(id) {
+  if (!confirm('Oznaczyć ten wpływ jako saldo POCZĄTKOWE konta?\n\n' +
+    'Kwota zostanie przeniesiona do salda początkowego konta, a wpis zniknie z wpływów. ' +
+    'Saldo konta się NIE zmieni — ale kwota przestanie liczyć się jako przychód w bilansie.\n\n' +
+    'Użyj tego, jeśli to była kwota startowa konta wpisana omyłkowo jako wpływ.')) return;
+  const res = await authFetch(`/api/wplywy/${id}/do-salda-poczatkowego`, { method:'POST' });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Nie udało się przenieść.'); return; }
+  await loadKonta();
+  if (activeKontoId) await loadHistoria();
+}
+
 // --- Przelewy ---
 function refreshPrzelewNa() {
   const zId = parseInt(document.getElementById('p-z').value);
@@ -740,7 +751,7 @@ async function loadHistoria() {
       <div style="display:flex;align-items:center">
         <div class="tx-kwota ${plus?'plus':'minus'}">${plus?'+':''}${fmt(t.kwota)}</div>
         ${t.typ === 'wydatek' ? `<button class="tx-del" onclick="location.href='/upload?edit=${t.id}'" title="Edytuj wydatek">✏</button>` : ''}
-        ${t.typ === 'wplyw' ? `<button class="tx-del" onclick="editWplyw(${t.id})" title="Edytuj wpływ">✏</button><button class="tx-del" onclick="delWplyw(${t.id})" title="Usuń wpływ">✕</button>` : ''}
+        ${t.typ === 'wplyw' ? `<button class="tx-del" onclick="wplywDoSalda(${t.id})" title="To jest saldo początkowe konta — przenieś (nie liczy się do bilansu)">⤓</button><button class="tx-del" onclick="editWplyw(${t.id})" title="Edytuj wpływ">✏</button><button class="tx-del" onclick="delWplyw(${t.id})" title="Usuń wpływ">✕</button>` : ''}
         ${t.typ === 'przelew' ? `<button class="tx-del" onclick="editPrzelew(${t.id})" title="Edytuj przelew">✏</button><button class="tx-del" onclick="delPrzelew(${t.id})" title="Usuń przelew">✕</button>` : ''}
       </div>
     </div>`;
