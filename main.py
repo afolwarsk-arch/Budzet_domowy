@@ -89,6 +89,11 @@ def konta_page():
     return _html("konta.html")
 
 
+@app.get("/wplywy")
+def wplywy_page():
+    return _html("wplywy.html")
+
+
 @app.get("/kategorie")
 def kategorie_page():
     return _html("kategorie.html")

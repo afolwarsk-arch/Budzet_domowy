@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wpływy — Budżet domowy</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#4f7ef8">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com">
+  <link rel="preconnect" href="https://securetoken.googleapis.com">
+  <style>
+    .wpl-filters { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-bottom:20px; }
+    .wpl-filters .ff { display:flex; flex-direction:column; gap:4px; }
+    .wpl-filters label { font-size:11px; font-weight:700; color:#777; text-transform:uppercase; letter-spacing:.05em; }
+    .wpl-filters input, .wpl-filters select { padding:8px 10px; border:1px solid #ddd; border-radius:8px; font-size:14px; font-family:inherit; }
+    .btn-add { margin-left:auto; background:#2e7d32; color:#fff; border:none; border-radius:9px; padding:10px 18px; font-size:14px; font-weight:600; cursor:pointer; }
+    .btn-add:hover { background:#276b2b; }
+
+    .wpl-charts { display:grid; grid-template-columns:3fr 2fr; gap:16px; margin-bottom:24px; }
+    .chart-card { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:18px; }
+    .chart-card h2 { font-size:0.95rem; margin:0 0 12px; color:#333; }
+    .chart-box { position:relative; height:230px; }
+
+    .tbl-card { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:6px 18px 14px; }
+    .wpl-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
+    .wpl-table th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#999; font-weight:700; padding:10px 8px; border-bottom:1px solid #eee; }
+    .wpl-table td { padding:10px 8px; border-bottom:1px solid #f4f4f4; }
+    .wpl-table tr:last-child td { border-bottom:none; }
+    .wpl-table .kwota { font-weight:700; color:#2e7d32; white-space:nowrap; }
+    .zr-badge { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; color:#fff; white-space:nowrap; }
+    .wpl-act { display:flex; gap:2px; justify-content:flex-end; }
+    .wpl-act button { background:none; border:none; cursor:pointer; font-size:14px; color:#c5c5c5; padding:4px 7px; border-radius:6px; line-height:1; }
+    .wpl-act button:hover { background:#f5f5f5; color:#555; }
+    .wpl-act button.del:hover { background:#fde8e8; color:#c62828; }
+    .wpl-act button.saldo:hover { background:#e8f0fe; color:#4361ee; }
+    .empty-hint { text-align:center; color:#bbb; font-size:13px; padding:28px 0; }
+
+    .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:900; align-items:center; justify-content:center; }
+    .modal-backdrop.open { display:flex; }
+    .modal-box { background:#fff; border-radius:16px; padding:28px; width:100%; max-width:420px; margin:16px; max-height:90vh; overflow-y:auto; }
+    .modal-box h3 { font-size:1.05rem; margin:0 0 20px; }
+    .fg { margin-bottom:14px; }
+    .fg label { display:block; font-size:11px; font-weight:700; color:#777; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
+    .fg input, .fg select { width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:8px; font-size:14px; box-sizing:border-box; font-family:inherit; }
+    .modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:20px; }
+    .modal-footer button { padding:9px 22px; border:none; border-radius:8px; cursor:pointer; font-size:14px; }
+    .btn-cancel { background:#f0f0f0; color:#555; }
+    .btn-primary { background:#4361ee; color:#fff; font-weight:600; }
+    .btn-primary:hover { background:#3451d1; }
+
+    @media (max-width: 700px) {
+      .wpl-charts { grid-template-columns:1fr; }
+      .tbl-card { overflow-x:auto; }
+      .btn-add { margin-left:0; width:100%; }
+    }
+  </style>
+</head>
+<body>
+
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script defer src="/static/auth.js"></script>
+
+<nav>
+  <a href="/" class="logo">🏠 Budżet</a>
+  <a href="/">Dashboard</a>
+  <a href="/upload">Dodaj wydatek</a>
+  <a href="/konta">Konta</a>
+  <a href="/wplywy" class="active">Wpływy</a>
+  <a href="/kategorie">Kategorie</a>
+  <a href="/analiza">Analiza</a>
+  <a href="/powiadomienia">Powiadomienia</a>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
+</nav>
+
+<main style="max-width:1100px">
+  <h1 style="margin-bottom:6px">Wpływy</h1>
+  <p style="color:var(--muted);margin-bottom:20px;font-size:14px">Przychody gospodarstwa: pensje, wynajem, zwroty. To one wchodzą do bilansu na dashboardzie.</p>
+
+  <div class="stats-row">
+    <div class="card stat-card">
+      <div class="value" id="s-suma" style="color:#2e7d32">—</div>
+      <div class="label">Wpływy w okresie</div>
+    </div>
+    <div class="card stat-card">
+      <div class="value" id="s-liczba">—</div>
+      <div class="label">Liczba wpływów</div>
+    </div>
+    <div class="card stat-card">
+      <div class="value" style="font-size:16px" id="s-zrodlo">—</div>
+      <div class="label">Największe źródło</div>
+    </div>
+  </div>
+
+  <div class="wpl-filters">
+    <div class="ff"><label>Miesiąc</label><input type="month" id="f-month"></div>
+    <div class="ff"><label>Osoba</label><select id="f-osoba"><option value="">Wszyscy</option></select></div>
+    <div class="ff"><label>Konto</label><select id="f-konto"><option value="">Wszystkie</option></select></div>
+    <button class="btn-add" onclick="openWplyw()">＋ Dodaj wpływ</button>
+  </div>
+
+  <div class="wpl-charts">
+    <div class="chart-card">
+      <h2>Wpływy miesięcznie</h2>
+      <div class="chart-box"><canvas id="chart-mies"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h2>Wg źródła (wybrany miesiąc)</h2>
+      <div class="chart-box"><canvas id="chart-zrodlo"></canvas></div>
+    </div>
+  </div>
+
+  <div class="tbl-card">
+    <table class="wpl-table">
+      <thead><tr>
+        <th>Data</th><th>Kwota</th><th>Źródło</th><th>Konto</th><th>Osoba</th><th>Opis</th><th></th>
+      </tr></thead>
+      <tbody id="wpl-tbody"></tbody>
+    </table>
+    <div id="wpl-empty" class="empty-hint" style="display:none">Brak wpływów w tym okresie. Dodaj pierwszy przyciskiem „＋ Dodaj wpływ".</div>
+  </div>
+</main>
+
+<!-- Modal: Wpływ -->
+<div class="modal-backdrop" id="m-wplyw">
+  <div class="modal-box">
+    <h3 id="m-wplyw-title">Nowy wpływ</h3>
+    <div class="fg"><label>Data</label><input type="date" id="w-data"></div>
+    <div class="fg"><label>Kwota</label><input type="number" id="w-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
+    <div class="fg">
+      <label>Źródło (kategoria)</label>
+      <select id="w-kat">
+        <option value="Wynagrodzenie">Wynagrodzenie</option>
+        <option value="Premia">Premia</option>
+        <option value="Zwrot podatku">Zwrot podatku</option>
+        <option value="Wynajem">Wynajem</option>
+        <option value="Sprzedaż">Sprzedaż</option>
+        <option value="Zwrot wydatku">Zwrot wydatku</option>
+        <option value="Inne">Inne</option>
+      </select>
+    </div>
+    <div class="fg"><label>Konto</label><select id="w-konto"></select></div>
+    <div class="fg"><label>Osoba (opcjonalnie)</label><input type="text" id="w-osoba" placeholder="np. Adam"></div>
+    <div class="fg"><label>Opis (opcjonalnie)</label><input type="text" id="w-opis" placeholder="np. Pensja czerwiec 2026"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('m-wplyw')">Anuluj</button>
+      <button class="btn-primary" onclick="saveWplyw()">Zapisz</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ZR_COLORS = {
+  'Wynagrodzenie':'#2e7d32', 'Premia':'#66bb6a', 'Zwrot podatku':'#26a69a',
+  'Wynajem':'#4361ee', 'Sprzedaż':'#7b2d8b', 'Zwrot wydatku':'#f59e0b', 'Inne':'#90a4ae',
+};
+function zrColor(nazwa) {
+  if (ZR_COLORS[nazwa]) return ZR_COLORS[nazwa];
+  let h = 0;
+  for (let i = 0; i < nazwa.length; i++) h = (h * 31 + nazwa.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360}, 55%, 50%)`;
+}
+
+let wszystkie = [];   // wszystkie wpływy gospodarstwa
+let konta = [];
+let editWplywId = null;
+let chartMies = null, chartZrodlo = null;
+
+const fmt = n => (n == null ? 0 : parseFloat(n)).toLocaleString('pl-PL', { minimumFractionDigits:2, maximumFractionDigits:2 });
+const fmtZl = n => fmt(n) + ' zł';
+const fmtDate = d => d ? new Date(String(d).slice(0,10) + 'T12:00').toLocaleDateString('pl-PL', { day:'2-digit', month:'2-digit', year:'numeric' }) : '—';
+const escHtml = s => (s == null ? '' : String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const escAttr = s => (s || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-backdrop').forEach(el => el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); }));
+
+const mEl = () => document.getElementById('f-month');
+const oEl = () => document.getElementById('f-osoba');
+const kEl = () => document.getElementById('f-konto');
+
+// filtry osoba+konto (bez miesiąca) — dla wykresu miesięcznego
+function matchOK(w) {
+  const o = oEl().value, k = kEl().value;
+  if (o && (w.osoba || '') !== o) return false;
+  if (k && String(w.konto_id || '') !== k) return false;
+  return true;
+}
+// pełny filtr (z miesiącem) — dla tabeli, kafelków, wykresu źródeł
+function matchAll(w) {
+  const m = mEl().value;
+  if (m && String(w.data).slice(0,7) !== m) return false;
+  return matchOK(w);
+}
+
+function render() {
+  const wOkres = wszystkie.filter(matchAll);
+
+  // kafelki
+  const suma = wOkres.reduce((s, w) => s + parseFloat(w.kwota || 0), 0);
+  document.getElementById('s-suma').textContent = fmtZl(suma);
+  document.getElementById('s-liczba').textContent = wOkres.length;
+  const wgZr = {};
+  wOkres.forEach(w => { const k = w.kategoria || 'Inne'; wgZr[k] = (wgZr[k] || 0) + parseFloat(w.kwota || 0); });
+  const top = Object.entries(wgZr).sort((a, b) => b[1] - a[1])[0];
+  document.getElementById('s-zrodlo').textContent = top ? `${top[0]} (${fmtZl(top[1])})` : '—';
+
+  renderTabela(wOkres);
+  renderWykresMies();
+  renderWykresZrodlo(wgZr);
+}
+
+function renderTabela(list) {
+  const tb = document.getElementById('wpl-tbody');
+  const empty = document.getElementById('wpl-empty');
+  const sorted = [...list].sort((a, b) => String(b.data).localeCompare(String(a.data)));
+  if (!sorted.length) { tb.innerHTML = ''; empty.style.display = ''; return; }
+  empty.style.display = 'none';
+  tb.innerHTML = sorted.map(w => {
+    const zr = w.kategoria || 'Inne';
+    return `<tr>
+      <td style="white-space:nowrap;color:#666">${fmtDate(w.data)}</td>
+      <td class="kwota">+${fmt(w.kwota)}</td>
+      <td><span class="zr-badge" style="background:${zrColor(zr)}">${escHtml(zr)}</span></td>
+      <td style="color:#666">${escHtml(w.konto_nazwa || '—')}</td>
+      <td style="color:#666">${escHtml(w.osoba || '—')}</td>
+      <td style="color:#666">${escHtml(w.opis || '—')}</td>
+      <td><div class="wpl-act">
+        <button class="saldo" onclick="wplywDoSalda(${w.id})" title="To saldo początkowe konta — przenieś (nie liczy się do bilansu)">⤓</button>
+        <button onclick="editWplyw(${w.id})" title="Edytuj">✏</button>
+        <button class="del" onclick="delWplyw(${w.id})" title="Usuń">✕</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderWykresMies() {
+  const dane = wszystkie.filter(matchOK);
+  const wgMies = {};
+  dane.forEach(w => { const m = String(w.data).slice(0, 7); wgMies[m] = (wgMies[m] || 0) + parseFloat(w.kwota || 0); });
+  const miesiace = Object.keys(wgMies).sort().slice(-12);
+  const wartosci = miesiace.map(m => Math.round(wgMies[m] * 100) / 100);
+  const etykiety = miesiace.map(m => {
+    const [y, mm] = m.split('-');
+    return new Date(y, mm - 1).toLocaleDateString('pl-PL', { month: 'short', year: '2-digit' });
+  });
+  const ctx = document.getElementById('chart-mies').getContext('2d');
+  if (chartMies) chartMies.destroy();
+  chartMies = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: etykiety, datasets: [{ data: wartosci, backgroundColor: '#2e7d32', borderRadius: 5 }] },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ' ' + fmtZl(c.raw) } } },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => fmt(v) } } },
+    },
+  });
+}
+
+function renderWykresZrodlo(wgZr) {
+  const wpisy = Object.entries(wgZr).sort((a, b) => b[1] - a[1]);
+  const ctx = document.getElementById('chart-zrodlo').getContext('2d');
+  if (chartZrodlo) chartZrodlo.destroy();
+  if (!wpisy.length) {
+    chartZrodlo = new Chart(ctx, { type: 'doughnut', data: { labels: ['Brak danych'], datasets: [{ data: [1], backgroundColor: ['#eee'] }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } } });
+    return;
+  }
+  chartZrodlo = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels: wpisy.map(e => e[0]), datasets: [{ data: wpisy.map(e => Math.round(e[1] * 100) / 100), backgroundColor: wpisy.map(e => zrColor(e[0])), borderWidth: 2 }] },
+    options: {
+      maintainAspectRatio: false, cutout: '58%',
+      plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
+                 tooltip: { callbacks: { label: c => ' ' + fmtZl(c.raw) } } },
+    },
+  });
+}
+
+// --- dodawanie/edycja wpływu ---
+function refreshWKontoSelect(preferKontoId) {
+  const sel = document.getElementById('w-konto');
+  sel.innerHTML = '<option value="">— brak przypisania —</option>' +
+    konta.map(k => `<option value="${k.id}"${k.id === preferKontoId ? ' selected' : ''}>${escHtml(k.nazwa)} (${escHtml(k.waluta)})</option>`).join('');
+}
+
+function openWplyw() {
+  editWplywId = null;
+  document.getElementById('m-wplyw-title').textContent = 'Nowy wpływ';
+  document.getElementById('w-data').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('w-kwota').value = '';
+  document.getElementById('w-kat').value = 'Wynagrodzenie';
+  document.getElementById('w-osoba').value = '';
+  document.getElementById('w-opis').value = '';
+  refreshWKontoSelect(kEl().value ? parseInt(kEl().value) : null);
+  openModal('m-wplyw');
+}
+
+function editWplyw(id) {
+  const w = wszystkie.find(x => x.id === id);
+  if (!w) { alert('Nie znaleziono wpływu.'); return; }
+  editWplywId = id;
+  document.getElementById('m-wplyw-title').textContent = 'Edytuj wpływ';
+  document.getElementById('w-data').value = String(w.data).slice(0, 10);
+  document.getElementById('w-kwota').value = parseFloat(w.kwota);
+  document.getElementById('w-kat').value = w.kategoria || 'Inne';
+  document.getElementById('w-osoba').value = w.osoba || '';
+  document.getElementById('w-opis').value = w.opis || '';
+  refreshWKontoSelect(w.konto_id);
+  openModal('m-wplyw');
+}
+
+async function saveWplyw() {
+  const body = {
+    data: document.getElementById('w-data').value,
+    kwota: parseFloat(document.getElementById('w-kwota').value),
+    kategoria: document.getElementById('w-kat').value,
+    osoba: document.getElementById('w-osoba').value.trim() || null,
+    opis: document.getElementById('w-opis').value.trim() || null,
+    konto_id: parseInt(document.getElementById('w-konto').value) || null,
+  };
+  if (!body.data || isNaN(body.kwota) || body.kwota <= 0) { alert('Wypełnij datę i kwotę.'); return; }
+  const url = editWplywId ? `/api/wplywy/${editWplywId}` : '/api/wplywy';
+  const res = await authFetch(url, { method: editWplywId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Nie udało się zapisać wpływu.'); return; }
+  closeModal('m-wplyw');
+  await loadWplywy();
+}
+
+async function delWplyw(id) {
+  if (!confirm('Usunąć ten wpływ? Saldo powiązanego konta zostanie przeliczone.')) return;
+  const res = await authFetch(`/api/wplywy/${id}`, { method: 'DELETE' });
+  if (!res.ok) { alert('Nie udało się usunąć.'); return; }
+  await loadWplywy();
+}
+
+async function wplywDoSalda(id) {
+  if (!confirm('Oznaczyć ten wpływ jako saldo POCZĄTKOWE konta?\n\n' +
+    'Kwota zostanie przeniesiona do salda początkowego konta, a wpis zniknie z wpływów. ' +
+    'Saldo konta się NIE zmieni — ale kwota przestanie liczyć się jako przychód w bilansie.\n\n' +
+    'Użyj tego, jeśli to była kwota startowa konta wpisana omyłkowo jako wpływ.')) return;
+  const res = await authFetch(`/api/wplywy/${id}/do-salda-poczatkowego`, { method: 'POST' });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Nie udało się przenieść.'); return; }
+  await loadWplywy();
+}
+
+async function loadWplywy() {
+  wszystkie = await authFetch('/api/wplywy').then(r => r.json());
+  konta = await authFetch('/api/konta').then(r => r.json());
+  render();
+}
+
+function fillFiltry(hh) {
+  const osoby = [
+    ...(hh.members || []).map(m => m.display_name || m.name),
+    ...(hh.virtual_members || []).map(m => m.name),
+  ].filter(Boolean);
+  oEl().innerHTML = '<option value="">Wszyscy</option>' + osoby.map(o => `<option value="${escHtml(o)}">${escHtml(o)}</option>`).join('');
+  kEl().innerHTML = '<option value="">Wszystkie</option>' + konta.map(k => `<option value="${k.id}">${escHtml(k.nazwa)}</option>`).join('');
+}
+
+['f-month', 'f-osoba', 'f-konto'].forEach(id => document.getElementById(id).addEventListener('change', render));
+
+window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(async () => {
+  mEl().value = new Date().toISOString().slice(0, 7);
+  const [hh] = await Promise.all([
+    authFetch('/api/household').then(r => r.json()),
+    loadWplywy(),
+  ]);
+  fillFiltry(hh);
+  render();
+}));
+</script>
+</body>
+</html>
