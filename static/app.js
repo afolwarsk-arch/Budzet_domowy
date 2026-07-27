@@ -241,12 +241,22 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   // Bilans okresu w kafelku — zielony na plusie, czerwony na minusie.
   function renderBilans(d) {
     const el = document.getElementById('stat-bilans');
+    const sub = document.getElementById('stat-bilans-sub');
     if (!el) return;
-    if (!d || typeof d.bilans !== 'number') { el.textContent = '—'; el.style.color = ''; el.title = ''; return; }
+    if (!d || typeof d.bilans !== 'number') {
+      el.textContent = '—'; el.style.color = ''; el.title = '';
+      if (sub) sub.textContent = '';
+      return;
+    }
     const b = d.bilans;
     el.textContent = (b > 0 ? '+' : '') + fmt(b);   // Intl sam dokłada „−" dla ujemnych
     el.style.color = b > 0 ? '#2e9b57' : b < 0 ? '#d32f2f' : 'var(--primary)';
     el.title = `Wpływy ${fmt(d.wplywy)} − wydatki ${fmt(d.wydatki)}`;
+    // krótki dopisek (zaokrąglone do pełnych zł, żeby zmieścił się w kafelku)
+    if (sub) {
+      const zl = v => Math.round(v).toLocaleString('pl-PL') + ' zł';
+      sub.textContent = `wpływy ${zl(d.wplywy)} · wydatki ${zl(d.wydatki)}`;
+    }
   }
 
   // Stałe kolory kategorii głównych — kolor trzyma się nazwy, a nie pozycji na wykresie,
@@ -349,12 +359,12 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       const off = wykluczone.has(nazwa);
       const enc = encodeURIComponent(nazwa);
       return `<div class="kat-leg-row${off ? ' off' : ''}">
-        <input type="checkbox" class="kat-leg-cb" ${off ? '' : 'checked'}
-               title="${off ? 'Włącz z powrotem do analizy' : 'Pomiń tę kategorię w analizie'}"
-               onchange="toggleWyklucz('${enc}', this.checked)">
         <span class="kat-leg-swatch" style="background:${katColor(nazwa)}"></span>
         <span class="kat-leg-name" title="Kliknij, aby zobaczyć podkategorie" onclick="drillKat('${enc}')">${esc(nazwa)}</span>
         <span class="kat-leg-kwota">${fmt(d.suma)}</span>
+        <input type="checkbox" class="kat-leg-cb" ${off ? '' : 'checked'}
+               title="${off ? 'Włącz z powrotem do analizy' : 'Pomiń tę kategorię w analizie'}"
+               onchange="toggleWyklucz('${enc}', this.checked)">
       </div>`;
     }).join('');
   }
