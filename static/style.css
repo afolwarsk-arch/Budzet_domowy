@@ -64,6 +64,12 @@ h2 { font-size: 17px; font-weight: 600; margin-bottom: 14px; }
 .stat-card .value { font-size: 28px; font-weight: 700; color: var(--primary); }
 .stat-card .label { font-size: 13px; color: var(--muted); margin-top: 4px; }
 
+/* telefon: 4 kafelki w siatkę 2×2 zamiast 4 osobnych rzędów */
+@media (max-width: 700px) {
+  .stats-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stats-row .stat-card .value { font-size: 22px; }
+}
+
 /* filters */
 .filters {
   display: flex;

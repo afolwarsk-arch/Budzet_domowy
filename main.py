@@ -1159,6 +1159,12 @@ def stats_top_produkt(kategoria: str, month: str | None = None, osoba: str | Non
     return result or {}
 
 
+@app.get("/api/stats/bilans")
+def stats_bilans(month: str | None = None, od: str | None = None, do: str | None = None,
+                 current_user: dict = Depends(get_current_user)):
+    return database.stats_bilans(current_user["household_id"], month=month, od=od, do=do)
+
+
 @app.get("/api/analiza/wykluczenia")
 def get_analiza_wykluczenia(current_user: dict = Depends(get_current_user)):
     """Kategorie główne pomijane w analizie na dashboardzie (ustawienie gospodarstwa)."""

@@ -824,6 +824,28 @@ def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None, household_id=
         return [dict(r) for r in cur.fetchall()]
 
 
+def stats_bilans(household_id: int, month=None, od=None, do=None) -> dict:
+    """Bilans okresu: pełne wpływy − pełne wydatki. Liczy WSZYSTKO — nie stosuje
+    'pomijanych kategorii', bo koszt lokalu i czynsz od najemcy mają się znosić,
+    dając realny plus/minus gospodarstwa. Warunek okresu wspólny dla obu tabel
+    (kolumny household_id i data występują i w wydatki, i w wplywy)."""
+    conds, params = ["household_id = %s"], [household_id]
+    if month:
+        conds.append("TO_CHAR(data, 'YYYY-MM') = %s"); params.append(month)
+    if od:
+        conds.append("data >= %s"); params.append(od)
+    if do:
+        conds.append("data <= %s"); params.append(do)
+    where = "WHERE " + " AND ".join(conds)
+    with get_db() as cur:
+        cur.execute(f"SELECT COALESCE(SUM(suma), 0) AS s FROM wydatki {where}", params)
+        wydatki = float(cur.fetchone()["s"])
+        cur.execute(f"SELECT COALESCE(SUM(kwota), 0) AS s FROM wplywy {where}", params)
+        wplywy = float(cur.fetchone()["s"])
+    return {"wplywy": round(wplywy, 2), "wydatki": round(wydatki, 2),
+            "bilans": round(wplywy - wydatki, 2)}
+
+
 def stats_top_produkt(kategoria: str, month=None, osoba=None, household_id=None, od=None, do=None) -> dict | None:
     where, params = _where_params(month, osoba, household_id, od=od, do=do)
     params.append(kategoria)

@@ -171,6 +171,17 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     for (const w of aktywneWyklucz) { q.append('wyklucz', w); qMies.append('wyklucz', w); }
     renderWykluczBanner();
 
+    // Bilans okresu — niezależny fetch: pełne wpływy − pełne wydatki za okres,
+    // bez względu na filtr osoby i pomijane kategorie (lokal ma się znosić).
+    const qBil = new URLSearchParams();
+    if (filterMode === 'range') {
+      if (odInput.value) qBil.set('od', odInput.value);
+      if (doInput.value) qBil.set('do', doInput.value);
+    } else if (monthInput.value) {
+      qBil.set('month', monthInput.value);
+    }
+    authFetch('/api/stats/bilans?' + qBil).then(r => r.json()).then(renderBilans).catch(() => {});
+
     const fetches = [
       authFetch('/api/stats/kategorie?' + qKat).then(r => r.json()),
       authFetch('/api/stats/miesiace?' + qMies).then(r => r.json()),
@@ -225,6 +236,17 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       document.getElementById('stat-topkat').textContent = topKat ? `${topKat.kategoria_glowna} (${fmt(topKat.suma)})` : '—';
       if (statLabel) statLabel.textContent = 'Największa kategoria';
     }
+  }
+
+  // Bilans okresu w kafelku — zielony na plusie, czerwony na minusie.
+  function renderBilans(d) {
+    const el = document.getElementById('stat-bilans');
+    if (!el) return;
+    if (!d || typeof d.bilans !== 'number') { el.textContent = '—'; el.style.color = ''; el.title = ''; return; }
+    const b = d.bilans;
+    el.textContent = (b > 0 ? '+' : '') + fmt(b);   // Intl sam dokłada „−" dla ujemnych
+    el.style.color = b > 0 ? '#2e9b57' : b < 0 ? '#d32f2f' : 'var(--primary)';
+    el.title = `Wpływy ${fmt(d.wplywy)} − wydatki ${fmt(d.wydatki)}`;
   }
 
   // Stałe kolory kategorii głównych — kolor trzyma się nazwy, a nie pozycji na wykresie,
