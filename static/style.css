@@ -102,11 +102,11 @@ textarea { resize: vertical; min-height: 90px; width: 100%; }
 
 /* wykres kategorii + własna legenda z checkboxami */
 .kat-chart-layout { display: flex; gap: 16px; align-items: center; }
-.kat-chart-layout .chart-wrap { flex: 1 1 auto; min-width: 0; }
+.kat-chart-layout .chart-wrap { flex: 1 1 auto; min-width: 0; height: 220px; }
 .kat-legenda { flex: 0 0 auto; width: 180px; max-height: 260px; overflow-y: auto;
   display: flex; flex-direction: column; }
-.kat-leg-row { display: flex; align-items: center; gap: 6px; padding: 2px 3px;
-  border-radius: 5px; font-size: 12px; }
+.kat-leg-row { display: flex; align-items: center; gap: 6px; padding: 1px 3px;
+  border-radius: 5px; font-size: 12px; line-height: 1.25; }
 .kat-leg-row:hover { background: rgba(0, 0, 0, .03); }
 .kat-leg-row.off { opacity: .45; }
 .kat-leg-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
@@ -127,9 +127,10 @@ textarea { resize: vertical; min-height: 90px; width: 100%; }
 
 /* telefon: legenda pod wykresem, pełna szerokość, większe pola dotykowe */
 @media (max-width: 700px) {
-  .kat-chart-layout { flex-direction: column; align-items: stretch; }
+  .kat-chart-layout { flex-direction: column; align-items: stretch; gap: 8px; }
+  .kat-chart-layout .chart-wrap { height: 175px; }  /* mniejsze kółko — wykres + legenda na jednym ekranie */
   .kat-legenda { width: 100%; max-height: none; }
-  .kat-leg-row { padding: 6px 6px; font-size: 13px; }
+  .kat-leg-row { padding: 2px 6px; font-size: 12px; }
   .kat-leg-cb { width: 15px; height: 15px; opacity: 1; }  /* brak hovera na dotyku — pełny */
 }
 
