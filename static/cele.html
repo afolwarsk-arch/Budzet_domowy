@@ -104,6 +104,7 @@
     <div class="sekcja-head">
       <h2>🎯 Cele oszczędnościowe</h2>
       <button class="btn-add green" onclick="openCel()">＋ Nowy cel</button>
+      <button class="btn-add" onclick="openPrzesun()" style="margin-left:8px">⇄ Przesuń</button>
       <p>Koperty na Waszych kontach. Odłożone liczone z wpłat — możesz je zasilać ręcznie albo automatycznie przelewem.</p>
     </div>
     <div id="cele-grid" class="cele-grid"></div>
@@ -177,6 +178,23 @@
     <div id="hist-lista"></div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal('m-hist')">Zamknij</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: przesunięcie między celami -->
+<div class="modal-backdrop" id="m-przesun">
+  <div class="modal-box">
+    <h3>Przesuń między celami</h3>
+    <div class="fg"><label>Z celu</label><select id="pr-z"></select></div>
+    <div class="fg"><label>Na cel</label><select id="pr-na"></select></div>
+    <div class="fg"><label>Kwota (zł)</label><input type="number" id="pr-kwota" step="0.01" min="0.01" placeholder="0.00">
+      <div class="hint">Te same konto = tylko przesunięcie między subkontami (bez ruchu pieniędzy). Różne konta = realny przelew między nimi.</div></div>
+    <div class="fg"><label>Data</label><input type="date" id="pr-data"></div>
+    <div class="fg"><label>Opis (opcjonalnie)</label><input type="text" id="pr-opis" placeholder="np. korekta podziału"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('m-przesun')">Anuluj</button>
+      <button class="btn-primary" onclick="savePrzesun()">Przesuń</button>
     </div>
   </div>
 </div>
@@ -331,6 +349,34 @@ async function przywrocCel(id) {
   loadCele();
 }
 
+function openPrzesun() {
+  if (celeLista.length < 2) { alert('Potrzebujesz co najmniej dwóch celów, żeby przesuwać między nimi.'); return; }
+  const opts = celeLista.map(c => `<option value="${c.id}">${escHtml(c.nazwa)} — ${fmt(c.odlozone)} zł</option>`).join('');
+  document.getElementById('pr-z').innerHTML = opts;
+  document.getElementById('pr-na').innerHTML = opts;
+  document.getElementById('pr-na').selectedIndex = 1;
+  document.getElementById('pr-kwota').value = '';
+  document.getElementById('pr-data').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('pr-opis').value = '';
+  openModal('m-przesun');
+}
+
+async function savePrzesun() {
+  const body = {
+    cel_z_id: parseInt(document.getElementById('pr-z').value),
+    cel_na_id: parseInt(document.getElementById('pr-na').value),
+    kwota: parseFloat(document.getElementById('pr-kwota').value),
+    data: document.getElementById('pr-data').value,
+    opis: document.getElementById('pr-opis').value.trim() || null,
+  };
+  if (body.cel_z_id === body.cel_na_id) { alert('Wybierz dwa różne cele.'); return; }
+  if (!body.data || isNaN(body.kwota) || body.kwota <= 0) { alert('Podaj datę i kwotę.'); return; }
+  const res = await authFetch('/api/cele/przesun', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Nie udało się przesunąć.'); return; }
+  closeModal('m-przesun');
+  loadCele();
+}
+
 function refreshCKonto(prefer) {
   const sel = document.getElementById('c-konto');
   const oszcz = konta.filter(k => k.typ === 'oszczędności');
@@ -440,7 +486,7 @@ async function openHist(id, nazwa) {
   openModal('m-hist');
   const wp = await authFetch(`/api/cele/${id}/wplaty`).then(r => r.json());
   if (!wp.length) { lista.innerHTML = '<p class="empty-hint">Brak wpłat.</p>'; return; }
-  const ZR = { reczna:'ręczna', przelew:'przelew', cykliczny:'cykliczny' };
+  const ZR = { reczna:'ręczna', przelew:'przelew', cykliczny:'cykliczny', przesuniecie:'przesunięcie' };
   lista.innerHTML = wp.map(w => `<div class="wpl-hist-row">
     <div>
       <div style="font-weight:600;color:${parseFloat(w.kwota) < 0 ? '#c62828' : '#2e7d32'}">${parseFloat(w.kwota) > 0 ? '+' : ''}${fmtZl(w.kwota)}</div>

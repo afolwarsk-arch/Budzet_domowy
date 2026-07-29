@@ -1464,6 +1464,14 @@ class WplataIn(BaseModel):
     opis: str | None = None
 
 
+class PrzesuniecieCelIn(BaseModel):
+    cel_z_id: int
+    cel_na_id: int
+    kwota: float
+    data: str
+    opis: str | None = None
+
+
 class LimitIn(BaseModel):
     kategoria_glowna: str
     kwota_miesieczna: float
@@ -1555,6 +1563,18 @@ def api_add_cel_wplata(cel_id: int, body: WplataIn, current_user: dict = Depends
 def api_delete_cel_wplata(wplata_id: int, current_user: dict = Depends(get_current_user)):
     if not database.delete_cel_wplata(wplata_id, current_user["household_id"]):
         raise HTTPException(404, "Wpłata nie znaleziona")
+    return {"ok": True}
+
+
+@app.post("/api/cele/przesun")
+def api_przesun_cele(body: PrzesuniecieCelIn, current_user: dict = Depends(get_current_user)):
+    if body.kwota <= 0:
+        raise HTTPException(400, "Kwota musi być większa od zera")
+    try:
+        database.przesun_miedzy_celami(current_user["household_id"], body.cel_z_id,
+                                       body.cel_na_id, body.kwota, body.data, body.opis)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     return {"ok": True}
 
 

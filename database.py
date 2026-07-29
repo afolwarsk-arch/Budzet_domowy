@@ -264,6 +264,9 @@ def init_db():
         )""")
         # cykliczny przelew może zasilać konkretną kopertę (cel)
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS cel_id INTEGER REFERENCES cele(id) ON DELETE SET NULL")
+        # wpłata na cel utworzona przez przelew jest z nim powiązana — usunięcie
+        # przelewu kasuje wpłatę (CASCADE), żeby cel/saldo się nie rozjechały
+        cur.execute("ALTER TABLE cele_wplaty ADD COLUMN IF NOT EXISTS przelew_id INTEGER REFERENCES przelewy(id) ON DELETE CASCADE")
         cur.execute("""CREATE TABLE IF NOT EXISTS platnosci_oczekujace (
             id           SERIAL PRIMARY KEY,
             household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
@@ -1629,8 +1632,8 @@ def create_przelew(household_id: int, data: str, kwota: float,
                     znak = 0
                 if znak:
                     cur.execute(
-                        "INSERT INTO cele_wplaty (cel_id, data, kwota, opis, zrodlo) VALUES (%s,%s,%s,%s,%s)",
-                        (cel_id, data, znak * kwota, tekst, zrodlo_wplaty),
+                        "INSERT INTO cele_wplaty (cel_id, data, kwota, opis, zrodlo, przelew_id) VALUES (%s,%s,%s,%s,%s,%s)",
+                        (cel_id, data, znak * kwota, tekst, zrodlo_wplaty, przelew["id"]),
                     )
         return przelew
 
@@ -1658,7 +1661,19 @@ def update_przelew(przelew_id: int, household_id: int, data: str, kwota: float,
                WHERE id=%s AND household_id=%s""",
             (data, kwota, konto_z_id, konto_na_id, opis or None, przelew_id, household_id),
         )
-        return cur.rowcount > 0
+        if cur.rowcount == 0:
+            return False
+        # przelicz powiązane wpłaty na cel: nowa kwota/znak wg nowych kont, albo skasuj
+        cur.execute("""SELECT wp.id, c.konto_id FROM cele_wplaty wp
+                       JOIN cele c ON c.id = wp.cel_id WHERE wp.przelew_id=%s""", (przelew_id,))
+        for wp in cur.fetchall():
+            if wp["konto_id"] == konto_na_id:
+                cur.execute("UPDATE cele_wplaty SET kwota=%s, data=%s WHERE id=%s", (kwota, data, wp["id"]))
+            elif wp["konto_id"] == konto_z_id:
+                cur.execute("UPDATE cele_wplaty SET kwota=%s, data=%s WHERE id=%s", (-kwota, data, wp["id"]))
+            else:
+                cur.execute("DELETE FROM cele_wplaty WHERE id=%s", (wp["id"],))
+        return True
 
 
 def delete_przelew(przelew_id: int, household_id: int) -> bool:
@@ -1876,6 +1891,42 @@ def add_cel_wplata(cel_id: int, household_id: int, data: str, kwota: float,
             (cel_id, data, kwota, opis or None, zrodlo),
         )
         return dict(cur.fetchone())
+
+
+def przesun_miedzy_celami(household_id: int, cel_z_id: int, cel_na_id: int,
+                          kwota: float, data: str, opis: str | None) -> bool:
+    """Przesuwa kwotę z jednego subkonta (celu) na drugie. Ten sam rachunek =
+    tylko dwie wpłaty (bez ruchu pieniędzy). Różne rachunki = realny przelew
+    między nimi + dwie wpłaty. Atomowo."""
+    if cel_z_id == cel_na_id:
+        raise ValueError("Wybierz dwa różne cele")
+    with get_db() as cur:
+        cur.execute("SELECT id, konto_id, nazwa FROM cele WHERE id IN (%s,%s) AND household_id=%s AND aktywny=TRUE",
+                    (cel_z_id, cel_na_id, household_id))
+        rows = {r["id"]: r for r in cur.fetchall()}
+        if cel_z_id not in rows or cel_na_id not in rows:
+            raise ValueError("Cel nie istnieje")
+        kz, kn = rows[cel_z_id]["konto_id"], rows[cel_na_id]["konto_id"]
+        tekst = opis or f"Przesunięcie: {rows[cel_z_id]['nazwa']} → {rows[cel_na_id]['nazwa']}"
+        przelew_id = None
+        if kz != kn:
+            cur.execute("SELECT id, waluta FROM konta WHERE id IN (%s,%s) AND household_id=%s AND aktywne=TRUE",
+                        (kz, kn, household_id))
+            kk = {r["id"]: r for r in cur.fetchall()}
+            if kz not in kk or kn not in kk:
+                raise ValueError("Konto celu nie istnieje")
+            if kk[kz]["waluta"] != kk[kn]["waluta"]:
+                raise ValueError("Cele są na kontach w różnych walutach")
+            cur.execute(
+                "INSERT INTO przelewy (household_id, data, kwota, konto_z_id, konto_na_id, opis) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+                (household_id, data, kwota, kz, kn, tekst),
+            )
+            przelew_id = cur.fetchone()["id"]
+        cur.execute("INSERT INTO cele_wplaty (cel_id, data, kwota, opis, zrodlo, przelew_id) VALUES (%s,%s,%s,%s,'przesuniecie',%s)",
+                    (cel_z_id, data, -kwota, tekst, przelew_id))
+        cur.execute("INSERT INTO cele_wplaty (cel_id, data, kwota, opis, zrodlo, przelew_id) VALUES (%s,%s,%s,%s,'przesuniecie',%s)",
+                    (cel_na_id, data, kwota, tekst, przelew_id))
+        return True
 
 
 def delete_cel_wplata(wplata_id: int, household_id: int) -> bool:
