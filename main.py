@@ -1474,6 +1474,17 @@ class CelPrzeplywowyIn(BaseModel):
     wartosc: float
 
 
+def _waliduj_konto_celu(household_id: int, konto_id: int | None) -> None:
+    """Cel = subkonto: musi być pod kontem typu 'oszczędności'."""
+    if not konto_id:
+        raise HTTPException(400, "Wybierz konto oszczędnościowe dla celu")
+    konto = next((k for k in database.get_konta(household_id) if k["id"] == konto_id), None)
+    if not konto:
+        raise HTTPException(400, "Konto nie istnieje")
+    if konto["typ"] != "oszczędności":
+        raise HTTPException(400, "Cele (subkonta) można zakładać tylko na koncie oszczędnościowym")
+
+
 @app.get("/api/cele")
 def api_get_cele(current_user: dict = Depends(get_current_user)):
     return database.get_cele(current_user["household_id"])
@@ -1485,6 +1496,7 @@ def api_create_cel(body: CelIn, current_user: dict = Depends(get_current_user)):
         raise HTTPException(400, "Podaj nazwę celu")
     if body.kwota_docelowa <= 0:
         raise HTTPException(400, "Kwota docelowa musi być większa od zera")
+    _waliduj_konto_celu(current_user["household_id"], body.konto_id)
     return database.create_cel(current_user["household_id"], body.nazwa.strip(),
                                body.kwota_docelowa, body.konto_id, body.termin)
 
@@ -1495,6 +1507,7 @@ def api_update_cel(cel_id: int, body: CelIn, current_user: dict = Depends(get_cu
         raise HTTPException(400, "Podaj nazwę celu")
     if body.kwota_docelowa <= 0:
         raise HTTPException(400, "Kwota docelowa musi być większa od zera")
+    _waliduj_konto_celu(current_user["household_id"], body.konto_id)
     ok = database.update_cel(cel_id, current_user["household_id"], body.nazwa.strip(),
                              body.kwota_docelowa, body.konto_id, body.termin)
     if not ok:

@@ -33,6 +33,16 @@
     .konto-icons button:hover { background:#f5f5f5; color:#555; }
     .konto-icons button.star.active { color:#f59e0b; }
     .konto-icons button.del:hover { background:#fde8e8; color:#c62828; }
+    .subk-box { margin:4px 0 14px; padding:10px 12px; background:#f7f9fc; border-radius:10px; }
+    .subk-head { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#9aa3b2; margin-bottom:6px; }
+    .subk-row { display:grid; grid-template-columns:1fr 60px auto; align-items:center; gap:8px; margin-bottom:6px; }
+    .subk-nazwa { font-size:12.5px; color:#333; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .subk-bar { height:6px; background:#e4e8ee; border-radius:4px; overflow:hidden; }
+    .subk-bar > span { display:block; height:100%; border-radius:4px; }
+    .subk-kwota { font-size:11px; color:#888; white-space:nowrap; }
+    .subk-np { font-size:11.5px; font-weight:600; margin-top:6px; padding-top:6px; border-top:1px dashed #dde3ec; }
+    .subk-info { font-size:12px; color:#aaa; margin:2px 0 14px; }
+    .subk-info a { color:#4361ee; }
 
     .cykl-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #f3f3f3; font-size:0.88rem; gap:10px; }
     .cykl-row:last-child { border-bottom:none; }
@@ -205,7 +215,7 @@
     <h3 id="m-przelew-title">Przelew między kontami</h3>
     <div class="fg"><label>Z konta</label><select id="p-z" onchange="refreshPrzelewNa()"></select></div>
     <div class="fg"><label>Na konto</label><select id="p-na" onchange="refreshPrzelewCel()"></select></div>
-    <div class="fg" id="p-cel-wrap" style="display:none"><label>Na cel (koperta, opcjonalnie)</label><select id="p-cel"></select></div>
+    <div class="fg" id="p-cel-wrap" style="display:none"><label id="p-cel-label">Na cel (koperta, opcjonalnie)</label><select id="p-cel"></select></div>
     <div class="fg"><label>Kwota</label><input type="number" id="p-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
     <div class="fg"><label>Data</label><input type="date" id="p-data"></div>
     <div class="fg"><label>Opis (opcjonalnie)</label><input type="text" id="p-opis" placeholder="np. wypłata z bankomatu, na oszczędności"></div>
@@ -298,7 +308,12 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 document.querySelectorAll('.modal-backdrop').forEach(el => el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); }));
 
 async function loadKonta() {
-  konta = await authFetch('/api/konta').then(r => r.json());
+  const [k, c] = await Promise.all([
+    authFetch('/api/konta').then(r => r.json()),
+    authFetch('/api/cele').then(r => r.json()),
+  ]);
+  konta = k;
+  cele = Array.isArray(c) ? c : [];
   renderTotals();
   renderKonta();
 }
@@ -334,6 +349,7 @@ function renderKonta() {
       <div class="konto-osoba">${k.osoba || 'Wspólne'}</div>
       <div class="konto-saldo" style="color:${saldo < 0 ? '#c62828' : '#1a1a1a'}">${fmt(saldo)}</div>
       <div class="konto-waluta">${k.waluta}</div>
+      ${k.typ === 'oszczędności' ? subkontaHtml(k) : ''}
       <div class="konto-btns">
         <button class="btn-wplyw" onclick="openWplyw(${k.id})">+ Wpływ</button>
         <button class="btn-przelew" onclick="openPrzelew(${k.id})">⇄ Przelew</button>
@@ -344,6 +360,32 @@ function renderKonta() {
   }).join('');
   html += `<div class="konto-card add-card" onclick="openAddKonto()">+ Dodaj konto</div>`;
   grid.innerHTML = html;
+}
+
+// Rozbicie konta oszczędnościowego na subkonta (cele) + kwota nieprzypisana
+function subkontaHtml(k) {
+  const subs = cele.filter(c => c.konto_id === k.id);
+  if (!subs.length) return `<div class="subk-info">Brak subkont — dodaj cel na stronie <a href="/cele">Cele</a>.</div>`;
+  const saldo = parseFloat(k.saldo_biezace || 0);
+  const suma = subs.reduce((s, c) => s + parseFloat(c.odlozone || 0), 0);
+  const np = Math.round((saldo - suma) * 100) / 100;
+  const rows = subs.map(c => {
+    const cel = parseFloat(c.kwota_docelowa || 0);
+    const odl = parseFloat(c.odlozone || 0);
+    const p = cel > 0 ? Math.min(odl / cel * 100, 100) : 0;
+    const kolor = odl >= cel ? '#2e7d32' : '#4361ee';
+    return `<div class="subk-row">
+      <div class="subk-nazwa">${c.nazwa}</div>
+      <div class="subk-bar"><span style="width:${p}%;background:${kolor}"></span></div>
+      <div class="subk-kwota">${fmt(odl)} / ${fmt(cel)}</div>
+    </div>`;
+  }).join('');
+  const npKolor = Math.abs(np) < 0.01 ? '#999' : (np < 0 ? '#c62828' : '#b26a00');
+  return `<div class="subk-box">
+    <div class="subk-head">Subkonta (${subs.length})</div>
+    ${rows}
+    <div class="subk-np" style="color:${npKolor}">Nieprzypisane: ${fmt(np)} ${k.waluta}</div>
+  </div>`;
 }
 
 function fillOsobaSelect() {
@@ -496,14 +538,24 @@ function refreshPrzelewNa() {
   refreshPrzelewCel();
 }
 
-// Pokaż wybór koperty, jeśli konto docelowe ma cele (tylko przy nowym przelewie)
+// Wybór subkonta (celu): NA konto docelowe = zasilenie, Z konta źródłowego = wypłata.
+// Znak wpłaty backend wylicza sam po stronie przelewu. Tylko przy nowym przelewie.
 function refreshPrzelewCel() {
   const naId = parseInt(document.getElementById('p-na').value);
+  const zId = parseInt(document.getElementById('p-z').value);
   const wrap = document.getElementById('p-cel-wrap');
   const sel = document.getElementById('p-cel');
-  const opcje = editPrzelewId ? [] : cele.filter(c => c.konto_id === naId);
+  const lbl = document.getElementById('p-cel-label');
+  let opcje = [], tekst = '';
+  if (!editPrzelewId) {
+    const naCele = cele.filter(c => c.konto_id === naId);
+    const zCele = cele.filter(c => c.konto_id === zId);
+    if (naCele.length) { opcje = naCele; tekst = 'Na subkonto / cel (opcjonalnie)'; }
+    else if (zCele.length) { opcje = zCele; tekst = 'Z subkonta / celu (opcjonalnie)'; }
+  }
   if (!opcje.length) { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
   wrap.style.display = '';
+  lbl.textContent = tekst;
   sel.innerHTML = '<option value="">— bez celu —</option>' +
     opcje.map(c => `<option value="${c.id}">${c.nazwa}</option>`).join('');
 }
@@ -861,15 +913,13 @@ function closePanelInwent() {
 }
 
 window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(async () => {
-  const [hh, def, hier, celeData] = await Promise.all([
+  const [hh, def, hier] = await Promise.all([
     authFetch('/api/household').then(r => r.json()),
     authFetch('/api/me/konto-domyslne').then(r => r.json()),
     authFetch('/api/kategorie').then(r => r.json()),
-    authFetch('/api/cele').then(r => r.json()),
     loadKonta(),
     loadCykliczne(),
   ]);
-  cele = Array.isArray(celeData) ? celeData : [];
   myDefaultKontoId = def.konto_id || null;
   HIERARCHIA = hier || {};
   osobyOpcje = [

@@ -134,8 +134,8 @@
     <h3 id="m-cel-title">Nowy cel</h3>
     <div class="fg"><label>Nazwa</label><input type="text" id="c-nazwa" placeholder="np. Wakacje 2027"></div>
     <div class="fg"><label>Kwota docelowa (zł)</label><input type="number" id="c-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
-    <div class="fg"><label>Konto (koperta na tym koncie)</label><select id="c-konto"></select>
-      <div class="hint">Wiele celów może dzielić jedno konto oszczędnościowe (jak subkonta).</div></div>
+    <div class="fg"><label>Konto oszczędnościowe</label><select id="c-konto"></select>
+      <div class="hint">Cel to subkonto na koncie oszczędnościowym. Wiele celów może być na jednym koncie.</div></div>
     <div class="fg"><label>Termin (opcjonalnie)</label><input type="date" id="c-termin">
       <div class="hint">Jeśli ustawisz, policzę ile odkładać miesięcznie, żeby zdążyć.</div></div>
     <div class="modal-footer">
@@ -272,11 +272,17 @@ async function loadCele() {
 
 function refreshCKonto(prefer) {
   const sel = document.getElementById('c-konto');
-  sel.innerHTML = '<option value="">— brak przypisania —</option>' +
-    konta.map(k => `<option value="${k.id}"${k.id === prefer ? ' selected' : ''}>${escHtml(k.nazwa)} (${escHtml(k.typ)})</option>`).join('');
+  const oszcz = konta.filter(k => k.typ === 'oszczędności');
+  sel.innerHTML = oszcz.length
+    ? oszcz.map(k => `<option value="${k.id}"${k.id === prefer ? ' selected' : ''}>${escHtml(k.nazwa)}</option>`).join('')
+    : '<option value="">— brak konta oszczędnościowego —</option>';
 }
 
 function openCel() {
+  if (!konta.some(k => k.typ === 'oszczędności')) {
+    alert('Najpierw utwórz konto oszczędnościowe na stronie Konta — cele to subkonta na takim koncie.');
+    return;
+  }
   editCelId = null;
   document.getElementById('m-cel-title').textContent = 'Nowy cel';
   document.getElementById('c-nazwa').value = '';
@@ -307,6 +313,7 @@ async function saveCel() {
     termin: document.getElementById('c-termin').value || null,
   };
   if (!body.nazwa || isNaN(body.kwota_docelowa) || body.kwota_docelowa <= 0) { alert('Podaj nazwę i kwotę docelową.'); return; }
+  if (!body.konto_id) { alert('Wybierz konto oszczędnościowe dla celu.'); return; }
   const url = editCelId ? `/api/cele/${editCelId}` : '/api/cele';
   const res = await authFetch(url, { method: editCelId ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
   if (!res.ok) { const e = await res.json().catch(()=>({})); alert(e.detail || 'Nie udało się zapisać.'); return; }

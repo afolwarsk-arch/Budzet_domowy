@@ -1615,14 +1615,23 @@ def create_przelew(household_id: int, data: str, kwota: float,
             (household_id, data, kwota, konto_z_id, konto_na_id, opis or None),
         )
         przelew = dict(cur.fetchone())
-        # jeśli przelew zasila kopertę (cel) na koncie docelowym — utwórz wpłatę na cel
+        # przelew powiązany z subkontem (celem): znak wpłaty zależy od strony przelewu —
+        # NA konto celu = wpłata dodatnia (zasilenie), Z konta celu = ujemna (wypłata z celu).
         if cel_id:
-            cur.execute("SELECT id FROM cele WHERE id=%s AND household_id=%s AND aktywny=TRUE", (cel_id, household_id))
-            if cur.fetchone():
-                cur.execute(
-                    "INSERT INTO cele_wplaty (cel_id, data, kwota, opis, zrodlo) VALUES (%s,%s,%s,%s,%s)",
-                    (cel_id, data, kwota, opis or "Przelew na cel", zrodlo_wplaty),
-                )
+            cur.execute("SELECT konto_id FROM cele WHERE id=%s AND household_id=%s AND aktywny=TRUE", (cel_id, household_id))
+            row = cur.fetchone()
+            if row:
+                if row["konto_id"] == konto_na_id:
+                    znak, tekst = 1, opis or "Przelew na cel"
+                elif row["konto_id"] == konto_z_id:
+                    znak, tekst = -1, opis or "Wypłata z celu"
+                else:
+                    znak = 0
+                if znak:
+                    cur.execute(
+                        "INSERT INTO cele_wplaty (cel_id, data, kwota, opis, zrodlo) VALUES (%s,%s,%s,%s,%s)",
+                        (cel_id, data, znak * kwota, tekst, zrodlo_wplaty),
+                    )
         return przelew
 
 
