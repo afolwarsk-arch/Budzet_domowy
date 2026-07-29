@@ -160,6 +160,8 @@
     <div class="fg"><label>Data</label><input type="date" id="wp-data"></div>
     <div class="fg"><label>Kwota (zł)</label><input type="number" id="wp-kwota" step="0.01" placeholder="0.00">
       <div class="hint">Aby zaznaczyć stan początkowy istniejącej koperty, dodaj pierwszą wpłatę „stan startowy".</div></div>
+    <div class="fg"><label>Z konta (realny przelew)</label><select id="wp-zkonto"></select>
+      <div class="hint">Wybierz konto, by zrobić prawdziwy przelew na to subkonto (zejdzie z konta źródłowego). Zostaw „bez przelewu", by tylko zapisać wpłatę (np. stan startowy).</div></div>
     <div class="fg"><label>Opis (opcjonalnie)</label><input type="text" id="wp-opis" placeholder="np. stan startowy"></div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal('m-wplata')">Anuluj</button>
@@ -212,6 +214,7 @@
 <script>
 let konta = [];
 let hierarchia = {};
+let celeLista = [];
 let editCelId = null;
 let wplataCelId = null;
 let flowData = null;
@@ -229,6 +232,7 @@ document.querySelectorAll('.modal-backdrop').forEach(el => el.addEventListener('
 // ── Cele oszczędnościowe ──
 async function loadCele() {
   const cele = await authFetch('/api/cele').then(r => r.json());
+  celeLista = cele;
   const grid = document.getElementById('cele-grid');
   document.getElementById('cele-empty').style.display = cele.length ? 'none' : '';
   grid.innerHTML = cele.map(c => {
@@ -391,18 +395,40 @@ function openWplata(id, nazwa) {
   document.getElementById('wp-data').value = new Date().toISOString().slice(0,10);
   document.getElementById('wp-kwota').value = '';
   document.getElementById('wp-opis').value = '';
+  // konta źródłowe: ta sama waluta co konto celu, bez samego konta celu
+  const goal = celeLista.find(c => c.id === id);
+  const savings = konta.find(k => goal && k.id === goal.konto_id);
+  const zrodla = konta.filter(k => savings && k.id !== savings.id && k.waluta === savings.waluta);
+  document.getElementById('wp-zkonto').innerHTML =
+    '<option value="">— bez przelewu (tylko zapisz wpłatę) —</option>' +
+    zrodla.map(k => `<option value="${k.id}">${escHtml(k.nazwa)} (${escHtml(k.typ)})</option>`).join('');
   openModal('m-wplata');
 }
 
 async function saveWplata() {
-  const body = {
-    data: document.getElementById('wp-data').value,
-    kwota: parseFloat(document.getElementById('wp-kwota').value),
-    opis: document.getElementById('wp-opis').value.trim() || null,
-  };
-  if (!body.data || isNaN(body.kwota) || body.kwota === 0) { alert('Podaj datę i kwotę.'); return; }
-  const res = await authFetch(`/api/cele/${wplataCelId}/wplaty`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  if (!res.ok) { const e = await res.json().catch(()=>({})); alert(e.detail || 'Nie udało się zapisać wpłaty.'); return; }
+  const data = document.getElementById('wp-data').value;
+  const kwota = parseFloat(document.getElementById('wp-kwota').value);
+  const opis = document.getElementById('wp-opis').value.trim() || null;
+  if (!data || isNaN(kwota) || kwota === 0) { alert('Podaj datę i kwotę.'); return; }
+  const zKonto = parseInt(document.getElementById('wp-zkonto').value) || null;
+  let res;
+  if (zKonto) {
+    // realny przelew z wybranego konta na subkonto (backend utworzy wpłatę na cel)
+    if (kwota <= 0) { alert('Przy przelewie z konta kwota musi być dodatnia.'); return; }
+    const goal = celeLista.find(c => c.id === wplataCelId);
+    if (!goal || !goal.konto_id) { alert('Cel nie ma konta oszczędnościowego.'); return; }
+    res = await authFetch('/api/przelewy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ konto_z_id: zKonto, konto_na_id: goal.konto_id, kwota, data, opis, cel_id: wplataCelId }),
+    });
+  } else {
+    // zwykły zapis wpłaty (bez ruchu pieniędzy na kontach)
+    res = await authFetch(`/api/cele/${wplataCelId}/wplaty`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data, kwota, opis }),
+    });
+  }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Nie udało się zapisać.'); return; }
   closeModal('m-wplata');
   loadCele();
 }
