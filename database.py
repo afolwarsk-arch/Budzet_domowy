@@ -1802,7 +1802,7 @@ def _analiza_celu(cur, c: dict) -> dict:
     return c
 
 
-def get_cele(household_id: int) -> list[dict]:
+def get_cele(household_id: int, aktywne: bool = True) -> list[dict]:
     with get_db() as cur:
         cur.execute("""
             SELECT c.*, k.nazwa AS konto_nazwa,
@@ -1813,9 +1813,9 @@ def get_cele(household_id: int) -> list[dict]:
                        - COALESCE((SELECT SUM(pz.kwota) FROM przelewy pz WHERE pz.konto_z_id = k.id), 0)
                    AS numeric), 2) AS saldo_konta
             FROM cele c LEFT JOIN konta k ON k.id = c.konto_id
-            WHERE c.household_id = %s AND c.aktywny = TRUE
+            WHERE c.household_id = %s AND c.aktywny = %s
             ORDER BY c.created_at
-        """, (household_id,))
+        """, (household_id, aktywne))
         cele = [dict(r) for r in cur.fetchall()]
         for c in cele:
             if c.get("saldo_konta") is not None:
@@ -1847,6 +1847,13 @@ def update_cel(cel_id: int, household_id: int, nazwa: str, kwota_docelowa: float
 def delete_cel(cel_id: int, household_id: int) -> bool:
     with get_db() as cur:
         cur.execute("DELETE FROM cele WHERE id=%s AND household_id=%s", (cel_id, household_id))
+        return cur.rowcount > 0
+
+
+def set_cel_aktywny(cel_id: int, household_id: int, aktywny: bool) -> bool:
+    with get_db() as cur:
+        cur.execute("UPDATE cele SET aktywny=%s WHERE id=%s AND household_id=%s",
+                    (aktywny, cel_id, household_id))
         return cur.rowcount > 0
 
 

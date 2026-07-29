@@ -1486,8 +1486,8 @@ def _waliduj_konto_celu(household_id: int, konto_id: int | None) -> None:
 
 
 @app.get("/api/cele")
-def api_get_cele(current_user: dict = Depends(get_current_user)):
-    return database.get_cele(current_user["household_id"])
+def api_get_cele(archiwum: bool = False, current_user: dict = Depends(get_current_user)):
+    return database.get_cele(current_user["household_id"], aktywne=not archiwum)
 
 
 @app.post("/api/cele", status_code=201)
@@ -1518,6 +1518,20 @@ def api_update_cel(cel_id: int, body: CelIn, current_user: dict = Depends(get_cu
 @app.delete("/api/cele/{cel_id}")
 def api_delete_cel(cel_id: int, current_user: dict = Depends(get_current_user)):
     if not database.delete_cel(cel_id, current_user["household_id"]):
+        raise HTTPException(404, "Cel nie znaleziony")
+    return {"ok": True}
+
+
+@app.post("/api/cele/{cel_id}/archiwizuj")
+def api_archiwizuj_cel(cel_id: int, current_user: dict = Depends(get_current_user)):
+    if not database.set_cel_aktywny(cel_id, current_user["household_id"], False):
+        raise HTTPException(404, "Cel nie znaleziony")
+    return {"ok": True}
+
+
+@app.post("/api/cele/{cel_id}/przywroc")
+def api_przywroc_cel(cel_id: int, current_user: dict = Depends(get_current_user)):
+    if not database.set_cel_aktywny(cel_id, current_user["household_id"], True):
         raise HTTPException(404, "Cel nie znaleziony")
     return {"ok": True}
 

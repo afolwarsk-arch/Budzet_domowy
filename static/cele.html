@@ -22,6 +22,10 @@
 
     .cele-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
     .cel-card { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:18px; }
+    .cel-card.osiagniety { border:2px solid #2e7d32; background:linear-gradient(180deg,#f2fbf3,#fff); }
+    .cel-card.arch { opacity:.72; }
+    .arch-toggle { background:none; border:none; cursor:pointer; font-size:13px; font-weight:600; color:#666; padding:6px 0; }
+    .arch-toggle:hover { color:#333; }
     .cel-top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:4px; }
     .cel-nazwa { font-weight:700; font-size:1.05rem; color:#1a1a1a; }
     .cel-konto { font-size:11px; color:#888; margin-top:2px; }
@@ -104,6 +108,10 @@
     </div>
     <div id="cele-grid" class="cele-grid"></div>
     <div id="cele-empty" class="empty-hint" style="display:none">Brak celów. Dodaj pierwszy — np. „Wakacje 8 000 zł".</div>
+    <div id="arch-wrap" style="display:none;margin-top:16px">
+      <button id="arch-toggle" class="arch-toggle" onclick="toggleArch()"><span id="arch-arrow">▸</span> Zrealizowane cele (<span id="arch-count">0</span>)</button>
+      <div id="arch-grid" class="cele-grid" style="display:none;margin-top:10px"></div>
+    </div>
   </div>
 
   <!-- 2. Limity wydatków -->
@@ -244,10 +252,10 @@ async function loadCele() {
         analiza += '<br><span style="color:#999">Dodaj wpłaty, policzę tempo i prognozę.</span>';
       }
     }
-    return `<div class="cel-card">
+    return `<div class="cel-card${c.brakuje <= 0 ? ' osiagniety' : ''}">
       <div class="cel-top">
         <div>
-          <div class="cel-nazwa">${escHtml(c.nazwa)}</div>
+          <div class="cel-nazwa">${c.brakuje <= 0 ? '🎉 ' : ''}${escHtml(c.nazwa)}</div>
           ${c.konto_nazwa ? `<div class="cel-konto">💳 ${escHtml(c.konto_nazwa)}</div>` : '<div class="cel-konto" style="color:#c07">bez konta</div>'}
         </div>
         <div class="cel-icons">
@@ -265,9 +273,58 @@ async function loadCele() {
       <div class="cel-btns">
         <button class="primary" onclick="openWplata(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')">＋ Wpłać</button>
         <button onclick="openHist(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')">Historia</button>
+        ${c.brakuje <= 0 ? `<button onclick="archiwizujCel(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}',${c.odlozone})">🏁 Zakończ</button>` : ''}
       </div>
     </div>`;
   }).join('');
+  loadArchiwum();
+}
+
+// Zrealizowane / zarchiwizowane cele
+async function loadArchiwum() {
+  const arch = await authFetch('/api/cele?archiwum=1').then(r => r.json());
+  const wrap = document.getElementById('arch-wrap');
+  const grid = document.getElementById('arch-grid');
+  document.getElementById('arch-count').textContent = arch.length;
+  wrap.style.display = arch.length ? '' : 'none';
+  grid.innerHTML = arch.map(c => `<div class="cel-card arch">
+    <div class="cel-top">
+      <div>
+        <div class="cel-nazwa">🏁 ${escHtml(c.nazwa)}</div>
+        ${c.konto_nazwa ? `<div class="cel-konto">💳 ${escHtml(c.konto_nazwa)}</div>` : ''}
+      </div>
+    </div>
+    <div class="cel-kwoty"><span class="cel-odlozone" style="color:#888">${fmt(c.odlozone)}</span><span class="cel-cel">z ${fmtZl(c.kwota_docelowa)}</span></div>
+    <div class="cel-btns">
+      <button onclick="przywrocCel(${c.id})">↩ Przywróć</button>
+      <button onclick="openHist(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')">Historia</button>
+      <button onclick="delCel(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')" title="Usuń trwale">✕</button>
+    </div>
+  </div>`).join('');
+}
+
+function toggleArch() {
+  const grid = document.getElementById('arch-grid');
+  const open = grid.style.display !== 'none';
+  grid.style.display = open ? 'none' : 'grid';
+  document.getElementById('arch-arrow').textContent = open ? '▸' : '▾';
+}
+
+async function archiwizujCel(id, nazwa, odlozone) {
+  let msg = `Zakończyć cel „${nazwa}" i przenieść do zrealizowanych?`;
+  if (odlozone > 0.01) {
+    msg += `\n\nNa tym subkoncie jest jeszcze ${fmtZl(odlozone)}. Po archiwizacji ta kwota przestanie być przypisana do celu — na koncie oszczędnościowym trafi do „nieprzypisane". Jeśli już wydałeś te środki, dodaj najpierw wypłatę (przelewem z subkonta).`;
+  }
+  if (!confirm(msg)) return;
+  const res = await authFetch(`/api/cele/${id}/archiwizuj`, { method: 'POST' });
+  if (!res.ok) { alert('Nie udało się zarchiwizować.'); return; }
+  loadCele();
+}
+
+async function przywrocCel(id) {
+  const res = await authFetch(`/api/cele/${id}/przywroc`, { method: 'POST' });
+  if (!res.ok) { alert('Nie udało się przywrócić.'); return; }
+  loadCele();
 }
 
 function refreshCKonto(prefer) {
@@ -278,7 +335,7 @@ function refreshCKonto(prefer) {
     : '<option value="">— brak konta oszczędnościowego —</option>';
 }
 
-function openCel() {
+function openCel(preferKonto) {
   if (!konta.some(k => k.typ === 'oszczędności')) {
     alert('Najpierw utwórz konto oszczędnościowe na stronie Konta — cele to subkonta na takim koncie.');
     return;
@@ -288,7 +345,7 @@ function openCel() {
   document.getElementById('c-nazwa').value = '';
   document.getElementById('c-kwota').value = '';
   document.getElementById('c-termin').value = '';
-  refreshCKonto(null);
+  refreshCKonto(preferKonto || null);
   openModal('m-cel');
 }
 
@@ -502,6 +559,9 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
     authFetch('/api/kategorie').then(r => r.json()),
   ]);
   await Promise.all([loadCele(), loadLimity(), loadFlow()]);
+  // wejście z Kont: /cele?konto=<id> otwiera od razu formularz nowego subkonta
+  const kId = parseInt(new URLSearchParams(location.search).get('konto'));
+  if (kId && konta.some(k => k.id === kId && k.typ === 'oszczędności')) openCel(kId);
 }));
 </script>
 </body>
