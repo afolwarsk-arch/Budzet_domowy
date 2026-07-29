@@ -96,6 +96,7 @@
   <a href="/upload">Dodaj wydatek</a>
   <a href="/konta" class="active">Konta</a>
   <a href="/wplywy">Wpływy</a>
+  <a href="/cele">Cele</a>
   <a href="/kategorie">Kategorie</a>
   <a href="/analiza">Analiza</a>
   <a href="/powiadomienia">Powiadomienia</a>
@@ -203,7 +204,8 @@
   <div class="modal-box">
     <h3 id="m-przelew-title">Przelew między kontami</h3>
     <div class="fg"><label>Z konta</label><select id="p-z" onchange="refreshPrzelewNa()"></select></div>
-    <div class="fg"><label>Na konto</label><select id="p-na"></select></div>
+    <div class="fg"><label>Na konto</label><select id="p-na" onchange="refreshPrzelewCel()"></select></div>
+    <div class="fg" id="p-cel-wrap" style="display:none"><label>Na cel (koperta, opcjonalnie)</label><select id="p-cel"></select></div>
     <div class="fg"><label>Kwota</label><input type="number" id="p-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
     <div class="fg"><label>Data</label><input type="date" id="p-data"></div>
     <div class="fg"><label>Opis (opcjonalnie)</label><input type="text" id="p-opis" placeholder="np. wypłata z bankomatu, na oszczędności"></div>
@@ -246,7 +248,8 @@
     <div class="fg" id="c-subkat-wrap"><label>Podkategoria</label><select id="c-subkat"></select></div>
     <div class="fg"><label>Osoba</label><select id="c-osoba"></select></div>
     <div class="fg"><label id="c-konto-label">Konto</label><select id="c-konto"></select></div>
-    <div class="fg" id="c-na-wrap" style="display:none"><label>Na konto</label><select id="c-konto-na"></select></div>
+    <div class="fg" id="c-na-wrap" style="display:none"><label>Na konto</label><select id="c-konto-na" onchange="refreshCyklCel()"></select></div>
+    <div class="fg" id="c-cel-wrap" style="display:none"><label>Na cel (koperta, opcjonalnie)</label><select id="c-cel"></select></div>
     <div class="fg" id="c-od-wrap"><label>Naliczaj od miesiąca</label><input type="month" id="c-od"></div>
     <div class="fg" id="c-aktywne-wrap" style="display:none">
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:14px;font-weight:500;color:#333">
@@ -280,6 +283,7 @@ const TYP_COLOR = { bank:'#4361ee', 'oszczędności':'#2e7d32', gotówka:'#e6510
 const TYP_LABEL = { bank:'Bank', 'oszczędności':'Oszczędności', gotówka:'Gotówka', krypto:'Krypto', inne:'Inne' };
 
 let konta = [];
+let cele = [];
 let editKontoId = null;
 let activeKontoId = null;
 let myDefaultKontoId = null;
@@ -489,6 +493,19 @@ function refreshPrzelewNa() {
   sel.innerHTML = opcje.length
     ? opcje.map(k => `<option value="${k.id}">${k.nazwa} (${k.waluta})</option>`).join('')
     : '<option value="">— brak konta w tej samej walucie —</option>';
+  refreshPrzelewCel();
+}
+
+// Pokaż wybór koperty, jeśli konto docelowe ma cele (tylko przy nowym przelewie)
+function refreshPrzelewCel() {
+  const naId = parseInt(document.getElementById('p-na').value);
+  const wrap = document.getElementById('p-cel-wrap');
+  const sel = document.getElementById('p-cel');
+  const opcje = editPrzelewId ? [] : cele.filter(c => c.konto_id === naId);
+  if (!opcje.length) { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
+  wrap.style.display = '';
+  sel.innerHTML = '<option value="">— bez celu —</option>' +
+    opcje.map(c => `<option value="${c.id}">${c.nazwa}</option>`).join('');
 }
 
 let editPrzelewId = null;
@@ -528,6 +545,7 @@ async function savePrzelew() {
     kwota: parseFloat(document.getElementById('p-kwota').value),
     data: document.getElementById('p-data').value,
     opis: document.getElementById('p-opis').value.trim() || null,
+    cel_id: editPrzelewId ? null : (parseInt(document.getElementById('p-cel').value) || null),
   };
   if (!body.konto_na_id) { alert('Brak konta docelowego w tej samej walucie.'); return; }
   if (!body.data || isNaN(body.kwota) || body.kwota <= 0) { alert('Wypełnij datę i kwotę.'); return; }
@@ -630,6 +648,22 @@ function refreshCyklTyp() {
   document.getElementById('c-subkat-wrap').style.display = przelew ? 'none' : '';
   document.getElementById('c-na-wrap').style.display = przelew ? '' : 'none';
   document.getElementById('c-konto-label').textContent = przelew ? 'Z konta' : 'Konto';
+  refreshCyklCel();
+}
+
+// Koperta dla cyklicznego przelewu — gdy konto docelowe ma cele
+function refreshCyklCel() {
+  const przelew = document.getElementById('c-typ').value === 'przelew';
+  const naId = parseInt(document.getElementById('c-konto-na').value);
+  const wrap = document.getElementById('c-cel-wrap');
+  const sel = document.getElementById('c-cel');
+  const opcje = przelew ? cele.filter(c => c.konto_id === naId) : [];
+  if (!opcje.length) { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
+  const prev = sel.value;
+  wrap.style.display = '';
+  sel.innerHTML = '<option value="">— bez celu —</option>' +
+    opcje.map(c => `<option value="${c.id}">${c.nazwa}</option>`).join('');
+  if (prev) sel.value = prev;
 }
 
 function refreshCyklSubkat() {
@@ -676,6 +710,7 @@ function editCykl(id) {
   document.getElementById('c-aktywne').checked = !!c.aktywne;
   fillCyklSelects(c);
   refreshCyklTyp();
+  if (c.cel_id) document.getElementById('c-cel').value = c.cel_id;
   refreshCyklKoniec();
   openModal('m-cykl');
 }
@@ -695,11 +730,12 @@ async function saveCykl() {
     automatyczny: document.getElementById('c-auto').value === '1',
     typ: document.getElementById('c-typ').value,
     konto_na_id: parseInt(document.getElementById('c-konto-na').value) || null,
+    cel_id: parseInt(document.getElementById('c-cel').value) || null,
   };
   const koniec = document.getElementById('c-koniec').value;
   if (koniec === 'liczba') body.limit_naliczen = parseInt(document.getElementById('c-limit').value) || null;
   if (koniec === 'miesiac') body.do_miesiaca = document.getElementById('c-do').value || null;
-  if (body.typ !== 'przelew') body.konto_na_id = null;
+  if (body.typ !== 'przelew') { body.konto_na_id = null; body.cel_id = null; }
   if (!editCyklId) body.od_miesiaca = document.getElementById('c-od').value;
   if (!body.nazwa || isNaN(body.kwota) || body.kwota <= 0) { alert('Podaj nazwę i kwotę.'); return; }
   if (isNaN(body.dzien) || body.dzien < 1 || body.dzien > 31) { alert('Dzień miesiąca: 1-31.'); return; }
@@ -825,13 +861,15 @@ function closePanelInwent() {
 }
 
 window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(async () => {
-  const [hh, def, hier] = await Promise.all([
+  const [hh, def, hier, celeData] = await Promise.all([
     authFetch('/api/household').then(r => r.json()),
     authFetch('/api/me/konto-domyslne').then(r => r.json()),
     authFetch('/api/kategorie').then(r => r.json()),
+    authFetch('/api/cele').then(r => r.json()),
     loadKonta(),
     loadCykliczne(),
   ]);
+  cele = Array.isArray(celeData) ? celeData : [];
   myDefaultKontoId = def.konto_id || null;
   HIERARCHIA = hier || {};
   osobyOpcje = [

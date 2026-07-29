@@ -188,6 +188,7 @@ const _BOTTOM_NAV_ITEMS = [
   { href: '/lista',         icon: '🛒', label: 'Lista' },
   { href: '/konta',         icon: '💳', label: 'Konta' },
   { href: '/wplywy',        icon: '💰', label: 'Wpływy' },
+  { href: '/cele',          icon: '🎯', label: 'Cele' },
   { href: '/kategorie',     icon: '🏷️', label: 'Kategorie' },
   { href: '/analiza',       icon: '📈', label: 'Analiza' },
   { href: '/powiadomienia', icon: '🔔', label: 'Alerty' },

@@ -234,6 +234,36 @@ def init_db():
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS typ TEXT NOT NULL DEFAULT 'wydatek'")
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS do_miesiaca DATE")
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS konto_na_id INTEGER REFERENCES konta(id) ON DELETE SET NULL")
+        # --- moduł Cele ---
+        cur.execute("""CREATE TABLE IF NOT EXISTS cele (
+            id             SERIAL PRIMARY KEY,
+            household_id   INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            nazwa          TEXT NOT NULL,
+            kwota_docelowa NUMERIC(12,2) NOT NULL,
+            konto_id       INTEGER REFERENCES konta(id) ON DELETE SET NULL,
+            termin         DATE,
+            aktywny        BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS cele_wplaty (
+            id         SERIAL PRIMARY KEY,
+            cel_id     INTEGER NOT NULL REFERENCES cele(id) ON DELETE CASCADE,
+            data       DATE NOT NULL,
+            kwota      NUMERIC(12,2) NOT NULL,
+            opis       TEXT,
+            zrodlo     TEXT NOT NULL DEFAULT 'reczna',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS limity (
+            id               SERIAL PRIMARY KEY,
+            household_id     INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            kategoria_glowna TEXT NOT NULL,
+            kwota_miesieczna NUMERIC(12,2) NOT NULL,
+            created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (household_id, kategoria_glowna)
+        )""")
+        # cykliczny przelew może zasilać konkretną kopertę (cel)
+        cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS cel_id INTEGER REFERENCES cele(id) ON DELETE SET NULL")
         cur.execute("""CREATE TABLE IF NOT EXISTS platnosci_oczekujace (
             id           SERIAL PRIMARY KEY,
             household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
@@ -1570,7 +1600,8 @@ def get_inwentaryzacje(konto_id: int, household_id: int) -> list[dict]:
 # --- przelewy między kontami ---
 
 def create_przelew(household_id: int, data: str, kwota: float,
-                   konto_z_id: int, konto_na_id: int, opis: str | None) -> dict:
+                   konto_z_id: int, konto_na_id: int, opis: str | None,
+                   cel_id: int | None = None, zrodlo_wplaty: str = "przelew") -> dict:
     with get_db() as cur:
         cur.execute("SELECT id, waluta FROM konta WHERE id IN (%s,%s) AND household_id=%s AND aktywne=TRUE",
                     (konto_z_id, konto_na_id, household_id))
@@ -1583,7 +1614,16 @@ def create_przelew(household_id: int, data: str, kwota: float,
             "INSERT INTO przelewy (household_id, data, kwota, konto_z_id, konto_na_id, opis) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *",
             (household_id, data, kwota, konto_z_id, konto_na_id, opis or None),
         )
-        return dict(cur.fetchone())
+        przelew = dict(cur.fetchone())
+        # jeśli przelew zasila kopertę (cel) na koncie docelowym — utwórz wpłatę na cel
+        if cel_id:
+            cur.execute("SELECT id FROM cele WHERE id=%s AND household_id=%s AND aktywny=TRUE", (cel_id, household_id))
+            if cur.fetchone():
+                cur.execute(
+                    "INSERT INTO cele_wplaty (cel_id, data, kwota, opis, zrodlo) VALUES (%s,%s,%s,%s,%s)",
+                    (cel_id, data, kwota, opis or "Przelew na cel", zrodlo_wplaty),
+                )
+        return przelew
 
 
 def get_przelew(przelew_id: int, household_id: int) -> dict | None:
@@ -1683,14 +1723,15 @@ def create_cykliczny(household_id: int, nazwa: str, kwota: float, dzien: int,
                      limit_naliczen: int | None = None,
                      automatyczny: bool = True, typ: str = "wydatek",
                      konto_na_id: int | None = None,
-                     do_miesiaca: str | None = None) -> dict:
+                     do_miesiaca: str | None = None,
+                     cel_id: int | None = None) -> dict:
     with get_db() as cur:
         cur.execute(
             """INSERT INTO wydatki_cykliczne
-               (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id, od_miesiaca, limit_naliczen, automatyczny, typ, konto_na_id, do_miesiaca)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+               (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id, od_miesiaca, limit_naliczen, automatyczny, typ, konto_na_id, do_miesiaca, cel_id)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
             (household_id, nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None,
-             od_miesiaca, limit_naliczen, automatyczny, typ, konto_na_id or None, do_miesiaca),
+             od_miesiaca, limit_naliczen, automatyczny, typ, konto_na_id or None, do_miesiaca, cel_id or None),
         )
         return dict(cur.fetchone())
 
@@ -1701,15 +1742,16 @@ def update_cykliczny(cykliczny_id: int, household_id: int, nazwa: str, kwota: fl
                      limit_naliczen: int | None = None,
                      automatyczny: bool = True, typ: str = "wydatek",
                      konto_na_id: int | None = None,
-                     do_miesiaca: str | None = None) -> bool:
+                     do_miesiaca: str | None = None,
+                     cel_id: int | None = None) -> bool:
     with get_db() as cur:
         cur.execute(
             """UPDATE wydatki_cykliczne SET nazwa=%s, kwota=%s, dzien=%s, kategoria_glowna=%s,
                kategoria=%s, osoba=%s, konto_id=%s, aktywne=%s, limit_naliczen=%s, automatyczny=%s,
-               typ=%s, konto_na_id=%s, do_miesiaca=%s
+               typ=%s, konto_na_id=%s, do_miesiaca=%s, cel_id=%s
                WHERE id=%s AND household_id=%s""",
             (nazwa, kwota, dzien, kategoria_glowna, kategoria, osoba, konto_id or None,
-             aktywne, limit_naliczen, automatyczny, typ, konto_na_id or None, do_miesiaca,
+             aktywne, limit_naliczen, automatyczny, typ, konto_na_id or None, do_miesiaca, cel_id or None,
              cykliczny_id, household_id),
         )
         return cur.rowcount > 0
@@ -1719,6 +1761,172 @@ def delete_cykliczny(cykliczny_id: int, household_id: int) -> bool:
     with get_db() as cur:
         cur.execute("DELETE FROM wydatki_cykliczne WHERE id=%s AND household_id=%s", (cykliczny_id, household_id))
         return cur.rowcount > 0
+
+
+# ══════════════════ MODUŁ CELE ══════════════════
+
+# --- cele oszczędnościowe (koperty) ---
+
+def _analiza_celu(cur, c: dict) -> dict:
+    """Dolicza do celu: odłożone, brakuje, postęp %, tempo miesięczne (śr. z 3 mies.),
+    prognozę i — przy terminie — wymagane tempo oraz czy na czas."""
+    from datetime import date as _date
+    c["kwota_docelowa"] = float(c["kwota_docelowa"])
+    cur.execute("SELECT COALESCE(SUM(kwota), 0) AS s FROM cele_wplaty WHERE cel_id=%s", (c["id"],))
+    c["odlozone"] = round(float(cur.fetchone()["s"]), 2)
+    c["brakuje"] = round(max(c["kwota_docelowa"] - c["odlozone"], 0), 2)
+    c["postep"] = round(min(c["odlozone"] / c["kwota_docelowa"], 1) * 100, 1) if c["kwota_docelowa"] > 0 else 0
+    # tempo: suma wpłat z ostatnich 3 miesięcy / 3
+    cur.execute("SELECT COALESCE(SUM(kwota), 0) AS s FROM cele_wplaty WHERE cel_id=%s AND data >= CURRENT_DATE - INTERVAL '3 months'", (c["id"],))
+    tempo = round(float(cur.fetchone()["s"]) / 3.0, 2)
+    c["tempo_miesieczne"] = tempo
+    c["prognoza_miesiecy"] = round(c["brakuje"] / tempo, 1) if (c["brakuje"] > 0 and tempo > 0) else (0 if c["brakuje"] <= 0 else None)
+    # termin → wymagane tempo i status
+    c["wymagane_miesieczne"] = None
+    c["na_czas"] = None
+    if c.get("termin") and c["brakuje"] > 0:
+        termin = c["termin"] if isinstance(c["termin"], _date) else _date.fromisoformat(str(c["termin"])[:10])
+        dni = (termin - _date.today()).days
+        mies = max(dni / 30.44, 0.1)
+        c["wymagane_miesieczne"] = round(c["brakuje"] / mies, 2)
+        c["na_czas"] = tempo >= c["wymagane_miesieczne"]
+    return c
+
+
+def get_cele(household_id: int) -> list[dict]:
+    with get_db() as cur:
+        cur.execute("""
+            SELECT c.*, k.nazwa AS konto_nazwa,
+                   ROUND(CAST(COALESCE(k.saldo_poczatkowe, 0)
+                       + COALESCE((SELECT SUM(wp.kwota) FROM wplywy wp WHERE wp.konto_id = k.id), 0)
+                       - COALESCE((SELECT SUM(w2.suma) FROM wydatki w2 WHERE w2.konto_id = k.id), 0)
+                       + COALESCE((SELECT SUM(pn.kwota) FROM przelewy pn WHERE pn.konto_na_id = k.id), 0)
+                       - COALESCE((SELECT SUM(pz.kwota) FROM przelewy pz WHERE pz.konto_z_id = k.id), 0)
+                   AS numeric), 2) AS saldo_konta
+            FROM cele c LEFT JOIN konta k ON k.id = c.konto_id
+            WHERE c.household_id = %s AND c.aktywny = TRUE
+            ORDER BY c.created_at
+        """, (household_id,))
+        cele = [dict(r) for r in cur.fetchall()]
+        for c in cele:
+            if c.get("saldo_konta") is not None:
+                c["saldo_konta"] = float(c["saldo_konta"])
+            _analiza_celu(cur, c)
+        return cele
+
+
+def create_cel(household_id: int, nazwa: str, kwota_docelowa: float,
+               konto_id: int | None, termin: str | None) -> dict:
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO cele (household_id, nazwa, kwota_docelowa, konto_id, termin) VALUES (%s,%s,%s,%s,%s) RETURNING *",
+            (household_id, nazwa, kwota_docelowa, konto_id or None, termin or None),
+        )
+        return dict(cur.fetchone())
+
+
+def update_cel(cel_id: int, household_id: int, nazwa: str, kwota_docelowa: float,
+               konto_id: int | None, termin: str | None) -> bool:
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE cele SET nazwa=%s, kwota_docelowa=%s, konto_id=%s, termin=%s WHERE id=%s AND household_id=%s",
+            (nazwa, kwota_docelowa, konto_id or None, termin or None, cel_id, household_id),
+        )
+        return cur.rowcount > 0
+
+
+def delete_cel(cel_id: int, household_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("DELETE FROM cele WHERE id=%s AND household_id=%s", (cel_id, household_id))
+        return cur.rowcount > 0
+
+
+def get_cel_wplaty(cel_id: int, household_id: int) -> list[dict]:
+    with get_db() as cur:
+        cur.execute("""SELECT wp.* FROM cele_wplaty wp JOIN cele c ON c.id = wp.cel_id
+                       WHERE wp.cel_id=%s AND c.household_id=%s ORDER BY wp.data DESC, wp.id DESC""",
+                    (cel_id, household_id))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def add_cel_wplata(cel_id: int, household_id: int, data: str, kwota: float,
+                   opis: str | None, zrodlo: str = "reczna") -> dict:
+    with get_db() as cur:
+        cur.execute("SELECT id FROM cele WHERE id=%s AND household_id=%s", (cel_id, household_id))
+        if not cur.fetchone():
+            raise ValueError("Cel nie istnieje")
+        cur.execute(
+            "INSERT INTO cele_wplaty (cel_id, data, kwota, opis, zrodlo) VALUES (%s,%s,%s,%s,%s) RETURNING *",
+            (cel_id, data, kwota, opis or None, zrodlo),
+        )
+        return dict(cur.fetchone())
+
+
+def delete_cel_wplata(wplata_id: int, household_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("""DELETE FROM cele_wplaty wp USING cele c
+                       WHERE wp.id=%s AND wp.cel_id=c.id AND c.household_id=%s""",
+                    (wplata_id, household_id))
+        return cur.rowcount > 0
+
+
+# --- limity wydatków ---
+
+def get_limity(household_id: int, month: str | None = None) -> list[dict]:
+    from datetime import date as _date
+    month = month or _date.today().strftime("%Y-%m")
+    with get_db() as cur:
+        cur.execute("SELECT * FROM limity WHERE household_id=%s ORDER BY kategoria_glowna", (household_id,))
+        limity = [dict(r) for r in cur.fetchall()]
+        for l in limity:
+            cur.execute("""SELECT COALESCE(SUM(p.cena * p.ilosc), 0) AS s
+                           FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
+                           WHERE w.household_id=%s AND p.kategoria_glowna=%s AND TO_CHAR(w.data,'YYYY-MM')=%s""",
+                        (household_id, l["kategoria_glowna"], month))
+            l["kwota_miesieczna"] = float(l["kwota_miesieczna"])
+            l["wydane"] = round(float(cur.fetchone()["s"]), 2)
+            l["pozostalo"] = round(l["kwota_miesieczna"] - l["wydane"], 2)
+            l["procent"] = round(l["wydane"] / l["kwota_miesieczna"] * 100, 1) if l["kwota_miesieczna"] > 0 else 0
+        return limity
+
+
+def upsert_limit(household_id: int, kategoria_glowna: str, kwota_miesieczna: float) -> dict:
+    with get_db() as cur:
+        cur.execute(
+            """INSERT INTO limity (household_id, kategoria_glowna, kwota_miesieczna) VALUES (%s,%s,%s)
+               ON CONFLICT (household_id, kategoria_glowna) DO UPDATE SET kwota_miesieczna=EXCLUDED.kwota_miesieczna
+               RETURNING *""",
+            (household_id, kategoria_glowna, kwota_miesieczna),
+        )
+        return dict(cur.fetchone())
+
+
+def delete_limit(limit_id: int, household_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("DELETE FROM limity WHERE id=%s AND household_id=%s", (limit_id, household_id))
+        return cur.rowcount > 0
+
+
+# --- cel przepływowy (jeden na gospodarstwo, w ustawieniach) ---
+
+def get_cel_przeplywowy(household_id: int) -> dict | None:
+    raw = get_ustawienie(f"cel_przeplywowy:{household_id}", "")
+    if not raw:
+        return None
+    try:
+        val = json.loads(raw)
+        return val if isinstance(val, dict) and val.get("typ") in ("kwota", "procent") else None
+    except (ValueError, TypeError):
+        return None
+
+
+def set_cel_przeplywowy(household_id: int, typ: str, wartosc: float) -> None:
+    set_ustawienie(f"cel_przeplywowy:{household_id}",
+                   json.dumps({"typ": typ, "wartosc": float(wartosc)}))
+
+
+def delete_cel_przeplywowy(household_id: int) -> None:
+    set_ustawienie(f"cel_przeplywowy:{household_id}", "")
 
 
 def _terminy_cykliczne(od_miesiaca, dzien: int, po, do_dnia) -> list:
@@ -1826,7 +2034,8 @@ def _wykonaj_cykliczny(c: dict, data_str: str, household_id: int, notatka: str) 
         if not c.get("konto_id") or not c.get("konto_na_id"):
             raise ValueError("Przelew cykliczny wymaga konta źródłowego i docelowego")
         wynik = create_przelew(household_id, data_str, float(c["kwota"]),
-                               c["konto_id"], c["konto_na_id"], f"Cykliczny: {c['nazwa']}")
+                               c["konto_id"], c["konto_na_id"], f"Cykliczny: {c['nazwa']}",
+                               cel_id=c.get("cel_id"), zrodlo_wplaty="cykliczny")
         return wynik["id"]
     return create_wydatek(
         data=data_str, sklep=c["nazwa"], suma=float(c["kwota"]),

@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architektura — Budżet domowy</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; padding: 40px 20px; }
+  h1 { text-align: center; font-size: 2rem; margin-bottom: 8px; color: #fff; }
+  .subtitle { text-align: center; color: #94a3b8; margin-bottom: 48px; font-size: 0.95rem; }
+
+  .layer { margin-bottom: 32px; }
+  .layer-title { font-size: 0.75rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #64748b; margin-bottom: 12px; padding-left: 4px; }
+
+  .row { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+
+  .box {
+    border-radius: 12px;
+    padding: 20px 24px;
+    flex: 1;
+    min-width: 200px;
+    max-width: 300px;
+    border: 1px solid rgba(255,255,255,0.08);
+    position: relative;
+  }
+  .box .icon { font-size: 1.6rem; margin-bottom: 10px; }
+  .box h3 { font-size: 1rem; font-weight: 600; margin-bottom: 6px; }
+  .box p, .box ul { font-size: 0.82rem; color: #94a3b8; line-height: 1.6; }
+  .box ul { padding-left: 16px; }
+  .box li { margin-bottom: 2px; }
+  .box code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-size: 0.78rem; color: #e2e8f0; }
+
+  .blue   { background: #1e3a5f; border-color: #3b82f6; }
+  .green  { background: #1a3a2a; border-color: #22c55e; }
+  .purple { background: #2d1f4e; border-color: #a855f7; }
+  .orange { background: #3a2a10; border-color: #f59e0b; }
+  .red    { background: #3a1a1a; border-color: #ef4444; }
+  .teal   { background: #1a3038; border-color: #14b8a6; }
+  .gray   { background: #1e2535; border-color: #475569; }
+
+  .arrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    margin: 8px 0;
+    color: #475569;
+    font-size: 0.8rem;
+  }
+  .arrow::before, .arrow::after { content: ''; flex: 1; max-width: 120px; height: 1px; background: #334155; }
+  .arrow span { white-space: nowrap; }
+
+  .flow {
+    max-width: 900px;
+    margin: 0 auto 48px;
+    background: #1e2535;
+    border: 1px solid #334155;
+    border-radius: 16px;
+    padding: 32px;
+  }
+  .flow h2 { font-size: 1.1rem; margin-bottom: 24px; color: #cbd5e1; text-align: center; }
+
+  .flow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #3b82f6;
+    color: white;
+    font-weight: 700;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .step-body h4 { font-size: 0.9rem; margin-bottom: 4px; }
+  .step-body p { font-size: 0.82rem; color: #94a3b8; }
+
+  .tables-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+    max-width: 900px;
+    margin: 0 auto 48px;
+  }
+  .table-card {
+    background: #1e2535;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 12px 16px;
+  }
+  .table-card h4 { font-size: 0.85rem; font-weight: 600; color: #e2e8f0; margin-bottom: 4px; }
+  .table-card p { font-size: 0.75rem; color: #64748b; }
+
+  .section-title {
+    text-align: center;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    margin-bottom: 20px;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .badge-green { background: #166534; color: #86efac; }
+  .badge-blue  { background: #1e3a5f; color: #93c5fd; }
+
+  .divider { border: none; border-top: 1px solid #1e2535; margin: 48px auto; max-width: 900px; }
+
+  .info-box {
+    max-width: 900px;
+    margin: 0 auto 32px;
+    background: #1a3a2a;
+    border: 1px solid #22c55e;
+    border-radius: 12px;
+    padding: 20px 24px;
+    font-size: 0.85rem;
+    color: #86efac;
+  }
+  .info-box strong { color: #4ade80; }
+</style>
+</head>
+<body>
+
+<h1>🏠 Budżet domowy</h1>
+<p class="subtitle">Architektura systemu — produkcja na Railway</p>
+
+<!-- WARSTWA 1: UŻYTKOWNIK -->
+<div style="max-width:900px;margin:0 auto;">
+
+  <div class="layer">
+    <div class="layer-title">Użytkownik</div>
+    <div class="row">
+      <div class="box blue">
+        <div class="icon">🌐</div>
+        <h3>Przeglądarka</h3>
+        <ul>
+          <li><code>index.html</code> — dashboard, wykresy</li>
+          <li><code>upload.html</code> — dodaj wydatek</li>
+          <li><code>konta.html</code> — konta / wpływy</li>
+          <li><code>kategorie.html</code> — kategorie</li>
+          <li><code>analiza.html</code> — analiza grup</li>
+        </ul>
+      </div>
+      <div class="box blue">
+        <div class="icon">📱</div>
+        <h3>Frontend JS</h3>
+        <ul>
+          <li>Vanilla JS, bez frameworka</li>
+          <li><code>app.js</code> — cała logika</li>
+          <li><code>auth.js</code> — Firebase token</li>
+          <li>Chart.js — wykresy</li>
+          <li>Wysyła <code>Bearer token</code> do API</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>HTTPS — Bearer Token (Firebase JWT)</span></div>
+
+  <!-- WARSTWA 2: AUTH -->
+  <div class="layer">
+    <div class="layer-title">Autentykacja</div>
+    <div class="row">
+      <div class="box purple">
+        <div class="icon">🔑</div>
+        <h3>Firebase Auth</h3>
+        <p>Google Login. Wystawia JWT token. Backend weryfikuje każdy request przez Firebase Admin SDK.</p>
+        <p style="margin-top:8px;font-size:0.75rem;color:#a78bfa;">Projekt: budzet-domowy-56761</p>
+      </div>
+      <div class="box purple">
+        <div class="icon">🛡️</div>
+        <h3>auth.py</h3>
+        <ul>
+          <li><code>get_current_user()</code> — weryfikuje token, pobiera/tworzy usera, zwraca <code>household_id</code></li>
+          <li><code>require_admin()</code> — tylko a.folwarsk@gmail.com</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>current_user z household_id</span></div>
+
+  <!-- WARSTWA 3: BACKEND -->
+  <div class="layer">
+    <div class="layer-title">Backend</div>
+    <div class="row">
+      <div class="box green">
+        <div class="icon">⚡</div>
+        <h3>FastAPI — main.py</h3>
+        <ul>
+          <li><code>/api/wydatki</code> — CRUD paragonów</li>
+          <li><code>/api/stats/*</code> — statystyki</li>
+          <li><code>/api/household</code> — gospodarstwo</li>
+          <li><code>/api/konta</code> — konta / wpływy</li>
+          <li><code>/api/process-image</code> — AI</li>
+          <li><code>/api/process-text</code> — AI</li>
+          <li><code>/api/admin/*</code> — panel admina</li>
+        </ul>
+      </div>
+      <div class="box orange">
+        <div class="icon">🤖</div>
+        <h3>ai_processor.py</h3>
+        <p>Wysyła zdjęcie (base64) lub tekst do Claude API.</p>
+        <p style="margin-top:8px;">Zwraca: <code>sklep</code>, <code>data</code>, <code>suma</code>, <code>pozycje[]</code> z kategoriami.</p>
+        <p style="margin-top:8px;font-size:0.75rem;color:#fbbf24;">Model: claude-sonnet-4-6</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="arrow"><span>SQL przez psycopg2</span></div>
+
+  <!-- WARSTWA 4: BAZA -->
+  <div class="layer">
+    <div class="layer-title">Baza danych</div>
+    <div class="row">
+      <div class="box teal">
+        <div class="icon">🐘</div>
+        <h3>PostgreSQL — Railway</h3>
+        <ul>
+          <li>Baza: <code>railway</code></li>
+          <li>Wewnętrznie: <code>postgres.railway.internal:5432</code></li>
+          <li>Publicznie: <code>trolley.proxy.rlwy.net:30951</code></li>
+          <li>Serwis: <code>postgres</code> na Railway</li>
+          <li>Volume: <code>postgres-volume</code></li>
+        </ul>
+      </div>
+      <div class="box gray">
+        <div class="icon">📁</div>
+        <h3>Railway Volume</h3>
+        <ul>
+          <li><code>budzet_domowy-volume</code></li>
+          <li>Przechowuje <code>uploads/</code> (zdjęcia paragonów)</li>
+          <li><code>budget.db</code> — plik SQLite (pusty, nieużywany)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- PRZEPŁYW DODAWANIA WYDATKU -->
+  <div class="flow">
+    <h2>📸 Jak działa dodawanie wydatku?</h2>
+    <div class="flow-step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h4>User robi zdjęcie lub wpisuje tekst</h4>
+        <p>Strona <code>/upload</code> — dwie zakładki: foto albo notatka tekstowa</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h4>Frontend wysyła do API</h4>
+        <p><code>POST /api/process-image</code> (multipart) lub <code>POST /api/process-text</code> (JSON) z tokenem Firebase</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h4>Claude API analizuje</h4>
+        <p>Backend wysyła do Claude — AI wyciąga sklep, datę, sumę i listę pozycji z kategoriami. Dane wracają jako JSON.</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <h4>User widzi podgląd i może edytować</h4>
+        <p>Formularz z wyciągniętymi danymi — można poprawić przed zapisem</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <h4>Zapis do bazy</h4>
+        <p><code>POST /api/wydatki</code> — zapisuje nagłówek do <code>wydatki</code> i pozycje do <code>pozycje</code> powiązane z <code>household_id</code></p>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- TABELE -->
+  <p class="section-title">Tabele PostgreSQL</p>
+  <div class="tables-grid">
+    <div class="table-card">
+      <h4>🏠 households</h4>
+      <p>Gospodarstwa domowe. Centrum izolacji danych.</p>
+    </div>
+    <div class="table-card">
+      <h4>👤 users</h4>
+      <p>Użytkownicy — Firebase UID, email, display_name</p>
+    </div>
+    <div class="table-card">
+      <h4>🔗 memberships</h4>
+      <p>Kto należy do jakiego gospodarstwa (owner/member)</p>
+    </div>
+    <div class="table-card">
+      <h4>✉️ invitations</h4>
+      <p>Jednorazowe kody zaproszeń do dołączenia</p>
+    </div>
+    <div class="table-card">
+      <h4>🧾 wydatki</h4>
+      <p>Nagłówek paragonu: data, sklep, suma, osoba</p>
+    </div>
+    <div class="table-card">
+      <h4>📦 pozycje</h4>
+      <p>Pozycje paragonu: nazwa, cena, ilość, kategoria</p>
+    </div>
+    <div class="table-card">
+      <h4>🏦 konta</h4>
+      <p>Konta bankowe/gotówkowe z saldem</p>
+    </div>
+    <div class="table-card">
+      <h4>💰 wplywy</h4>
+      <p>Przychody przypisane do konta</p>
+    </div>
+    <div class="table-card">
+      <h4>📊 inwentaryzacje</h4>
+      <p>Ręczne sprawdzenia salda konta</p>
+    </div>
+    <div class="table-card">
+      <h4>👥 virtual_members</h4>
+      <p>Wirtualni członkowie (np. dzieci bez konta)</p>
+    </div>
+    <div class="table-card">
+      <h4>🔖 household_kategorie</h4>
+      <p>Hierarchia kategorii per gospodarstwo (JSON)</p>
+    </div>
+    <div class="table-card">
+      <h4>📈 analiza_state</h4>
+      <p>Stan widoku analizy — synch. między urządzeniami</p>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- BACKUP -->
+  <div class="flow">
+    <h2>💾 Automatyczny backup</h2>
+    <div class="flow-step">
+      <div class="step-num">⏰</div>
+      <div class="step-body">
+        <h4>Codziennie o 5:00 rano (PL)</h4>
+        <p>GitHub Actions uruchamia workflow z <code>.github/workflows/backup.yml</code></p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">🔌</div>
+      <div class="step-body">
+        <h4>Połączenie z PostgreSQL przez publiczny URL</h4>
+        <p>Używa GitHub Secret <code>DATABASE_PUBLIC_URL</code> → <code>trolley.proxy.rlwy.net:30951</code></p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">📤</div>
+      <div class="step-body">
+        <h4>Export wszystkich danych</h4>
+        <p><code>backup_all.py</code> — eksportuje wszystkie gospodarstwa: wydatki, pozycje, konta, wpływy, inwentaryzacje, kategorie</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">📁</div>
+      <div class="step-body">
+        <h4>Zapis na GitHub</h4>
+        <p>Plik <code>backups/backup_YYYY-MM-DD.json</code> w gałęzi <code>backups</code> repozytorium</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="info-box">
+    ✅ <strong>Stan na 2026-07-01:</strong> backup działa poprawnie — 2 gospodarstwa, 49 wydatków. Wszystkie wydatki mają przypisany <code>household_id</code> (0 z NULL).
+  </div>
+
+</div>
+</body>
+</html>

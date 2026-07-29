@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cele — Budżet domowy</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#4f7ef8">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com">
+  <link rel="preconnect" href="https://securetoken.googleapis.com">
+  <style>
+    .sekcja { margin-bottom:36px; }
+    .sekcja-head { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+    .sekcja-head h2 { font-size:1.15rem; margin:0; }
+    .sekcja-head p { margin:0; color:var(--muted); font-size:13px; flex:1 1 100%; }
+    .btn-add { margin-left:auto; background:#4361ee; color:#fff; border:none; border-radius:9px; padding:9px 16px; font-size:13.5px; font-weight:600; cursor:pointer; }
+    .btn-add:hover { background:#3451d1; }
+    .btn-add.green { background:#2e7d32; } .btn-add.green:hover { background:#276b2b; }
+
+    .cele-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+    .cel-card { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:18px; }
+    .cel-top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:4px; }
+    .cel-nazwa { font-weight:700; font-size:1.05rem; color:#1a1a1a; }
+    .cel-konto { font-size:11px; color:#888; margin-top:2px; }
+    .cel-icons button { background:none; border:none; cursor:pointer; font-size:14px; color:#c5c5c5; padding:3px 5px; border-radius:6px; }
+    .cel-icons button:hover { background:#f5f5f5; color:#555; }
+    .cel-icons button.del:hover { background:#fde8e8; color:#c62828; }
+    .cel-kwoty { display:flex; justify-content:space-between; align-items:baseline; margin:12px 0 6px; }
+    .cel-odlozone { font-size:1.5rem; font-weight:700; color:#2e7d32; }
+    .cel-cel { font-size:0.85rem; color:#999; }
+    .bar { height:10px; background:#eef0f2; border-radius:6px; overflow:hidden; }
+    .bar > span { display:block; height:100%; border-radius:6px; transition:width .3s; }
+    .cel-analiza { font-size:12px; color:#666; margin-top:10px; line-height:1.5; }
+    .cel-analiza .ostrzezenie { color:#c62828; font-weight:600; }
+    .cel-analiza .ok { color:#2e7d32; font-weight:600; }
+    .cel-btns { display:flex; gap:7px; margin-top:12px; }
+    .cel-btns button { flex:1; border:1px solid #ddd; background:#fff; border-radius:8px; padding:7px; font-size:12.5px; font-weight:600; cursor:pointer; color:#444; }
+    .cel-btns button.primary { background:#e8f5e9; border-color:#c8e6c9; color:#2e7d32; }
+    .cel-btns button:hover { filter:brightness(0.97); }
+
+    .lim-row { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); padding:14px 16px; margin-bottom:10px; }
+    .lim-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+    .lim-kat { font-weight:600; color:#333; }
+    .lim-kwoty { font-size:13px; color:#666; }
+    .lim-icons button { background:none; border:none; cursor:pointer; font-size:14px; color:#c5c5c5; padding:3px 5px; border-radius:6px; margin-left:2px; }
+    .lim-icons button:hover { background:#f5f5f5; color:#555; }
+    .lim-icons button.del:hover { background:#fde8e8; color:#c62828; }
+
+    .flow-card { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:20px; max-width:520px; }
+    .flow-big { font-size:1.8rem; font-weight:700; }
+    .flow-meta { color:#666; font-size:13px; margin-top:6px; }
+
+    .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:900; align-items:center; justify-content:center; }
+    .modal-backdrop.open { display:flex; }
+    .modal-box { background:#fff; border-radius:16px; padding:28px; width:100%; max-width:440px; margin:16px; max-height:90vh; overflow-y:auto; }
+    .modal-box h3 { font-size:1.05rem; margin:0 0 20px; }
+    .fg { margin-bottom:14px; }
+    .fg label { display:block; font-size:11px; font-weight:700; color:#777; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
+    .fg input, .fg select { width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:8px; font-size:14px; box-sizing:border-box; font-family:inherit; }
+    .fg .hint { font-size:11px; color:#999; margin-top:4px; text-transform:none; letter-spacing:0; font-weight:400; }
+    .modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:20px; }
+    .modal-footer button { padding:9px 22px; border:none; border-radius:8px; cursor:pointer; font-size:14px; }
+    .btn-cancel { background:#f0f0f0; color:#555; }
+    .btn-primary { background:#4361ee; color:#fff; font-weight:600; }
+    .btn-primary:hover { background:#3451d1; }
+    .empty-hint { text-align:center; color:#bbb; font-size:13px; padding:22px 0; }
+    .wpl-hist-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f3f3f3; font-size:13px; }
+    .radio-row { display:flex; gap:14px; margin-bottom:12px; }
+    .radio-row label { display:flex; align-items:center; gap:6px; font-size:14px; font-weight:500; color:#444; text-transform:none; letter-spacing:0; }
+  </style>
+</head>
+<body>
+
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script defer src="/static/auth.js"></script>
+
+<nav>
+  <a href="/" class="logo">🏠 Budżet</a>
+  <a href="/">Dashboard</a>
+  <a href="/upload">Dodaj wydatek</a>
+  <a href="/konta">Konta</a>
+  <a href="/wplywy">Wpływy</a>
+  <a href="/cele" class="active">Cele</a>
+  <a href="/kategorie">Kategorie</a>
+  <a href="/analiza">Analiza</a>
+  <a href="/powiadomienia">Powiadomienia</a>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
+</nav>
+
+<main style="max-width:1100px">
+  <h1 style="margin-bottom:6px">Cele finansowe</h1>
+  <p style="color:var(--muted);margin-bottom:26px;font-size:14px">Oszczędności (koperty), limity wydatków i cel przepływowy — w jednym miejscu.</p>
+
+  <!-- 1. Cele oszczędnościowe -->
+  <div class="sekcja">
+    <div class="sekcja-head">
+      <h2>🎯 Cele oszczędnościowe</h2>
+      <button class="btn-add green" onclick="openCel()">＋ Nowy cel</button>
+      <p>Koperty na Waszych kontach. Odłożone liczone z wpłat — możesz je zasilać ręcznie albo automatycznie przelewem.</p>
+    </div>
+    <div id="cele-grid" class="cele-grid"></div>
+    <div id="cele-empty" class="empty-hint" style="display:none">Brak celów. Dodaj pierwszy — np. „Wakacje 8 000 zł".</div>
+  </div>
+
+  <!-- 2. Limity wydatków -->
+  <div class="sekcja">
+    <div class="sekcja-head">
+      <h2>🧯 Limity wydatków</h2>
+      <button class="btn-add" onclick="openLimit()">＋ Dodaj limit</button>
+      <p>Miesięczny budżet na kategorię. Pasek zmienia kolor, gdy zbliżasz się do limitu.</p>
+    </div>
+    <div id="limity-list"></div>
+    <div id="limity-empty" class="empty-hint" style="display:none">Brak limitów. Ustaw np. „Spożywcze — 1 500 zł/mies.".</div>
+  </div>
+
+  <!-- 3. Cel przepływowy -->
+  <div class="sekcja">
+    <div class="sekcja-head">
+      <h2>🌊 Cel przepływowy</h2>
+      <button class="btn-add" onclick="openFlow()">Ustaw cel</button>
+      <p>Ile chcecie odkładać miesięcznie — kwotowo albo jako % wpływów. Liczone z bilansu bieżącego miesiąca.</p>
+    </div>
+    <div id="flow-box"></div>
+  </div>
+</main>
+
+<!-- Modal: cel -->
+<div class="modal-backdrop" id="m-cel">
+  <div class="modal-box">
+    <h3 id="m-cel-title">Nowy cel</h3>
+    <div class="fg"><label>Nazwa</label><input type="text" id="c-nazwa" placeholder="np. Wakacje 2027"></div>
+    <div class="fg"><label>Kwota docelowa (zł)</label><input type="number" id="c-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
+    <div class="fg"><label>Konto (koperta na tym koncie)</label><select id="c-konto"></select>
+      <div class="hint">Wiele celów może dzielić jedno konto oszczędnościowe (jak subkonta).</div></div>
+    <div class="fg"><label>Termin (opcjonalnie)</label><input type="date" id="c-termin">
+      <div class="hint">Jeśli ustawisz, policzę ile odkładać miesięcznie, żeby zdążyć.</div></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('m-cel')">Anuluj</button>
+      <button class="btn-primary" onclick="saveCel()">Zapisz</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: wpłata na cel -->
+<div class="modal-backdrop" id="m-wplata">
+  <div class="modal-box">
+    <h3 id="m-wplata-title">Wpłać na cel</h3>
+    <div class="fg"><label>Data</label><input type="date" id="wp-data"></div>
+    <div class="fg"><label>Kwota (zł)</label><input type="number" id="wp-kwota" step="0.01" placeholder="0.00">
+      <div class="hint">Aby zaznaczyć stan początkowy istniejącej koperty, dodaj pierwszą wpłatę „stan startowy".</div></div>
+    <div class="fg"><label>Opis (opcjonalnie)</label><input type="text" id="wp-opis" placeholder="np. stan startowy"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('m-wplata')">Anuluj</button>
+      <button class="btn-primary" onclick="saveWplata()">Zapisz</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: historia wpłat -->
+<div class="modal-backdrop" id="m-hist">
+  <div class="modal-box">
+    <h3 id="m-hist-title">Historia wpłat</h3>
+    <div id="hist-lista"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('m-hist')">Zamknij</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: limit -->
+<div class="modal-backdrop" id="m-limit">
+  <div class="modal-box">
+    <h3 id="m-limit-title">Dodaj limit</h3>
+    <div class="fg"><label>Kategoria</label><select id="l-kat"></select></div>
+    <div class="fg"><label>Limit miesięczny (zł)</label><input type="number" id="l-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('m-limit')">Anuluj</button>
+      <button class="btn-primary" onclick="saveLimit()">Zapisz</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: cel przepływowy -->
+<div class="modal-backdrop" id="m-flow">
+  <div class="modal-box">
+    <h3>Cel przepływowy</h3>
+    <div class="radio-row">
+      <label><input type="radio" name="flow-typ" value="kwota" checked onchange="flowTypChange()"> Kwota (zł/mies.)</label>
+      <label><input type="radio" name="flow-typ" value="procent" onchange="flowTypChange()"> % wpływów</label>
+    </div>
+    <div class="fg"><label id="flow-lbl">Kwota miesięczna (zł)</label><input type="number" id="flow-wartosc" step="0.01" min="0.01" placeholder="0.00"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('m-flow')">Anuluj</button>
+      <button id="flow-del" class="btn-cancel" style="display:none;color:#c62828" onclick="deleteFlow()">Usuń cel</button>
+      <button class="btn-primary" onclick="saveFlow()">Zapisz</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let konta = [];
+let hierarchia = {};
+let editCelId = null;
+let wplataCelId = null;
+let flowData = null;
+
+const fmt = n => (n == null ? 0 : parseFloat(n)).toLocaleString('pl-PL', { minimumFractionDigits:2, maximumFractionDigits:2 });
+const fmtZl = n => fmt(n) + ' zł';
+const fmtDate = d => d ? new Date(String(d).slice(0,10) + 'T12:00').toLocaleDateString('pl-PL', { day:'2-digit', month:'2-digit', year:'numeric' }) : '—';
+const escHtml = s => (s == null ? '' : String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const miesiacRok = d => d.toLocaleDateString('pl-PL', { month:'long', year:'numeric' });
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-backdrop').forEach(el => el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); }));
+
+// ── Cele oszczędnościowe ──
+async function loadCele() {
+  const cele = await authFetch('/api/cele').then(r => r.json());
+  const grid = document.getElementById('cele-grid');
+  document.getElementById('cele-empty').style.display = cele.length ? 'none' : '';
+  grid.innerHTML = cele.map(c => {
+    const kolor = c.postep >= 100 ? '#2e7d32' : '#4361ee';
+    let analiza = '';
+    if (c.brakuje <= 0) {
+      analiza = '<span class="ok">🎉 Cel osiągnięty!</span>';
+    } else {
+      const t = c.tempo_miesieczne;
+      analiza += `Tempo: <strong>${fmtZl(t)}/mies.</strong>`;
+      if (c.termin) {
+        analiza += ` · termin ${fmtDate(c.termin)}`;
+        if (c.wymagane_miesieczne != null) {
+          analiza += `<br>Żeby zdążyć: <strong>${fmtZl(c.wymagane_miesieczne)}/mies.</strong> `;
+          analiza += c.na_czas ? '<span class="ok">✓ jesteś na dobrej drodze</span>' : '<span class="ostrzezenie">⚠ za wolno</span>';
+        }
+      } else if (c.prognoza_miesiecy != null && c.prognoza_miesiecy > 0) {
+        const d = new Date(); d.setMonth(d.getMonth() + Math.ceil(c.prognoza_miesiecy));
+        analiza += `<br>Przy tym tempie: cel ok. <strong>${miesiacRok(d)}</strong>`;
+      } else {
+        analiza += '<br><span style="color:#999">Dodaj wpłaty, policzę tempo i prognozę.</span>';
+      }
+    }
+    return `<div class="cel-card">
+      <div class="cel-top">
+        <div>
+          <div class="cel-nazwa">${escHtml(c.nazwa)}</div>
+          ${c.konto_nazwa ? `<div class="cel-konto">💳 ${escHtml(c.konto_nazwa)}</div>` : '<div class="cel-konto" style="color:#c07">bez konta</div>'}
+        </div>
+        <div class="cel-icons">
+          <button onclick="editCel(${c.id})" title="Edytuj">✏</button>
+          <button class="del" onclick="delCel(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')" title="Usuń">✕</button>
+        </div>
+      </div>
+      <div class="cel-kwoty">
+        <span class="cel-odlozone">${fmt(c.odlozone)}</span>
+        <span class="cel-cel">z ${fmtZl(c.kwota_docelowa)} · ${c.postep}%</span>
+      </div>
+      <div class="bar"><span style="width:${Math.min(c.postep,100)}%;background:${kolor}"></span></div>
+      <div style="font-size:12px;color:#888;margin-top:4px">${c.brakuje > 0 ? 'Brakuje ' + fmtZl(c.brakuje) : 'Odłożone w całości'}</div>
+      <div class="cel-analiza">${analiza}</div>
+      <div class="cel-btns">
+        <button class="primary" onclick="openWplata(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')">＋ Wpłać</button>
+        <button onclick="openHist(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')">Historia</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function refreshCKonto(prefer) {
+  const sel = document.getElementById('c-konto');
+  sel.innerHTML = '<option value="">— brak przypisania —</option>' +
+    konta.map(k => `<option value="${k.id}"${k.id === prefer ? ' selected' : ''}>${escHtml(k.nazwa)} (${escHtml(k.typ)})</option>`).join('');
+}
+
+function openCel() {
+  editCelId = null;
+  document.getElementById('m-cel-title').textContent = 'Nowy cel';
+  document.getElementById('c-nazwa').value = '';
+  document.getElementById('c-kwota').value = '';
+  document.getElementById('c-termin').value = '';
+  refreshCKonto(null);
+  openModal('m-cel');
+}
+
+async function editCel(id) {
+  const cele = await authFetch('/api/cele').then(r => r.json());
+  const c = cele.find(x => x.id === id);
+  if (!c) return;
+  editCelId = id;
+  document.getElementById('m-cel-title').textContent = 'Edytuj cel';
+  document.getElementById('c-nazwa').value = c.nazwa;
+  document.getElementById('c-kwota').value = c.kwota_docelowa;
+  document.getElementById('c-termin').value = c.termin ? String(c.termin).slice(0,10) : '';
+  refreshCKonto(c.konto_id);
+  openModal('m-cel');
+}
+
+async function saveCel() {
+  const body = {
+    nazwa: document.getElementById('c-nazwa').value.trim(),
+    kwota_docelowa: parseFloat(document.getElementById('c-kwota').value),
+    konto_id: parseInt(document.getElementById('c-konto').value) || null,
+    termin: document.getElementById('c-termin').value || null,
+  };
+  if (!body.nazwa || isNaN(body.kwota_docelowa) || body.kwota_docelowa <= 0) { alert('Podaj nazwę i kwotę docelową.'); return; }
+  const url = editCelId ? `/api/cele/${editCelId}` : '/api/cele';
+  const res = await authFetch(url, { method: editCelId ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); alert(e.detail || 'Nie udało się zapisać.'); return; }
+  closeModal('m-cel');
+  loadCele();
+}
+
+async function delCel(id, nazwa) {
+  if (!confirm(`Usunąć cel „${nazwa}"?\n\nUsunie też historię wpłat na ten cel (pieniądze na koncie zostają nietknięte).`)) return;
+  const res = await authFetch(`/api/cele/${id}`, { method:'DELETE' });
+  if (!res.ok) { alert('Nie udało się usunąć.'); return; }
+  loadCele();
+}
+
+function openWplata(id, nazwa) {
+  wplataCelId = id;
+  document.getElementById('m-wplata-title').textContent = 'Wpłać na: ' + nazwa;
+  document.getElementById('wp-data').value = new Date().toISOString().slice(0,10);
+  document.getElementById('wp-kwota').value = '';
+  document.getElementById('wp-opis').value = '';
+  openModal('m-wplata');
+}
+
+async function saveWplata() {
+  const body = {
+    data: document.getElementById('wp-data').value,
+    kwota: parseFloat(document.getElementById('wp-kwota').value),
+    opis: document.getElementById('wp-opis').value.trim() || null,
+  };
+  if (!body.data || isNaN(body.kwota) || body.kwota === 0) { alert('Podaj datę i kwotę.'); return; }
+  const res = await authFetch(`/api/cele/${wplataCelId}/wplaty`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); alert(e.detail || 'Nie udało się zapisać wpłaty.'); return; }
+  closeModal('m-wplata');
+  loadCele();
+}
+
+async function openHist(id, nazwa) {
+  document.getElementById('m-hist-title').textContent = 'Wpłaty: ' + nazwa;
+  const lista = document.getElementById('hist-lista');
+  lista.innerHTML = '<p class="empty-hint">Ładowanie…</p>';
+  openModal('m-hist');
+  const wp = await authFetch(`/api/cele/${id}/wplaty`).then(r => r.json());
+  if (!wp.length) { lista.innerHTML = '<p class="empty-hint">Brak wpłat.</p>'; return; }
+  const ZR = { reczna:'ręczna', przelew:'przelew', cykliczny:'cykliczny' };
+  lista.innerHTML = wp.map(w => `<div class="wpl-hist-row">
+    <div>
+      <div style="font-weight:600;color:${parseFloat(w.kwota) < 0 ? '#c62828' : '#2e7d32'}">${parseFloat(w.kwota) > 0 ? '+' : ''}${fmtZl(w.kwota)}</div>
+      <div style="font-size:11px;color:#aaa">${fmtDate(w.data)} · ${ZR[w.zrodlo] || w.zrodlo}${w.opis ? ' · ' + escHtml(w.opis) : ''}</div>
+    </div>
+    <button onclick="delWplata(${w.id})" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:14px" title="Usuń wpłatę">✕</button>
+  </div>`).join('');
+}
+
+async function delWplata(id) {
+  if (!confirm('Usunąć tę wpłatę?')) return;
+  const res = await authFetch(`/api/cele/wplaty/${id}`, { method:'DELETE' });
+  if (!res.ok) { alert('Nie udało się usunąć.'); return; }
+  closeModal('m-hist');
+  loadCele();
+}
+
+// ── Limity ──
+async function loadLimity() {
+  const month = new Date().toISOString().slice(0,7);
+  const limity = await authFetch('/api/limity?month=' + month).then(r => r.json());
+  const box = document.getElementById('limity-list');
+  document.getElementById('limity-empty').style.display = limity.length ? 'none' : '';
+  box.innerHTML = limity.map(l => {
+    const p = Math.min(l.procent, 100);
+    const kolor = l.procent >= 100 ? '#c62828' : l.procent >= 80 ? '#f59e0b' : '#2e7d32';
+    return `<div class="lim-row">
+      <div class="lim-head">
+        <span class="lim-kat">${escHtml(l.kategoria_glowna)}</span>
+        <span style="display:flex;align-items:center;gap:8px">
+          <span class="lim-kwoty">${fmt(l.wydane)} / ${fmtZl(l.kwota_miesieczna)}</span>
+          <span class="lim-icons">
+            <button onclick="editLimit('${escHtml(l.kategoria_glowna).replace(/'/g,"\\'")}',${l.kwota_miesieczna})" title="Zmień limit">✏</button>
+            <button class="del" onclick="delLimit(${l.id})" title="Usuń limit">✕</button>
+          </span>
+        </span>
+      </div>
+      <div class="bar"><span style="width:${p}%;background:${kolor}"></span></div>
+      <div style="font-size:12px;margin-top:5px;color:${kolor}">${l.pozostalo >= 0 ? 'Pozostało ' + fmtZl(l.pozostalo) : 'Przekroczono o ' + fmtZl(-l.pozostalo)} · ${l.procent}%</div>
+    </div>`;
+  }).join('');
+}
+
+function fillLimKat() {
+  document.getElementById('l-kat').innerHTML = Object.keys(hierarchia).map(k => `<option value="${escHtml(k)}">${escHtml(k)}</option>`).join('');
+}
+
+function openLimit() {
+  document.getElementById('m-limit-title').textContent = 'Dodaj limit';
+  fillLimKat();
+  document.getElementById('l-kat').disabled = false;
+  document.getElementById('l-kwota').value = '';
+  openModal('m-limit');
+}
+
+function editLimit(kat, kwota) {
+  document.getElementById('m-limit-title').textContent = 'Zmień limit';
+  fillLimKat();
+  document.getElementById('l-kat').value = kat;
+  document.getElementById('l-kat').disabled = true;
+  document.getElementById('l-kwota').value = kwota;
+  openModal('m-limit');
+}
+
+async function saveLimit() {
+  const body = {
+    kategoria_glowna: document.getElementById('l-kat').value,
+    kwota_miesieczna: parseFloat(document.getElementById('l-kwota').value),
+  };
+  if (!body.kategoria_glowna || isNaN(body.kwota_miesieczna) || body.kwota_miesieczna <= 0) { alert('Wybierz kategorię i podaj limit.'); return; }
+  const res = await authFetch('/api/limity', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); alert(e.detail || 'Nie udało się zapisać.'); return; }
+  closeModal('m-limit');
+  loadLimity();
+}
+
+async function delLimit(id) {
+  if (!confirm('Usunąć ten limit?')) return;
+  const res = await authFetch(`/api/limity/${id}`, { method:'DELETE' });
+  if (!res.ok) { alert('Nie udało się usunąć.'); return; }
+  loadLimity();
+}
+
+// ── Cel przepływowy ──
+async function loadFlow() {
+  const month = new Date().toISOString().slice(0,7);
+  flowData = await authFetch('/api/cel-przeplywowy?month=' + month).then(r => r.json());
+  const box = document.getElementById('flow-box');
+  if (!flowData.cel) {
+    box.innerHTML = `<div class="flow-card"><div style="color:#999;font-size:14px">Nie ustawiono celu przepływowego. Kliknij „Ustaw cel", żeby np. odkładać 20% wpływów miesięcznie.</div>
+      <div class="flow-meta" style="margin-top:10px">Bilans tego miesiąca: <strong>${fmtZl(flowData.bilans)}</strong></div></div>`;
+    return;
+  }
+  const c = flowData.cel;
+  const opisCel = c.typ === 'kwota' ? fmtZl(c.wartosc) + '/mies.' : c.wartosc + '% wpływów (' + fmtZl(flowData.cel_kwota) + ')';
+  const r = flowData.realizacja;
+  const kolor = r == null ? '#999' : r >= 100 ? '#2e7d32' : r >= 60 ? '#f59e0b' : '#c62828';
+  box.innerHTML = `<div class="flow-card">
+    <div style="font-size:13px;color:#888;text-transform:uppercase;letter-spacing:.04em">Cel: odkładać ${opisCel}</div>
+    <div class="flow-big" style="color:${kolor}">${fmtZl(flowData.bilans)} <span style="font-size:0.9rem;font-weight:400;color:#999">w tym miesiącu</span></div>
+    <div class="bar" style="margin:12px 0 8px"><span style="width:${r == null ? 0 : Math.max(Math.min(r,100),0)}%;background:${kolor}"></span></div>
+    <div class="flow-meta">${r == null ? '' : 'Realizacja: <strong>' + r + '%</strong> celu · '}wpływy ${fmtZl(flowData.wplywy)} · wydatki ${fmtZl(flowData.wydatki)}</div>
+  </div>`;
+}
+
+function flowTypChange() {
+  const typ = document.querySelector('input[name="flow-typ"]:checked').value;
+  document.getElementById('flow-lbl').textContent = typ === 'kwota' ? 'Kwota miesięczna (zł)' : 'Procent wpływów (%)';
+}
+
+function openFlow() {
+  const c = flowData && flowData.cel;
+  document.querySelector(`input[name="flow-typ"][value="${c ? c.typ : 'kwota'}"]`).checked = true;
+  flowTypChange();
+  document.getElementById('flow-wartosc').value = c ? c.wartosc : '';
+  document.getElementById('flow-del').style.display = c ? '' : 'none';
+  openModal('m-flow');
+}
+
+async function saveFlow() {
+  const body = {
+    typ: document.querySelector('input[name="flow-typ"]:checked').value,
+    wartosc: parseFloat(document.getElementById('flow-wartosc').value),
+  };
+  if (isNaN(body.wartosc) || body.wartosc <= 0) { alert('Podaj wartość.'); return; }
+  const res = await authFetch('/api/cel-przeplywowy', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) { const e = await res.json().catch(()=>({})); alert(e.detail || 'Nie udało się zapisać.'); return; }
+  closeModal('m-flow');
+  loadFlow();
+}
+
+async function deleteFlow() {
+  if (!confirm('Usunąć cel przepływowy?')) return;
+  await authFetch('/api/cel-przeplywowy', { method:'DELETE' });
+  closeModal('m-flow');
+  loadFlow();
+}
+
+window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(async () => {
+  [konta, hierarchia] = await Promise.all([
+    authFetch('/api/konta').then(r => r.json()),
+    authFetch('/api/kategorie').then(r => r.json()),
+  ]);
+  await Promise.all([loadCele(), loadLimity(), loadFlow()]);
+}));
+</script>
+</body>
+</html>

@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jak działa aplikacja webowa — Przewodnik</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; line-height: 1.7; }
+
+  /* NAV */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(15,17,23,0.95);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid #1e2535;
+    padding: 0 40px;
+    display: flex; gap: 0; overflow-x: auto;
+  }
+  nav a {
+    color: #64748b; text-decoration: none; font-size: 0.82rem;
+    padding: 14px 16px; white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  nav a:hover { color: #e2e8f0; border-bottom-color: #3b82f6; }
+
+  /* HERO */
+  .hero {
+    text-align: center; padding: 80px 20px 60px;
+    background: linear-gradient(180deg, #1e2535 0%, #0f1117 100%);
+  }
+  .hero h1 { font-size: 2.6rem; margin-bottom: 16px; }
+  .hero h1 span { color: #3b82f6; }
+  .hero p { color: #94a3b8; font-size: 1.1rem; max-width: 600px; margin: 0 auto; }
+
+  /* SECTIONS */
+  section { max-width: 900px; margin: 0 auto; padding: 60px 24px; border-bottom: 1px solid #1e2535; }
+  section:last-child { border-bottom: none; }
+  .section-num { font-size: 0.75rem; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #3b82f6; margin-bottom: 8px; }
+  h2 { font-size: 1.8rem; margin-bottom: 16px; }
+  h3 { font-size: 1.15rem; margin: 28px 0 10px; color: #cbd5e1; }
+  p { color: #94a3b8; margin-bottom: 14px; }
+  p strong { color: #e2e8f0; }
+  p em { color: #fbbf24; font-style: normal; }
+
+  /* ANALOGY BOX */
+  .analogy {
+    background: #1e3a5f;
+    border-left: 4px solid #3b82f6;
+    border-radius: 0 10px 10px 0;
+    padding: 18px 22px;
+    margin: 20px 0;
+    font-size: 0.9rem;
+    color: #bfdbfe;
+  }
+  .analogy::before { content: '💡 Analogia: '; font-weight: 700; color: #60a5fa; }
+
+  /* TIP */
+  .tip {
+    background: #1a3a2a;
+    border-left: 4px solid #22c55e;
+    border-radius: 0 10px 10px 0;
+    padding: 18px 22px;
+    margin: 20px 0;
+    font-size: 0.9rem;
+    color: #86efac;
+  }
+  .tip::before { content: '✅ W naszej apce: '; font-weight: 700; color: #4ade80; }
+
+  /* WARNING */
+  .warn {
+    background: #3a2a10;
+    border-left: 4px solid #f59e0b;
+    border-radius: 0 10px 10px 0;
+    padding: 18px 22px;
+    margin: 20px 0;
+    font-size: 0.9rem;
+    color: #fde68a;
+  }
+
+  /* CARDS */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; margin: 24px 0; }
+  .card {
+    background: #1e2535;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .card .icon { font-size: 1.8rem; margin-bottom: 10px; }
+  .card h4 { font-size: 0.95rem; margin-bottom: 8px; color: #e2e8f0; }
+  .card p { font-size: 0.82rem; color: #64748b; margin: 0; }
+
+  /* COMPARISON TABLE */
+  .compare { width: 100%; border-collapse: collapse; margin: 24px 0; font-size: 0.85rem; }
+  .compare th { background: #1e2535; padding: 12px 16px; text-align: left; color: #94a3b8; font-weight: 600; border-bottom: 2px solid #334155; }
+  .compare td { padding: 12px 16px; border-bottom: 1px solid #1e2535; color: #94a3b8; vertical-align: top; }
+  .compare tr:hover td { background: #1e2535; }
+  .compare .name { color: #e2e8f0; font-weight: 600; }
+  .plus { color: #4ade80; }
+  .minus { color: #f87171; }
+  .highlight-row td { background: #1e3a5f !important; }
+  .highlight-row td { border-left: 3px solid #3b82f6; }
+
+  /* FLOW */
+  .flow { display: flex; flex-direction: column; gap: 0; margin: 24px 0; }
+  .flow-item { display: flex; gap: 16px; }
+  .flow-line { display: flex; flex-direction: column; align-items: center; }
+  .flow-dot { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+  .flow-connector { width: 2px; background: #334155; flex: 1; min-height: 24px; }
+  .flow-content { padding: 6px 0 24px 4px; }
+  .flow-content h4 { font-size: 0.9rem; color: #e2e8f0; margin-bottom: 4px; }
+  .flow-content p { font-size: 0.82rem; color: #64748b; margin: 0; }
+
+  /* CODE */
+  code { background: #1e2535; border: 1px solid #334155; padding: 2px 6px; border-radius: 4px; font-size: 0.82rem; color: #93c5fd; font-family: 'Consolas', monospace; }
+
+  /* TAG */
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; margin: 2px; }
+  .tag-blue { background: #1e3a5f; color: #93c5fd; border: 1px solid #3b82f6; }
+  .tag-green { background: #1a3a2a; color: #86efac; border: 1px solid #22c55e; }
+  .tag-orange { background: #3a2a10; color: #fde68a; border: 1px solid #f59e0b; }
+  .tag-purple { background: #2d1f4e; color: #d8b4fe; border: 1px solid #a855f7; }
+  .tag-gray { background: #1e2535; color: #94a3b8; border: 1px solid #475569; }
+
+  /* BIG DIAGRAM */
+  .diagram {
+    background: #1e2535;
+    border: 1px solid #334155;
+    border-radius: 16px;
+    padding: 32px;
+    margin: 24px 0;
+    text-align: center;
+  }
+  .diagram-row { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+  .diagram-box {
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .d-blue { background: #1e3a5f; border: 1px solid #3b82f6; color: #93c5fd; }
+  .d-green { background: #1a3a2a; border: 1px solid #22c55e; color: #86efac; }
+  .d-purple { background: #2d1f4e; border: 1px solid #a855f7; color: #d8b4fe; }
+  .d-orange { background: #3a2a10; border: 1px solid #f59e0b; color: #fde68a; }
+  .d-teal { background: #1a3038; border: 1px solid #14b8a6; color: #5eead4; }
+  .d-arrow { color: #475569; font-size: 1.2rem; display: flex; align-items: center; }
+  .diagram-label { font-size: 0.7rem; color: #475569; margin: 4px 0 12px; }
+
+  .rating { color: #f59e0b; font-size: 0.9rem; }
+
+  @media (max-width: 600px) {
+    .hero h1 { font-size: 1.8rem; }
+    h2 { font-size: 1.4rem; }
+    .compare { font-size: 0.75rem; }
+    .compare th, .compare td { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="#internet">🌐 Internet</a>
+  <a href="#frontend-backend">Frontend/Backend</a>
+  <a href="#serwery">Serwery hostingowe</a>
+  <a href="#bazy-danych">Bazy danych</a>
+  <a href="#auth">Autentykacja</a>
+  <a href="#api">API</a>
+  <a href="#ai">Sztuczna inteligencja</a>
+  <a href="#backup">Backup</a>
+  <a href="#nasza-apka">Nasza apka</a>
+</nav>
+
+<div class="hero">
+  <h1>Jak działa <span>aplikacja webowa</span>?</h1>
+  <p>Przystępny przewodnik po technologiach — od zera, bez zakładania że wiesz cokolwiek</p>
+</div>
+
+<!-- ===================== INTERNET ===================== -->
+<section id="internet">
+  <div class="section-num">Rozdział 1</div>
+  <h2>🌐 Jak działa internet?</h2>
+
+  <p>Kiedy wpisujesz adres strony w przeglądarce, tak naprawdę wysyłasz <strong>list</strong> do komputera gdzieś na świecie i czekasz na odpowiedź.</p>
+
+  <div class="analogy">
+    Wyobraź sobie restaurację. Ty (przeglądarka) siedzisz przy stoliku i zamawiasz jedzenie. Kelner (internet) zanosi zamówienie do kuchni (serwer). Kuchnia przygotowuje danie i odsyła z kelnerem. Ty otrzymujesz gotowe jedzenie (stronę HTML).
+  </div>
+
+  <h3>Kluczowe pojęcia</h3>
+  <div class="cards">
+    <div class="card">
+      <div class="icon">🖥️</div>
+      <h4>Serwer</h4>
+      <p>Komputer, który jest cały czas włączony i odpowiada na zapytania. Może obsłużyć tysiące użytkowników jednocześnie.</p>
+    </div>
+    <div class="card">
+      <div class="icon">📬</div>
+      <h4>HTTP / HTTPS</h4>
+      <p>Język, którym rozmawiają przeglądarka i serwer. HTTPS to zaszyfrowana wersja — nikt po drodze nie może podsłuchać.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🏠</div>
+      <h4>Adres IP / Domena</h4>
+      <p>Każdy serwer ma adres IP (np. 142.250.74.46). Domena (google.com) to czytelna nazwa przypisana do tego adresu.</p>
+    </div>
+    <div class="card">
+      <div class="icon">📦</div>
+      <h4>Request / Response</h4>
+      <p>Każda rozmowa w internecie to para: zapytanie (request) i odpowiedź (response). Przeglądarka pyta, serwer odpowiada.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FRONTEND / BACKEND ===================== -->
+<section id="frontend-backend">
+  <div class="section-num">Rozdział 2</div>
+  <h2>🎨 Frontend i Backend — co to jest?</h2>
+
+  <p>Każda nowoczesna aplikacja webowa składa się z dwóch części, które ze sobą współpracują.</p>
+
+  <div class="diagram">
+    <div class="diagram-row">
+      <div class="diagram-box d-blue">👁️ Frontend<br><small>co widzisz</small></div>
+      <div class="d-arrow">⟷</div>
+      <div class="diagram-box d-green">⚙️ Backend<br><small>co liczy/zapisuje</small></div>
+      <div class="d-arrow">⟷</div>
+      <div class="diagram-box d-teal">🗄️ Baza danych<br><small>co przechowuje</small></div>
+    </div>
+    <div class="diagram-label">Trzy warstwy typowej aplikacji webowej</div>
+  </div>
+
+  <h3>Frontend — to co widzisz w przeglądarce</h3>
+  <p>Pliki HTML, CSS i JavaScript, które przeglądarka <strong>pobiera raz</strong> i uruchamia lokalnie na Twoim komputerze. Odpowiadają za wygląd, animacje i interakcje.</p>
+
+  <div class="cards">
+    <div class="card">
+      <div class="icon">🏗️</div>
+      <h4>HTML</h4>
+      <p>Struktura strony — nagłówki, przyciski, tabele, formularze. Szkielet budynku.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🎨</div>
+      <h4>CSS</h4>
+      <p>Wygląd — kolory, czcionki, rozmieszczenie elementów. Tynk i farba na szkielecie.</p>
+    </div>
+    <div class="card">
+      <div class="icon">⚡</div>
+      <h4>JavaScript</h4>
+      <p>Logika i interakcje — reaguje na kliknięcia, wysyła zapytania do serwera, aktualizuje widok.</p>
+    </div>
+  </div>
+
+  <p>Popularne frameworki frontendowe: <span class="tag tag-blue">React</span> <span class="tag tag-blue">Vue</span> <span class="tag tag-blue">Angular</span> <span class="tag tag-gray">Vanilla JS (bez frameworka)</span></p>
+
+  <div class="tip">Nasza apka używa czystego Vanilla JS — bez żadnego frameworka. Proste, szybkie, żadnych zależności.</div>
+
+  <h3>Backend — silnik ukryty za kulisami</h3>
+  <p>Działa na serwerze, użytkownik go nie widzi. Przyjmuje zapytania z frontendu, <strong>przetwarza logikę</strong> (np. sprawdza czy masz dostęp), komunikuje się z bazą danych i odsyła odpowiedź.</p>
+
+  <table class="compare">
+    <thead>
+      <tr><th>Technologia</th><th>Język</th><th>Plusy</th><th>Minusy</th></tr>
+    </thead>
+    <tbody>
+      <tr class="highlight-row">
+        <td class="name">FastAPI ⭐</td>
+        <td>Python</td>
+        <td class="plus">Bardzo szybki, automatyczna dokumentacja, nowoczesny</td>
+        <td class="minus">Młodszy, mniejsza społeczność niż Django</td>
+      </tr>
+      <tr>
+        <td class="name">Django</td>
+        <td>Python</td>
+        <td class="plus">Dojrzały, wbudowany panel admina, "baterie w zestawie"</td>
+        <td class="minus">Cięższy, bardziej skomplikowany dla małych projektów</td>
+      </tr>
+      <tr>
+        <td class="name">Flask</td>
+        <td>Python</td>
+        <td class="plus">Bardzo prosty, minimalistyczny</td>
+        <td class="minus">Trzeba wszystko dodawać osobno</td>
+      </tr>
+      <tr>
+        <td class="name">Express.js</td>
+        <td>JavaScript (Node.js)</td>
+        <td class="plus">Ten sam język co frontend, ogromna społeczność</td>
+        <td class="minus">Mniej struktury, łatwo zrobić bałagan</td>
+      </tr>
+      <tr>
+        <td class="name">Laravel</td>
+        <td>PHP</td>
+        <td class="plus">Popularny w małych firmach, wbudowane wszystko</td>
+        <td class="minus">PHP ma złą reputację (trochę zasłużoną)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="tip">Nasza apka używa FastAPI. Kod jest krótki, czytelny i wydajny.</div>
+</section>
+
+<!-- ===================== SERWERY HOSTINGOWE ===================== -->
+<section id="serwery">
+  <div class="section-num">Rozdział 3</div>
+  <h2>☁️ Gdzie uruchomić aplikację? Serwery i hosting</h2>
+
+  <p>Twoja aplikacja musi gdzieś działać — na jakimś komputerze podłączonym do internetu 24 godziny na dobę, 7 dni w tygodniu. Masz kilka zupełnie różnych opcji pod względem ceny, wygody i kontroli.</p>
+
+  <div class="analogy">
+    To jak pytanie "gdzie mieszkać?". Możesz wynająć gotowe mieszkanie z meblami i mediami w pakiecie (PaaS) — płacisz więcej ale nic nie musisz robić. Możesz kupić pustą działkę i zbudować dom od podstaw (VPS) — tanie, ale sam kładziesz instalację elektryczną. Możesz też wynajmować biurko w coworkingu na godziny (Serverless) — płacisz tylko za czas w którym siedzisz.
+  </div>
+
+  <h3>Szybki przegląd — mapa decyzji</h3>
+  <table class="compare">
+    <thead>
+      <tr><th>Typ</th><th>Przykłady</th><th>Poziom trudności</th><th>Cena/mc</th><th>Dla kogo</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="name">Shared Hosting</td><td>Hostinger, nazwa.pl</td><td>⭐ bardzo łatwy</td><td>2–10$</td><td>Strony statyczne, WordPress</td></tr>
+      <tr class="highlight-row"><td class="name">PaaS ⭐</td><td>Railway, Render, Fly.io</td><td>⭐⭐ łatwy</td><td>0–30$</td><td>Aplikacje webowe, startupy, projekty osobiste</td></tr>
+      <tr><td class="name">VPS</td><td>Hetzner, DigitalOcean</td><td>⭐⭐⭐ średni</td><td>4–30$</td><td>Deweloperzy z wiedzą Linuxa</td></tr>
+      <tr><td class="name">Serverless</td><td>Vercel, Cloudflare Workers</td><td>⭐⭐⭐ średni</td><td>0$ + użycie</td><td>Frontendy, funkcje API, małe backendowe zadania</td></tr>
+      <tr><td class="name">Managed Cloud</td><td>AWS, GCP, Azure</td><td>⭐⭐⭐⭐⭐ bardzo trudny</td><td>50–5000$+</td><td>Duże firmy, setki tysięcy użytkowników</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ====== SHARED HOSTING ====== -->
+  <h3>1. Shared Hosting — najtańsza opcja dla stron</h3>
+  <p>Twoja strona <strong>dzieli jeden serwer z setkami innych stron</strong>. Hostingodawca zarządza wszystkim — Ty tylko wrzucasz pliki przez panel WWW lub FTP. Nie masz żadnej kontroli nad serwerem.</p>
+  <p><strong>Jak to działa:</strong> Logujesz się do panelu (cPanel, Plesk), wgrywasz pliki HTML/PHP, gotowe. Domena jest automatycznie podpięta.</p>
+  <div class="cards">
+    <div class="card">
+      <div class="icon">✅</div>
+      <h4>Plusy</h4>
+      <p>Najtańszy hosting na rynku. Zero konfiguracji. Dobre do prostych stron i WordPressa. Wsparcie 24/7 od providera.</p>
+    </div>
+    <div class="card">
+      <div class="icon">❌</div>
+      <h4>Minusy</h4>
+      <p>Nie można uruchomić Pythona/Node.js (tylko PHP). Zasoby CPU i RAM dzielone z sąsiadami — jeśli sąsiad dostanie dużo ruchu, Twoja strona zwalnia. Brak bazy danych PostgreSQL (tylko MySQL).</p>
+    </div>
+  </div>
+  <div class="warn">⚠️ Shared hosting <strong>nie nadaje się do naszej aplikacji</strong> — nie obsługuje FastAPI/Python ani PostgreSQL. Dobry tylko do prostych stron w HTML lub WordPress.</div>
+
+  <!-- ====== PaaS ====== -->
+  <h3>2. PaaS (Platform as a Service) — złoty środek ⭐</h3>
+  <p>Wrzucasz kod na GitHub, platforma <strong>automatycznie go buduje i uruchamia</strong>. Nie musisz wiedzieć nic o konfiguracji serwerów, nginx, SSL czy aktualizacjach systemu. Platforma robi to za Ciebie.</p>
+  <p><strong>Jak to działa:</strong> Łączysz repozytorium GitHub z platformą. Przy każdym <code>git push</code> platforma pobiera kod, instaluje zależności (<code>pip install</code>), i uruchamia aplikację. Automatycznie dostarcza certyfikat HTTPS.</p>
+
+  <div class="cards">
+    <div class="card">
+      <div class="icon">🚂</div>
+      <h4>Railway <span class="rating">★★★★☆</span> — używamy</h4>
+      <p>Nowoczesny, bardzo wygodny. Jedno kliknięcie żeby dodać PostgreSQL, Redis czy inne serwisy. Przejrzyste ceny — płacisz za faktyczne zużycie zasobów (CPU, RAM). Darmowy tier: 5$ kredytu na start.</p>
+      <p style="margin-top:8px;"><strong>Typowy koszt:</strong> mała aplikacja to ~3–8$/mc</p>
+    </div>
+    <div class="card">
+      <div class="icon">🎨</div>
+      <h4>Render <span class="rating">★★★★☆</span></h4>
+      <p>Bardzo podobny do Railway. Darmowy tier (ale aplikacja "zasypia" po 15 min bezczynności — pierwsze zapytanie czeka ~30s na "przebudzenie"). Wolniejsze wdrożenia niż Railway.</p>
+      <p style="margin-top:8px;"><strong>Typowy koszt:</strong> 0$ (darmowy z uśpieniem) lub 7$/mc (zawsze aktywny)</p>
+    </div>
+    <div class="card">
+      <div class="icon">🛸</div>
+      <h4>Fly.io <span class="rating">★★★★☆</span></h4>
+      <p>Uruchamia aplikacje w kontenerach Docker w ponad 30 lokalizacjach na świecie — czyli serwer jest fizycznie blisko użytkownika. Bardziej techniczne niż Railway, ale bardzo elastyczne.</p>
+      <p style="margin-top:8px;"><strong>Typowy koszt:</strong> 0$ (małe aplikacje mieszczą się w darmowym tierze)</p>
+    </div>
+    <div class="card">
+      <div class="icon">🟠</div>
+      <h4>Heroku <span class="rating">★★★☆☆</span></h4>
+      <p>Pionier PaaS, wymyślił tę kategorię. Przez lata był standardem dla startupów. W 2022 usunął darmowy tier i znacznie podrożał. Dziś mało kto wybiera go dla nowych projektów.</p>
+      <p style="margin-top:8px;"><strong>Typowy koszt:</strong> 5–25$/mc za podstawowy plan</p>
+    </div>
+  </div>
+  <div class="tip">Nasza apka działa na Railway. Każdy <code>git push</code> automatycznie wdraża nową wersję na produkcję w ciągu ~1 minuty.</div>
+
+  <!-- ====== VPS ====== -->
+  <h3>3. VPS (Virtual Private Server) — pełna kontrola</h3>
+  <p>Wynajmujesz <strong>wirtualny komputer z Linuxem</strong>, do którego masz pełny dostęp przez SSH (terminal). Możesz zainstalować cokolwiek, skonfigurować jak chcesz — ale <em>wszystko musisz zrobić sam</em>.</p>
+  <p><strong>Jak to działa:</strong> Dostajesz adres IP i hasło root. Logujesz się przez terminal (<code>ssh root@123.45.67.89</code>), instalujesz Python, nginx (serwer WWW), konfigurujesz SSL (certyfikat HTTPS), uruchamiasz aplikację jako usługę systemową, ustawiasz firewall... To zajmuje kilka godzin pracy nawet dla kogoś z doświadczeniem.</p>
+
+  <div class="cards">
+    <div class="card">
+      <div class="icon">🇩🇪</div>
+      <h4>Hetzner <span class="rating">★★★★★</span></h4>
+      <p>Niemcy. Najtańszy VPS na rynku — serwer z 2 CPU i 4GB RAM za <strong>4–6€/mc</strong>. Świetna jakość sprzętu. Bardzo popularny w Europie. Cenowo bije konkurencję 2–3x.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🌊</div>
+      <h4>DigitalOcean <span class="rating">★★★★☆</span></h4>
+      <p>Droplet od <strong>4$/mc</strong> (1 CPU, 512MB RAM). Świetna dokumentacja — mają tysiące tutoriali do każdego możliwego scenariusza. Mają też PaaS ("App Platform") jeśli nie chcesz konfigurować ręcznie.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🌐</div>
+      <h4>Linode / Akamai <span class="rating">★★★★☆</span></h4>
+      <p>Podobny do DigitalOcean. Od <strong>5$/mc</strong>. Serwery w wielu lokalizacjach. Dobra alternatywa dla DigitalOcean.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🇫🇷</div>
+      <h4>OVH / Scaleway <span class="rating">★★★☆☆</span></h4>
+      <p>Francja. Tanie, ale interfejs i dokumentacja gorzej przetłumaczone. Popularne w Europie Zachodniej. Scaleway ma darmowy tier dla małych serwerów.</p>
+    </div>
+  </div>
+
+  <p><strong>Co trzeba skonfigurować na VPS ręcznie:</strong></p>
+  <ul style="color:#94a3b8;font-size:0.85rem;padding-left:24px;margin-bottom:16px;line-height:2;">
+    <li>System operacyjny (Ubuntu, Debian) — zwykle wybrany przy zakupie</li>
+    <li>Firewall (ufw) — blokuje niepożądane połączenia</li>
+    <li>nginx lub Caddy — serwer WWW który przekazuje ruch do aplikacji</li>
+    <li>Certbot — automatyczne certyfikaty HTTPS (Let's Encrypt, darmowe)</li>
+    <li>Systemd — uruchamia aplikację automatycznie po restarcie serwera</li>
+    <li>Aktualizacje systemu — regularnie, żeby łatać luki bezpieczeństwa</li>
+    <li>Monitoring — żeby wiedzieć gdy coś nie działa</li>
+  </ul>
+
+  <!-- ====== SERVERLESS ====== -->
+  <h3>4. Serverless — płacisz tylko za użycie</h3>
+  <p>Zamiast serwera który <em>cały czas działa</em>, twój kod uruchamia się <strong>tylko w momencie zapytania</strong> i wyłącza się po chwili. Infrastruktura "znika" gdy nikt nie korzysta.</p>
+
+  <div class="analogy">
+    Taksówka vs samochód. VPS to samochód — płacisz ubezpieczenie i paliwo cały rok, nawet gdy stoi w garażu. Serverless to taksówka — płacisz tylko za kursy które rzeczywiście przejechałeś.
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="icon">▲</div>
+      <h4>Vercel <span class="rating">★★★★★</span></h4>
+      <p>Numer 1 do hostowania frontendu (React, Next.js). Wdrożenie z GitHuba w 30 sekund. Darmowy tier bardzo hojny. Serverless Functions do prostego backendu. Nie nadaje się do długotrwałych procesów (max ~10s wykonania).</p>
+    </div>
+    <div class="card">
+      <div class="icon">🔶</div>
+      <h4>Cloudflare Workers</h4>
+      <p>Kod działa na 300+ serwerach Cloudflare na całym świecie jednocześnie — dosłownie przy każdym użytkowniku. Błyskawiczne. Darmowy tier bardzo hojny. Ograniczenia: tylko JavaScript, max 128MB RAM, brak długich operacji.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🟠</div>
+      <h4>AWS Lambda</h4>
+      <p>Pionier serverless. Obsługuje Python, Node, Java i inne. Płacisz za milisekundy wykonania. Problem: "zimny start" — pierwsza funkcja po przerwie czeka 1–3 sekundy na "rozgrzanie".</p>
+    </div>
+    <div class="card">
+      <div class="icon">📦</div>
+      <h4>Netlify Functions</h4>
+      <p>Połączenie hostingu statycznych stron z prostymi funkcjami backendowymi. Popularne wśród Jamstack developerów.</p>
+    </div>
+  </div>
+
+  <div class="warn">⚠️ Serverless <strong>nie nadaje się do naszej aplikacji</strong> — FastAPI to serwer który cały czas nasłuchuje, a PostgreSQL wymaga stałego połączenia. Serverless jest świetny do prostych funkcji i frontendów, nie do pełnych aplikacji webowych.</div>
+
+  <!-- ====== MANAGED CLOUD ====== -->
+  <h3>5. Managed Cloud — AWS, Google Cloud, Azure</h3>
+  <p>Trzy gigantyczne platformy chmurowe które oferują <strong>setki różnych usług</strong> — od serwerów, przez bazy danych, przez AI, przez streaming wideo, aż po IoT. Są dla dużych firm i projektów wymagających ogromnej skalowalności.</p>
+
+  <div class="cards">
+    <div class="card">
+      <div class="icon">🟠</div>
+      <h4>AWS (Amazon Web Services)</h4>
+      <p>Największy. 200+ usług. Używa go Amazon, Netflix, Spotify, NASA. Bardzo skomplikowany panel, certyfikacje trwają miesiącami. Drogi bez optymalizacji — słynne są przypadki gdy ktoś zostawił serwer włączony i dostał rachunek na 10 000$.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🔵</div>
+      <h4>Google Cloud (GCP)</h4>
+      <p>Mocny w AI i Big Data (BigQuery, Vertex AI). Sieć globalna Googla — najszybsza na świecie. Używa go Spotify, Twitter, GitLab. Lepsze narzędzia dla Data Science niż AWS.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🔷</div>
+      <h4>Microsoft Azure</h4>
+      <p>Dominuje w firmach które już używają produktów Microsoft (Office 365, Windows Server). Dobra integracja z Active Directory. Popularny w korporacjach i bankowości.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🤔</div>
+      <h4>Kiedy używać?</h4>
+      <p>Gdy masz setki tysięcy użytkowników. Gdy potrzebujesz globalnej skalowalności. Gdy masz zespół DevOps. Gdy compliance wymaga konkretnej infrastruktury. <strong>Nie na początek projektu.</strong></p>
+    </div>
+  </div>
+
+  <!-- ====== DOCKER ====== -->
+  <h3>Bonus: Co to jest Docker?</h3>
+  <p>Docker to technologia <strong>konteneryzacji</strong> — pakujesz aplikację razem ze wszystkimi jej zależnościami (Python, biblioteki, konfiguracja) w jeden "kontener". Ten kontener działa identycznie na każdym komputerze i serwerze, niezależnie od systemu operacyjnego.</p>
+
+  <div class="analogy">
+    Docker to jak płyta CD z grą — zawiera wszystko co potrzebne do uruchomienia. Nie musisz instalować sterowników, sprawdzać wersji DirectX ani martwić się o system. Wkładasz płytę i działa. Kontener działa tak samo u Ciebie na laptopie jak na serwerze w centrum danych.
+  </div>
+
+  <p>Większość platform PaaS i VPS uruchamia aplikacje jako kontenery Docker "pod spodem" — Railway, Fly.io, AWS i inne. Jako użytkownik Railway często tego nie widzisz, ale to właśnie kontener jest uruchamiany gdy wrzucasz kod.</p>
+
+  <!-- ====== PODSUMOWANIE ====== -->
+  <h3>Które wybrać dla swojego projektu?</h3>
+  <table class="compare">
+    <thead><tr><th>Scenariusz</th><th>Rekomendacja</th><th>Powód</th></tr></thead>
+    <tbody>
+      <tr><td>Strona wizytówkowa / blog</td><td class="name">Vercel / Netlify</td><td>Darmowe, wdrożenie w 1 minutę, strony statyczne</td></tr>
+      <tr><td>WordPress / sklep</td><td class="name">Shared hosting (Hostinger)</td><td>Najtańszy, panel z jednym kliknięciem</td></tr>
+      <tr class="highlight-row"><td>Aplikacja webowa (jak nasza)</td><td class="name">Railway ⭐</td><td>Zero konfiguracji, baza danych w pakiecie, rozumne ceny</td></tr>
+      <tr><td>Chcę nauczyć się Linuxa i mam czas</td><td class="name">Hetzner VPS</td><td>Najtańszy, pełna kontrola, świetna nauka</td></tr>
+      <tr><td>Duży ruch, setki tysięcy userów</td><td class="name">AWS / GCP</td><td>Nieograniczona skalowalność (wymaga specjalisty)</td></tr>
+      <tr><td>Frontend React/Next.js</td><td class="name">Vercel</td><td>Stworzony dla React, zerowa konfiguracja, darmowy</td></tr>
+    </tbody>
+  </table>
+
+  <div class="warn">⚠️ <strong>Co z darmowymi tierami?</strong> Railway, Render, Fly.io mają darmowe opcje — ale aplikacja może "zasypiać" po bezczynności i pierwsze zapytanie czeka 20–30 sekund. Żeby działała 24/7 bez przerw trzeba zapłacić kilka dolarów miesięcznie. Nasza apka jest na płatnym planie Railway (~3–5$/mc).</div>
+</section>
+
+<!-- ===================== BAZY DANYCH ===================== -->
+<section id="bazy-danych">
+  <div class="section-num">Rozdział 4</div>
+  <h2>🗄️ Bazy danych — gdzie mieszkają dane?</h2>
+
+  <p>Baza danych to <strong>zorganizowane miejsce przechowywania informacji</strong>, do których możesz szybko dotrzeć, przeszukiwać i modyfikować. To nie jest zwykły plik — to wyspecjalizowany system zarządzający danymi.</p>
+
+  <div class="analogy">
+    Wyobraź sobie ogromny arkusz Excel, ale taki który może obsłużyć miliony wierszy jednocześnie, tysiące użytkowników piszących do niego w tym samym momencie, z gwarancją że żaden zapis nie zaginie nawet jeśli prąd wysiadnie.
+  </div>
+
+  <h3>Dwa główne typy baz danych</h3>
+
+  <div class="cards">
+    <div class="card">
+      <div class="icon">📊</div>
+      <h4>SQL (relacyjne)</h4>
+      <p>Dane w tabelach jak Excel. Tabele są ze sobą powiązane. Zapytania w języku SQL. <strong>PostgreSQL, MySQL, SQLite.</strong> Najlepsze do typowych aplikacji biznesowych.</p>
+    </div>
+    <div class="card">
+      <div class="icon">📄</div>
+      <h4>NoSQL (nierelacyjne)</h4>
+      <p>Dane jako dokumenty JSON, klucz-wartość, grafy itp. Bardziej elastyczna struktura. <strong>MongoDB, Redis, Firebase Firestore.</strong> Dobre przy bardzo zmiennych danych lub ogromnej skali.</p>
+    </div>
+  </div>
+
+  <h3>Popularne bazy danych — porównanie</h3>
+
+  <table class="compare">
+    <thead>
+      <tr><th>Baza</th><th>Typ</th><th>Plusy</th><th>Minusy</th><th>Kiedy używać</th></tr>
+    </thead>
+    <tbody>
+      <tr class="highlight-row">
+        <td class="name">PostgreSQL ⭐</td>
+        <td>SQL</td>
+        <td class="plus">Najpotężniejszy open-source SQL, niezawodny, świetne typy danych, JSON support</td>
+        <td class="minus">Trochę cięższy w konfiguracji niż MySQL</td>
+        <td>Prawie wszędzie — aplikacje webowe, finanse, analityka</td>
+      </tr>
+      <tr>
+        <td class="name">MySQL / MariaDB</td>
+        <td>SQL</td>
+        <td class="plus">Bardzo popularny, dobra wydajność przy odczycie, tanie hostingi</td>
+        <td class="minus">Historycznie mniej zgodny ze standardem SQL niż PostgreSQL</td>
+        <td>Strony CMS (WordPress), starsze projekty</td>
+      </tr>
+      <tr>
+        <td class="name">SQLite</td>
+        <td>SQL</td>
+        <td class="plus">Zero konfiguracji — to jeden plik na dysku! Idealne do lokalnego dev i małych projektów</td>
+        <td class="minus">Nie nadaje się do wielu równoczesnych zapisów, nie skaluje się</td>
+        <td>Aplikacje mobilne, testy, małe projekty jednoosobowe</td>
+      </tr>
+      <tr>
+        <td class="name">MongoDB</td>
+        <td>NoSQL (dokumenty)</td>
+        <td class="plus">Elastyczny schemat, dobry dla danych niejednorodnych, popularny w startupach</td>
+        <td class="minus">Brak transakcji (poprawa w nowych wersjach), łatwo narobić bałaganu</td>
+        <td>CMS, katalogi produktów, logi, dane o zmiennej strukturze</td>
+      </tr>
+      <tr>
+        <td class="name">Redis</td>
+        <td>NoSQL (klucz-wartość)</td>
+        <td class="plus">Błyskawicznie szybki (trzyma w pamięci RAM), idealny do cache i sesji</td>
+        <td class="minus">Dane w pamięci = stracisz je przy restarcie (jeśli nie skonfigurujesz persystencji)</td>
+        <td>Cache, kolejki zadań, sesje użytkowników</td>
+      </tr>
+      <tr>
+        <td class="name">Firebase Firestore</td>
+        <td>NoSQL (dokumenty)</td>
+        <td class="plus">Zero konfiguracji, synchronizacja real-time, integracja z Firebase Auth</td>
+        <td class="minus">Drogi przy dużych danych, trudny do migracji, vendor lock-in</td>
+        <td>Aplikacje mobilne, MVP, gdy chcesz szybko ruszyć</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Jak SQL wygląda w praktyce?</h3>
+  <p>Żeby pobrać wszystkie wydatki Adama z czerwca 2026, piszemy zapytanie:</p>
+  <div class="warn" style="font-family:monospace;font-size:0.85rem;">
+    SELECT sklep, suma, data<br>
+    FROM wydatki<br>
+    WHERE osoba = 'Adam'<br>
+    &nbsp;&nbsp;AND data &gt;= '2026-06-01'<br>
+    ORDER BY data DESC;
+  </div>
+
+  <div class="tip">Nasza apka używa PostgreSQL na Railway. Dane przeżywają wszystkie restarty aplikacji bo PostgreSQL jest osobnym serwisem z własnym dyskiem (volume).</div>
+</section>
+
+<!-- ===================== AUTENTYKACJA ===================== -->
+<section id="auth">
+  <div class="section-num">Rozdział 5</div>
+  <h2>🔑 Autentykacja — jak apka wie kim jesteś?</h2>
+
+  <p>Autentykacja to proces <strong>potwierdzenia tożsamości</strong> użytkownika. To nie to samo co autoryzacja (sprawdzenie czy masz prawo coś zrobić).</p>
+
+  <div class="analogy">
+    Autentykacja = pokazanie dowodu osobistego na wejściu do klubu (kim jesteś?). Autoryzacja = sprawdzenie czy masz bilet VIP do strefy za kulisami (co ci wolno?).
+  </div>
+
+  <h3>Jak działa logowanie przez Google (OAuth)?</h3>
+
+  <div class="flow">
+    <div class="flow-item">
+      <div class="flow-line"><div class="flow-dot" style="background:#3b82f6">1</div><div class="flow-connector"></div></div>
+      <div class="flow-content"><h4>Klikasz "Zaloguj przez Google"</h4><p>Frontend przekierowuje cię na stronę Google</p></div>
+    </div>
+    <div class="flow-item">
+      <div class="flow-line"><div class="flow-dot" style="background:#3b82f6">2</div><div class="flow-connector"></div></div>
+      <div class="flow-content"><h4>Logujesz się na swoje konto Google</h4><p>Na serwerach Google, nasza apka nie widzi Twojego hasła</p></div>
+    </div>
+    <div class="flow-item">
+      <div class="flow-line"><div class="flow-dot" style="background:#3b82f6">3</div><div class="flow-connector"></div></div>
+      <div class="flow-content"><h4>Google wystawia token JWT</h4><p>Token to zaszyfrowany "bilet" potwierdzający Twoją tożsamość, ważny przez godzinę</p></div>
+    </div>
+    <div class="flow-item">
+      <div class="flow-line"><div class="flow-dot" style="background:#3b82f6">4</div><div class="flow-connector"></div></div>
+      <div class="flow-content"><h4>Frontend wysyła token do naszego API</h4><p>Przy każdym zapytaniu: <code>Authorization: Bearer eyJhbGc...</code></p></div>
+    </div>
+    <div class="flow-item">
+      <div class="flow-line"><div class="flow-dot" style="background:#22c55e">✓</div><div class="flow-connector" style="background:transparent"></div></div>
+      <div class="flow-content"><h4>Backend weryfikuje token przez Firebase Admin SDK</h4><p>Sprawdza czy token jest prawdziwy i nieważny. Jeśli tak — wpuszcza.</p></div>
+    </div>
+  </div>
+
+  <h3>Alternatywy dla Firebase Auth</h3>
+
+  <table class="compare">
+    <thead>
+      <tr><th>Rozwiązanie</th><th>Plusy</th><th>Minusy</th></tr>
+    </thead>
+    <tbody>
+      <tr class="highlight-row">
+        <td class="name">Firebase Auth ⭐</td>
+        <td class="plus">Darmowe do 10k użytkowników, Google/Facebook/Apple login gotowe, SDK na każdą platformę</td>
+        <td class="minus">Google vendor lock-in, dane użytkowników u Google</td>
+      </tr>
+      <tr>
+        <td class="name">Auth0</td>
+        <td class="plus">Bardzo zaawansowane, enterprise features, wiele dostawców logowania</td>
+        <td class="minus">Drogi przy >7k aktywnych użytkowników</td>
+      </tr>
+      <tr>
+        <td class="name">Supabase Auth</td>
+        <td class="plus">Open-source, self-hostable, zintegrowany z PostgreSQL</td>
+        <td class="minus">Młodszy projekt, mniej SDK</td>
+      </tr>
+      <tr>
+        <td class="name">Własne hasła (bcrypt)</td>
+        <td class="plus">Pełna kontrola, zero zależności zewnętrznych</td>
+        <td class="minus">Sam dbasz o bezpieczeństwo, resetowanie haseł, 2FA — duża odpowiedzialność</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="tip">Nasza apka używa Firebase Auth — użytkownik loguje się przez Google. Hasło do naszej apki nie istnieje — Google za to odpowiada.</div>
+</section>
+
+<!-- ===================== API ===================== -->
+<section id="api">
+  <div class="section-num">Rozdział 6</div>
+  <h2>🔌 API — jak frontend rozmawia z backendem?</h2>
+
+  <p>API (Application Programming Interface) to <strong>zestaw zasad komunikacji</strong> między dwoma programami. W przypadku aplikacji webowych, to lista adresów URL do których frontend może wysyłać zapytania.</p>
+
+  <div class="analogy">
+    API to menu w restauracji. Określa co możesz zamówić (jakie dane możesz pobrać lub wysłać), w jakiej formie zamawiasz (format JSON), i co dostaniesz w odpowiedzi. Kuchnia (backend) i kelner (API) obsługują tylko to co jest w menu.
+  </div>
+
+  <h3>REST API — najpopularniejszy styl</h3>
+  <p>Każdy zasób (wydatek, konto) ma swój URL. Operacje wykonujesz metodami HTTP:</p>
+
+  <table class="compare">
+    <thead>
+      <tr><th>Metoda HTTP</th><th>Co robi</th><th>Przykład w naszej apce</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="name">GET</td><td>Pobiera dane</td><td><code>GET /api/wydatki</code> — lista wszystkich wydatków</td></tr>
+      <tr><td class="name">POST</td><td>Tworzy nowy rekord</td><td><code>POST /api/wydatki</code> — dodaj nowy wydatek</td></tr>
+      <tr><td class="name">PUT</td><td>Aktualizuje cały rekord</td><td><code>PUT /api/wydatki/42</code> — edytuj wydatek #42</td></tr>
+      <tr><td class="name">PATCH</td><td>Aktualizuje część rekordu</td><td><code>PATCH /api/wydatki/42/notatki</code> — zmień tylko notatki</td></tr>
+      <tr><td class="name">DELETE</td><td>Usuwa rekord</td><td><code>DELETE /api/wydatki/42</code> — usuń wydatek #42</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Format JSON</h3>
+  <p>Dane między frontendem i backendem są wymieniane w formacie JSON — to po prostu tekst w określonej strukturze, czytelny zarówno dla ludzi jak i maszyn.</p>
+
+  <div class="warn" style="font-family:monospace;font-size:0.82rem;line-height:1.8;">
+    {<br>
+    &nbsp;&nbsp;"sklep": "Biedronka",<br>
+    &nbsp;&nbsp;"suma": 47.50,<br>
+    &nbsp;&nbsp;"data": "2026-07-01",<br>
+    &nbsp;&nbsp;"osoba": "Adam",<br>
+    &nbsp;&nbsp;"pozycje": [<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;{ "nazwa": "Mleko", "cena": 3.99, "kategoria": "Jedzenie" }<br>
+    &nbsp;&nbsp;]<br>
+    }
+  </div>
+</section>
+
+<!-- ===================== AI ===================== -->
+<section id="ai">
+  <div class="section-num">Rozdział 7</div>
+  <h2>🤖 Sztuczna inteligencja w aplikacji</h2>
+
+  <p>Nasza apka używa AI do <strong>automatycznego rozpoznawania paragonów</strong> — zamiast ręcznie wpisywać każdy wydatek, robisz zdjęcie i AI wyciąga wszystkie dane.</p>
+
+  <h3>Jak działa rozpoznawanie paragonów?</h3>
+
+  <div class="flow">
+    <div class="flow-item">
+      <div class="flow-line"><div class="flow-dot" style="background:#a855f7">📸</div><div class="flow-connector"></div></div>
+      <div class="flow-content"><h4>Robisz zdjęcie paragonu</h4><p>Przeglądarka wysyła plik obrazu do naszego backendu</p></div>
+    </div>
+    <div class="flow-item">
+      <div class="flow-line"><div class="flow-dot" style="background:#a855f7">🔄</div><div class="flow-connector"></div></div>
+      <div class="flow-content"><h4>Backend konwertuje do base64</h4><p>Zdjęcie zamieniane jest na ciąg znaków tekstowych który można wysłać przez API</p></div>
+    </div>
+    <div class="flow-item">
+      <div class="flow-line"><div class="flow-dot" style="background:#a855f7">🚀</div><div class="flow-connector"></div></div>
+      <div class="flow-content"><h4>Wysłanie do Claude API (Anthropic)</h4><p>Razem z instrukcją: "wyciągnij sklep, datę, sumę i listę produktów z kategoriami"</p></div>
+    </div>
+    <div class="flow-item">
+      <div class="flow-line"><div class="flow-dot" style="background:#a855f7">🧠</div><div class="flow-connector"></div></div>
+      <div class="flow-content"><h4>Claude analizuje obraz</h4><p>Model AI "patrzy" na zdjęcie i rozumie tekst oraz strukturę paragonu</p></div>
+    </div>
+    <div class="flow-item">
+      <div class="flow-line"><div class="flow-dot" style="background:#22c55e">✓</div><div class="flow-connector" style="background:transparent"></div></div>
+      <div class="flow-content"><h4>Odpowiedź w JSON</h4><p>Claude zwraca ustrukturyzowane dane — możesz je przejrzeć i poprawić przed zapisem</p></div>
+    </div>
+  </div>
+
+  <h3>Alternatywne modele AI</h3>
+  <div class="cards">
+    <div class="card">
+      <div class="icon">🔵</div>
+      <h4>Claude (Anthropic) ⭐</h4>
+      <p>Używamy. Bardzo dobry do analizy dokumentów i strukturyzowania danych. Bezpieczny, dokładny.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🟢</div>
+      <h4>GPT-4 (OpenAI)</h4>
+      <p>Najpopularniejszy, bardzo dobry. Podobne możliwości do Claude. Droższy przy dużym użyciu.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🔷</div>
+      <h4>Gemini (Google)</h4>
+      <p>Integruje się z Google Workspace. Dobre multimodalne możliwości (obraz+tekst).</p>
+    </div>
+    <div class="card">
+      <div class="icon">🦙</div>
+      <h4>Llama (Meta) — open source</h4>
+      <p>Darmowy, możesz uruchomić lokalnie. Wymaga własnego serwera GPU. Gorszy do paragonów.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== BACKUP ===================== -->
+<section id="backup">
+  <div class="section-num">Rozdział 8</div>
+  <h2>💾 Backup — zabezpieczenie danych</h2>
+
+  <p>Backup to <strong>kopia zapasowa danych</strong> przechowywana w innym miejscu niż oryginał. Jeśli coś pójdzie źle (awaria serwera, błąd ludzi, atak hakerski), możesz wrócić do stanu sprzed problemu.</p>
+
+  <div class="analogy">
+    Backup to ubezpieczenie. Nigdy nie masz nadziei go użyć, ale kiedy potrzebujesz — jest bezcenny. Warto robić go w innym fizycznym miejscu niż dane (dlatego nie trzymamy backupu na tym samym serwerze co baza).
+  </div>
+
+  <h3>Strategie backupu</h3>
+
+  <div class="cards">
+    <div class="card">
+      <div class="icon">📅</div>
+      <h4>Pełny (Full)</h4>
+      <p>Kopia wszystkich danych. Bezpieczna ale zajmuje dużo miejsca. Używamy tego — każdy backup to pełny snapshot.</p>
+    </div>
+    <div class="card">
+      <div class="icon">➕</div>
+      <h4>Przyrostowy (Incremental)</h4>
+      <p>Tylko zmiany od ostatniego backupu. Oszczędność miejsca, ale przywrócenie wymaga wielu plików.</p>
+    </div>
+    <div class="card">
+      <div class="icon">🔄</div>
+      <h4>Różnicowy (Differential)</h4>
+      <p>Zmiany od ostatniego pełnego backupu. Kompromis między pełnym a przyrostowym.</p>
+    </div>
+  </div>
+
+  <div class="tip">Nasza apka: GitHub Actions codziennie o 5:00 rano łączy się z PostgreSQL przez publiczny URL i eksportuje wszystkie dane (wydatki, konta, kategorie, wpływy) do pliku JSON. Plik trafia na GitHub — zupełnie inne miejsce niż Railway.</div>
+
+  <h3>Zasada 3-2-1</h3>
+  <p>Profesjonalny standard backupu: <strong>3 kopie danych</strong>, na <strong>2 różnych nośnikach</strong>, z czego <strong>1 poza siedzibą</strong> (off-site). Nasza apka ma: dane na Railway + backup na GitHub — to 2 miejsca, co jest dobrym minimum dla prywatnego projektu.</p>
+</section>
+
+<!-- ===================== NASZA APKA ===================== -->
+<section id="nasza-apka">
+  <div class="section-num">Podsumowanie</div>
+  <h2>🏠 Nasza apka — wszystko razem</h2>
+
+  <p>Teraz kiedy znasz wszystkie elementy, oto jak to wszystko współpracuje w Budżecie domowym:</p>
+
+  <div class="diagram">
+    <div class="diagram-label" style="margin-bottom:16px;">Przepływ danych w aplikacji</div>
+
+    <div class="diagram-row">
+      <div class="diagram-box d-blue">🌐 Przeglądarka<br><small>Vanilla JS + HTML/CSS</small></div>
+    </div>
+    <div class="diagram-label">↕ HTTPS + Firebase JWT Token</div>
+
+    <div class="diagram-row">
+      <div class="diagram-box d-purple">🔑 Firebase Auth<br><small>Google Login → JWT</small></div>
+      <div class="d-arrow" style="flex:none;">+</div>
+      <div class="diagram-box d-green">⚡ FastAPI<br><small>main.py na Railway</small></div>
+    </div>
+    <div class="diagram-label">↕ SQL (psycopg2)</div>
+
+    <div class="diagram-row">
+      <div class="diagram-box d-teal">🐘 PostgreSQL<br><small>baza 'railway' na Railway</small></div>
+      <div class="d-arrow" style="flex:none;">←→</div>
+      <div class="diagram-box d-orange">🤖 Claude AI<br><small>Anthropic API</small></div>
+    </div>
+    <div class="diagram-label">↕ codziennie o 5:00</div>
+
+    <div class="diagram-row">
+      <div class="diagram-box d-purple">💾 GitHub Actions<br><small>backup → gałąź 'backups'</small></div>
+    </div>
+  </div>
+
+  <h3>Stos technologiczny — szybkie podsumowanie</h3>
+  <table class="compare">
+    <thead><tr><th>Warstwa</th><th>Technologia</th><th>Dlaczego ta?</th></tr></thead>
+    <tbody>
+      <tr><td class="name">Frontend</td><td>Vanilla JS</td><td>Prosto, szybko, bez zależności które się dezaktualizują</td></tr>
+      <tr><td class="name">Backend</td><td>FastAPI (Python)</td><td>Szybki w pisaniu, wydajny, automatyczna dokumentacja API</td></tr>
+      <tr><td class="name">Baza danych</td><td>PostgreSQL</td><td>Niezawodny, darmowy, obsługuje złożone zapytania</td></tr>
+      <tr><td class="name">Hosting</td><td>Railway</td><td>Wrzucasz kod i działa, bez konfiguracji serwera</td></tr>
+      <tr><td class="name">Autentykacja</td><td>Firebase Auth</td><td>Google Login gotowy od razu, bezpieczny, darmowy</td></tr>
+      <tr><td class="name">AI</td><td>Claude (Anthropic)</td><td>Najlepszy do analizy dokumentów i paragonów</td></tr>
+      <tr><td class="name">Backup</td><td>GitHub Actions</td><td>Darmowy, automatyczny, dane w innym miejscu niż serwer</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<div style="text-align:center;padding:40px;color:#475569;font-size:0.82rem;">
+  Budżet domowy — dokumentacja techniczna 2026
+</div>
+
+</body>
+</html>

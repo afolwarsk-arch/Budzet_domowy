@@ -94,6 +94,11 @@ def wplywy_page():
     return _html("wplywy.html")
 
 
+@app.get("/cele")
+def cele_page():
+    return _html("cele.html")
+
+
 @app.get("/kategorie")
 def kategorie_page():
     return _html("kategorie.html")
@@ -1260,6 +1265,7 @@ class PrzelewIn(BaseModel):
     konto_z_id: int
     konto_na_id: int
     opis: str | None = None
+    cel_id: int | None = None   # opcjonalna koperta zasilana tym przelewem
 
 
 @app.post("/api/przelewy", status_code=201)
@@ -1270,7 +1276,8 @@ def api_create_przelew(body: PrzelewIn, current_user: dict = Depends(get_current
         raise HTTPException(400, "Konto źródłowe i docelowe muszą być różne")
     try:
         return database.create_przelew(current_user["household_id"], body.data, body.kwota,
-                                       body.konto_z_id, body.konto_na_id, body.opis)
+                                       body.konto_z_id, body.konto_na_id, body.opis,
+                                       cel_id=body.cel_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -1325,6 +1332,7 @@ class CyklicznyIn(BaseModel):
     automatyczny: bool = True
     typ: str = "wydatek"          # 'wydatek' | 'przelew'
     konto_na_id: int | None = None
+    cel_id: int | None = None     # przelew cykliczny może zasilać kopertę (cel)
 
 
 def _waliduj_zakonczenie(body: "CyklicznyIn") -> str | None:
@@ -1409,7 +1417,8 @@ def api_create_cykliczny(body: CyklicznyIn, current_user: dict = Depends(get_cur
                                       body.kwota, body.dzien, body.kategoria_glowna,
                                       body.kategoria, body.osoba, body.konto_id, od_data,
                                       body.limit_naliczen, body.automatyczny,
-                                      body.typ, body.konto_na_id, do_data)
+                                      body.typ, body.konto_na_id, do_data,
+                                      cel_id=body.cel_id if body.typ == "przelew" else None)
     database.naliczaj_cykliczne(current_user["household_id"])
     return wynik
 
@@ -1425,7 +1434,8 @@ def api_update_cykliczny(cykliczny_id: int, body: CyklicznyIn,
                                    body.nazwa.strip(), body.kwota, body.dzien,
                                    body.kategoria_glowna, body.kategoria, body.osoba,
                                    body.konto_id, body.aktywne, body.limit_naliczen,
-                                   body.automatyczny, body.typ, body.konto_na_id, do_data)
+                                   body.automatyczny, body.typ, body.konto_na_id, do_data,
+                                   cel_id=body.cel_id if body.typ == "przelew" else None)
     if not ok:
         raise HTTPException(404, "Nie znaleziono")
     return {"ok": True}
@@ -1436,6 +1446,139 @@ def api_delete_cykliczny(cykliczny_id: int, current_user: dict = Depends(get_cur
     ok = database.delete_cykliczny(cykliczny_id, current_user["household_id"])
     if not ok:
         raise HTTPException(404, "Nie znaleziono")
+    return {"ok": True}
+
+
+# ══════════════════ MODUŁ CELE ══════════════════
+
+class CelIn(BaseModel):
+    nazwa: str
+    kwota_docelowa: float
+    konto_id: int | None = None
+    termin: str | None = None
+
+
+class WplataIn(BaseModel):
+    data: str
+    kwota: float
+    opis: str | None = None
+
+
+class LimitIn(BaseModel):
+    kategoria_glowna: str
+    kwota_miesieczna: float
+
+
+class CelPrzeplywowyIn(BaseModel):
+    typ: str          # 'kwota' | 'procent'
+    wartosc: float
+
+
+@app.get("/api/cele")
+def api_get_cele(current_user: dict = Depends(get_current_user)):
+    return database.get_cele(current_user["household_id"])
+
+
+@app.post("/api/cele", status_code=201)
+def api_create_cel(body: CelIn, current_user: dict = Depends(get_current_user)):
+    if not body.nazwa.strip():
+        raise HTTPException(400, "Podaj nazwę celu")
+    if body.kwota_docelowa <= 0:
+        raise HTTPException(400, "Kwota docelowa musi być większa od zera")
+    return database.create_cel(current_user["household_id"], body.nazwa.strip(),
+                               body.kwota_docelowa, body.konto_id, body.termin)
+
+
+@app.put("/api/cele/{cel_id}")
+def api_update_cel(cel_id: int, body: CelIn, current_user: dict = Depends(get_current_user)):
+    if not body.nazwa.strip():
+        raise HTTPException(400, "Podaj nazwę celu")
+    if body.kwota_docelowa <= 0:
+        raise HTTPException(400, "Kwota docelowa musi być większa od zera")
+    ok = database.update_cel(cel_id, current_user["household_id"], body.nazwa.strip(),
+                             body.kwota_docelowa, body.konto_id, body.termin)
+    if not ok:
+        raise HTTPException(404, "Cel nie znaleziony")
+    return {"ok": True}
+
+
+@app.delete("/api/cele/{cel_id}")
+def api_delete_cel(cel_id: int, current_user: dict = Depends(get_current_user)):
+    if not database.delete_cel(cel_id, current_user["household_id"]):
+        raise HTTPException(404, "Cel nie znaleziony")
+    return {"ok": True}
+
+
+@app.get("/api/cele/{cel_id}/wplaty")
+def api_get_cel_wplaty(cel_id: int, current_user: dict = Depends(get_current_user)):
+    return database.get_cel_wplaty(cel_id, current_user["household_id"])
+
+
+@app.post("/api/cele/{cel_id}/wplaty", status_code=201)
+def api_add_cel_wplata(cel_id: int, body: WplataIn, current_user: dict = Depends(get_current_user)):
+    if body.kwota == 0:
+        raise HTTPException(400, "Kwota nie może być zerowa")
+    try:
+        return database.add_cel_wplata(cel_id, current_user["household_id"], body.data, body.kwota, body.opis)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/api/cele/wplaty/{wplata_id}")
+def api_delete_cel_wplata(wplata_id: int, current_user: dict = Depends(get_current_user)):
+    if not database.delete_cel_wplata(wplata_id, current_user["household_id"]):
+        raise HTTPException(404, "Wpłata nie znaleziona")
+    return {"ok": True}
+
+
+@app.get("/api/limity")
+def api_get_limity(month: str | None = None, current_user: dict = Depends(get_current_user)):
+    return database.get_limity(current_user["household_id"], month=month)
+
+
+@app.post("/api/limity", status_code=201)
+def api_upsert_limit(body: LimitIn, current_user: dict = Depends(get_current_user)):
+    if not body.kategoria_glowna.strip():
+        raise HTTPException(400, "Wybierz kategorię")
+    if body.kwota_miesieczna <= 0:
+        raise HTTPException(400, "Limit musi być większy od zera")
+    return database.upsert_limit(current_user["household_id"], body.kategoria_glowna.strip(), body.kwota_miesieczna)
+
+
+@app.delete("/api/limity/{limit_id}")
+def api_delete_limit(limit_id: int, current_user: dict = Depends(get_current_user)):
+    if not database.delete_limit(limit_id, current_user["household_id"]):
+        raise HTTPException(404, "Limit nie znaleziony")
+    return {"ok": True}
+
+
+@app.get("/api/cel-przeplywowy")
+def api_get_cel_przeplywowy(month: str | None = None, current_user: dict = Depends(get_current_user)):
+    from datetime import date as _date
+    cel = database.get_cel_przeplywowy(current_user["household_id"])
+    m = month or _date.today().strftime("%Y-%m")
+    bil = database.stats_bilans(current_user["household_id"], month=m)
+    wynik = {"cel": cel, "miesiac": m, "bilans": bil["bilans"], "wplywy": bil["wplywy"], "wydatki": bil["wydatki"]}
+    if cel:
+        cel_kwota = cel["wartosc"] if cel["typ"] == "kwota" else round(bil["wplywy"] * cel["wartosc"] / 100, 2)
+        wynik["cel_kwota"] = cel_kwota
+        wynik["realizacja"] = round(bil["bilans"] / cel_kwota * 100, 1) if cel_kwota > 0 else None
+    return wynik
+
+
+@app.put("/api/cel-przeplywowy")
+def api_set_cel_przeplywowy(body: CelPrzeplywowyIn, current_user: dict = Depends(get_current_user)):
+    if body.typ not in ("kwota", "procent"):
+        raise HTTPException(400, "Typ musi być 'kwota' albo 'procent'")
+    if body.wartosc <= 0:
+        raise HTTPException(400, "Wartość musi być większa od zera")
+    database.set_cel_przeplywowy(current_user["household_id"], body.typ, body.wartosc)
+    return {"ok": True}
+
+
+@app.delete("/api/cel-przeplywowy")
+def api_delete_cel_przeplywowy(current_user: dict = Depends(get_current_user)):
+    database.delete_cel_przeplywowy(current_user["household_id"])
     return {"ok": True}
 
 
