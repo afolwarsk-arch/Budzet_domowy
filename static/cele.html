@@ -161,8 +161,8 @@
     <div class="fg"><label>Data</label><input type="date" id="wp-data"></div>
     <div class="fg"><label>Kwota (zł)</label><input type="number" id="wp-kwota" step="0.01" placeholder="0.00">
       <div class="hint">Aby zaznaczyć stan początkowy istniejącej koperty, dodaj pierwszą wpłatę „stan startowy".</div></div>
-    <div class="fg"><label>Z konta (realny przelew)</label><select id="wp-zkonto"></select>
-      <div class="hint">Wybierz konto, by zrobić prawdziwy przelew na to subkonto (zejdzie z konta źródłowego). Zostaw „bez przelewu", by tylko zapisać wpłatę (np. stan startowy).</div></div>
+    <div class="fg"><label>Skąd</label><select id="wp-zkonto"></select>
+      <div class="hint"><strong>Wolne środki tego konta</strong> — przydziel pieniądze, które już są na koncie oszczędnościowym, do tego celu (bez przelewu, saldo się nie zmienia). <strong>Przelew z: …</strong> — realny przelew z innego konta (zejdzie stamtąd).</div></div>
     <div class="fg"><label>Opis (opcjonalnie)</label><input type="text" id="wp-opis" placeholder="np. stan startowy"></div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal('m-wplata')">Anuluj</button>
@@ -441,13 +441,20 @@ function openWplata(id, nazwa) {
   document.getElementById('wp-data').value = new Date().toISOString().slice(0,10);
   document.getElementById('wp-kwota').value = '';
   document.getElementById('wp-opis').value = '';
-  // konta źródłowe: ta sama waluta co konto celu, bez samego konta celu
   const goal = celeLista.find(c => c.id === id);
   const savings = konta.find(k => goal && k.id === goal.konto_id);
+  // ile wolnych (nieprzypisanych) środków jest na koncie celu = saldo − suma subkont
+  let nieprzypisane = null;
+  if (savings) {
+    const suma = celeLista.filter(c => c.konto_id === savings.id).reduce((s, c) => s + parseFloat(c.odlozone || 0), 0);
+    nieprzypisane = Math.round((parseFloat(savings.saldo_biezace || 0) - suma) * 100) / 100;
+  }
+  // pierwsza (domyślna) opcja = przydział wolnych środków TEGO konta (bez przelewu);
+  // dalej realny przelew z innych kont w tej samej walucie
   const zrodla = konta.filter(k => savings && k.id !== savings.id && k.waluta === savings.waluta);
   document.getElementById('wp-zkonto').innerHTML =
-    '<option value="">— bez przelewu (tylko zapisz wpłatę) —</option>' +
-    zrodla.map(k => `<option value="${k.id}">${escHtml(k.nazwa)} (${escHtml(k.typ)})</option>`).join('');
+    `<option value="">Wolne środki tego konta${nieprzypisane != null ? ' (nieprzypisane: ' + fmtZl(nieprzypisane) + ')' : ''}</option>` +
+    zrodla.map(k => `<option value="${k.id}">Przelew z: ${escHtml(k.nazwa)} (${escHtml(k.typ)})</option>`).join('');
   openModal('m-wplata');
 }
 
