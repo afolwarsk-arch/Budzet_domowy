@@ -535,9 +535,12 @@ function refreshPrzelewNa() {
   const zKonto = konta.find(k => k.id === zId);
   const sel = document.getElementById('p-na');
   const opcje = konta.filter(k => k.id !== zId && zKonto && k.waluta === zKonto.waluta);
-  sel.innerHTML = opcje.length
-    ? opcje.map(k => `<option value="${k.id}">${k.nazwa} (${k.waluta})</option>`).join('')
-    : '<option value="">— brak konta w tej samej walucie —</option>';
+  let html = opcje.map(k => `<option value="${k.id}">${k.nazwa} (${k.waluta})</option>`).join('');
+  // jeśli konto źródłowe jest oszczędnościowe i ma cele — pozwól wybrać to samo
+  // konto = przydział wolnych środków do celu (bez ruchu pieniędzy)
+  const maCele = !editPrzelewId && zKonto && zKonto.typ === 'oszczędności' && cele.some(c => c.konto_id === zId);
+  if (maCele) html += `<option value="${zId}">${zKonto.nazwa} — przydział do celu (bez przelewu)</option>`;
+  sel.innerHTML = html || '<option value="">— brak konta w tej samej walucie —</option>';
   refreshPrzelewCel();
 }
 
@@ -549,17 +552,22 @@ function refreshPrzelewCel() {
   const wrap = document.getElementById('p-cel-wrap');
   const sel = document.getElementById('p-cel');
   const lbl = document.getElementById('p-cel-label');
-  let opcje = [], tekst = '';
+  let opcje = [], tekst = '', wymagany = false;
   if (!editPrzelewId) {
-    const naCele = cele.filter(c => c.konto_id === naId);
-    const zCele = cele.filter(c => c.konto_id === zId);
-    if (naCele.length) { opcje = naCele; tekst = 'Na subkonto / cel (opcjonalnie)'; }
-    else if (zCele.length) { opcje = zCele; tekst = 'Z subkonta / celu (opcjonalnie)'; }
+    if (naId === zId) {
+      // to samo konto = przydział wolnych środków do celu (cel wymagany)
+      opcje = cele.filter(c => c.konto_id === zId); tekst = 'Na cel (wybierz subkonto)'; wymagany = true;
+    } else {
+      const naCele = cele.filter(c => c.konto_id === naId);
+      const zCele = cele.filter(c => c.konto_id === zId);
+      if (naCele.length) { opcje = naCele; tekst = 'Na subkonto / cel (opcjonalnie)'; }
+      else if (zCele.length) { opcje = zCele; tekst = 'Z subkonta / celu (opcjonalnie)'; }
+    }
   }
   if (!opcje.length) { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
   wrap.style.display = '';
   lbl.textContent = tekst;
-  sel.innerHTML = '<option value="">— bez celu —</option>' +
+  sel.innerHTML = (wymagany ? '' : '<option value="">— bez celu —</option>') +
     opcje.map(c => `<option value="${c.id}">${c.nazwa}</option>`).join('');
 }
 
@@ -594,21 +602,31 @@ async function editPrzelew(id) {
 }
 
 async function savePrzelew() {
-  const body = {
-    konto_z_id: parseInt(document.getElementById('p-z').value),
-    konto_na_id: parseInt(document.getElementById('p-na').value) || null,
-    kwota: parseFloat(document.getElementById('p-kwota').value),
-    data: document.getElementById('p-data').value,
-    opis: document.getElementById('p-opis').value.trim() || null,
-    cel_id: editPrzelewId ? null : (parseInt(document.getElementById('p-cel').value) || null),
-  };
-  if (!body.konto_na_id) { alert('Brak konta docelowego w tej samej walucie.'); return; }
-  if (!body.data || isNaN(body.kwota) || body.kwota <= 0) { alert('Wypełnij datę i kwotę.'); return; }
-  const url = editPrzelewId ? `/api/przelewy/${editPrzelewId}` : '/api/przelewy';
-  const res = await authFetch(url, { method: editPrzelewId ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const zId = parseInt(document.getElementById('p-z').value);
+  const naId = parseInt(document.getElementById('p-na').value) || null;
+  const kwota = parseFloat(document.getElementById('p-kwota').value);
+  const data = document.getElementById('p-data').value;
+  const opis = document.getElementById('p-opis').value.trim() || null;
+  const celId = editPrzelewId ? null : (parseInt(document.getElementById('p-cel').value) || null);
+  if (!naId) { alert('Brak konta docelowego w tej samej walucie.'); return; }
+  if (!data || isNaN(kwota) || kwota <= 0) { alert('Wypełnij datę i kwotę.'); return; }
+
+  let res;
+  if (!editPrzelewId && naId === zId) {
+    // to samo konto = przydział wolnych środków do celu (bez przelewu)
+    if (!celId) { alert('Wybierz cel, do którego przydzielić środki.'); return; }
+    res = await authFetch(`/api/cele/${celId}/wplaty`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data, kwota, opis }),
+    });
+  } else {
+    const body = { konto_z_id: zId, konto_na_id: naId, kwota, data, opis, cel_id: celId };
+    const url = editPrzelewId ? `/api/przelewy/${editPrzelewId}` : '/api/przelewy';
+    res = await authFetch(url, { method: editPrzelewId ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  }
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
-    alert(e.detail || 'Nie udało się zapisać przelewu.');
+    alert(e.detail || 'Nie udało się zapisać.');
     return;
   }
   closeModal('m-przelew');
