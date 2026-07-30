@@ -219,7 +219,9 @@
 <div class="modal-backdrop" id="m-limit">
   <div class="modal-box">
     <h3 id="m-limit-title">Dodaj limit</h3>
-    <div class="fg"><label>Kategoria</label><select id="l-kat"></select></div>
+    <div class="fg"><label>Kategoria</label><select id="l-kat" onchange="fillLimSubkat()"></select></div>
+    <div class="fg"><label>Podkategoria</label><select id="l-podkat"></select>
+      <div class="hint">Zostaw „— cała kategoria —", by limitować całą kategorię, albo wybierz podkategorię (np. tylko „Słodycze").</div></div>
     <div class="fg"><label>Limit miesięczny (zł)</label><input type="number" id="l-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal('m-limit')">Anuluj</button>
@@ -580,13 +582,16 @@ async function loadLimity() {
   box.innerHTML = limity.map(l => {
     const p = Math.min(l.procent, 100);
     const kolor = l.procent >= 100 ? '#c62828' : l.procent >= 80 ? '#f59e0b' : '#2e7d32';
+    const tytul = l.podkategoria
+      ? `${escHtml(l.kategoria_glowna)} <span style="color:#aaa">›</span> ${escHtml(l.podkategoria)}`
+      : `${escHtml(l.kategoria_glowna)} <span style="font-size:10px;color:#aaa">(cała)</span>`;
     return `<div class="lim-row">
       <div class="lim-head">
-        <span class="lim-kat">${escHtml(l.kategoria_glowna)}</span>
+        <span class="lim-kat">${tytul}</span>
         <span style="display:flex;align-items:center;gap:8px">
           <span class="lim-kwoty">${fmt(l.wydane)} / ${fmtZl(l.kwota_miesieczna)}</span>
           <span class="lim-icons">
-            <button onclick="editLimit('${escHtml(l.kategoria_glowna).replace(/'/g,"\\'")}',${l.kwota_miesieczna})" title="Zmień limit">✏</button>
+            <button onclick="editLimit('${escHtml(l.kategoria_glowna).replace(/'/g,"\\'")}','${escHtml(l.podkategoria||'').replace(/'/g,"\\'")}',${l.kwota_miesieczna})" title="Zmień limit">✏</button>
             <button class="del" onclick="delLimit(${l.id})" title="Usuń limit">✕</button>
           </span>
         </span>
@@ -601,19 +606,31 @@ function fillLimKat() {
   document.getElementById('l-kat').innerHTML = Object.keys(hierarchia).map(k => `<option value="${escHtml(k)}">${escHtml(k)}</option>`).join('');
 }
 
+function fillLimSubkat(wybrana) {
+  const g = document.getElementById('l-kat').value;
+  const subs = hierarchia[g] || [];
+  document.getElementById('l-podkat').innerHTML = '<option value="">— cała kategoria —</option>' +
+    subs.map(s => `<option value="${escHtml(s)}"${s === wybrana ? ' selected' : ''}>${escHtml(s)}</option>`).join('');
+}
+
 function openLimit() {
   document.getElementById('m-limit-title').textContent = 'Dodaj limit';
   fillLimKat();
+  fillLimSubkat();
   document.getElementById('l-kat').disabled = false;
+  document.getElementById('l-podkat').disabled = false;
   document.getElementById('l-kwota').value = '';
   openModal('m-limit');
 }
 
-function editLimit(kat, kwota) {
+function editLimit(kat, podkat, kwota) {
   document.getElementById('m-limit-title').textContent = 'Zmień limit';
   fillLimKat();
   document.getElementById('l-kat').value = kat;
+  fillLimSubkat(podkat || '');
+  // kategoria i podkategoria tworzą klucz — przy edycji zablokowane, zmienia się tylko kwota
   document.getElementById('l-kat').disabled = true;
+  document.getElementById('l-podkat').disabled = true;
   document.getElementById('l-kwota').value = kwota;
   openModal('m-limit');
 }
@@ -621,6 +638,7 @@ function editLimit(kat, kwota) {
 async function saveLimit() {
   const body = {
     kategoria_glowna: document.getElementById('l-kat').value,
+    podkategoria: document.getElementById('l-podkat').value || null,
     kwota_miesieczna: parseFloat(document.getElementById('l-kwota').value),
   };
   if (!body.kategoria_glowna || isNaN(body.kwota_miesieczna) || body.kwota_miesieczna <= 0) { alert('Wybierz kategorię i podaj limit.'); return; }

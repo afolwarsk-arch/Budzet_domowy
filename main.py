@@ -1475,6 +1475,7 @@ class PrzesuniecieCelIn(BaseModel):
 class LimitIn(BaseModel):
     kategoria_glowna: str
     kwota_miesieczna: float
+    podkategoria: str | None = None
 
 
 class CelPrzeplywowyIn(BaseModel):
@@ -1589,7 +1590,9 @@ def api_upsert_limit(body: LimitIn, current_user: dict = Depends(get_current_use
         raise HTTPException(400, "Wybierz kategorię")
     if body.kwota_miesieczna <= 0:
         raise HTTPException(400, "Limit musi być większy od zera")
-    return database.upsert_limit(current_user["household_id"], body.kategoria_glowna.strip(), body.kwota_miesieczna)
+    pod = (body.podkategoria or "").strip() or None
+    return database.upsert_limit(current_user["household_id"], body.kategoria_glowna.strip(),
+                                 body.kwota_miesieczna, pod)
 
 
 @app.delete("/api/limity/{limit_id}")

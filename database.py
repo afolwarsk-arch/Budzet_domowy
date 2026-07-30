@@ -262,6 +262,13 @@ def init_db():
             created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (household_id, kategoria_glowna)
         )""")
+        # limit może dotyczyć podkategorii (NULL = cała kategoria główna).
+        # Stary unique (household, kategoria_glowna) blokowałby limit główny + podkategorie
+        # tej samej kategorii — zamieniamy na złożony indeks z COALESCE (NULL→'').
+        cur.execute("ALTER TABLE limity ADD COLUMN IF NOT EXISTS podkategoria TEXT")
+        cur.execute("ALTER TABLE limity DROP CONSTRAINT IF EXISTS limity_household_id_kategoria_glowna_key")
+        cur.execute("""CREATE UNIQUE INDEX IF NOT EXISTS limity_uniq
+                       ON limity (household_id, kategoria_glowna, COALESCE(podkategoria, ''))""")
         # cykliczny przelew może zasilać konkretną kopertę (cel)
         cur.execute("ALTER TABLE wydatki_cykliczne ADD COLUMN IF NOT EXISTS cel_id INTEGER REFERENCES cele(id) ON DELETE SET NULL")
         # wpłata na cel utworzona przez przelew jest z nim powiązana — usunięcie
@@ -1943,13 +1950,22 @@ def get_limity(household_id: int, month: str | None = None) -> list[dict]:
     from datetime import date as _date
     month = month or _date.today().strftime("%Y-%m")
     with get_db() as cur:
-        cur.execute("SELECT * FROM limity WHERE household_id=%s ORDER BY kategoria_glowna", (household_id,))
+        cur.execute("""SELECT * FROM limity WHERE household_id=%s
+                       ORDER BY kategoria_glowna, podkategoria NULLS FIRST""", (household_id,))
         limity = [dict(r) for r in cur.fetchall()]
         for l in limity:
-            cur.execute("""SELECT COALESCE(SUM(p.cena * p.ilosc), 0) AS s
-                           FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
-                           WHERE w.household_id=%s AND p.kategoria_glowna=%s AND TO_CHAR(w.data,'YYYY-MM')=%s""",
-                        (household_id, l["kategoria_glowna"], month))
+            # limit na podkategorię liczy tylko tę podkategorię; na całą kategorię — wszystko w niej
+            if l.get("podkategoria"):
+                cur.execute("""SELECT COALESCE(SUM(p.cena * p.ilosc), 0) AS s
+                               FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
+                               WHERE w.household_id=%s AND p.kategoria_glowna=%s AND p.kategoria=%s
+                                 AND TO_CHAR(w.data,'YYYY-MM')=%s""",
+                            (household_id, l["kategoria_glowna"], l["podkategoria"], month))
+            else:
+                cur.execute("""SELECT COALESCE(SUM(p.cena * p.ilosc), 0) AS s
+                               FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
+                               WHERE w.household_id=%s AND p.kategoria_glowna=%s AND TO_CHAR(w.data,'YYYY-MM')=%s""",
+                            (household_id, l["kategoria_glowna"], month))
             l["kwota_miesieczna"] = float(l["kwota_miesieczna"])
             l["wydane"] = round(float(cur.fetchone()["s"]), 2)
             l["pozostalo"] = round(l["kwota_miesieczna"] - l["wydane"], 2)
@@ -1957,13 +1973,20 @@ def get_limity(household_id: int, month: str | None = None) -> list[dict]:
         return limity
 
 
-def upsert_limit(household_id: int, kategoria_glowna: str, kwota_miesieczna: float) -> dict:
+def upsert_limit(household_id: int, kategoria_glowna: str, kwota_miesieczna: float,
+                 podkategoria: str | None = None) -> dict:
+    podkategoria = podkategoria or None
     with get_db() as cur:
+        cur.execute("""UPDATE limity SET kwota_miesieczna=%s
+                       WHERE household_id=%s AND kategoria_glowna=%s
+                         AND COALESCE(podkategoria,'')=COALESCE(%s,'') RETURNING *""",
+                    (kwota_miesieczna, household_id, kategoria_glowna, podkategoria))
+        row = cur.fetchone()
+        if row:
+            return dict(row)
         cur.execute(
-            """INSERT INTO limity (household_id, kategoria_glowna, kwota_miesieczna) VALUES (%s,%s,%s)
-               ON CONFLICT (household_id, kategoria_glowna) DO UPDATE SET kwota_miesieczna=EXCLUDED.kwota_miesieczna
-               RETURNING *""",
-            (household_id, kategoria_glowna, kwota_miesieczna),
+            "INSERT INTO limity (household_id, kategoria_glowna, podkategoria, kwota_miesieczna) VALUES (%s,%s,%s,%s) RETURNING *",
+            (household_id, kategoria_glowna, podkategoria, kwota_miesieczna),
         )
         return dict(cur.fetchone())
 
