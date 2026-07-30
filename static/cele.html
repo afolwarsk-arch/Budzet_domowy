@@ -171,6 +171,22 @@
   </div>
 </div>
 
+<!-- Modal: wypłata z celu -->
+<div class="modal-backdrop" id="m-wyplata">
+  <div class="modal-box">
+    <h3 id="m-wyplata-title">Wypłać z celu</h3>
+    <div class="fg"><label>Data</label><input type="date" id="wy-data"></div>
+    <div class="fg"><label>Kwota (zł)</label><input type="number" id="wy-kwota" step="0.01" min="0.01" placeholder="0.00"></div>
+    <div class="fg"><label>Dokąd</label><select id="wy-nakonto"></select>
+      <div class="hint"><strong>Na inne konto</strong> — realny przelew (pieniądze wychodzą z konta oszczędnościowego, np. na główne). <strong>Zostaw na koncie</strong> — tylko zdejmij z celu, pieniądze zostają na koncie jako wolne środki.</div></div>
+    <div class="fg"><label>Opis (opcjonalnie)</label><input type="text" id="wy-opis" placeholder="np. opłata za wakacje"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('m-wyplata')">Anuluj</button>
+      <button class="btn-primary" onclick="saveWyplata()">Wypłać</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: historia wpłat -->
 <div class="modal-backdrop" id="m-hist">
   <div class="modal-box">
@@ -294,6 +310,7 @@ async function loadCele() {
       <div class="cel-analiza">${analiza}</div>
       <div class="cel-btns">
         <button class="primary" onclick="openWplata(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')">＋ Wpłać</button>
+        <button onclick="openWyplata(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')">－ Wypłać</button>
         <button onclick="openHist(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')">Historia</button>
         ${c.brakuje <= 0 ? `<button onclick="archiwizujCel(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}',${c.odlozone})">🏁 Zakończ</button>` : ''}
       </div>
@@ -483,6 +500,49 @@ async function saveWplata() {
   }
   if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Nie udało się zapisać.'); return; }
   closeModal('m-wplata');
+  loadCele();
+}
+
+function openWyplata(id, nazwa) {
+  wplataCelId = id;
+  document.getElementById('m-wyplata-title').textContent = 'Wypłać z: ' + nazwa;
+  document.getElementById('wy-data').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('wy-kwota').value = '';
+  document.getElementById('wy-opis').value = '';
+  const goal = celeLista.find(c => c.id === id);
+  const savings = konta.find(k => goal && k.id === goal.konto_id);
+  // dokąd: inne konta w tej samej walucie (realny przelew) lub „zostaw na koncie"
+  const cele_konta = konta.filter(k => savings && k.id !== savings.id && k.waluta === savings.waluta);
+  document.getElementById('wy-nakonto').innerHTML =
+    cele_konta.map(k => `<option value="${k.id}">Na: ${escHtml(k.nazwa)} (${escHtml(k.typ)})</option>`).join('') +
+    '<option value="">Zostaw na koncie (tylko zdejmij z celu)</option>';
+  openModal('m-wyplata');
+}
+
+async function saveWyplata() {
+  const data = document.getElementById('wy-data').value;
+  const kwota = parseFloat(document.getElementById('wy-kwota').value);
+  const opis = document.getElementById('wy-opis').value.trim() || null;
+  if (!data || isNaN(kwota) || kwota <= 0) { alert('Podaj datę i dodatnią kwotę.'); return; }
+  const naKonto = parseInt(document.getElementById('wy-nakonto').value) || null;
+  const goal = celeLista.find(c => c.id === wplataCelId);
+  if (!goal || !goal.konto_id) { alert('Cel nie ma konta.'); return; }
+  let res;
+  if (naKonto) {
+    // realny przelew z konta oszczędnościowego na inne — backend zrobi ujemną wpłatę na cel
+    res = await authFetch('/api/przelewy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ konto_z_id: goal.konto_id, konto_na_id: naKonto, kwota, data, opis, cel_id: wplataCelId }),
+    });
+  } else {
+    // tylko zdejmij z celu (ujemna wpłata) — pieniądze zostają na koncie jako wolne
+    res = await authFetch(`/api/cele/${wplataCelId}/wplaty`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data, kwota: -kwota, opis: opis || 'Wypłata z celu' }),
+    });
+  }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Nie udało się wypłacić.'); return; }
+  closeModal('m-wyplata');
   loadCele();
 }
 

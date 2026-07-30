@@ -558,10 +558,10 @@ function refreshPrzelewCel() {
       // to samo konto = przydział wolnych środków do celu (cel wymagany)
       opcje = cele.filter(c => c.konto_id === zId); tekst = 'Na cel (wybierz subkonto)'; wymagany = true;
     } else {
+      // cel pokazujemy tylko dla konta DOCELOWEGO (zasilenie). Wypłata z celu —
+      // przez przycisk „Wypłać" na stronie Cele, nie tutaj.
       const naCele = cele.filter(c => c.konto_id === naId);
-      const zCele = cele.filter(c => c.konto_id === zId);
       if (naCele.length) { opcje = naCele; tekst = 'Na subkonto / cel (opcjonalnie)'; }
-      else if (zCele.length) { opcje = zCele; tekst = 'Z subkonta / celu (opcjonalnie)'; }
     }
   }
   if (!opcje.length) { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
