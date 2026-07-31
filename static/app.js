@@ -97,13 +97,25 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   loadPrzypomnienia();
 
   let chartKat = null;
-  let chartMies = null;
-  let chartDziennie = null;
+  let chartTrend = null;
   let cenyChart = null;
-  let miesiaceLacznie = false;
-  let dailyMode = 'okres';       // 'okres' = wybrany filtr; '30dni' = ostatnie 30 dni
-  let lastMiesData = null;
-  let lastMiesKat = null;
+  // Wykres trendów: granulacja + podopcja per tryb
+  let trendMode = 'miesiac';     // 'miesiac' | 'tydzien' | 'dzien'
+  let miesiacAgg = 'lacznie';    // miesięczny: 'lacznie' (domyślnie) | 'osobno'
+  let tydzienZakres = 'okres';   // tygodniowy: 'okres' | '3mies'
+  let dzienZakres = 'okres';     // dzienny: 'okres' | '30dni'
+  let trendCtx = { osoba: '', kategoria: '', wyklucz: [] };
+  // pure-helpery dat/formatu (na górze, by uniknąć TDZ przy wczesnym renderze trendu)
+  const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const lastDayOfMonth = ym => { const [y, m] = ym.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+  // zwięzła etykieta osi Y: 2500 → „2,5k zł", 500 → „500 zł" (oszczędza miejsce na słupki)
+  const fmtKzl = v => {
+    if (Math.abs(v) >= 1000) {
+      const k = v / 1000;
+      return (Number.isInteger(k) ? String(k) : k.toFixed(1).replace('.', ',')) + 'k zł';
+    }
+    return Math.round(v) + ' zł';
+  };
   let wykluczone = new Set();   // kategorie główne pomijane w analizie (ustawienie gospodarstwa)
   let pokazWszystko = false;    // jednorazowy podgląd „pokaż wszystko" (nie kasuje ustawienia)
 
@@ -157,11 +169,6 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     if (osoba) q.set('osoba', osoba);
     if (kategoria) q.set('kategoria', kategoria);
 
-    const qMies = new URLSearchParams();
-    if (osoba) qMies.set('osoba', osoba);
-    if (kategoria) qMies.set('kategoria', kategoria);
-    qMies.set('n', '6');
-
     const qKat = new URLSearchParams(q);
     if (katMode === 'kontekst') qKat.set('kontekst', '1');
 
@@ -170,7 +177,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     // Wykres kategorii (qKat) zawsze pobiera pełne dane — pomijane wyszarzamy
     // w legendzie po stronie frontu, żeby dało się je odkliknąć z powrotem.
     const aktywneWyklucz = (!kategoria && !pokazWszystko) ? [...wykluczone] : [];
-    for (const w of aktywneWyklucz) { q.append('wyklucz', w); qMies.append('wyklucz', w); }
+    for (const w of aktywneWyklucz) q.append('wyklucz', w);
     renderWykluczBanner();
 
     // Bilans okresu — niezależny fetch: pełne wpływy − pełne wydatki za okres,
@@ -184,13 +191,13 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     }
     authFetch('/api/stats/bilans?' + qBil).then(r => r.json()).then(renderBilans).catch(() => {});
 
-    // Wykres dzienny — niezależny fetch; respektuje osobę/kategorię/pomijane,
-    // ale okres bierze albo z filtra (tryb 'okres'), albo ostatnie 30 dni (tryb '30dni').
-    loadDziennie(osoba, kategoria, aktywneWyklucz);
+    // Wykres trendów (miesięcznie/tygodniowo/dziennie) — niezależny, sam dobiera
+    // okres wg trybu; respektuje osobę/kategorię/pomijane (przez trendCtx).
+    trendCtx = { osoba, kategoria, wyklucz: aktywneWyklucz };
+    loadTrend();
 
     const fetches = [
       authFetch('/api/stats/kategorie?' + qKat).then(r => r.json()),
-      authFetch('/api/stats/miesiace?' + qMies).then(r => r.json()),
       authFetch('/api/stats/sklepy?' + q).then(r => r.json()),
       authFetch('/api/wydatki?' + q).then(r => r.json()),
     ];
@@ -206,19 +213,16 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       document.getElementById('sklepy-list').textContent = 'Błąd ładowania: ' + e.message;
       return;
     }
-    const [statKat, statMies, statSklepy, wydatki] = results;
+    const [statKat, statSklepy, wydatki] = results;
     if (!Array.isArray(statKat) || !Array.isArray(wydatki)) {
       document.getElementById('sklepy-list').textContent = 'Błąd API: ' + JSON.stringify(statKat);
       return;
     }
-    const statSub = kategoria ? results[4] : null;
-    const topProdukt = kategoria ? results[5] : null;
+    const statSub = kategoria ? results[3] : null;
+    const topProdukt = kategoria ? results[4] : null;
 
-    lastMiesData = statMies;
-    lastMiesKat = kategoria;
     renderStats(wydatki, statKat, kategoria, topProdukt);
     renderKategorieChart(statKat, kategoria, statSub);
-    renderMiesiaceChart(statMies, kategoria);
     renderSklepy(statSklepy);
     renderTable(wydatki);
   }
@@ -524,19 +528,41 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     activeGlowna = null;
   });
 
-  // toggle trendy: osobno / łącznie
-  document.getElementById('btn-osobno')?.addEventListener('click', () => {
-    miesiaceLacznie = false;
-    document.getElementById('btn-osobno').classList.add('active');
-    document.getElementById('btn-lacznie').classList.remove('active');
-    if (lastMiesData) renderMiesiaceChart(lastMiesData, lastMiesKat);
+  // przełącznik trendu: granulacja (miesiąc/tydzień/dzień) + podopcja zależna od trybu
+  const TREND_SUB = {
+    miesiac: [['lacznie', 'Łącznie'], ['osobno', 'Osobno']],
+    tydzien: [['okres', 'Wybrany okres'], ['3mies', 'Ostatnie 3 mies.']],
+    dzien:   [['okres', 'Wybrany okres'], ['30dni', 'Ostatnie 30 dni']],
+  };
+  const trendSubValue = () =>
+    trendMode === 'miesiac' ? miesiacAgg : trendMode === 'tydzien' ? tydzienZakres : dzienZakres;
+  function setTrendSubValue(v) {
+    if (trendMode === 'miesiac') miesiacAgg = v;
+    else if (trendMode === 'tydzien') tydzienZakres = v;
+    else dzienZakres = v;
+  }
+  function renderTrendSub() {
+    const cur = trendSubValue();
+    document.getElementById('trend-sub').innerHTML = TREND_SUB[trendMode].map(([val, lbl]) =>
+      `<button class="toggle-btn ${val === cur ? 'active' : ''}" data-val="${val}">${lbl}</button>`).join('');
+  }
+  document.getElementById('trend-primary')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-mode]');
+    if (!btn) return;
+    trendMode = btn.dataset.mode;
+    document.querySelectorAll('#trend-primary button').forEach(b =>
+      b.classList.toggle('active', b.dataset.mode === trendMode));
+    renderTrendSub();
+    loadTrend();
   });
-  document.getElementById('btn-lacznie')?.addEventListener('click', () => {
-    miesiaceLacznie = true;
-    document.getElementById('btn-lacznie').classList.add('active');
-    document.getElementById('btn-osobno').classList.remove('active');
-    if (lastMiesData) renderMiesiaceChart(lastMiesData, lastMiesKat);
+  document.getElementById('trend-sub')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-val]');
+    if (!btn) return;
+    setTrendSubValue(btn.dataset.val);
+    renderTrendSub();
+    loadTrend();
   });
+  renderTrendSub();
 
   async function showDrill(subkat) {
     const month = monthInput.value;
@@ -573,142 +599,151 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     document.getElementById('drill-panel').classList.add('hidden');
   });
 
-  function renderMiesiaceChart(data, kategoria) {
-    const miesiace = [...new Set(data.map(d => d.miesiac))].sort();
-    const ctx = document.getElementById('chart-miesiace').getContext('2d');
-    if (chartMies) chartMies.destroy();
+  // ── Wykres trendów: jeden wykres, przełączany miesiąc / tydzień / dzień ──
+  const OSOBA_COLORS = ['#4f7ef8', '#f84f8a', '#4fc8f8', '#f8a04f', '#a04ff8', '#4ff8a0'];
 
-    let datasets;
-    if (miesiaceLacznie) {
-      const lacznie = miesiace.map(m =>
-        data.filter(d => d.miesiac === m).reduce((s, d) => s + d.suma, 0)
-      );
-      datasets = [{ label: 'Łącznie', data: lacznie, backgroundColor: '#4fc8f8', borderRadius: 4 }];
-    } else {
-      const OSOBA_COLORS = ['#4f7ef8', '#f84f8a', '#4fc8f8', '#f8a04f', '#a04ff8', '#4ff8a0'];
-      const osoby = [...new Set(data.map(d => d.osoba))].sort();
-      datasets = osoby.map((osoba, i) => ({
-        label: osoba,
-        data: miesiace.map(m => data.find(d => d.miesiac === m && d.osoba === osoba)?.suma ?? 0),
-        backgroundColor: OSOBA_COLORS[i % OSOBA_COLORS.length],
-        borderRadius: 4,
-      }));
-    }
-
-    chartMies = new Chart(ctx, {
+  function drawTrend(labels, datasets, opts) {
+    opts = opts || {};
+    const ctx = document.getElementById('chart-trend').getContext('2d');
+    if (chartTrend) chartTrend.destroy();
+    chartTrend = new Chart(ctx, {
       type: 'bar',
-      data: { labels: miesiace, datasets },
-      options: {
-        scales: { x: { stacked: false }, y: { beginAtZero: true, ticks: { callback: v => fmt(v) } } },
-        plugins: {
-          legend: { position: 'top' },
-          title: kategoria ? { display: true, text: kategoria, font: { size: 13 }, color: '#a04ff8' } : { display: false },
-        },
-      },
-    });
-  }
-
-  const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-  const lastDayOfMonth = ym => { const [y, m] = ym.split('-').map(Number); return new Date(y, m, 0).getDate(); };
-  // zwięzła etykieta osi Y: 2500 → „2,5k zł", 500 → „500 zł" (oszczędza miejsce na słupki)
-  const fmtKzl = v => {
-    if (Math.abs(v) >= 1000) {
-      const k = v / 1000;
-      return (Number.isInteger(k) ? String(k) : k.toFixed(1).replace('.', ',')) + 'k zł';
-    }
-    return Math.round(v) + ' zł';
-  };
-
-  async function loadDziennie(osoba, kategoria, aktywneWyklucz) {
-    const q = new URLSearchParams();
-    if (osoba) q.set('osoba', osoba);
-    if (kategoria) q.set('kategoria', kategoria);
-    for (const w of (aktywneWyklucz || [])) q.append('wyklucz', w);
-
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    let od = null, doD = null;
-    if (dailyMode === '30dni') {
-      doD = new Date(today);
-      od = new Date(today); od.setDate(od.getDate() - 29);
-    } else if (filterMode === 'range') {
-      od = odInput.value ? new Date(odInput.value + 'T00:00:00') : null;
-      doD = doInput.value ? new Date(doInput.value + 'T00:00:00') : null;
-    } else if (monthInput.value) {
-      const m = monthInput.value;
-      od = new Date(m + '-01T00:00:00');
-      doD = new Date(m + '-' + String(lastDayOfMonth(m)).padStart(2, '0') + 'T00:00:00');
-      if (doD > today) doD = new Date(today);   // bieżący miesiąc: nie ciągnij pustych dni z przyszłości
-    }
-    if (od) q.set('od', ymd(od));
-    if (doD) q.set('do', ymd(doD));
-
-    let data;
-    try { data = await authFetch('/api/stats/dziennie?' + q).then(r => r.json()); }
-    catch { return; }
-    if (!Array.isArray(data)) return;
-    renderDziennieChart(data, od, doD);
-  }
-
-  function renderDziennieChart(data, od, doD) {
-    const ctx = document.getElementById('chart-dziennie').getContext('2d');
-    if (chartDziennie) chartDziennie.destroy();
-
-    const sumMap = {};
-    for (const r of data) sumMap[r.dzien] = r.suma;
-
-    // ciągła oś dzień-po-dniu od..do (brakujące dni = 0); bez granic — same dni z danymi
-    let dni;
-    if (od && doD) {
-      dni = [];
-      const d = new Date(od);
-      while (d <= doD && dni.length < 400) { dni.push(ymd(d)); d.setDate(d.getDate() + 1); }
-    } else {
-      dni = data.map(r => r.dzien);
-    }
-
-    const labels = dni.map(s => { const [, m, dd] = s.split('-'); return `${+dd}.${+m}`; });
-    const wart = dni.map(s => sumMap[s] || 0);
-
-    chartDziennie = new Chart(ctx, {
-      type: 'bar',
-      data: { labels, datasets: [{ data: wart, backgroundColor: '#4f7ef8', borderRadius: 3 }] },
+      data: { labels, datasets },
       options: {
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: false },
+          legend: { display: !!opts.legend, position: 'top' },
+          title: opts.title ? { display: true, text: opts.title, font: { size: 13 }, color: '#a04ff8' } : { display: false },
           tooltip: {
             callbacks: {
-              title: items => { const [y, m, dd] = dni[items[0].dataIndex].split('-'); return `${dd}.${m}.${y}`; },
-              label: c => ` ${fmt(c.raw)}`,
+              title: opts.tooltipTitle || undefined,
+              label: opts.legend ? (c => ` ${c.dataset.label}: ${fmt(c.raw)}`) : (c => ` ${fmt(c.raw)}`),
             },
           },
         },
         scales: {
-          x: {
-            grid: { display: false },
-            ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, font: { size: 10 } },
-          },
-          y: {
-            beginAtZero: true,
-            ticks: { callback: v => fmtKzl(v), maxTicksLimit: 5, font: { size: 10 } },
-          },
+          x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: opts.maxX || 8, font: { size: 10 } } },
+          y: { beginAtZero: true, ticks: { callback: v => fmtKzl(v), maxTicksLimit: 5, font: { size: 10 } } },
         },
       },
     });
   }
 
-  // przełącznik dziennego wykresu: wybrany okres / ostatnie 30 dni
-  function setDailyMode(mode) {
-    dailyMode = mode;
-    document.getElementById('btn-day-okres').classList.toggle('active', mode === 'okres');
-    document.getElementById('btn-day-30').classList.toggle('active', mode === '30dni');
-    document.getElementById('dziennie-title').textContent =
-      mode === '30dni' ? 'Wydatki dziennie — ostatnie 30 dni' : 'Wydatki dziennie';
-    loadDziennie(osobaSelect.value, katSelect.value,
-                 (!katSelect.value && !pokazWszystko) ? [...wykluczone] : []);
+  async function fetchDziennie(od, doD) {
+    const q = new URLSearchParams();
+    if (trendCtx.osoba) q.set('osoba', trendCtx.osoba);
+    if (trendCtx.kategoria) q.set('kategoria', trendCtx.kategoria);
+    for (const w of (trendCtx.wyklucz || [])) q.append('wyklucz', w);
+    if (od) q.set('od', ymd(od));
+    if (doD) q.set('do', ymd(doD));
+    try {
+      const data = await authFetch('/api/stats/dziennie?' + q).then(r => r.json());
+      return Array.isArray(data) ? data : [];
+    } catch { return []; }
   }
-  document.getElementById('btn-day-okres')?.addEventListener('click', () => setDailyMode('okres'));
-  document.getElementById('btn-day-30')?.addEventListener('click', () => setDailyMode('30dni'));
+
+  // okres z filtra dashboardu (miesiąc → 1..koniec/dziś; zakres → od/do)
+  function okresZFiltra() {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (filterMode === 'range') {
+      return [odInput.value ? new Date(odInput.value + 'T00:00:00') : null,
+              doInput.value ? new Date(doInput.value + 'T00:00:00') : null];
+    }
+    if (monthInput.value) {
+      const m = monthInput.value;
+      let doD = new Date(m + '-' + String(lastDayOfMonth(m)).padStart(2, '0') + 'T00:00:00');
+      if (doD > today) doD = new Date(today);
+      return [new Date(m + '-01T00:00:00'), doD];
+    }
+    return [null, null];
+  }
+
+  async function loadTrend() {
+    const kat = trendCtx.kategoria;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (trendMode === 'miesiac') {
+      const q = new URLSearchParams();
+      if (trendCtx.osoba) q.set('osoba', trendCtx.osoba);
+      if (kat) q.set('kategoria', kat);
+      for (const w of (trendCtx.wyklucz || [])) q.append('wyklucz', w);
+      q.set('n', '6');
+      let data;
+      try { data = await authFetch('/api/stats/miesiace?' + q).then(r => r.json()); }
+      catch { return; }
+      if (Array.isArray(data)) renderMiesiac(data, kat);
+    } else if (trendMode === 'tydzien') {
+      let od, doD;
+      if (tydzienZakres === '3mies') { doD = new Date(today); od = new Date(today); od.setMonth(od.getMonth() - 3); }
+      else { [od, doD] = okresZFiltra(); }
+      renderTydzien(await fetchDziennie(od, doD), od, doD, kat);
+    } else {
+      let od, doD;
+      if (dzienZakres === '30dni') { doD = new Date(today); od = new Date(today); od.setDate(od.getDate() - 29); }
+      else { [od, doD] = okresZFiltra(); }
+      renderDzien(await fetchDziennie(od, doD), od, doD, kat);
+    }
+  }
+
+  function renderMiesiac(data, kategoria) {
+    const miesiace = [...new Set(data.map(d => d.miesiac))].sort();
+    let datasets;
+    if (miesiacAgg === 'osobno') {
+      const osoby = [...new Set(data.map(d => d.osoba))].sort();
+      datasets = osoby.map((os, i) => ({
+        label: os,
+        data: miesiace.map(m => data.find(d => d.miesiac === m && d.osoba === os)?.suma ?? 0),
+        backgroundColor: OSOBA_COLORS[i % OSOBA_COLORS.length],
+        borderRadius: 4,
+      }));
+      drawTrend(miesiace, datasets, { legend: true, maxX: 12, title: kategoria || null });
+    } else {
+      const lacznie = miesiace.map(m => data.filter(d => d.miesiac === m).reduce((s, d) => s + d.suma, 0));
+      drawTrend(miesiace, [{ label: 'Łącznie', data: lacznie, backgroundColor: '#4fc8f8', borderRadius: 4 }],
+                { maxX: 12, title: kategoria || null });
+    }
+  }
+
+  function renderDzien(data, od, doD, kategoria) {
+    const sumMap = {};
+    for (const r of data) sumMap[r.dzien] = r.suma;
+    let dni;
+    if (od && doD) {
+      dni = []; const d = new Date(od);
+      while (d <= doD && dni.length < 400) { dni.push(ymd(d)); d.setDate(d.getDate() + 1); }
+    } else { dni = data.map(r => r.dzien); }
+    const labels = dni.map(s => { const [, m, dd] = s.split('-'); return `${+dd}.${+m}`; });
+    const wart = dni.map(s => sumMap[s] || 0);
+    drawTrend(labels, [{ data: wart, backgroundColor: '#4f7ef8', borderRadius: 3 }], {
+      maxX: 8, title: kategoria || null,
+      tooltipTitle: items => { const [y, m, dd] = dni[items[0].dataIndex].split('-'); return `${dd}.${m}.${y}`; },
+    });
+  }
+
+  const mondayOf = d => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); x.setHours(0, 0, 0, 0); return x; };
+
+  function renderTydzien(data, od, doD, kategoria) {
+    const map = {};
+    for (const r of data) {
+      const key = ymd(mondayOf(new Date(r.dzien + 'T00:00:00')));
+      map[key] = (map[key] || 0) + r.suma;
+    }
+    let tygodnie;
+    if (od && doD) {
+      tygodnie = []; const d = mondayOf(od);
+      while (d <= doD && tygodnie.length < 200) { tygodnie.push(ymd(d)); d.setDate(d.getDate() + 7); }
+    } else { tygodnie = Object.keys(map).sort(); }
+    const labels = tygodnie.map(s => { const [, m, dd] = s.split('-'); return `${+dd}.${+m}`; });
+    const wart = tygodnie.map(s => map[s] || 0);
+    drawTrend(labels, [{ data: wart, backgroundColor: '#5e60ce', borderRadius: 3 }], {
+      maxX: 8, title: kategoria || null,
+      tooltipTitle: items => {
+        const mon = new Date(tygodnie[items[0].dataIndex] + 'T00:00:00');
+        const sun = new Date(mon); sun.setDate(sun.getDate() + 6);
+        const f = x => `${x.getDate()}.${x.getMonth() + 1}`;
+        return `Tydzień ${f(mon)}–${f(sun)}`;
+      },
+    });
+  }
 
   function renderSklepy(data) {
     const el = document.getElementById('sklepy-list');
