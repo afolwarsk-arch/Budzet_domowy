@@ -388,6 +388,8 @@ def init_db():
                 ALTER TABLE raporty_ai ADD PRIMARY KEY (id);
             END IF;
         END $$""")
+        # znacznik raportu wygenerowanego automatycznie (miesięczny, na koniec miesiąca)
+        cur.execute("ALTER TABLE raporty_ai ADD COLUMN IF NOT EXISTS auto BOOLEAN NOT NULL DEFAULT FALSE")
         for stara, (glowna, sub) in _MIGRACJA_MAP.items():
             cur.execute(
                 "UPDATE pozycje SET kategoria_glowna=%s, kategoria=%s WHERE kategoria=%s",
@@ -903,9 +905,12 @@ def stats_top_produkt(kategoria: str, month=None, osoba=None, household_id=None,
 
 # --- doradca budżetowy (analiza AI) ---
 
-def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
+def zbierz_dane_budzet(household_id: int, miesiace: int = 3, miesiac_pelny: bool = False) -> dict:
     """Zbiera bogaty, skompresowany zestaw danych do analizy AI za ostatnie `miesiace` miesięcy.
-    Grupowanie produktów po nazwie zbija liczbę tokenów przy zachowaniu konkretów."""
+    Grupowanie produktów po nazwie zbija liczbę tokenów przy zachowaniu konkretów.
+
+    miesiac_pelny=True — dla raportu odpalanego w OSTATNI dzień miesiąca: bieżący miesiąc
+    jest już domknięty, więc wchodzi do średnich jak zamknięty i limity liczą się dla niego."""
     from datetime import date as _date
     today = _date.today()
     # początek okna: pierwszy dzień miesiąca sprzed (miesiace-1)
@@ -993,7 +998,8 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
 
     def _srednia(wiersze) -> tuple[float, str]:
         mies_z_danymi = sorted({r["miesiac"] for r in wiersze})
-        zamkniete = [m for m in mies_z_danymi if m != biezacy]
+        # w trybie miesiac_pelny bieżący miesiąc jest domknięty → traktuj go jak zamknięty
+        zamkniete = mies_z_danymi if miesiac_pelny else [m for m in mies_z_danymi if m != biezacy]
         baza = zamkniete or mies_z_danymi
         if not baza:
             return 0.0, "brak danych"
@@ -1012,10 +1018,43 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
 
     import calendar as _cal
     dni_w_mies = _cal.monthrange(today.year, today.month)[1]
+    if miesiac_pelny:
+        uwaga = (f"Miesiąc {biezacy} jest KOMPLETNY — to raport na koniec miesiąca. "
+                 f"Traktuj {biezacy} jak pełny, zamknięty miesiąc; możesz porównywać go wprost "
+                 f"z wcześniejszymi i liczyć z niego trendy.")
+    else:
+        uwaga = (f"UWAGA: miesiąc {biezacy} jest NIEPEŁNY — dane obejmują tylko "
+                 f"{today.day} z {dni_w_mies} dni ({round(100*today.day/dni_w_mies)}% miesiąca)")
+
+    # --- warstwa planów: limity, cele (koperty), cel przepływowy, poduszka na kontach ---
+    # dla raportu miesięcznego limity liczymy dla właśnie domkniętego miesiąca
+    limity_raw = get_limity(household_id, biezacy if miesiac_pelny else None)
+    limity = [{
+        "kategoria": l["kategoria_glowna"] + (f" / {l['podkategoria']}" if l.get("podkategoria") else ""),
+        "limit": l["kwota_miesieczna"], "wydane": l["wydane"],
+        "pozostalo": l["pozostalo"], "procent": l["procent"],
+    } for l in limity_raw]
+
+    _pola_cel = ("nazwa", "kwota_docelowa", "odlozone", "brakuje", "postep",
+                 "tempo_miesieczne", "prognoza_miesiecy", "termin",
+                 "wymagane_miesieczne", "na_czas")
+    cele = [{k: c.get(k) for k in _pola_cel} for c in get_cele(household_id, aktywne=True)]
+
+    cel_przeplywowy = get_cel_przeplywowy(household_id)
+
+    konta = get_konta(household_id)
+    oszcz = round(sum(float(k["saldo_biezace"]) for k in konta if k.get("typ") == "oszczędności"), 2)
+    biezace = round(sum(float(k["saldo_biezace"]) for k in konta if k.get("typ") != "oszczędności"), 2)
+    konta_agregat = {
+        "oszczednosci": oszcz,
+        "biezace": biezace,
+        "razem": round(oszcz + biezace, 2),
+        # poduszka bezpieczeństwa: ile miesięcy średnich wydatków pokrywają oszczędności
+        "poduszka_miesiecy": round(oszcz / wyd_mies, 1) if wyd_mies > 0 else None,
+    }
+
     return {
-        "okres": {"od": od, "do": do, "miesiace": miesiace,
-                  "uwaga": (f"UWAGA: miesiąc {biezacy} jest NIEPEŁNY — dane obejmują tylko "
-                            f"{today.day} z {dni_w_mies} dni ({round(100*today.day/dni_w_mies)}% miesiąca)")},
+        "okres": {"od": od, "do": do, "miesiace": miesiace, "uwaga": uwaga},
         "kondycja_wyliczona": kondycja_wyliczona,
         "wydatki_per_miesiac": wydatki_miesiace,
         "wplywy_per_miesiac": wplywy_miesiace,
@@ -1024,17 +1063,39 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3) -> dict:
         "top_sklepy": sklepy,
         "wydatki_cykliczne": cykliczne,
         "wydatki_okazjonalne": okazje,
+        "limity": limity,
+        "cele": cele,
+        "cel_przeplywowy": cel_przeplywowy,
+        "konta_agregat": konta_agregat,
     }
 
 
 def save_raport_ai(household_id: int, miesiace: int, kontekst: str | None,
-                   raport_json: str, model: str) -> int:
+                   raport_json: str, model: str, auto: bool = False) -> int:
     with get_db() as cur:
         cur.execute("""
-            INSERT INTO raporty_ai (household_id, miesiace, kontekst, raport_json, model)
-            VALUES (%s,%s,%s,%s,%s) RETURNING id
-        """, (household_id, miesiace, kontekst, raport_json, model))
+            INSERT INTO raporty_ai (household_id, miesiace, kontekst, raport_json, model, auto)
+            VALUES (%s,%s,%s,%s,%s,%s) RETURNING id
+        """, (household_id, miesiace, kontekst, raport_json, model, auto))
         return cur.fetchone()["id"]
+
+
+def get_all_household_ids() -> list[int]:
+    """Wszystkie gospodarstwa — do zadań cyklicznych (auto-raport miesięczny)."""
+    with get_db() as cur:
+        cur.execute("SELECT id FROM households ORDER BY id")
+        return [r["id"] for r in cur.fetchall()]
+
+
+def auto_raport_istnieje(household_id: int, miesiac: str) -> bool:
+    """Czy dla gospodarstwa jest już automatyczny raport z danego miesiąca (YYYY-MM).
+    Chroni przed dublem przy restarcie serwisu / wielokrotnym odpaleniu joba."""
+    with get_db() as cur:
+        cur.execute("""SELECT 1 FROM raporty_ai
+                       WHERE household_id=%s AND auto=TRUE
+                         AND TO_CHAR(created_at,'YYYY-MM')=%s LIMIT 1""",
+                    (household_id, miesiac))
+        return cur.fetchone() is not None
 
 
 def get_raport_ai(household_id: int, raport_id: int | None = None) -> dict | None:

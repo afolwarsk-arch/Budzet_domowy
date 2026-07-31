@@ -407,6 +407,21 @@ w polu kondycja_wyliczona — przepisz je 1:1, nie licz ich samodzielnie. Ty dob
 Pole "metoda" mówi, z jakiego okresu policzono średnią — uwzględnij to w podsumowaniu.
 - Pisz po polsku, rzeczowo, bez lania wody. Kwoty jako liczby (bez "zł" w polach liczbowych).
 
+WARSTWA PLANÓW (jeśli obecna w danych — wykorzystaj ją, to najbardziej konkretne sygnały):
+- limity[]: budżety miesięczne użytkownika. Każdy ma limit, wydane, pozostalo, procent. Limit \
+przekroczony lub blisko przekroczenia (procent ≥ ~90) to gotowa OBSERWACJA lub REKOMENDACJA — podaj \
+o ile i w której kategorii. Gdy okres.uwaga mówi, że miesiąc jest KOMPLETNY, przekroczenie jest \
+faktem (nie ekstrapolacją). Nie wymyślaj limitów, których nie ma na liście.
+- cele[]: cele oszczędnościowe (koperty). Pola: odlozone, brakuje, postep (%), tempo_miesieczne \
+(średnia wpłat/mies.), prognoza_miesiecy, termin, wymagane_miesieczne, na_czas. Gdy na_czas=false lub \
+tempo < wymagane_miesieczne — cel jest zagrożony: powiedz to i podaj, ile trzeba dokładać miesięcznie. \
+Wolne oszczędności z rekomendacji wiąż z konkretną kopertą (np. „te 200 zł kieruj na cel X").
+- cel_przeplywowy: docelowa miesięczna nadwyżka gospodarstwa (typ „kwota" = zł/mies., typ „procent" \
+= % wpływów). Oceń bilans_mies względem tego celu — czy gospodarstwo trafia w swój własny cel przepływowy.
+- konta_agregat: oszczednosci, biezace, razem oraz poduszka_miesiecy (ile miesięcy średnich wydatków \
+pokrywają oszczędności). Użyj poduszka_miesiecy jako kontekstu kondycji: <3 mies. to cienka poduszka \
+(argument za budowaniem rezerwy), >6 mies. daje swobodę. Nie licz tych liczb sam — są gotowe.
+
 Zwróć WYŁĄCZNIE poprawny JSON w tym formacie (bez markdown, bez komentarzy):
 {
   "podsumowanie": "2-4 zdania o ogólnej sytuacji budżetu",

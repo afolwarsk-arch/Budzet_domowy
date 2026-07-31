@@ -26,6 +26,41 @@ try:
 except Exception:
     import time; _BUILD = str(int(time.time()))
 
+_scheduler = None
+
+
+@app.on_event("startup")
+def _start_scheduler():
+    """Auto-raport miesięczny: ostatni dzień miesiąca o 18:00 (Europe/Warsaw).
+    Defensywnie — brak APScheduler / błąd startu nie może wywalić aplikacji."""
+    global _scheduler
+    try:
+        from zoneinfo import ZoneInfo
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        import auto_raport
+
+        _scheduler = BackgroundScheduler(timezone=ZoneInfo("Europe/Warsaw"))
+        _scheduler.add_job(
+            auto_raport.uruchom_auto_raporty,
+            CronTrigger(day="last", hour=18, minute=0, timezone=ZoneInfo("Europe/Warsaw")),
+            id="auto_raport_miesieczny", replace_existing=True, misfire_grace_time=3600,
+        )
+        _scheduler.start()
+        print("[scheduler] auto-raport zaplanowany: ostatni dzień miesiąca 18:00 Europe/Warsaw")
+    except Exception as e:
+        print(f"[scheduler] NIE uruchomiono auto-raportu: {e!r}")
+
+
+@app.on_event("shutdown")
+def _stop_scheduler():
+    if _scheduler is not None:
+        try:
+            _scheduler.shutdown(wait=False)
+        except Exception:
+            pass
+
+
 UPLOADS_DIR = Path(__file__).parent / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
