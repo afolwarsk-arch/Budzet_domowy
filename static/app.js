@@ -720,6 +720,14 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   }
 
   const mondayOf = d => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); x.setHours(0, 0, 0, 0); return x; };
+  // numer tygodnia kalendarzowego wg ISO-8601 (tydzień z pierwszym czwartkiem roku = 1)
+  const isoWeek = d => {
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3);   // czwartek tego tygodnia
+    const czw1 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+    czw1.setUTCDate(czw1.getUTCDate() - ((czw1.getUTCDay() + 6) % 7) + 3);
+    return 1 + Math.round((t - czw1) / (7 * 86400000));
+  };
 
   function renderTydzien(data, od, doD, kategoria) {
     const map = {};
@@ -732,15 +740,15 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       tygodnie = []; const d = mondayOf(od);
       while (d <= doD && tygodnie.length < 200) { tygodnie.push(ymd(d)); d.setDate(d.getDate() + 7); }
     } else { tygodnie = Object.keys(map).sort(); }
-    const labels = tygodnie.map(s => { const [, m, dd] = s.split('-'); return `${+dd}.${+m}`; });
+    const labels = tygodnie.map(s => 'T' + isoWeek(new Date(s + 'T00:00:00')));
     const wart = tygodnie.map(s => map[s] || 0);
     drawTrend(labels, [{ data: wart, backgroundColor: '#5e60ce', borderRadius: 3 }], {
-      maxX: 8, title: kategoria || null,
+      maxX: 12, title: kategoria || null,
       tooltipTitle: items => {
         const mon = new Date(tygodnie[items[0].dataIndex] + 'T00:00:00');
         const sun = new Date(mon); sun.setDate(sun.getDate() + 6);
         const f = x => `${x.getDate()}.${x.getMonth() + 1}`;
-        return `Tydzień ${f(mon)}–${f(sun)}`;
+        return `Tydzień ${isoWeek(mon)} (${f(mon)}–${f(sun)})`;
       },
     });
   }
