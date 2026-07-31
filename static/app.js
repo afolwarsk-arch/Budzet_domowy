@@ -468,11 +468,16 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   function renderLegenda(data) {
     const box = document.getElementById('kat-legenda');
     if (!box) return;
-    box.innerHTML = data.map((d, i) => {
+    // aktywne na górze (kolejność wg kwoty), pomijane spadają na dół — wyszarzone.
+    // Dzięki temu pogrubiona trójka największych to te REALNIE na wykresie (spójnie z etykietami).
+    const aktywne = data.filter(d => !wykluczone.has(d.kategoria_glowna));
+    const pominiete = data.filter(d => wykluczone.has(d.kategoria_glowna));
+    box.innerHTML = [...aktywne, ...pominiete].map((d, i) => {
       const nazwa = d.kategoria_glowna;
       const off = wykluczone.has(nazwa);
+      const top = !off && i < 3;   // pogrubiaj tylko trójkę największych aktywnych
       const enc = encodeURIComponent(nazwa);
-      return `<div class="kat-leg-row${off ? ' off' : ''}${i < 3 ? ' top' : ''}">
+      return `<div class="kat-leg-row${off ? ' off' : ''}${top ? ' top' : ''}">
         <span class="kat-leg-swatch" style="background:${katColor(nazwa)}"></span>
         <span class="kat-leg-name" title="Kliknij, aby zobaczyć podkategorie" onclick="drillKat('${enc}')">${esc(nazwa)}</span>
         <span class="kat-leg-kwota">${fmt(d.suma)}</span>
