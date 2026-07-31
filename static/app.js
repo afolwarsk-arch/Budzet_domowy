@@ -471,14 +471,17 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     // Dzięki temu pogrubiona trójka największych to te REALNIE na wykresie (spójnie z etykietami).
     const aktywne = data.filter(d => !wykluczone.has(d.kategoria_glowna));
     const pominiete = data.filter(d => wykluczone.has(d.kategoria_glowna));
+    // „Pokaż wszystkie": naturalna kolejność wg kwoty — odznaczona duża kategoria wskakuje
+    // na swoje miejsce (może być w top 3), spójnie z wykresem. Normalnie pomijane na dół.
+    const uporzadkowane = pokazWszystko ? data : [...aktywne, ...pominiete];
     // dyskretny przycisk zamiast krzykliwego paska — tylko gdy coś jest odznaczone
     const naglowek = wykluczone.size
       ? `<button type="button" class="leg-show-all" onclick="togglePokazWszystko()">${pokazWszystko ? 'Ukryj z powrotem' : 'Pokaż wszystkie'}</button>`
       : '';
-    box.innerHTML = naglowek + [...aktywne, ...pominiete].map((d, i) => {
+    box.innerHTML = naglowek + uporzadkowane.map((d, i) => {
       const nazwa = d.kategoria_glowna;
       const off = wykluczone.has(nazwa);
-      const top = !off && i < 3;   // pogrubiaj tylko trójkę największych aktywnych
+      const top = i < 3 && (pokazWszystko || !off);   // trójka największych (na wykresie)
       const enc = encodeURIComponent(nazwa);
       return `<div class="kat-leg-row${off ? ' off' : ''}${top ? ' top' : ''}">
         <span class="kat-leg-swatch" style="background:${katColor(nazwa)}"></span>
