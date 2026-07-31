@@ -362,8 +362,9 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
 
   let activeGlowna = null;
 
-  // Plugin: skrócona nazwa + kwota na NAJWIĘKSZYCH wycinkach koła (top 3, udział ≥ 7%).
-  // Drobne kategorie zostają czyste; duże czytelne bez zaglądania w legendę.
+  // Plugin: KWOTA na największych wycinkach koła (top 3, udział ≥ 7%). Sama kwota,
+  // jedna linia, z ostrym ciemnym obrysem liter — czytelne na każdym kolorze.
+  // Nazwy nie rysujemy (są w legendzie/tooltipie), żeby nie zaśmiecać cienkiego pierścienia.
   const topSliceLabels = {
     id: 'topSliceLabels',
     afterDatasetsDraw(chart) {
@@ -380,9 +381,8 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       ctx.save();
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.shadowColor = 'rgba(0,0,0,.6)';
-      ctx.shadowBlur = 3;
-      ctx.fillStyle = '#fff';
+      ctx.font = '700 13px system-ui, -apple-system, sans-serif';
+      ctx.lineJoin = 'round';
       for (const i of duze) {
         const arc = meta.data[i];
         if (!arc) continue;
@@ -390,13 +390,12 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         const r = (arc.innerRadius + arc.outerRadius) / 2;
         const x = arc.x + Math.cos(ang) * r;
         const y = arc.y + Math.sin(ang) * r;
-        let nazwa = String(chart.data.labels[i] || '');
-        if (nazwa.length > 12) nazwa = nazwa.slice(0, 11) + '…';
         const kwota = Math.round(dane[i]).toLocaleString('pl-PL') + ' zł';
-        ctx.font = '600 10px system-ui, -apple-system, sans-serif';
-        ctx.fillText(nazwa, x, y - 6);
-        ctx.font = '700 12px system-ui, -apple-system, sans-serif';
-        ctx.fillText(kwota, x, y + 6);
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = 'rgba(0,0,0,.6)';
+        ctx.strokeText(kwota, x, y);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(kwota, x, y);
       }
       ctx.restore();
     },
