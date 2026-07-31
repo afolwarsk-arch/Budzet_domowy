@@ -610,6 +610,14 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
 
   const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   const lastDayOfMonth = ym => { const [y, m] = ym.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+  // zwięzła etykieta osi Y: 2500 → „2,5k zł", 500 → „500 zł" (oszczędza miejsce na słupki)
+  const fmtKzl = v => {
+    if (Math.abs(v) >= 1000) {
+      const k = v / 1000;
+      return (Number.isInteger(k) ? String(k) : k.toFixed(1).replace('.', ',')) + 'k zł';
+    }
+    return Math.round(v) + ' zł';
+  };
 
   async function loadDziennie(osoba, kategoria, aktywneWyklucz) {
     const q = new URLSearchParams();
@@ -676,8 +684,14 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
           },
         },
         scales: {
-          x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, autoSkipPadding: 8 } },
-          y: { beginAtZero: true, ticks: { callback: v => fmt(v) } },
+          x: {
+            grid: { display: false },
+            ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, font: { size: 10 } },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { callback: v => fmtKzl(v), maxTicksLimit: 5, font: { size: 10 } },
+          },
         },
       },
     });
