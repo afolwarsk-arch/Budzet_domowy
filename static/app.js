@@ -449,7 +449,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
             legend: { display: false },  // legendę renderujemy samodzielnie
             tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)}` } },
           },
-          cutout: '50%',
+          cutout: '42%',
           onClick: (_, els) => {
             if (!els.length) return;
             showSubkategorie(widoczne[els[0].index].kategoria_glowna);
