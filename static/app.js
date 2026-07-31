@@ -116,6 +116,51 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     }
     return Math.round(v) + ' zł';
   };
+  const mondayOf = d => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); x.setHours(0, 0, 0, 0); return x; };
+  // numer tygodnia kalendarzowego wg ISO-8601 (tydzień z pierwszym czwartkiem roku = 1)
+  const isoWeek = d => {
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3);   // czwartek tego tygodnia
+    const czw1 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+    czw1.setUTCDate(czw1.getUTCDate() - ((czw1.getUTCDay() + 6) % 7) + 3);
+    return 1 + Math.round((t - czw1) / (7 * 86400000));
+  };
+  const weekLabel = mon => {
+    const sun = new Date(mon); sun.setDate(sun.getDate() + 6);
+    const f = d => `${d.getDate()}.${d.getMonth() + 1}`;
+    return `T${isoWeek(mon)} (${f(mon)}–${f(sun)})`;
+  };
+  // [poniedziałek, niedziela] z selektora tygodnia (ymd), albo null
+  const weekSel = () => {
+    const v = document.getElementById('filter-week').value;
+    if (!v) return null;
+    const mon = new Date(v + 'T00:00:00');
+    const sun = new Date(mon); sun.setDate(sun.getDate() + 6);
+    return [ymd(mon), ymd(sun)];
+  };
+  // nałóż okres z aktywnego trybu filtra na parametry zapytania
+  const applyOkres = params => {
+    if (filterMode === 'range') {
+      if (odInput.value) params.set('od', odInput.value);
+      if (doInput.value) params.set('do', doInput.value);
+    } else if (filterMode === 'week') {
+      const w = weekSel();
+      if (w) { params.set('od', w[0]); params.set('do', w[1]); }
+    } else if (monthInput.value) {
+      params.set('month', monthInput.value);
+    }
+  };
+  function populateWeeks(selectMonday) {
+    const sel = document.getElementById('filter-week');
+    const curMon = mondayOf(new Date());
+    let html = '';
+    for (let i = 0; i < 16; i++) {
+      const mon = new Date(curMon); mon.setDate(mon.getDate() - 7 * i);
+      html += `<option value="${ymd(mon)}">${weekLabel(mon)}</option>`;
+    }
+    sel.innerHTML = html;
+    sel.value = selectMonday || ymd(curMon);
+  }
   let wykluczone = new Set();   // kategorie główne pomijane w analizie (ustawienie gospodarstwa)
   let pokazWszystko = false;    // jednorazowy podgląd „pokaż wszystko" (nie kasuje ustawienia)
 
@@ -137,16 +182,41 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     loadDashboard();
   };
 
+  function applyFilterModeUI() {
+    const m = filterMode;
+    document.getElementById('filter-month-wrap').style.display = m === 'month' ? '' : 'none';
+    document.getElementById('filter-week-wrap').style.display = m === 'week' ? '' : 'none';
+    document.getElementById('filter-range-wrap').style.display = m === 'range' ? 'flex' : 'none';
+    const setBtn = (id, on) => {
+      const b = document.getElementById(id);
+      b.style.background = on ? '#4f7ef8' : '#fff';
+      b.style.color = on ? '#fff' : '#555';
+    };
+    setBtn('mode-month', m === 'month');
+    setBtn('mode-week', m === 'week');
+    setBtn('mode-range', m === 'range');
+  }
   window.setFilterMode = function(mode) {
     filterMode = mode;
-    document.getElementById('filter-month-wrap').style.display = mode === 'month' ? '' : 'none';
-    document.getElementById('filter-range-wrap').style.display = mode === 'range' ? 'flex' : 'none';
-    document.getElementById('mode-month').style.background = mode === 'month' ? '#4f7ef8' : '#fff';
-    document.getElementById('mode-month').style.color = mode === 'month' ? '#fff' : '#555';
-    document.getElementById('mode-range').style.background = mode === 'range' ? '#4f7ef8' : '#fff';
-    document.getElementById('mode-range').style.color = mode === 'range' ? '#fff' : '#555';
+    if (mode === 'week' && !document.getElementById('filter-week').value) populateWeeks();
+    applyFilterModeUI();
     loadDashboard();
   };
+  // ustaw konkretny tydzień jako filtr (z klika w słupek trendu tygodniowego)
+  function selectWeek(mondayYmd) {
+    filterMode = 'week';
+    const sel = document.getElementById('filter-week');
+    if (sel.options.length === 0) populateWeeks();
+    if (![...sel.options].some(o => o.value === mondayYmd)) {
+      const opt = document.createElement('option');
+      opt.value = mondayYmd;
+      opt.textContent = weekLabel(new Date(mondayYmd + 'T00:00:00'));
+      sel.appendChild(opt);
+    }
+    sel.value = mondayYmd;
+    applyFilterModeUI();
+    loadDashboard();
+  }
 
   // Załaduj kategorie dynamicznie z backendu
   authFetch('/api/kategorie').then(r => r.json()).then(hier => {
@@ -159,13 +229,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     const osoba = osobaSelect.value;
     const kategoria = katSelect.value;
     const q = new URLSearchParams();
-    if (filterMode === 'range') {
-      if (odInput.value) q.set('od', odInput.value);
-      if (doInput.value) q.set('do', doInput.value);
-    } else {
-      const month = monthInput.value;
-      if (month) q.set('month', month);
-    }
+    applyOkres(q);
     if (osoba) q.set('osoba', osoba);
     if (kategoria) q.set('kategoria', kategoria);
 
@@ -183,12 +247,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     // Bilans okresu — niezależny fetch: pełne wpływy − pełne wydatki za okres,
     // bez względu na filtr osoby i pomijane kategorie (lokal ma się znosić).
     const qBil = new URLSearchParams();
-    if (filterMode === 'range') {
-      if (odInput.value) qBil.set('od', odInput.value);
-      if (doInput.value) qBil.set('do', doInput.value);
-    } else if (monthInput.value) {
-      qBil.set('month', monthInput.value);
-    }
+    applyOkres(qBil);
     authFetch('/api/stats/bilans?' + qBil).then(r => r.json()).then(renderBilans).catch(() => {});
 
     // Wykres trendów (miesięcznie/tygodniowo/dziennie) — niezależny, sam dobiera
@@ -231,7 +290,8 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     const suma = wydatki.reduce((s, w) => s + w.suma, 0);
     document.getElementById('stat-suma').textContent = fmt(suma);
     const sumaLabel = document.querySelector('.stat-card .label');
-    if (sumaLabel) sumaLabel.textContent = filterMode === 'range' ? 'Suma za okres' : 'Suma miesięczna';
+    if (sumaLabel) sumaLabel.textContent =
+      filterMode === 'month' ? 'Suma miesięczna' : filterMode === 'week' ? 'Suma za tydzień' : 'Suma za okres';
     document.getElementById('stat-paragony').textContent = wydatki.length;
     const labelEl = document.querySelector('[for-stat="topkat"], .stat-card:last-child .label');
     const statLabel = document.getElementById('stat-topkat-label');
@@ -415,10 +475,9 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
 
   async function showSubkategorie(glowna) {
     activeGlowna = glowna;
-    const month = monthInput.value;
     const osoba = osobaSelect.value;
     const q = new URLSearchParams({ kategoria_glowna: glowna });
-    if (month) q.set('month', month);
+    applyOkres(q);
     if (osoba) q.set('osoba', osoba);
     if (katMode === 'kontekst') q.set('kontekst', '1');
 
@@ -485,10 +544,9 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         if (!poz.querySelector('.subkat-poz-loading')) return;
 
         const kategoria = subs[i].kategoria;
-        const month = monthInput.value;
         const osoba = osobaSelect.value;
         const q = new URLSearchParams({ kategoria });
-        if (month) q.set('month', month);
+        applyOkres(q);
         if (osoba) q.set('osoba', osoba);
         if (katMode === 'kontekst') q.set('kontekst', '1');
 
@@ -565,10 +623,9 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   renderTrendSub();
 
   async function showDrill(subkat) {
-    const month = monthInput.value;
     const osoba = osobaSelect.value;
     const q = new URLSearchParams({ kategoria: subkat });
-    if (month) q.set('month', month);
+    applyOkres(q);
     if (osoba) q.set('osoba', osoba);
     if (katMode === 'kontekst') q.set('kontekst', '1');
     const data = await authFetch('/api/stats/pozycje-subkat?' + q).then(r => r.json());
@@ -611,6 +668,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       data: { labels, datasets },
       options: {
         maintainAspectRatio: false,
+        onClick: opts.onBar ? (_e, els) => { if (els.length) opts.onBar(els[0].index); } : undefined,
         plugins: {
           legend: { display: !!opts.legend, position: 'top' },
           title: opts.title ? { display: true, text: opts.title, font: { size: 13 }, color: '#a04ff8' } : { display: false },
@@ -642,12 +700,16 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     } catch { return []; }
   }
 
-  // okres z filtra dashboardu (miesiąc → 1..koniec/dziś; zakres → od/do)
+  // okres z filtra dashboardu (miesiąc → 1..koniec/dziś; tydzień → pn..nd; zakres → od/do)
   function okresZFiltra() {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     if (filterMode === 'range') {
       return [odInput.value ? new Date(odInput.value + 'T00:00:00') : null,
               doInput.value ? new Date(doInput.value + 'T00:00:00') : null];
+    }
+    if (filterMode === 'week') {
+      const w = weekSel();
+      return w ? [new Date(w[0] + 'T00:00:00'), new Date(w[1] + 'T00:00:00')] : [null, null];
     }
     if (monthInput.value) {
       const m = monthInput.value;
@@ -719,16 +781,6 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     });
   }
 
-  const mondayOf = d => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); x.setHours(0, 0, 0, 0); return x; };
-  // numer tygodnia kalendarzowego wg ISO-8601 (tydzień z pierwszym czwartkiem roku = 1)
-  const isoWeek = d => {
-    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3);   // czwartek tego tygodnia
-    const czw1 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
-    czw1.setUTCDate(czw1.getUTCDate() - ((czw1.getUTCDay() + 6) % 7) + 3);
-    return 1 + Math.round((t - czw1) / (7 * 86400000));
-  };
-
   function renderTydzien(data, od, doD, kategoria) {
     const map = {};
     for (const r of data) {
@@ -748,8 +800,9 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         const mon = new Date(tygodnie[items[0].dataIndex] + 'T00:00:00');
         const sun = new Date(mon); sun.setDate(sun.getDate() + 6);
         const f = x => `${x.getDate()}.${x.getMonth() + 1}`;
-        return `Tydzień ${isoWeek(mon)} (${f(mon)}–${f(sun)})`;
+        return `Tydzień ${isoWeek(mon)} (${f(mon)}–${f(sun)}) — kliknij, aby filtrować`;
       },
+      onBar: idx => selectWeek(tygodnie[idx]),
     });
   }
 
@@ -874,6 +927,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   };
 
   monthInput.addEventListener('change', loadDashboard);
+  document.getElementById('filter-week').addEventListener('change', loadDashboard);
   odInput.addEventListener('change', loadDashboard);
   doInput.addEventListener('change', loadDashboard);
   osobaSelect.addEventListener('change', loadDashboard);
