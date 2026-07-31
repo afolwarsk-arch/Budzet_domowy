@@ -153,7 +153,8 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   function populateKatWeeks() {
     const sel = document.getElementById('kat-week');
     const curMon = mondayOf(new Date());
-    let html = '<option value="">Cały wybrany okres</option>';
+    // placeholder (nieklikalny) = stan „cały okres"; powrót do niego realizuje przycisk ✕
+    let html = '<option value="" disabled>Wybierz tydzień…</option>';
     for (let i = 0; i < 16; i++) {
       const mon = new Date(curMon); mon.setDate(mon.getDate() - 7 * i);
       html += `<option value="${ymd(mon)}">${weekLabel(mon)}</option>`;
@@ -204,6 +205,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       sel.appendChild(opt);
     }
     sel.value = katWeek || '';
+    document.getElementById('kat-week-reset').style.display = katWeek ? '' : 'none';
     refreshKolowy();
   }
   // Osobny fetch+render tylko wykresu kołowego (i legendy) dla bieżącego katWeek.
@@ -930,6 +932,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   osobaSelect.addEventListener('change', loadDashboard);
   katSelect.addEventListener('change', loadDashboard);
   document.getElementById('kat-week').addEventListener('change', (e) => setKatWeek(e.target.value));
+  document.getElementById('kat-week-reset').addEventListener('click', () => setKatWeek(''));
   populateKatWeeks();
 
   // ── Przelicz kategorie (tylko admin) ──
