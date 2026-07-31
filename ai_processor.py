@@ -194,6 +194,18 @@ RABATY I OPUSTY (ważne!):
   - kategoria: taka sama jak większość rabatowanych pozycji
   - dzięki temu suma pozycji równa się kwocie faktycznie zapłaconej (SUMA PLN)
 
+PARAGON APTECZNY / REFUNDACJA (leki na receptę, NFZ):
+- W aptece cena pozycji to często cena PEŁNA (przed refundacją), a pacjent płaci mniej.
+  Linia typu "U 30%/ Rp./#0567  8,85" albo "Z 50%/ Rp./#0568  5,20" (litera + procent +
+  "Rp." + numer recepty + kwota) to kwota, którą PACJENT FAKTYCZNIE PŁACI za lek z linii
+  BEZPOŚREDNIO POWYŻEJ (reszta to dopłata NFZ). Traktuj to jak rabat przypisany do pozycji.
+- Użyj kwoty po refundacji jako łącznej wartości pozycji (cena jednostkowa = kwota / ilosc);
+  NIE dodawaj osobnej pozycji na refundację:
+  - "Asertin 100 tabl ... 1 op * 29,43 = 29,43" + "U 30%/ Rp./#0567  8,85" → ilosc=1, cena=8.85
+  - "Emanera kaps ... 1 op * 9,35 = 9,35"     + "Z 50%/ Rp./#0568  5,20"  → ilosc=1, cena=5.20
+- "suma" = kwota "DO ZAPŁATY PLN" (ile pacjent naprawdę zapłacił), a NIE "SUMA PLN"
+  (ta bywa przed refundacją). Kategoria takich leków: "Zdrowie"/"Leki".
+
 Ignoruj linie: PLU, VAT, SUMA, RAZEM, KARTA, GOTÓWKA, PTU, "Podsuma w grupie" (samą podsumę
 ignoruj, ale rabatu pod nią NIE ignoruj — patrz wyżej)
 
@@ -499,11 +511,21 @@ def _parse_response(raw: str, hierarchia: dict | None = None) -> list[dict]:
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
-        raise RozpoznanieError(
-            "Claude nie rozpoznał paragonu — odpowiedź nie zawierała danych wydatku. "
-            "Upewnij się, że zdjęcie jest wyraźne, dobrze oświetlone i obejmuje cały paragon, "
-            "albo dodaj wskazówkę dla AI i spróbuj ponownie."
-        )
+        # model czasem owija JSON prozą (np. komentarz o refundacji przy paragonie
+        # aptecznym) — wytnij najbardziej zewnętrzną tablicę [...] albo obiekt {...}
+        m = re.search(r"\[.*\]", cleaned, re.DOTALL) or re.search(r"\{.*\}", cleaned, re.DOTALL)
+        data = None
+        if m:
+            try:
+                data = json.loads(m.group(0))
+            except json.JSONDecodeError:
+                data = None
+        if data is None:
+            raise RozpoznanieError(
+                "Claude nie rozpoznał paragonu — odpowiedź nie zawierała danych wydatku. "
+                "Upewnij się, że zdjęcie jest wyraźne, dobrze oświetlone i obejmuje cały paragon, "
+                "albo dodaj wskazówkę dla AI i spróbuj ponownie."
+            )
     if isinstance(data, dict):
         data = [data]
     if not data:
