@@ -486,7 +486,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     if (katMode === 'kontekst') q.set('kontekst', '1');
 
     const qw = new URLSearchParams({ kategoria: glowna });
-    if (month) qw.set('month', month);
+    applyKatOkres(qw);
     if (osoba) qw.set('osoba', osoba);
     if (katMode === 'kontekst') qw.set('kontekst', '1');
 
