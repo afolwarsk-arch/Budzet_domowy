@@ -362,6 +362,46 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
 
   let activeGlowna = null;
 
+  // Plugin: skrócona nazwa + kwota na NAJWIĘKSZYCH wycinkach koła (top 3, udział ≥ 7%).
+  // Drobne kategorie zostają czyste; duże czytelne bez zaglądania w legendę.
+  const topSliceLabels = {
+    id: 'topSliceLabels',
+    afterDatasetsDraw(chart) {
+      const meta = chart.getDatasetMeta(0);
+      const dane = chart.data.datasets[0].data;
+      const total = dane.reduce((s, v) => s + v, 0);
+      if (!total || !meta.data.length) return;
+      const duze = dane.map((v, i) => [v, i])
+        .sort((a, b) => b[0] - a[0])
+        .filter(([v]) => v / total >= 0.07)
+        .slice(0, 3)
+        .map(([, i]) => i);
+      const { ctx } = chart;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(0,0,0,.6)';
+      ctx.shadowBlur = 3;
+      ctx.fillStyle = '#fff';
+      for (const i of duze) {
+        const arc = meta.data[i];
+        if (!arc) continue;
+        const ang = (arc.startAngle + arc.endAngle) / 2;
+        const r = (arc.innerRadius + arc.outerRadius) / 2;
+        const x = arc.x + Math.cos(ang) * r;
+        const y = arc.y + Math.sin(ang) * r;
+        let nazwa = String(chart.data.labels[i] || '');
+        if (nazwa.length > 12) nazwa = nazwa.slice(0, 11) + '…';
+        const kwota = Math.round(dane[i]).toLocaleString('pl-PL') + ' zł';
+        ctx.font = '600 10px system-ui, -apple-system, sans-serif';
+        ctx.fillText(nazwa, x, y - 6);
+        ctx.font = '700 12px system-ui, -apple-system, sans-serif';
+        ctx.fillText(kwota, x, y + 6);
+      }
+      ctx.restore();
+    },
+  };
+
   function renderKategorieChart(data, kategoria, statSub) {
     const ctx = document.getElementById('chart-kategorie').getContext('2d');
     if (chartKat) chartKat.destroy();
@@ -416,6 +456,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
             showSubkategorie(widoczne[els[0].index].kategoria_glowna);
           },
         },
+        plugins: [topSliceLabels],
       });
       renderLegenda(data);
       hint.style.display = '';
