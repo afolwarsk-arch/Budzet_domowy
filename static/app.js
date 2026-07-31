@@ -469,11 +469,12 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     if (!box) return;
     // aktywne na górze (kolejność wg kwoty), pomijane spadają na dół — wyszarzone.
     // Dzięki temu pogrubiona trójka największych to te REALNIE na wykresie (spójnie z etykietami).
-    const aktywne = data.filter(d => !wykluczone.has(d.kategoria_glowna));
-    const pominiete = data.filter(d => wykluczone.has(d.kategoria_glowna));
+    const wg = [...data].sort((a, b) => b.suma - a.suma);   // jawna kolejność wg kwoty
+    const aktywne = wg.filter(d => !wykluczone.has(d.kategoria_glowna));
+    const pominiete = wg.filter(d => wykluczone.has(d.kategoria_glowna));
     // „Pokaż wszystkie": naturalna kolejność wg kwoty — odznaczona duża kategoria wskakuje
     // na swoje miejsce (może być w top 3), spójnie z wykresem. Normalnie pomijane na dół.
-    const uporzadkowane = pokazWszystko ? data : [...aktywne, ...pominiete];
+    const uporzadkowane = pokazWszystko ? wg : [...aktywne, ...pominiete];
     // dyskretny przycisk zamiast krzykliwego paska — tylko gdy coś jest odznaczone
     const naglowek = wykluczone.size
       ? `<button type="button" class="leg-show-all" onclick="togglePokazWszystko()">${pokazWszystko ? 'Ukryj z powrotem' : 'Pokaż wszystkie'}</button>`
