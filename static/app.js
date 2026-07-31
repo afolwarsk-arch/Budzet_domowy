@@ -889,7 +889,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         </td>
       </tr>
       <tr class="pozycje-row hidden" id="pozycje-${w.id}">
-        <td colspan="6" class="pozycje-detail">
+        <td colspan="7" class="pozycje-detail">
           <div class="pozycje-loading">Ładowanie...</div>
         </td>
       </tr>`).join('');
@@ -918,7 +918,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         return;
       }
       detail.innerHTML = `
-        <table class="pozycje-table">
+        <div class="table-wrap"><table class="pozycje-table">
           <thead>
             <tr>
               <th>Produkt</th>
@@ -941,7 +941,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
                 <td style="text-align:right;font-weight:600">${fmt(p.cena * p.ilosc)}</td>
               </tr>`).join('')}
           </tbody>
-        </table>
+        </table></div>
         <div class="notatki-inline">
           <textarea id="note-${id}" rows="2" placeholder="Notatka do paragonu...">${w.notatki || ''}</textarea>
           <button class="btn btn-sm btn-outline" onclick="saveNote(${id})">Zapisz notatkę</button>
