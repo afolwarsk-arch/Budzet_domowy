@@ -98,8 +98,10 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
 
   let chartKat = null;
   let chartMies = null;
+  let chartDziennie = null;
   let cenyChart = null;
   let miesiaceLacznie = false;
+  let dailyMode = 'okres';       // 'okres' = wybrany filtr; '30dni' = ostatnie 30 dni
   let lastMiesData = null;
   let lastMiesKat = null;
   let wykluczone = new Set();   // kategorie główne pomijane w analizie (ustawienie gospodarstwa)
@@ -181,6 +183,10 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       qBil.set('month', monthInput.value);
     }
     authFetch('/api/stats/bilans?' + qBil).then(r => r.json()).then(renderBilans).catch(() => {});
+
+    // Wykres dzienny — niezależny fetch; respektuje osobę/kategorię/pomijane,
+    // ale okres bierze albo z filtra (tryb 'okres'), albo ostatnie 30 dni (tryb '30dni').
+    loadDziennie(osoba, kategoria, aktywneWyklucz);
 
     const fetches = [
       authFetch('/api/stats/kategorie?' + qKat).then(r => r.json()),
@@ -601,6 +607,94 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       },
     });
   }
+
+  const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const lastDayOfMonth = ym => { const [y, m] = ym.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+
+  async function loadDziennie(osoba, kategoria, aktywneWyklucz) {
+    const q = new URLSearchParams();
+    if (osoba) q.set('osoba', osoba);
+    if (kategoria) q.set('kategoria', kategoria);
+    for (const w of (aktywneWyklucz || [])) q.append('wyklucz', w);
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let od = null, doD = null;
+    if (dailyMode === '30dni') {
+      doD = new Date(today);
+      od = new Date(today); od.setDate(od.getDate() - 29);
+    } else if (filterMode === 'range') {
+      od = odInput.value ? new Date(odInput.value + 'T00:00:00') : null;
+      doD = doInput.value ? new Date(doInput.value + 'T00:00:00') : null;
+    } else if (monthInput.value) {
+      const m = monthInput.value;
+      od = new Date(m + '-01T00:00:00');
+      doD = new Date(m + '-' + String(lastDayOfMonth(m)).padStart(2, '0') + 'T00:00:00');
+      if (doD > today) doD = new Date(today);   // bieżący miesiąc: nie ciągnij pustych dni z przyszłości
+    }
+    if (od) q.set('od', ymd(od));
+    if (doD) q.set('do', ymd(doD));
+
+    let data;
+    try { data = await authFetch('/api/stats/dziennie?' + q).then(r => r.json()); }
+    catch { return; }
+    if (!Array.isArray(data)) return;
+    renderDziennieChart(data, od, doD);
+  }
+
+  function renderDziennieChart(data, od, doD) {
+    const ctx = document.getElementById('chart-dziennie').getContext('2d');
+    if (chartDziennie) chartDziennie.destroy();
+
+    const sumMap = {};
+    for (const r of data) sumMap[r.dzien] = r.suma;
+
+    // ciągła oś dzień-po-dniu od..do (brakujące dni = 0); bez granic — same dni z danymi
+    let dni;
+    if (od && doD) {
+      dni = [];
+      const d = new Date(od);
+      while (d <= doD && dni.length < 400) { dni.push(ymd(d)); d.setDate(d.getDate() + 1); }
+    } else {
+      dni = data.map(r => r.dzien);
+    }
+
+    const labels = dni.map(s => { const [, m, dd] = s.split('-'); return `${+dd}.${+m}`; });
+    const wart = dni.map(s => sumMap[s] || 0);
+
+    chartDziennie = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ data: wart, backgroundColor: '#4f7ef8', borderRadius: 3 }] },
+      options: {
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: items => { const [y, m, dd] = dni[items[0].dataIndex].split('-'); return `${dd}.${m}.${y}`; },
+              label: c => ` ${fmt(c.raw)}`,
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, autoSkipPadding: 8 } },
+          y: { beginAtZero: true, ticks: { callback: v => fmt(v) } },
+        },
+      },
+    });
+  }
+
+  // przełącznik dziennego wykresu: wybrany okres / ostatnie 30 dni
+  function setDailyMode(mode) {
+    dailyMode = mode;
+    document.getElementById('btn-day-okres').classList.toggle('active', mode === 'okres');
+    document.getElementById('btn-day-30').classList.toggle('active', mode === '30dni');
+    document.getElementById('dziennie-title').textContent =
+      mode === '30dni' ? 'Wydatki dziennie — ostatnie 30 dni' : 'Wydatki dziennie';
+    loadDziennie(osobaSelect.value, katSelect.value,
+                 (!katSelect.value && !pokazWszystko) ? [...wykluczone] : []);
+  }
+  document.getElementById('btn-day-okres')?.addEventListener('click', () => setDailyMode('okres'));
+  document.getElementById('btn-day-30')?.addEventListener('click', () => setDailyMode('30dni'));
 
   function renderSklepy(data) {
     const el = document.getElementById('sklepy-list');

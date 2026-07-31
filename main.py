@@ -1195,6 +1195,16 @@ def stats_sklepy(month: str | None = None, osoba: str | None = None,
                                  household_id=current_user["household_id"])
 
 
+@app.get("/api/stats/dziennie")
+def stats_dziennie(month: str | None = None, osoba: str | None = None,
+                   kategoria: str | None = None, od: str | None = None, do: str | None = None,
+                   wyklucz: list[str] = Query(default=[]),
+                   current_user: dict = Depends(get_current_user)):
+    return database.stats_dziennie(month=month, osoba=osoba, kategoria=kategoria,
+                                   od=od, do=do, wyklucz=wyklucz or None,
+                                   household_id=current_user["household_id"])
+
+
 @app.get("/api/stats/top-produkt")
 def stats_top_produkt(kategoria: str, month: str | None = None, osoba: str | None = None,
                       od: str | None = None, do: str | None = None,

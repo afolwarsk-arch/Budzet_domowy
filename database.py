@@ -866,6 +866,53 @@ def stats_sklepy(month=None, osoba=None, limit=10, kategoria=None, household_id=
         return [dict(r) for r in cur.fetchall()]
 
 
+def stats_dziennie(month=None, osoba=None, kategoria=None, household_id=None,
+                   od=None, do=None, wyklucz=None) -> list[dict]:
+    """Suma wydatków dzień po dniu (do dziennego wykresu słupkowego na dashboardzie).
+    Zwraca tylko dni, w których coś wydano (dzien=YYYY-MM-DD, suma); brakujące dni
+    dopełnia zerami front, żeby oś była ciągła."""
+    def _date_conds(conditions, params):
+        if month:
+            conditions.append("TO_CHAR(w.data, 'YYYY-MM') = %s"); params.append(month)
+        if od:
+            conditions.append("w.data >= %s"); params.append(od)
+        if do:
+            conditions.append("w.data <= %s"); params.append(do)
+
+    params = []
+    if kategoria:
+        conditions = ["p.kategoria_glowna = %s"]; params.append(kategoria)
+        if household_id is not None:
+            conditions.append("w.household_id = %s"); params.append(household_id)
+        _date_conds(conditions, params)
+        if osoba:
+            conditions.append("w.osoba = %s"); params.append(osoba)
+        where = "WHERE " + " AND ".join(conditions)
+        query = f"""
+            SELECT TO_CHAR(w.data, 'YYYY-MM-DD') AS dzien,
+                   ROUND(CAST(SUM(p.cena * p.ilosc) AS numeric), 2) AS suma
+            FROM pozycje p JOIN wydatki w ON w.id = p.wydatek_id
+            {where} GROUP BY dzien ORDER BY dzien"""
+    else:
+        conditions = []
+        if household_id is not None:
+            conditions.append("w.household_id = %s"); params.append(household_id)
+        _date_conds(conditions, params)
+        if osoba:
+            conditions.append("w.osoba = %s"); params.append(osoba)
+        if wyklucz:
+            conditions.append(_WYKLUCZ_SQL); params.append(list(wyklucz))
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        query = f"""
+            SELECT TO_CHAR(w.data, 'YYYY-MM-DD') AS dzien,
+                   ROUND(CAST(SUM(w.suma) AS numeric), 2) AS suma
+            FROM wydatki w {where}
+            GROUP BY dzien ORDER BY dzien"""
+    with get_db() as cur:
+        cur.execute(query, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
 def stats_bilans(household_id: int, month=None, od=None, do=None) -> dict:
     """Bilans okresu: pełne wpływy − pełne wydatki. Liczy WSZYSTKO — nie stosuje
     'pomijanych kategorii', bo koszt lokalu i czynsz od najemcy mają się znosić,

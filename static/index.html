@@ -189,6 +189,19 @@
   </div>
 
   <div class="card" style="margin-bottom:24px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <h2 style="margin-bottom:0" id="dziennie-title">Wydatki dziennie</h2>
+      <div class="toggle-group">
+        <button class="toggle-btn active" id="btn-day-okres">Wybrany okres</button>
+        <button class="toggle-btn" id="btn-day-30">Ostatnie 30 dni</button>
+      </div>
+    </div>
+    <div class="chart-wrap" style="height:260px">
+      <canvas id="chart-dziennie"></canvas>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:24px">
     <h2>Top sklepy</h2>
     <div class="sklepy-list" id="sklepy-list">Ładowanie...</div>
   </div>
