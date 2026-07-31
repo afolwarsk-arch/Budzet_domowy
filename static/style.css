@@ -131,11 +131,11 @@ textarea { resize: vertical; min-height: 90px; width: 100%; }
   accent-color: #98a2b3; opacity: .55; transition: opacity .12s; }
 .kat-leg-row:hover .kat-leg-cb, .kat-leg-cb:focus-visible { opacity: 1; accent-color: #4f7ef8; }
 
-.wyklucz-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  background: #fff7e6; border: 1px solid #ffe0a3; color: #7d5a00;
-  border-radius: 10px; padding: 8px 12px; font-size: 13px; margin-bottom: 12px; }
-.wyklucz-banner button { border: 1px solid currentColor; background: #fff; color: inherit;
-  border-radius: 8px; padding: 4px 12px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+/* dyskretny przycisk „Pokaż wszystkie" nad checkboxami legendy */
+.leg-show-all { align-self: flex-start; margin: 0 0 5px 1px; font-size: 12px; padding: 3px 10px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+  color: var(--muted); cursor: pointer; transition: color .12s, border-color .12s; }
+.leg-show-all:hover { color: var(--text); border-color: var(--muted); }
 
 /* telefon: legenda pod wykresem, pełna szerokość, większe pola dotykowe */
 @media (max-width: 700px) {

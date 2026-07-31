@@ -245,7 +245,6 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     // w legendzie po stronie frontu, żeby dało się je odkliknąć z powrotem.
     const aktywneWyklucz = (!kategoria && !pokazWszystko) ? [...wykluczone] : [];
     for (const w of aktywneWyklucz) q.append('wyklucz', w);
-    renderWykluczBanner();
 
     // Bilans okresu — niezależny fetch: pełne wpływy − pełne wydatki za okres,
     // bez względu na filtr osoby i pomijane kategorie (lokal ma się znosić).
@@ -472,7 +471,11 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     // Dzięki temu pogrubiona trójka największych to te REALNIE na wykresie (spójnie z etykietami).
     const aktywne = data.filter(d => !wykluczone.has(d.kategoria_glowna));
     const pominiete = data.filter(d => wykluczone.has(d.kategoria_glowna));
-    box.innerHTML = [...aktywne, ...pominiete].map((d, i) => {
+    // dyskretny przycisk zamiast krzykliwego paska — tylko gdy coś jest odznaczone
+    const naglowek = wykluczone.size
+      ? `<button type="button" class="leg-show-all" onclick="togglePokazWszystko()">${pokazWszystko ? 'Ukryj z powrotem' : 'Pokaż wszystkie'}</button>`
+      : '';
+    box.innerHTML = naglowek + [...aktywne, ...pominiete].map((d, i) => {
       const nazwa = d.kategoria_glowna;
       const off = wykluczone.has(nazwa);
       const top = !off && i < 3;   // pogrubiaj tylko trójkę największych aktywnych
@@ -488,16 +491,6 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     }).join('');
   }
 
-  // Pasek nad wykresami, gdy coś jest pomijane (tylko w widoku zbiorczym).
-  function renderWykluczBanner() {
-    const el = document.getElementById('wyklucz-banner');
-    if (!el) return;
-    if (!wykluczone.size || katSelect.value) { el.classList.add('hidden'); el.innerHTML = ''; return; }
-    const lista = [...wykluczone].map(esc).join(', ');
-    el.classList.remove('hidden');
-    el.innerHTML = `<span>🚫 Pomijane w analizie: <strong>${lista}</strong></span>
-      <button onclick="togglePokazWszystko()">${pokazWszystko ? 'Ukryj z powrotem' : 'Pokaż wszystko'}</button>`;
-  }
 
   window.drillKat = (enc) => showSubkategorie(decodeURIComponent(enc));
 
