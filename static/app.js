@@ -602,7 +602,8 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
           return;
         }
         poz.innerHTML = `
-          <table class="pozycje-table" style="margin-left:20px">
+          <div class="table-wrap" style="margin-left:20px">
+          <table class="pozycje-table">
             <thead><tr>
               <th>Produkt</th><th>Sklep</th><th>Data</th>
               <th style="text-align:right">Ilość</th>
@@ -622,7 +623,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
                 <td style="text-align:right;font-weight:600">${fmt(p.suma)}</td>
               </tr>`).join('')}
             </tbody>
-          </table>`;
+          </table></div>`;
       });
     });
   }
