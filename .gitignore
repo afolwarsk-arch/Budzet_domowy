@@ -17,3 +17,7 @@ _*.py
 migration_data.json
 budzet_backup_*.json
 budzet_PELNY_*.json
+
+# samodzielne strony informacyjne (niepodlinkowane, nie serwować z apki)
+static/architektura.html
+static/edukacja.html
