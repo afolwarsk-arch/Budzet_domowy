@@ -104,6 +104,9 @@ textarea { resize: vertical; min-height: 90px; width: 100%; }
 }
 
 @media (max-width: 700px) { .charts-grid { grid-template-columns: 1fr; } }
+/* karty siatki nie mogą rozpychać się do najszerszego dziecka (np. szeroka tabela
+   „Paragony") — inaczej legenda kołowego rozjeżdża się poza ekran po kliknięciu kategorii */
+.charts-grid > .card { min-width: 0; }
 
 .chart-wrap { position: relative; height: 260px; }
 

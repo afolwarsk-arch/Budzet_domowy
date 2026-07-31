@@ -554,7 +554,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
 
     const wydatkiHTML = wydatki.length ? `
       <h3 style="font-size:14px;font-weight:600;margin:16px 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Paragony w tej kategorii</h3>
-      <table class="pozycje-table">
+      <div class="table-wrap"><table class="pozycje-table">
         <thead><tr>
           <th>Data</th><th>Sklep</th><th>Osoba</th><th style="text-align:right">Suma</th><th></th>
         </tr></thead>
@@ -572,7 +572,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
               <td><button class="btn btn-outline btn-sm" onclick="editWydatek(${w.id})">Edytuj</button></td>
             </tr>`).join('')}
         </tbody>
-      </table>` : '';
+      </table></div>` : '';
 
     list.innerHTML = subHTML + wydatkiHTML;
     panel.classList.remove('hidden');
