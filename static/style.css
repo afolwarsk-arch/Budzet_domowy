@@ -119,11 +119,13 @@ textarea { resize: vertical; min-height: 90px; width: 100%; }
   border-radius: 5px; font-size: 12px; line-height: 1.25; }
 .kat-leg-row:hover { background: rgba(0, 0, 0, .03); }
 .kat-leg-row.off { opacity: .45; }
-.kat-leg-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.kat-leg-swatch { width: 14px; height: 14px; border-radius: 3px; flex: none; }
 .kat-leg-name { flex: 1 1 auto; min-width: 0; cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kat-leg-kwota { flex: none; color: var(--text, #333); font-size: 12px; font-weight: 500;
   font-variant-numeric: tabular-nums; }
+/* trójka największych kategorii — pogrubiona dla szybkiego rozpoznania */
+.kat-leg-row.top .kat-leg-name, .kat-leg-row.top .kat-leg-kwota { font-weight: 700; }
 /* checkbox = drugorzędna kontrolka: mały i przygaszony, pełny kontrast po najechaniu/focusie */
 .kat-leg-cb { flex: none; width: 12px; height: 12px; margin: 0; cursor: pointer;
   accent-color: #98a2b3; opacity: .55; transition: opacity .12s; }

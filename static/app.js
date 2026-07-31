@@ -449,7 +449,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
             legend: { display: false },  // legendę renderujemy samodzielnie
             tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)}` } },
           },
-          cutout: '60%',
+          cutout: '50%',
           onClick: (_, els) => {
             if (!els.length) return;
             showSubkategorie(widoczne[els[0].index].kategoria_glowna);
@@ -468,11 +468,11 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   function renderLegenda(data) {
     const box = document.getElementById('kat-legenda');
     if (!box) return;
-    box.innerHTML = data.map(d => {
+    box.innerHTML = data.map((d, i) => {
       const nazwa = d.kategoria_glowna;
       const off = wykluczone.has(nazwa);
       const enc = encodeURIComponent(nazwa);
-      return `<div class="kat-leg-row${off ? ' off' : ''}">
+      return `<div class="kat-leg-row${off ? ' off' : ''}${i < 3 ? ' top' : ''}">
         <span class="kat-leg-swatch" style="background:${katColor(nazwa)}"></span>
         <span class="kat-leg-name" title="Kliknij, aby zobaczyć podkategorie" onclick="drillKat('${enc}')">${esc(nazwa)}</span>
         <span class="kat-leg-kwota">${fmt(d.suma)}</span>
