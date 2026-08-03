@@ -997,6 +997,19 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3, miesiac_pelny: bool
         """, (household_id, od))
         wplywy_miesiace = [dict(r) for r in cur.fetchall()]
 
+        # wpływy wg kategorii/źródła per miesiąc — żeby doradca widział NAZWANE strumienie
+        # (np. czynsz z najmu) i mógł je zestawić z powiązanymi kosztami, a nie tylko sumę
+        cur.execute("""
+            SELECT TO_CHAR(w.data,'YYYY-MM') AS miesiac,
+                   COALESCE(NULLIF(w.kategoria,''),'Inne') AS kategoria,
+                   ROUND(CAST(SUM(w.kwota) AS numeric),2) AS suma,
+                   COUNT(*) AS ile, MAX(w.opis) AS przyklad_opis
+            FROM wplywy w WHERE w.household_id=%s AND w.data>=%s
+            GROUP BY TO_CHAR(w.data,'YYYY-MM'), COALESCE(NULLIF(w.kategoria,''),'Inne')
+            ORDER BY miesiac, suma DESC
+        """, (household_id, od))
+        wplywy_kategorie = [dict(r) for r in cur.fetchall()]
+
         # top produkty grupowane po nazwie — tu siedzą realne odkrycia;
         # bez paragonów okazjonalnych (roczek, święta) — to nie nawyki,
         # ich suma trafia do modelu przez agregat wydatki_okazjonalne
@@ -1105,6 +1118,7 @@ def zbierz_dane_budzet(household_id: int, miesiace: int = 3, miesiac_pelny: bool
         "kondycja_wyliczona": kondycja_wyliczona,
         "wydatki_per_miesiac": wydatki_miesiace,
         "wplywy_per_miesiac": wplywy_miesiace,
+        "wplywy_kategorie_per_miesiac": wplywy_kategorie,
         "kategorie_per_miesiac": kat_miesiace,
         "top_produkty": produkty,
         "top_sklepy": sklepy,
