@@ -28,6 +28,11 @@
     .btn-hist   { background:#f0f4ff; color:#3451d1; }
     .btn-przelew { background:#ede7f6; color:#5e35b1; }
     .konto-btns button:hover { filter:brightness(0.93); }
+    .hist-filtry { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:2px 0 12px; }
+    .hist-typ { padding:4px 12px; border:1px solid #ddd; border-radius:20px; background:#fff; color:#666; font-size:12.5px; font-weight:600; cursor:pointer; }
+    .hist-typ:hover { border-color:#bbb; }
+    .hist-typ.active { background:#4361ee; border-color:#4361ee; color:#fff; }
+    .hist-suma { margin-left:auto; font-size:13px; font-weight:700; color:#2e7d32; white-space:nowrap; }
     .konto-icons { margin-left:auto; display:flex; gap:2px; }
     .konto-icons button { background:none; border:none; cursor:pointer; font-size:14px; color:#c5c5c5; padding:3px 6px; border-radius:6px; line-height:1; transition:color .15s, background .15s; }
     .konto-icons button:hover { background:#f5f5f5; color:#555; }
@@ -127,6 +132,13 @@
         <input type="month" id="hist-month" style="font-size:13px;padding:5px 8px;border:1px solid #ddd;border-radius:6px">
         <button class="panel-close" onclick="closeHistoria()">✕</button>
       </div>
+    </div>
+    <div class="hist-filtry">
+      <button class="hist-typ active" data-typ="" onclick="setHistTyp('')">Wszystko</button>
+      <button class="hist-typ" data-typ="wplyw" onclick="setHistTyp('wplyw')">Wpływy</button>
+      <button class="hist-typ" data-typ="wydatek" onclick="setHistTyp('wydatek')">Wydatki</button>
+      <button class="hist-typ" data-typ="przelew" onclick="setHistTyp('przelew')">Przelewy</button>
+      <span class="hist-suma" id="hist-suma"></span>
     </div>
     <div id="hist-content"><p class="empty-hint">Ładowanie...</p></div>
   </div>
@@ -844,13 +856,39 @@ async function showHistoria(kontoId, nazwa) {
   await loadHistoria();
 }
 
+let histTyp = '';       // '' = wszystko | 'wplyw' | 'wydatek' | 'przelew'
+let histData = [];
+
 async function loadHistoria() {
   const month = document.getElementById('hist-month').value;
   const q = month ? `?month=${month}` : '';
-  const data = await authFetch(`/api/konta/${activeKontoId}/historia${q}`).then(r => r.json());
+  histData = await authFetch(`/api/konta/${activeKontoId}/historia${q}`).then(r => r.json());
+  renderHistoria();
+}
+
+window.setHistTyp = function(typ) {
+  histTyp = typ;
+  document.querySelectorAll('.hist-typ').forEach(b => b.classList.toggle('active', b.dataset.typ === typ));
+  renderHistoria();
+};
+
+function renderHistoria() {
   const el = document.getElementById('hist-content');
-  if (!data.length) { el.innerHTML = '<p class="empty-hint">Brak transakcji w tym okresie</p>'; return; }
-  el.innerHTML = data.map(t => {
+  const sumaEl = document.getElementById('hist-suma');
+  const lista = histTyp ? histData.filter(t => t.typ === histTyp) : histData;
+
+  // podsumowanie widocznych transakcji: dla „Wpływy" to łączny przychód na konto,
+  // dla „Wszystko" — wynik netto (wpływy − wydatki − przelewy wychodzące)
+  const suma = lista.reduce((s, t) => s + parseFloat(t.kwota || 0), 0);
+  if (lista.length) {
+    sumaEl.textContent = (suma >= 0 ? '+' : '') + fmt(suma);
+    sumaEl.style.color = suma >= 0 ? '#2e7d32' : '#c62828';
+  } else {
+    sumaEl.textContent = '';
+  }
+
+  if (!lista.length) { el.innerHTML = '<p class="empty-hint">Brak transakcji w tym okresie</p>'; return; }
+  el.innerHTML = lista.map(t => {
     const plus = t.kwota > 0;
     const typLabel = t.typ === 'wplyw' ? 'wpływ' : t.typ === 'przelew' ? 'przelew' : 'wydatek';
     return `<div class="tx-row">
