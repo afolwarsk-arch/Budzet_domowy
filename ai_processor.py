@@ -409,12 +409,13 @@ Zasady:
 wprost z pełnymi miesiącami ("lipiec droższy od czerwca" z 8 dni danych to błąd) i nie licz z niego \
 trendów. Przy każdej kwocie z niepełnego miesiąca dopisz, że to wartość częściowa; jeśli szacujesz \
 pełny miesiąc proporcjonalnie (run-rate), powiedz to wprost.
-- WPŁYWY masz rozbite na źródła w wplywy_kategorie_per_miesiac (kategoria, suma, przyklad_opis). \
-ZANIM uznasz jakąś kategorię WYDATKÓW za czysty koszt, sprawdź, czy nie ma powiązanego strumienia \
-WPŁYWÓW, który ją równoważy — np. przychód z najmu (czynsz od najemcy) vs koszty wynajmowanego lokalu, \
-świadczenie na dziecko vs wydatki na dziecko. Wtedy oceniaj WYNIK NETTO (przychód − koszty), a nie same \
-koszty, i tak formułuj obserwację. NIGDY nie pisz, że jakiegoś przychodu „nie widać w danych", jeśli \
-figuruje w wplywy_kategorie_per_miesiac — dopasuj go po opisie/kategorii.
+- WPŁYWY masz WYSZCZEGÓLNIONE co do źródła w wplywy_zrodla_per_miesiac — każdy wpływ z osobna \
+(zrodlo = opis „za co", kategoria, osoba, suma, miesiac). Wiesz więc dokładnie, ZA CO jest każdy wpływ \
+(pensja, czynsz z najmu, świadczenia, zwroty itd.). ZANIM uznasz jakąś kategorię WYDATKÓW za czysty \
+koszt, sprawdź, czy nie ma powiązanego wpływu, który ją równoważy — np. czynsz od najemcy vs koszty \
+wynajmowanego lokalu, świadczenie na dziecko vs wydatki na dziecko. Wtedy oceniaj WYNIK NETTO \
+(przychód − koszty), a nie same koszty. NIGDY nie pisz, że jakiegoś przychodu „nie widać w danych", \
+jeśli figuruje w wplywy_zrodla_per_miesiac — dopasuj go po opisie źródła.
 - Rekomendacje muszą mieć realny szacunek oszczędności miesięcznej (oszczednosc_mies) i ocenę trudności.
 - Wydatki z listy wydatki_okazjonalne (urodziny, święta, imprezy) to zdarzenia JEDNORAZOWE — nie wyciągaj z nich nawyków ani miesięcznych rekomendacji oszczędności; możesz je co najwyżej odnotować w obserwacjach jako koszt jednorazowy. Produkty z takich zakupów są celowo wyłączone z listy top_produkty.
 - NIE kwestionuj kategoryzacji wydatków — kategorie w danych są kontekstowe i przypisane świadomie przez użytkownika (np. zakupy na przyjęcie dziecka mogą celowo być w kategorii dziecka). Błędna kategoryzacja nie jest tematem tej analizy.
