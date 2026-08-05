@@ -46,6 +46,9 @@
           <hr>
           <button role="menuitem" onclick="closeHdrMenu(); downloadBackup()">↓ Pobierz kopię danych</button>
           <button role="menuitem" id="btn-restore" onclick="closeHdrMenu(); document.getElementById('restore-file').click()">↑ Wczytaj kopię</button>
+          <!-- pokazywane dopiero, gdy przegladarka zglosi gotowosc do instalacji -->
+          <hr id="mi-install-sep" style="display:none">
+          <button role="menuitem" id="mi-install" style="display:none" onclick="closeHdrMenu(); zainstalujApke()">📲 Zainstaluj na telefonie</button>
           <!-- narzędzie serwisowe, tylko admin — ukrywane w app.js -->
           <hr id="mi-rekat-sep">
           <button role="menuitem" id="mi-rekat" onclick="closeHdrMenu(); openRekat()">⚙️ Przelicz kategorie</button>
@@ -279,6 +282,64 @@
     a.href = URL.createObjectURL(blob);
     a.download = 'budzet_backup_' + new Date().toISOString().slice(0,10) + '.json';
     a.click();
+  }
+
+  // ── Instalacja na telefonie ──
+  // Chrome sam wyswietla pasek "Zainstaluj aplikacje", gdy strona spelnia
+  // kryteria PWA. preventDefault() go blokuje i zapamietuje zdarzenie, zeby
+  // instalacja ruszala dopiero po kliknieciu pozycji w menu.
+  let _promptInstalacji = null;
+
+  function _przelaczPozycjeInstalacji(widoczna) {
+    ['mi-install', 'mi-install-sep'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = widoczna ? '' : 'none';
+    });
+  }
+
+  function _jestZainstalowana() {
+    return window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true;
+  }
+
+  function _iOSbezWsparcia() {
+    // Safari nie zna beforeinstallprompt — instalacji nie da sie wywolac
+    // z kodu, mozna tylko pokazac instrukcje
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  }
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    _promptInstalacji = e;
+    _przelaczPozycjeInstalacji(true);
+  });
+
+  window.addEventListener('appinstalled', () => {
+    _promptInstalacji = null;
+    _przelaczPozycjeInstalacji(false);
+  });
+
+  if (_iOSbezWsparcia() && !_jestZainstalowana()) _przelaczPozycjeInstalacji(true);
+
+  async function zainstalujApke() {
+    if (_promptInstalacji) {
+      _promptInstalacji.prompt();
+      const { outcome } = await _promptInstalacji.userChoice;
+      _promptInstalacji = null;                    // zdarzenia da sie uzyc tylko raz
+      if (outcome === 'accepted') _przelaczPozycjeInstalacji(false);
+      return;
+    }
+    if (_iOSbezWsparcia()) {
+      alert(
+        'Aby zainstalować na iPhonie:\n\n' +
+        '1. Otwórz tę stronę w Safari (nie w Chrome).\n' +
+        '2. Kliknij przycisk Udostępnij na dolnym pasku.\n' +
+        '3. Przewiń w dół i wybierz „Do ekranu głównego".\n' +
+        '4. Potwierdź przyciskiem „Dodaj".'
+      );
+      return;
+    }
+    alert('Ta przeglądarka nie obsługuje instalacji. Spróbuj w Chrome na Androidzie albo w Safari na iPhonie.');
   }
 
   function openRekat() {
