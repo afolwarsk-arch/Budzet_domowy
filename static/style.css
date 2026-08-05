@@ -415,6 +415,42 @@ tr:hover td { background: #fafbff; }
 .pozycje-table td { padding: 6px 8px; border-bottom: 1px solid #eef0f5; }
 .pozycje-table tr:last-child td { border-bottom: none; }
 
+/* menu „⋯" w nagłówku — akcje rzadkie (zaproszenia, kopia danych) chowamy tu,
+   żeby w pasku nagłówka została tylko akcja główna. Bez tego pięć przycisków
+   obok siebie nie mieściło się na ekranie telefonu. */
+.hdr-menu { position: relative; }
+.hdr-menu > .btn { padding-left: 14px; padding-right: 14px; font-size: 17px; line-height: 1; }
+.hdr-menu-items {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 214px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.13);
+  z-index: 300;
+}
+.hdr-menu.open .hdr-menu-items { display: block; }
+.hdr-menu-items button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.hdr-menu-items button:hover { background: var(--bg); }
+.hdr-menu-items hr { border: none; border-top: 1px solid var(--border); margin: 5px 2px; }
+
 /* ── mobile ── */
 
 /* dolna nawigacja (wstrzykiwana przez auth.js, widoczna tylko na wąskich ekranach) */

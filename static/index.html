@@ -35,10 +35,19 @@
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px">
     <h1>Dashboard</h1>
     <div style="display:flex;gap:8px;align-items:center">
-      <button id="btn-invite" onclick="showInvite()" style="padding:8px 16px;border:1px solid #4f7ef8;border-radius:8px;background:white;color:#4f7ef8;cursor:pointer;font-size:0.9rem;">👥 Zaproś osobę</button>
-      <button onclick="showVirtualMembers()" style="padding:8px 16px;border:1px solid #aaa;border-radius:8px;background:white;color:#555;cursor:pointer;font-size:0.9rem;">+ Osoba bez konta</button>
-      <button id="btn-backup" onclick="downloadBackup()" style="padding:8px 16px;border:1px solid #2e7d32;border-radius:8px;background:white;color:#2e7d32;cursor:pointer;font-size:0.9rem;">↓ Backup</button>
-      <button id="btn-restore" onclick="document.getElementById('restore-file').click()" style="padding:8px 16px;border:1px solid #2e7d32;border-radius:8px;background:white;color:#2e7d32;cursor:pointer;font-size:0.9rem;">↑ Wczytaj</button>
+      <!-- akcje rzadkie chowamy pod „⋯" — na telefonie w pasku ma zostać
+           tylko akcja główna, a pięć przycisków obok siebie się nie mieściło -->
+      <div class="hdr-menu" id="hdr-menu">
+        <button class="btn btn-outline" id="hdr-menu-btn" onclick="toggleHdrMenu(event)"
+                aria-haspopup="true" aria-expanded="false" title="Więcej akcji">⋯</button>
+        <div class="hdr-menu-items" role="menu">
+          <button role="menuitem" onclick="closeHdrMenu(); showInvite()">👥 Zaproś osobę</button>
+          <button role="menuitem" onclick="closeHdrMenu(); showVirtualMembers()">➕ Osoba bez konta</button>
+          <hr>
+          <button role="menuitem" onclick="closeHdrMenu(); downloadBackup()">↓ Pobierz kopię danych</button>
+          <button role="menuitem" id="btn-restore" onclick="closeHdrMenu(); document.getElementById('restore-file').click()">↑ Wczytaj kopię</button>
+        </div>
+      </div>
       <input type="file" id="restore-file" accept="application/json,.json" style="display:none" onchange="restoreBackup(this)">
       <a href="/upload" class="btn btn-primary">+ Dodaj wydatek</a>
     </div>
@@ -256,6 +265,26 @@
     a.download = 'budzet_backup_' + new Date().toISOString().slice(0,10) + '.json';
     a.click();
   }
+
+  function closeHdrMenu() {
+    const m = document.getElementById('hdr-menu');
+    if (!m) return;
+    m.classList.remove('open');
+    document.getElementById('hdr-menu-btn').setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleHdrMenu(e) {
+    e.stopPropagation();          // inaczej listener na dokumencie zamknie je od razu
+    const m = document.getElementById('hdr-menu');
+    const otwarte = m.classList.toggle('open');
+    document.getElementById('hdr-menu-btn').setAttribute('aria-expanded', String(otwarte));
+  }
+
+  document.addEventListener('click', (e) => {
+    const m = document.getElementById('hdr-menu');
+    if (m && m.classList.contains('open') && !m.contains(e.target)) closeHdrMenu();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeHdrMenu(); });
 
   async function restoreBackup(input) {
     const plik = input.files && input.files[0];

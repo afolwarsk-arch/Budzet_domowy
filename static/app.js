@@ -26,10 +26,11 @@ function bladSieci(e) {
 if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(async (me) => {
   loadOsobaOptions('filter-osoba', true); // w tle — wykresy nie muszą na to czekać
 
-  // kopię zapasową pobiera tylko właściciel gospodarstwa
+  // kopię POBIERA każdy członek (żeby przy wyjściu móc zabrać swoje dane),
+  // ale WCZYTAĆ ją do gospodarstwa może już tylko właściciel
   if (me && me.role !== 'owner') {
-    const bkp = document.getElementById('btn-backup');
-    if (bkp) bkp.style.display = 'none';
+    const restore = document.getElementById('btn-restore');
+    if (restore) restore.style.display = 'none';
   }
 
   // (wskazówki kontekstowe wstrzykuje teraz auth.js — _injectTip, różne per zakładka)
