@@ -642,8 +642,11 @@ def update_wydatek(wydatek_id: int, data: str, sklep: str | None, suma: float,
     return True
 
 
-def get_pozycje_do_rekat(month: str | None = None, od: str | None = None, do: str | None = None) -> list[dict]:
+def get_pozycje_do_rekat(month: str | None = None, od: str | None = None, do: str | None = None,
+                         household_id: int | None = None) -> list[dict]:
     conditions, params = [], []
+    if household_id is not None:
+        conditions.append("w.household_id = %s"); params.append(household_id)
     if month:
         conditions.append("TO_CHAR(w.data, 'YYYY-MM') = %s"); params.append(month)
     if od:
@@ -660,12 +663,23 @@ def get_pozycje_do_rekat(month: str | None = None, od: str | None = None, do: st
         return [dict(r) for r in cur.fetchall()]
 
 
-def update_pozycje_kategorie(aktualizacje: list[dict]) -> int:
+def update_pozycje_kategorie(aktualizacje: list[dict], household_id: int | None = None) -> int:
     with get_db() as cur:
-        cur.executemany(
-            "UPDATE pozycje SET kategoria_glowna=%s, kategoria=%s WHERE id=%s",
-            [(a["kategoria_glowna"], a["kategoria"], a["id"]) for a in aktualizacje],
-        )
+        if household_id is None:
+            cur.executemany(
+                "UPDATE pozycje SET kategoria_glowna=%s, kategoria=%s WHERE id=%s",
+                [(a["kategoria_glowna"], a["kategoria"], a["id"]) for a in aktualizacje],
+            )
+        else:
+            # przynależność sprawdzana w samym UPDATE — pozycja spoza gospodarstwa
+            # nie zostanie ruszona, nawet gdyby jej id trafiło na listę
+            cur.executemany(
+                """UPDATE pozycje p SET kategoria_glowna=%s, kategoria=%s
+                   FROM wydatki w
+                   WHERE p.id=%s AND w.id = p.wydatek_id AND w.household_id=%s""",
+                [(a["kategoria_glowna"], a["kategoria"], a["id"], household_id)
+                 for a in aktualizacje],
+            )
         return cur.rowcount
 
 

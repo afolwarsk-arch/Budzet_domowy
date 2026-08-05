@@ -979,15 +979,18 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   document.getElementById('kat-week-reset').addEventListener('click', () => setKatWeek(''));
   populateKatWeeks();
 
-  // ── Przelicz kategorie (tylko admin) ──
+  // ── Przelicz kategorie (tylko admin) — pozycja w menu „⋯" ──
   if (!authIsAdmin(me)) {
-    const rekatSection = document.querySelector('details.card');
-    if (rekatSection) rekatSection.style.display = 'none';
+    ['mi-rekat', 'mi-rekat-sep'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
   }
 
   const btnPreview = document.getElementById('btn-rekat-preview');
   const btnRun = document.getElementById('btn-rekat-run');
   const rekatInfo = document.getElementById('rekat-info');
+  let _rekatLiczba = 0;   // z podglądu — pokazywane w ostrzeżeniu przed uruchomieniem
 
   function rekatParams() {
     const od = document.getElementById('rekat-od').value;
@@ -1001,6 +1004,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   btnPreview.addEventListener('click', async () => {
     const q = rekatParams();
     const data = await authFetch('/api/admin/rekat-preview?' + q).then(r => r.json());
+    _rekatLiczba = data.liczba;
     if (data.liczba === 0) {
       rekatInfo.textContent = 'Brak pozycji w wybranym zakresie.';
       btnRun.disabled = true;
@@ -1011,7 +1015,18 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   });
 
   btnRun.addEventListener('click', async () => {
-    if (!confirm('Przelicz kategorie? Zostanie wysłanych kilka zapytań do Claude AI.')) return;
+    // ostrzeżenie mówi o skutku (nadpisanie bez cofnięcia), nie tylko o koszcie —
+    // wcześniej informowało wyłącznie o zapytaniach do AI
+    const zakres = (document.getElementById('rekat-od').value || document.getElementById('rekat-do').value)
+      ? 'w wybranym zakresie dat'
+      : 'we WSZYSTKICH wydatkach gospodarstwa';
+    if (!confirm(
+      `Przeliczyć kategorie ${zakres}?\n\n` +
+      `Dotyczy ${_rekatLiczba} pozycji. Ich obecne kategorie zostaną NADPISANE ` +
+      `wynikiem z AI — także te, które poprawiałeś ręcznie.\n\n` +
+      `Tej operacji NIE DA SIĘ COFNĄĆ. Jeśli nie masz kopii danych, przerwij ` +
+      `i pobierz ją najpierw z menu „⋯".`
+    )) return;
     btnRun.disabled = true;
     btnRun.innerHTML = '<span class="loader"></span> Przeliczam...';
     rekatInfo.textContent = 'Trwa przeliczanie — nie zamykaj strony...';

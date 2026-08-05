@@ -942,30 +942,40 @@ def update_wydatek(wydatek_id: int, body: WydatekIn, current_user: dict = Depend
 @app.get("/api/admin/rekat-preview")
 def rekat_preview(month: str | None = None, od: str | None = None, do: str | None = None,
                   admin: dict = Depends(require_admin)):
-    pozycje = database.get_pozycje_do_rekat(month=month, od=od, do=do)
+    pozycje = database.get_pozycje_do_rekat(month=month, od=od, do=do,
+                                            household_id=admin["household_id"])
     return {"liczba": len(pozycje), "szacowane_paczki": -(-len(pozycje) // 25)}
 
 
 @app.post("/api/admin/rekategoryzuj")
 async def rekategoryzuj(body: dict, admin: dict = Depends(require_admin)):
+    """Ponowna kategoryzacja pozycji przez AI. Ograniczona do gospodarstwa admina
+    — wcześniej zapytanie nie filtrowało po household_id i przepisywało kategorie
+    w całej bazie. Hierarchia brana z gospodarstwa, żeby przeliczenie nie cofało
+    własnych kategorii do zestawu domyślnego."""
+    hid = admin["household_id"]
+    if not hid:
+        raise HTTPException(status_code=400, detail="Brak gospodarstwa")
     month = body.get("month")
     od = body.get("od")
     do = body.get("do")
-    pozycje = database.get_pozycje_do_rekat(month=month, od=od, do=do)
+    pozycje = database.get_pozycje_do_rekat(month=month, od=od, do=do, household_id=hid)
     if not pozycje:
         return {"zaktualizowane": 0}
+
+    hierarchia = database.get_household_hierarchia(hid)
 
     BATCH = 25
     wszystkie = []
     total_in, total_out = 0, 0
     for i in range(0, len(pozycje), BATCH):
         paczka = pozycje[i:i + BATCH]
-        wynik, usage = await asyncio.to_thread(ai_processor.rekategoryzuj_batch, paczka)
+        wynik, usage = await asyncio.to_thread(ai_processor.rekategoryzuj_batch, paczka, hierarchia)
         wszystkie.extend(wynik)
         total_in += usage["input_tokens"]
         total_out += usage["output_tokens"]
-    database.log_api_usage(None, "rekategoryzuj", total_in, total_out)
-    zaktualizowane = database.update_pozycje_kategorie(wszystkie)
+    database.log_api_usage(hid, "rekategoryzuj", total_in, total_out)
+    zaktualizowane = database.update_pozycje_kategorie(wszystkie, household_id=hid)
     return {"zaktualizowane": zaktualizowane, "przetworzone": len(wszystkie)}
 
 
