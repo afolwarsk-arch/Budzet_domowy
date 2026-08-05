@@ -2561,7 +2561,10 @@ def import_household_data(household_id: int, dane: dict) -> dict:
         for tabela in ("wydatki", "konta", "wplywy", "cele", "przelewy"):
             cur.execute(f"SELECT 1 FROM {tabela} WHERE household_id=%s LIMIT 1", (household_id,))
             if cur.fetchone():
-                raise ValueError("Import możliwy tylko do pustego gospodarstwa — te już zawiera dane.")
+                raise ValueError(
+                    "Import możliwy tylko do pustego gospodarstwa, a to już zawiera dane. "
+                    "Załóż nowe gospodarstwo albo najpierw usuń istniejące wpisy."
+                )
 
         mapa_kont: dict = {}
         for k in dane.get("konta", []):
