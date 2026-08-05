@@ -224,6 +224,8 @@ def init_db():
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'aktywny'")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_zablokowane BOOLEAN NOT NULL DEFAULT FALSE")
+        # gospodarstwo bez członków czeka 30 dni na skasowanie — data startu karencji
+        cur.execute("ALTER TABLE households ADD COLUMN IF NOT EXISTS usuwane_od TIMESTAMP")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS okazja TEXT")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS kontekst_kategoria TEXT")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS kontekst_podkategoria TEXT")
@@ -1315,6 +1317,119 @@ def delete_user(user_id: int) -> str | None:
         return fuid
 
 
+def leave_household(user_id: int, household_id: int, display_name: str | None) -> dict:
+    """Wypisuje użytkownika z gospodarstwa. Konto logowania ZOSTAJE — po wyjściu
+    można od razu założyć własne gospodarstwo na tym samym mailu.
+    Wspólne dane zostają u pozostałych, a pseudonim odchodzącego jest zachowany
+    jako „osoba bez konta", żeby jego wydatki nie osierociły.
+    Zwraca {'pozostalo': liczba członków po wyjściu, 'osierocone': bool};
+    'pozostalo' = -1 oznacza, że użytkownik wcale nie należał do gospodarstwa."""
+    with get_db() as cur:
+        cur.execute(
+            "SELECT role FROM memberships WHERE user_id=%s AND household_id=%s",
+            (user_id, household_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"pozostalo": -1, "osierocone": False}
+        byl_wlascicielem = row["role"] == "owner"
+
+        if display_name:
+            cur.execute(
+                "SELECT 1 FROM virtual_members WHERE household_id=%s AND name=%s",
+                (household_id, display_name),
+            )
+            if not cur.fetchone():
+                cur.execute(
+                    "INSERT INTO virtual_members (household_id, name) VALUES (%s,%s)",
+                    (household_id, display_name),
+                )
+
+        cur.execute("DELETE FROM konto_domyslne WHERE user_id=%s", (user_id,))
+        cur.execute(
+            "DELETE FROM invitations WHERE created_by=%s AND household_id=%s",
+            (user_id, household_id),
+        )
+        cur.execute(
+            "DELETE FROM memberships WHERE user_id=%s AND household_id=%s",
+            (user_id, household_id),
+        )
+
+        cur.execute(
+            "SELECT user_id, role FROM memberships WHERE household_id=%s ORDER BY user_id",
+            (household_id,),
+        )
+        pozostali = cur.fetchall()
+        # bez właściciela nikt nie pobierze kopii danych (/api/export jest owner-only),
+        # więc po odejściu właściciela promujemy pierwszego z pozostałych
+        if byl_wlascicielem and pozostali and not any(r["role"] == "owner" for r in pozostali):
+            cur.execute(
+                "UPDATE memberships SET role='owner' WHERE user_id=%s AND household_id=%s",
+                (pozostali[0]["user_id"], household_id),
+            )
+
+        return {"pozostalo": len(pozostali), "osierocone": not pozostali}
+
+
+def oznacz_gospodarstwo_do_usuniecia(household_id: int) -> None:
+    """Start 30-dniowej karencji. Nie nadpisuje już trwającej."""
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE households SET usuwane_od=CURRENT_TIMESTAMP WHERE id=%s AND usuwane_od IS NULL",
+            (household_id,),
+        )
+
+
+def anuluj_usuwanie_gospodarstwa(household_id: int) -> None:
+    """Ktoś dołączył — gospodarstwo znów ma członka, karencja przestaje biec."""
+    with get_db() as cur:
+        cur.execute("UPDATE households SET usuwane_od=NULL WHERE id=%s", (household_id,))
+
+
+# Tabele z household_id BEZ ON DELETE CASCADE — trzeba je wyczyścić ręcznie.
+# Kolejność: dzieci przed rodzicami (konta na końcu, bo odwołują się do nich
+# przelewy, wpływy, wydatki i cykliczne). Reszta tabel gospodarstwa ma kaskadę
+# i zniknie sama przy DELETE FROM households.
+_TABELE_BEZ_KASKADY = (
+    "przelewy", "wydatki_cykliczne", "wplywy", "wydatki",
+    "api_usage", "analiza_state", "invitations", "memberships", "konta",
+)
+
+
+def usun_gospodarstwo(household_id: int) -> None:
+    """Nieodwracalnie kasuje gospodarstwo wraz ze wszystkimi danymi.
+
+    Całość leci w jednej transakcji get_db() — jeśli w przyszłości dojdzie nowa
+    tabela z household_id bez kaskady, końcowe DELETE FROM households wywali się
+    na kluczu obcym i cała operacja się wycofa. Lepiej głośny błąd niż połowicznie
+    skasowane gospodarstwo."""
+    with get_db() as cur:
+        for tabela in _TABELE_BEZ_KASKADY:
+            cur.execute(f"DELETE FROM {tabela} WHERE household_id=%s", (household_id,))
+        # część ustawień gospodarstwa (analiza_wyklucz, cel_przeplywowy) siedzi
+        # w globalnej tabeli ustawien pod kluczem z sufiksem ":<household_id>"
+        cur.execute("DELETE FROM ustawienia WHERE klucz LIKE %s", (f"%:{household_id}",))
+        cur.execute("DELETE FROM households WHERE id=%s", (household_id,))
+
+
+def purge_gospodarstwa(dni: int = 30) -> list[int]:
+    """Kasuje gospodarstwa, którym minęła karencja. Warunek „zero członków" jest
+    sprawdzany ponownie tutaj — gdyby ktoś w międzyczasie dołączył, gospodarstwo
+    zostaje nietknięte. Zwraca listę usuniętych id."""
+    with get_db() as cur:
+        cur.execute(
+            """SELECT h.id FROM households h
+               WHERE h.usuwane_od IS NOT NULL
+                 AND h.usuwane_od < CURRENT_TIMESTAMP - make_interval(days => %s)
+                 AND NOT EXISTS (SELECT 1 FROM memberships m WHERE m.household_id = h.id)""",
+            (dni,),
+        )
+        ids = [r["id"] for r in cur.fetchall()]
+    for hid in ids:
+        usun_gospodarstwo(hid)
+    return ids
+
+
 def rename_osoba_in_household(stara: str, nowa: str, household_id: int) -> int:
     with get_db() as cur:
         cur.execute(
@@ -1342,6 +1457,8 @@ def add_member(user_id: int, household_id: int, role: str = "member") -> None:
             "INSERT INTO memberships (user_id, household_id, role) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
             (user_id, household_id, role),
         )
+        # gospodarstwo znów ma członka — jeśli biegła karencja, zatrzymujemy ją
+        cur.execute("UPDATE households SET usuwane_od=NULL WHERE id=%s", (household_id,))
 
 
 def get_household_members(household_id: int) -> list[dict]:
@@ -2375,14 +2492,209 @@ def export_household_data(household_id: int) -> dict:
             r["pozycje"] = [p if isinstance(p, dict) else _json.loads(p) for p in (r.get("pozycje") or [])]
             wydatki.append(r)
 
-        cur.execute("SELECT * FROM konta WHERE household_id=%s ORDER BY created_at", (household_id,))
+        cur.execute("SELECT * FROM konta WHERE household_id=%s ORDER BY id", (household_id,))
         konta = [dict(r) for r in cur.fetchall()]
 
-        cur.execute("SELECT * FROM wplywy WHERE konto_id IN (SELECT id FROM konta WHERE household_id=%s) ORDER BY data DESC", (household_id,))
+        # po household_id, nie po konto_id — wpływy bez przypisanego konta mają
+        # konto_id NULL i przy filtrowaniu po kontach wypadały z eksportu
+        cur.execute("SELECT * FROM wplywy WHERE household_id=%s ORDER BY data DESC", (household_id,))
         wplywy = [dict(r) for r in cur.fetchall()]
 
+        cur.execute("SELECT * FROM cele WHERE household_id=%s ORDER BY id", (household_id,))
+        cele = [dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            """SELECT cw.* FROM cele_wplaty cw JOIN cele c ON c.id = cw.cel_id
+               WHERE c.household_id=%s ORDER BY cw.id""",
+            (household_id,),
+        )
+        cele_wplaty = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("SELECT * FROM przelewy WHERE household_id=%s ORDER BY id", (household_id,))
+        przelewy = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("SELECT * FROM wydatki_cykliczne WHERE household_id=%s ORDER BY id", (household_id,))
+        cykliczne = [dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            """SELECT i.* FROM inwentaryzacje i JOIN konta k ON k.id = i.konto_id
+               WHERE k.household_id=%s ORDER BY i.id""",
+            (household_id,),
+        )
+        inwentaryzacje = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("SELECT * FROM limity WHERE household_id=%s ORDER BY id", (household_id,))
+        limity = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("SELECT * FROM virtual_members WHERE household_id=%s ORDER BY id", (household_id,))
+        virtual_members = [dict(r) for r in cur.fetchall()]
+
         hier = get_household_hierarchia(household_id)
-    return {"wydatki": wydatki, "konta": konta, "wplywy": wplywy, "hierarchia": hier}
+    return {
+        # wersja formatu — import odmawia wczytania pliku, którego nie rozumie
+        "wersja": 2,
+        "wydatki": wydatki, "konta": konta, "wplywy": wplywy,
+        "cele": cele, "cele_wplaty": cele_wplaty, "przelewy": przelewy,
+        "wydatki_cykliczne": cykliczne, "inwentaryzacje": inwentaryzacje,
+        "limity": limity, "virtual_members": virtual_members,
+        "hierarchia": hier,
+    }
+
+
+def _remap(mapa: dict, stare_id) -> int | None:
+    """Stare id z pliku -> nowe id w bazie. Nieznane/puste -> NULL."""
+    return mapa.get(stare_id) if stare_id is not None else None
+
+
+def import_household_data(household_id: int, dane: dict) -> dict:
+    """Wczytuje plik z eksportu do PUSTEGO gospodarstwa, przemapowując klucze obce
+    (konta, cele, przelewy dostają nowe id). Wszystko w jednej transakcji — przy
+    błędzie nie zostaje połowicznie wczytane gospodarstwo.
+
+    Nie używa create_wydatek, bo tamta funkcja otwiera własną transakcję na każdy
+    wydatek — import kilku tysięcy pozycji nie byłby ani szybki, ani atomowy."""
+    if dane.get("wersja") != 2:
+        raise ValueError("Nieobsługiwany format pliku — oczekiwano eksportu w wersji 2.")
+
+    liczniki: dict[str, int] = {}
+    with get_db() as cur:
+        for tabela in ("wydatki", "konta", "wplywy", "cele", "przelewy"):
+            cur.execute(f"SELECT 1 FROM {tabela} WHERE household_id=%s LIMIT 1", (household_id,))
+            if cur.fetchone():
+                raise ValueError("Import możliwy tylko do pustego gospodarstwa — te już zawiera dane.")
+
+        mapa_kont: dict = {}
+        for k in dane.get("konta", []):
+            cur.execute(
+                """INSERT INTO konta (household_id,nazwa,typ,osoba,waluta,saldo_poczatkowe,aktywne)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                (household_id, k["nazwa"], k.get("typ", "bank"), k.get("osoba"),
+                 k.get("waluta", "PLN"), k.get("saldo_poczatkowe", 0), k.get("aktywne", True)),
+            )
+            mapa_kont[k["id"]] = cur.fetchone()["id"]
+        liczniki["konta"] = len(mapa_kont)
+
+        mapa_celow: dict = {}
+        for c in dane.get("cele", []):
+            cur.execute(
+                """INSERT INTO cele (household_id,nazwa,kwota_docelowa,konto_id,termin,aktywny)
+                   VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
+                (household_id, c["nazwa"], c["kwota_docelowa"], _remap(mapa_kont, c.get("konto_id")),
+                 c.get("termin"), c.get("aktywny", True)),
+            )
+            mapa_celow[c["id"]] = cur.fetchone()["id"]
+        liczniki["cele"] = len(mapa_celow)
+
+        mapa_przelewow: dict = {}
+        for p in dane.get("przelewy", []):
+            cur.execute(
+                """INSERT INTO przelewy (household_id,data,kwota,konto_z_id,konto_na_id,opis)
+                   VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
+                (household_id, p["data"], p["kwota"], _remap(mapa_kont, p.get("konto_z_id")),
+                 _remap(mapa_kont, p.get("konto_na_id")), p.get("opis")),
+            )
+            mapa_przelewow[p["id"]] = cur.fetchone()["id"]
+        liczniki["przelewy"] = len(mapa_przelewow)
+
+        wplaty = [w for w in dane.get("cele_wplaty", []) if w.get("cel_id") in mapa_celow]
+        for w in wplaty:
+            cur.execute(
+                """INSERT INTO cele_wplaty (cel_id,data,kwota,opis,zrodlo,przelew_id)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (mapa_celow[w["cel_id"]], w["data"], w["kwota"], w.get("opis"),
+                 w.get("zrodlo", "reczna"), _remap(mapa_przelewow, w.get("przelew_id"))),
+            )
+        liczniki["cele_wplaty"] = len(wplaty)
+
+        cykliczne = dane.get("wydatki_cykliczne", [])
+        for c in cykliczne:
+            cur.execute(
+                """INSERT INTO wydatki_cykliczne
+                   (household_id,nazwa,kwota,dzien,kategoria_glowna,kategoria,osoba,konto_id,
+                    od_miesiaca,limit_naliczen,aktywne,ostatnio_do,automatyczny,typ,do_miesiaca,
+                    konto_na_id,cel_id)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (household_id, c["nazwa"], c["kwota"], c.get("dzien", 1),
+                 c.get("kategoria_glowna", "Rozrywka i hobby"), c.get("kategoria", "Subskrypcje"),
+                 c.get("osoba"), _remap(mapa_kont, c.get("konto_id")), c["od_miesiaca"],
+                 c.get("limit_naliczen"), c.get("aktywne", True), c.get("ostatnio_do"),
+                 c.get("automatyczny", True), c.get("typ", "wydatek"), c.get("do_miesiaca"),
+                 _remap(mapa_kont, c.get("konto_na_id")), _remap(mapa_celow, c.get("cel_id"))),
+            )
+        liczniki["wydatki_cykliczne"] = len(cykliczne)
+
+        wydatki = dane.get("wydatki", [])
+        poz_total = 0
+        for w in wydatki:
+            cur.execute(
+                """INSERT INTO wydatki (data,sklep,suma,osoba,notatki,zdjecie,waluta,kurs,
+                       household_id,okazja,kontekst_kategoria,kontekst_podkategoria,konto_id)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                (w["data"], w.get("sklep"), w["suma"], w.get("osoba", "Adam"), w.get("notatki"),
+                 None, w.get("waluta", "PLN"), w.get("kurs", 1.0), household_id, w.get("okazja"),
+                 w.get("kontekst_kategoria"), w.get("kontekst_podkategoria"),
+                 _remap(mapa_kont, w.get("konto_id"))),
+            )
+            wid = cur.fetchone()["id"]
+            pozycje = w.get("pozycje") or []
+            if pozycje:
+                cur.executemany(
+                    """INSERT INTO pozycje (wydatek_id,nazwa,cena,ilosc,kategoria_glowna,kategoria,poza_kontekstem)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                    [(wid, p["nazwa"], p["cena"], p.get("ilosc", 1),
+                      p.get("kategoria_glowna", "Inne"), p.get("kategoria", "Inne"),
+                      bool(p.get("poza_kontekstem", False))) for p in pozycje],
+                )
+                poz_total += len(pozycje)
+        liczniki["wydatki"] = len(wydatki)
+        liczniki["pozycje"] = poz_total
+
+        wplywy = dane.get("wplywy", [])
+        for w in wplywy:
+            cur.execute(
+                """INSERT INTO wplywy (household_id,data,kwota,osoba,kategoria,opis,konto_id)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                (household_id, w["data"], w["kwota"], w.get("osoba"), w.get("kategoria", "Inne"),
+                 w.get("opis"), _remap(mapa_kont, w.get("konto_id"))),
+            )
+        liczniki["wplywy"] = len(wplywy)
+
+        inw = [i for i in dane.get("inwentaryzacje", []) if i.get("konto_id") in mapa_kont]
+        for i in inw:
+            cur.execute(
+                """INSERT INTO inwentaryzacje (konto_id,data,saldo_rzeczywiste,saldo_obliczone,roznica,notatki)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (mapa_kont[i["konto_id"]], i["data"], i["saldo_rzeczywiste"],
+                 i["saldo_obliczone"], i["roznica"], i.get("notatki")),
+            )
+        liczniki["inwentaryzacje"] = len(inw)
+
+        limity = dane.get("limity", [])
+        for l in limity:
+            cur.execute(
+                """INSERT INTO limity (household_id,kategoria_glowna,kwota_miesieczna,podkategoria)
+                   VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                (household_id, l["kategoria_glowna"], l["kwota_miesieczna"], l.get("podkategoria")),
+            )
+        liczniki["limity"] = len(limity)
+
+        vm = dane.get("virtual_members", [])
+        for v in vm:
+            cur.execute(
+                "INSERT INTO virtual_members (household_id,name) VALUES (%s,%s)",
+                (household_id, v["name"]),
+            )
+        liczniki["virtual_members"] = len(vm)
+
+        hier = dane.get("hierarchia")
+        if hier:
+            cur.execute(
+                """INSERT INTO household_kategorie (household_id,hierarchia_json) VALUES (%s,%s)
+                   ON CONFLICT (household_id) DO UPDATE SET hierarchia_json=EXCLUDED.hierarchia_json""",
+                (household_id, json.dumps(hier, ensure_ascii=False)),
+            )
+
+    return liczniki
 
 
 def get_household_hierarchia(household_id: int) -> dict | None:

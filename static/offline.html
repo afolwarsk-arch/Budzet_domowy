@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brak połączenia — Budżet domowy</title>
+  <meta name="theme-color" content="#4f7ef8">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <style>
+    /* Strona serwowana z cache przy braku sieci — bez zależności zewnętrznych,
+       bez auth.js. Musi działać, gdy nie działa nic innego. */
+    body {
+      margin: 0; min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f7fa; color: #333; padding: 24px;
+    }
+    .box {
+      background: #fff; border-radius: 16px; padding: 36px 28px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.08); text-align: center; max-width: 340px;
+    }
+    .ikona { font-size: 44px; line-height: 1; margin-bottom: 14px; }
+    h1 { font-size: 1.25rem; margin: 0 0 10px; }
+    p { font-size: 0.92rem; line-height: 1.6; color: #666; margin: 0 0 22px; }
+    button {
+      padding: 11px 26px; background: #4361ee; color: #fff; border: none;
+      border-radius: 9px; cursor: pointer; font-size: 0.92rem; font-weight: 600;
+    }
+    button:active { background: #3451d1; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="ikona">📡</div>
+    <h1>Brak połączenia</h1>
+    <p>
+      Budżet potrzebuje internetu, żeby pokazać aktualne dane.
+      Sprawdź zasięg albo Wi-Fi i spróbuj ponownie.
+    </p>
+    <button onclick="location.reload()">Spróbuj ponownie</button>
+  </div>
+  <script>
+    // Gdy sieć wróci sama, nie każemy użytkownikowi klikać.
+    window.addEventListener('online', () => location.reload());
+  </script>
+</body>
+</html>

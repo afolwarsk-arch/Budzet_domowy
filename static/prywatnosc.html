@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Polityka prywatności — Budżet domowy</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#4f7ef8">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <style>
+    /* Strona publiczna — bez auth.js, musi być czytelna dla robota Google Play. */
+    .doc { max-width: 780px; margin: 0 auto; padding: 24px 18px 60px; }
+    .doc h1 { font-size: 1.6rem; margin: 0 0 6px; }
+    .doc .updated { color: #888; font-size: 0.85rem; margin-bottom: 28px; }
+    .doc h2 { font-size: 1.1rem; margin: 32px 0 10px; padding-top: 18px; border-top: 1px solid #eee; }
+    .doc h2:first-of-type { border-top: none; padding-top: 0; }
+    .doc p, .doc li { font-size: 0.94rem; line-height: 1.7; color: #333; }
+    .doc ul { padding-left: 22px; margin: 10px 0; }
+    .doc li { margin-bottom: 6px; }
+    .doc table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 0.88rem; }
+    .doc th, .doc td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+    .doc th { background: #f7f9ff; font-weight: 600; color: #3451d1; }
+    .doc .box { background: #f0f4ff; border-radius: 10px; padding: 14px 16px; margin: 18px 0; color: #3451d1; font-size: 0.9rem; line-height: 1.65; }
+    .doc a { color: #4361ee; }
+    .doc .tbl-wrap { overflow-x: auto; }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">🏠 Budżet</a>
+</nav>
+
+<main class="doc">
+  <h1>Polityka prywatności</h1>
+  <p class="updated">Aplikacja „Budżet domowy” · ostatnia aktualizacja: 5 sierpnia 2026</p>
+
+  <p>
+    Ten dokument opisuje, jakie dane zbiera aplikacja „Budżet domowy”, w jakim celu, komu są
+    przekazywane i jakie masz w związku z tym prawa. Staraliśmy się napisać go zrozumiale,
+    bez prawniczego żargonu.
+  </p>
+
+  <h2>1. Kto jest administratorem danych</h2>
+  <p>
+    Administratorem danych osobowych jest <strong>Adam Folwarski</strong>, osoba fizyczna
+    prowadząca aplikację na własne potrzeby i udostępniająca ją zamkniętemu gronu użytkowników.
+  </p>
+  <p>Kontakt we wszystkich sprawach dotyczących danych: <a href="mailto:a.folwarsk@gmail.com">a.folwarsk@gmail.com</a></p>
+
+  <h2>2. Jakie dane zbieramy</h2>
+
+  <h3 style="font-size:0.98rem;margin:18px 0 6px;">Dane konta</h3>
+  <p>Przy logowaniu przez Google otrzymujemy z usługi Firebase Authentication:</p>
+  <ul>
+    <li>adres e-mail</li>
+    <li>imię lub nazwę wyświetlaną</li>
+    <li>adres URL zdjęcia profilowego</li>
+    <li>techniczny identyfikator konta (Firebase UID)</li>
+    <li>datę ostatniego logowania</li>
+  </ul>
+  <p>Nie mamy dostępu do Twojego hasła do konta Google — uwierzytelnianiem zajmuje się wyłącznie Google.</p>
+
+  <h3 style="font-size:0.98rem;margin:18px 0 6px;">Dane finansowe, które sam wprowadzasz</h3>
+  <ul>
+    <li>wydatki: data, nazwa sklepu, kwota, waluta, notatki</li>
+    <li>pozycje paragonów: nazwy kupionych produktów, ceny, ilości, kategorie</li>
+    <li>wpływy: kwoty i źródła przychodów</li>
+    <li>konta i ich salda, przelewy między kontami, inwentaryzacje</li>
+    <li>cele oszczędnościowe, limity wydatków, wydatki cykliczne</li>
+    <li>skład gospodarstwa domowego i przypisanie wydatków do osób</li>
+  </ul>
+  <div class="box">
+    Mamy świadomość, że to dane wrażliwe. Lista zakupów, wysokość dochodów i salda kont
+    mówią o człowieku bardzo dużo. Nie są one nikomu sprzedawane, udostępniane w celach
+    reklamowych ani wykorzystywane do profilowania.
+  </div>
+
+  <h3 style="font-size:0.98rem;margin:18px 0 6px;">Zdjęcia paragonów</h3>
+  <p>
+    Jeśli dodasz wydatek przez zdjęcie, plik jest przesyłany do usługi Anthropic w celu odczytania
+    treści paragonu (patrz punkt 4) i tymczasowo zapisywany na serwerze aplikacji. Zdjęcia nie są
+    nigdzie wyświetlane ani udostępniane, a pamięć dyskowa serwera jest czyszczona przy każdym
+    jego restarcie lub aktualizacji — w bazie pozostaje wyłącznie nazwa pliku.
+  </p>
+
+  <h3 style="font-size:0.98rem;margin:18px 0 6px;">Dane techniczne</h3>
+  <ul>
+    <li>standardowe logi serwera (adres IP, czas żądania, typ przeglądarki)</li>
+    <li>liczniki zużycia usługi AI, potrzebne do kontroli kosztów</li>
+  </ul>
+  <p>
+    Aplikacja <strong>nie korzysta z narzędzi analitycznych ani reklamowych</strong> —
+    nie ma w niej Google Analytics, pikseli śledzących ani sieci reklamowych.
+  </p>
+
+  <h2>3. W jakim celu i na jakiej podstawie</h2>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Cel</th><th>Podstawa prawna (RODO)</th></tr>
+      <tr>
+        <td>Świadczenie usługi — prowadzenie budżetu, statystyki, wykresy, cele</td>
+        <td>art. 6 ust. 1 lit. b — niezbędność do wykonania usługi na Twoją rzecz</td>
+      </tr>
+      <tr>
+        <td>Uwierzytelnianie i bezpieczeństwo konta</td>
+        <td>art. 6 ust. 1 lit. b oraz lit. f — uzasadniony interes</td>
+      </tr>
+      <tr>
+        <td>Automatyczne odczytywanie paragonów przez AI</td>
+        <td>art. 6 ust. 1 lit. b — funkcja, z której świadomie korzystasz</td>
+      </tr>
+      <tr>
+        <td>Utrzymanie i diagnostyka aplikacji</td>
+        <td>art. 6 ust. 1 lit. f — uzasadniony interes</td>
+      </tr>
+    </table>
+  </div>
+
+  <h2>4. Komu przekazujemy dane</h2>
+  <p>Aplikacja korzysta z usług zewnętrznych dostawców. Poniżej pełna lista:</p>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Dostawca</th><th>Co otrzymuje</th><th>Po co</th></tr>
+      <tr>
+        <td><strong>Railway</strong> (USA)</td>
+        <td>wszystkie dane aplikacji — hosting serwera i bazy danych PostgreSQL</td>
+        <td>utrzymanie aplikacji</td>
+      </tr>
+      <tr>
+        <td><strong>Google / Firebase</strong> (USA)</td>
+        <td>adres e-mail i podstawowe dane profilu</td>
+        <td>logowanie kontem Google</td>
+      </tr>
+      <tr>
+        <td><strong>Anthropic</strong> (USA)</td>
+        <td>zdjęcia paragonów oraz treść notatek tekstowych</td>
+        <td>odczytanie pozycji z paragonu i przypisanie kategorii przez model Claude</td>
+      </tr>
+      <tr>
+        <td><strong>jsDelivr, Google Fonts, gstatic</strong></td>
+        <td>adres IP przeglądarki</td>
+        <td>dostarczenie bibliotek i czcionek potrzebnych do wyświetlenia strony</td>
+      </tr>
+    </table>
+  </div>
+  <p>
+    Dane <strong>nie są sprzedawane</strong> i nie są przekazywane nikomu poza powyższą listą.
+    Anthropic, zgodnie ze swoim regulaminem korzystania z API, nie wykorzystuje przesyłanych
+    treści do trenowania modeli.
+  </p>
+
+  <h2>5. Przekazywanie danych poza EOG</h2>
+  <p>
+    Wymienieni wyżej dostawcy mają siedziby w Stanach Zjednoczonych, co oznacza przekazanie danych
+    poza Europejski Obszar Gospodarczy. Odbywa się ono na podstawie standardowych klauzul umownych
+    (SCC) oraz decyzji Komisji Europejskiej dotyczącej Data Privacy Framework, do którego
+    przystąpili ci dostawcy.
+  </p>
+
+  <h2>6. Jak długo przechowujemy dane</h2>
+  <ul>
+    <li><strong>Dane budżetowe</strong> — do momentu ich usunięcia przez Ciebie w aplikacji.
+        Historia wydatków ma sens tylko wtedy, gdy sięga wstecz, więc nie kasujemy jej automatycznie.</li>
+    <li><strong>Dane konta</strong> — do momentu usunięcia konta.</li>
+    <li><strong>Zdjęcia paragonów</strong> — przechowywane tymczasowo, kasowane najpóźniej
+        przy najbliższym restarcie lub aktualizacji serwera.</li>
+    <li><strong>Logi serwera</strong> — zgodnie z polityką dostawcy hostingu, zwykle do 30 dni.</li>
+  </ul>
+  <p>Szczegóły tego, co dokładnie znika po usunięciu konta, opisuje <a href="#usuwanie-konta">punkt 10</a>.</p>
+
+  <h2>7. Twoje prawa</h2>
+  <p>Zgodnie z RODO masz prawo do:</p>
+  <ul>
+    <li>dostępu do swoich danych i otrzymania ich kopii</li>
+    <li>sprostowania danych nieprawidłowych</li>
+    <li>usunięcia danych („prawo do bycia zapomnianym”)</li>
+    <li>ograniczenia przetwarzania</li>
+    <li>przenoszenia danych — przyciskiem „↓ Backup” pobierzesz plik JSON z wydatkami i pozycjami
+        paragonów, kontami, wpływami, przelewami, celami, limitami, wydatkami cyklicznymi,
+        inwentaryzacjami i kategoriami. Ten sam plik można wczytać z powrotem przyciskiem
+        „↑ Wczytaj” w nowym, pustym gospodarstwie</li>
+    <li>wniesienia sprzeciwu wobec przetwarzania opartego na uzasadnionym interesie</li>
+  </ul>
+  <p>
+    Większość z tych rzeczy zrobisz samodzielnie w aplikacji. W pozostałych przypadkach
+    napisz na adres podany w punkcie 1 — odpowiadamy w ciągu 30 dni.
+  </p>
+  <p>
+    Masz też prawo wnieść skargę do organu nadzorczego: Prezes Urzędu Ochrony Danych Osobowych,
+    ul. Stawki 2, 00-193 Warszawa.
+  </p>
+
+  <h2>8. Bezpieczeństwo</h2>
+  <ul>
+    <li>Cała komunikacja z aplikacją odbywa się przez szyfrowane połączenie HTTPS.</li>
+    <li>Dostęp do danych wymaga zalogowania — każde żądanie jest weryfikowane tokenem Firebase.</li>
+    <li>Dane są odseparowane na poziomie gospodarstwa domowego — widzisz wyłącznie dane swojego gospodarstwa.</li>
+    <li>Baza danych jest regularnie kopiowana przez dostawcę hostingu.</li>
+  </ul>
+
+  <h2>9. Dzieci</h2>
+  <p>
+    Aplikacja nie jest przeznaczona dla osób poniżej 16. roku życia i nie zbieramy świadomie
+    danych takich osób.
+  </p>
+
+  <h2 id="usuwanie-konta">10. Wyjście z gospodarstwa i usunięcie konta</h2>
+  <p>
+    Masz do dyspozycji dwie różne operacje. Obie wykonasz samodzielnie, bez kontaktu z nami:
+    zaloguj się, kliknij swój pseudonim na górnym pasku i wybierz odpowiedni przycisk.
+  </p>
+
+  <h3 style="font-size:0.98rem;margin:18px 0 6px;">„Wypisz się z gospodarstwa”</h3>
+  <p>
+    Twoje konto <strong>zostaje</strong> — możesz od razu założyć własne, nowe gospodarstwo
+    na tym samym adresie e-mail albo przyjąć zaproszenie do innego. Wspólne dane zostają
+    u pozostałych członków, a wydatki wprowadzone przez Ciebie pozostają podpisane Twoim
+    pseudonimem, zachowanym jako „osoba bez konta”.
+  </p>
+
+  <h3 style="font-size:0.98rem;margin:18px 0 6px;">„Usuń moje konto”</h3>
+  <p>Trwale i nieodwracalnie usuwamy:</p>
+  <ul>
+    <li>Twoje konto logowania w usłudze Firebase — nie zalogujesz się ponownie,</li>
+    <li>adres e-mail, imię i zdjęcie profilowe,</li>
+    <li>Twoje członkostwo w gospodarstwie domowym oraz ustawienia osobiste,</li>
+    <li>niewykorzystane zaproszenia, które utworzyłeś.</li>
+  </ul>
+
+  <p><strong>Co dzieje się ze wspólnymi danymi:</strong></p>
+  <div class="box">
+    Jeśli w gospodarstwie zostaje ktoś jeszcze, dane budżetowe (wydatki, wpływy, konta, cele)
+    <strong>nie są usuwane</strong> — są wspólne dla wszystkich członków i skasowanie ich
+    zniszczyłoby historię budżetu pozostałym osobom. Jeśli chcesz, aby usunięto również te dane,
+    napisz na adres z punktu 1; zrealizujemy takie żądanie po uzgodnieniu z pozostałymi członkami
+    gospodarstwa, których dane te również dotyczą.
+  </div>
+
+  <p><strong>Jeżeli byłeś ostatnią osobą w gospodarstwie:</strong></p>
+  <ul>
+    <li>gospodarstwo wraz ze <strong>wszystkimi</strong> danymi zostaje usunięte automatycznie
+        po <strong>30 dniach</strong> — ten czas jest zabezpieczeniem przed pomyłkowym kliknięciem,</li>
+    <li>możesz zażądać usunięcia <strong>natychmiastowego</strong>, wybierając odpowiednią opcję
+        przy potwierdzaniu — wtedy dane znikają od razu i bezpowrotnie,</li>
+    <li>jeżeli w ciągu tych 30 dni ktokolwiek dołączy do gospodarstwa, odliczanie zostaje
+        zatrzymane, a dane pozostają.</li>
+  </ul>
+  <p>
+    Po upływie 30 dni dane są kasowane z bazy i nie ma możliwości ich odzyskania.
+  </p>
+  <div class="box">
+    Zanim wyjdziesz lub usuniesz konto, pobierz kopię danych przyciskiem <strong>„↓ Backup”</strong>
+    na stronie głównej. Ten sam plik wczytasz później przyciskiem <strong>„↑ Wczytaj”</strong>
+    w nowym, pustym gospodarstwie — dzięki temu możesz przenieść swoją historię ze sobą.
+  </div>
+
+  <h2>11. Zmiany polityki</h2>
+  <p>
+    W razie istotnych zmian zaktualizujemy ten dokument i zmienimy datę na górze strony.
+    O zmianach dotyczących zakresu zbieranych danych poinformujemy w aplikacji.
+  </p>
+</main>
+</body>
+</html>

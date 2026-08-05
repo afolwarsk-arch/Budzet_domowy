@@ -10,6 +10,17 @@ const FIREBASE_CONFIG = {
 firebase.initializeApp(FIREBASE_CONFIG);
 const _auth = firebase.auth();
 
+// PWA: rejestracja service workera daje instalację na ekranie głównym
+// („Zainstaluj aplikację" na Androidzie, „Do ekranu głównego" na iOS),
+// szybszy start z cache'owanej skorupy i ekran offline zamiast błędu
+// przeglądarki. Błąd rejestracji nie może wywrócić strony — apka działa
+// bez workera tak samo jak dotąd.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
 async function authGetToken() {
   const user = _auth.currentUser;
   if (!user) throw new Error("Nie zalogowany");
@@ -35,13 +46,50 @@ function _showProfileModal() {
         <button id="_mc" style="flex:1;padding:10px;background:#f1f3f5;color:#333;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">Anuluj</button>
       </div>
       <div id="_me" style="color:#d32f2f;font-size:0.8rem;margin-top:8px;display:none"></div>
-      <div style="border-top:1px solid #eee;margin-top:16px;padding-top:12px">
+      <div style="border-top:1px solid #eee;margin-top:16px;padding-top:12px;display:flex;flex-direction:column;gap:8px">
+        <button id="_mleave" style="width:100%;padding:9px;background:#fff;color:#b26a00;border:1px solid #e8c07d;border-radius:8px;cursor:pointer;font-size:0.85rem">Wypisz się z gospodarstwa</button>
         <button id="_mdel" style="width:100%;padding:9px;background:#fff;color:#c0392b;border:1px solid #e6b0aa;border-radius:8px;cursor:pointer;font-size:0.85rem">Usuń moje konto</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
   overlay.querySelector('#_mn').focus();
   overlay.querySelector('#_mc').onclick = () => overlay.remove();
+  overlay.querySelector('#_mleave').onclick = async () => {
+    let ilu = 0, nazwa = '';
+    try {
+      const h = await (await authFetch('/api/household')).json();
+      ilu = (h.members || []).length;
+      nazwa = h.name || '';
+    } catch { alert('Nie udało się sprawdzić gospodarstwa.'); return; }
+
+    const ostatni = ilu <= 1;
+    const wstep = ostatni
+      ? `Jesteś ostatnią osobą w gospodarstwie „${nazwa}". Po wyjściu nikt nie będzie miał dostępu do jego danych — wydatków, wpływów, kont i celów.\n\nDane poczekają 30 dni, po czym zostaną usunięte bezpowrotnie. Zanim wyjdziesz, pobierz kopię przyciskiem „↓ Backup".\n\nWypisać się?`
+      : `Wypisać się z gospodarstwa „${nazwa}"? Twoje konto zostanie — od razu będziesz mógł założyć własne gospodarstwo na tym samym mailu.\n\nWspólne dane zostają u pozostałych osób, a Twoje wydatki dalej będą podpisane Twoim pseudonimem.`;
+    if (!confirm(wstep)) return;
+
+    // domyślnie 30 dni karencji; natychmiastowe kasowanie tylko na wyraźne żądanie
+    let natychmiast = false;
+    if (ostatni) {
+      natychmiast = confirm(
+        'Usunąć dane OD RAZU, bez czekania 30 dni?\n\n' +
+        'OK — kasuję teraz, nieodwracalnie.\n' +
+        'Anuluj — zostawiam 30 dni na rozmyślenie się (zalecane).'
+      );
+      if (natychmiast && !confirm('Na pewno? Tej operacji nie da się cofnąć.')) return;
+    }
+
+    try {
+      const res = await authFetch('/api/me/leave-household', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ natychmiast }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Nie udało się wypisać.'); return; }
+      window.location.href = '/onboarding';
+    } catch { alert('Błąd połączenia.'); }
+  };
+
   overlay.querySelector('#_mdel').onclick = async () => {
     if (!confirm('Usunąć Twoje konto? Stracisz dostęp do aplikacji (logowanie). Twoje wydatki ZOSTANĄ w gospodarstwie — staniesz się „osobą bez konta", więc dla pozostałych nic nie znika. Tej operacji nie da się cofnąć.')) return;
     try {

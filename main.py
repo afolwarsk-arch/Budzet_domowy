@@ -46,8 +46,14 @@ def _start_scheduler():
             CronTrigger(day="last", hour=18, minute=0, timezone=ZoneInfo("Europe/Warsaw")),
             id="auto_raport_miesieczny", replace_existing=True, misfire_grace_time=3600,
         )
+        _scheduler.add_job(
+            lambda: print(f"[scheduler] purge gospodarstw: usunieto {database.purge_gospodarstwa(30)}"),
+            CronTrigger(hour=3, minute=30, timezone=ZoneInfo("Europe/Warsaw")),
+            id="purge_gospodarstw", replace_existing=True, misfire_grace_time=3600,
+        )
         _scheduler.start()
         print("[scheduler] auto-raport zaplanowany: ostatni dzień miesiąca 18:00 Europe/Warsaw")
+        print("[scheduler] purge osieroconych gospodarstw: codziennie 3:30 Europe/Warsaw")
     except Exception as e:
         print(f"[scheduler] NIE uruchomiono auto-raportu: {e!r}")
 
@@ -87,6 +93,21 @@ def _html(filename: str) -> HTMLResponse:
     content = (STATIC_DIR / filename).read_text(encoding="utf-8")
     content = re.sub(r'(/static/[^"\']*?\.(?:js|css))(\?v=[^"\']*)?', rf'\1?v={_BUILD}', content)
     return HTMLResponse(content=content, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/sw.js")
+def service_worker():
+    """Service worker MUSI być serwowany z katalogu głównego — z /static jego
+    zasięg obejmowałby tylko ten katalog. Przy okazji podmieniamy __BUILD__ na
+    hasz commita, więc plik zmienia się przy każdym deployu i przeglądarka
+    wykrywa aktualizację. no-cache, żeby sama trasa nie zawisła w cache."""
+    from fastapi.responses import Response
+    content = (STATIC_DIR / "sw.js").read_text(encoding="utf-8").replace("__BUILD__", _BUILD)
+    return Response(
+        content=content,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/")
@@ -409,6 +430,29 @@ async def delete_me(current_user: dict = Depends(get_current_user)):
     if fuid:
         await run_in_threadpool(delete_firebase_user, fuid)
     return {"ok": True}
+
+
+@app.post("/api/me/leave-household")
+async def leave_household(body: dict, current_user: dict = Depends(get_current_user)):
+    """Wypisanie się z gospodarstwa. Konto zostaje — po wyjściu użytkownik trafia
+    na /onboarding i może od razu założyć własne gospodarstwo na tym samym mailu.
+    Gdy odchodzi ostatnia osoba, stare gospodarstwo dostaje 30 dni karencji;
+    z `natychmiast: true` znika od razu i nieodwracalnie."""
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(status_code=400, detail="Nie należysz do żadnego gospodarstwa")
+    natychmiast = bool(body.get("natychmiast"))
+    wynik = await run_in_threadpool(
+        database.leave_household, current_user["user_id"], hid, current_user.get("display_name")
+    )
+    if wynik["pozostalo"] < 0:
+        raise HTTPException(status_code=404, detail="Nie należysz do tego gospodarstwa")
+    if wynik["osierocone"]:
+        if natychmiast:
+            await run_in_threadpool(database.usun_gospodarstwo, hid)
+        else:
+            await run_in_threadpool(database.oznacz_gospodarstwo_do_usuniecia, hid)
+    return {"ok": True, **wynik, "natychmiast": natychmiast}
 
 
 @app.post("/api/household", status_code=201)
@@ -1116,6 +1160,23 @@ def get_kategorie_template():
     return ai_processor.KATEGORIE_HIERARCHIA
 
 
+@app.post("/api/import")
+async def import_data_user(body: dict, current_user: dict = Depends(get_current_user)):
+    """Wczytanie pliku z „↓ Backup" do własnego, PUSTEGO gospodarstwa — ścieżka
+    powrotu po wypisaniu się i założeniu nowego. Warunek pustego gospodarstwa
+    sprawdza database.import_household_data (w tej samej transakcji)."""
+    hid = current_user["household_id"]
+    if not hid:
+        raise HTTPException(status_code=400, detail="Brak gospodarstwa")
+    if current_user.get("role") != "owner":
+        raise HTTPException(status_code=403, detail="Dane może wczytać tylko właściciel gospodarstwa.")
+    try:
+        liczniki = await run_in_threadpool(database.import_household_data, hid, body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, **liczniki}
+
+
 @app.get("/api/export")
 def export_data(current_user: dict = Depends(get_current_user)):
     from fastapi.responses import JSONResponse
@@ -1123,8 +1184,8 @@ def export_data(current_user: dict = Depends(get_current_user)):
     hid = current_user["household_id"]
     if not hid:
         raise HTTPException(400, "Brak gospodarstwa")
-    if current_user.get("role") != "owner":
-        raise HTTPException(403, "Kopię zapasową może pobrać tylko właściciel gospodarstwa.")
+    # kopię pobiera każdy członek, nie tylko właściciel — inaczej osoba wypisująca
+    # się z gospodarstwa nie mogłaby zabrać ze sobą własnych danych
     data = database.export_household_data(hid)
     data["exported_at"] = __import__("datetime").datetime.utcnow().isoformat() + "Z"
     data["household_id"] = hid
