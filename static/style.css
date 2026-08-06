@@ -649,19 +649,19 @@ tr:hover td { background: var(--hover); }
   left: 50%;
   /* wartosci policzone z metryk kroju: dokladnie tam, gdzie Segoe UI stawia
      wlasna kropke nad "i", tylko wieksza i w kolorze marki */
-  top: .300em;
-  width: .321em;
-  height: .321em;
-  margin-left: -.1605em;
+  top: .342em;
+  width: .190em;
+  height: .190em;
+  margin-left: -.095em;
   border-radius: 50%;
   background: var(--marka);
 }
 /* kropka koncowa rysowana tak samo jak ta nad "i" — rownej wielkosci */
 .logo .lg-kropka {
   display: inline-block;
-  width: .321em;
-  height: .321em;
-  margin-left: .10em;
+  width: .190em;
+  height: .190em;
+  margin-left: .085em;
   border-radius: 50%;
   background: var(--marka);
   text-indent: -9999px;
