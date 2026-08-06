@@ -850,3 +850,33 @@ tr:hover td { background: var(--hover); }
 /* glify robocze w przyciskach akcji — mniejsze niż ikony nawigacji */
 .ikona.mini svg { width: 15px; height: 15px; stroke-width: 1.8; }
 .lz-check .ikona.mini svg, .kal-chip .ikona.mini svg { width: 13px; height: 13px; }
+
+
+/* ── animacja znaku ──────────────────────────────────────────────────────
+   Dwa miejsca, dwie zasady.
+
+   PULS — tylko w pasku nawigacji i tylko na czas zapytania. Znak staje się
+   wskaźnikiem pracy, więc ruch coś komunikuje i sam się kończy. Nie ma
+   szans zmęczyć, bo nie chodzi bez powodu.
+
+   WEJŚCIE — tylko ekrany startowe (logowanie, zaproszenie, konfiguracja),
+   gdzie logo siedzi w nagłówku. Tam widać je raz, więc ruch się nie opatrzy.
+   W pasku, oglądanym po pięćdziesiąt razy dziennie, świadomie go nie ma. */
+
+nav .logo.pracuje .lg-i .lg-kropka { animation: znak-puls 1.1s ease-in-out infinite; }
+nav .logo.pracuje > .lg-kropka     { animation: znak-puls 1.1s ease-in-out infinite .55s; }
+@keyframes znak-puls {
+  0%, 100% { opacity: .3; transform: scale(.8); }
+  50%      { opacity: 1;  transform: scale(1); }
+}
+
+h1.logo, h1 .logo { animation: znak-wejscie .55s cubic-bezier(.2,.7,.3,1) both; }
+h1.logo .lg-kropka,
+h1 .logo .lg-kropka { animation: znak-kropki .5s cubic-bezier(.2,.9,.3,1.45) .26s both; }
+@keyframes znak-wejscie { from { opacity: 0; transform: translateY(7px); } }
+@keyframes znak-kropki  { from { opacity: 0; transform: translateY(-16px) scale(.4); } }
+
+@media (prefers-reduced-motion: reduce) {
+  nav .logo.pracuje .lg-kropka,
+  h1.logo, h1 .logo, h1.logo .lg-kropka, h1 .logo .lg-kropka { animation: none; }
+}

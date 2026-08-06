@@ -640,15 +640,43 @@ function aiPracaStart(el, tytul, kroki, czasInfo) {
 }
 window.aiPracaStart = aiPracaStart;
 
+// ── znak jako wskaźnik pracy ──
+// Kropki w logo pulsują, dopóki trwa zapytanie. Licznik, bo zapytań bywa
+// kilka naraz — pasek gaśnie dopiero, gdy skończy się ostatnie.
+// Zwłoka 260 ms sprawia, że szybkie zapytania nie powodują mignięcia.
+let _wPracy = 0;
+let _pulsTimer = null;
+
+function _pracaStart() {
+  _wPracy++;
+  if (_pulsTimer || _wPracy > 1) return;
+  _pulsTimer = setTimeout(() => {
+    document.querySelectorAll('nav .logo').forEach(el => el.classList.add('pracuje'));
+  }, 260);
+}
+
+function _pracaKoniec() {
+  _wPracy = Math.max(0, _wPracy - 1);
+  if (_wPracy) return;
+  clearTimeout(_pulsTimer);
+  _pulsTimer = null;
+  document.querySelectorAll('nav .logo').forEach(el => el.classList.remove('pracuje'));
+}
+
 async function authFetch(url, options = {}) {
   const token = await authGetToken();
-  return fetch(url, {
-    ...options,
-    headers: {
-      ...(options.headers || {}),
-      Authorization: "Bearer " + token,
-    },
-  });
+  _pracaStart();
+  try {
+    return await fetch(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        Authorization: "Bearer " + token,
+      },
+    });
+  } finally {
+    _pracaKoniec();
+  }
 }
 
 async function loadOsobaOptions(selectId, includeAll = false) {
