@@ -8,6 +8,9 @@
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#1a1d20">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preload" as="script" href="/static/auth.js">
+  <link rel="preload" as="script" href="/static/app.js">
+  <link rel="preload" as="script" href="/static/vendor/chart.umd.min.js">
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com">
   <link rel="preconnect" href="https://securetoken.googleapis.com">
@@ -306,7 +309,7 @@
 </script>
 </main>
 
-<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script defer src="/static/vendor/chart.umd.min.js"></script>
 <script defer src="/static/app.js?v=12"></script>
 <script>
   let _inviteLink = '';

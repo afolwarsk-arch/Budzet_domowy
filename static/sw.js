@@ -41,7 +41,8 @@ self.addEventListener('fetch', (e) => {
 
   const url = new URL(req.url);
 
-  // Obce domeny (Firebase, Chart.js z CDN) zostawiamy przeglądarce.
+  // Obce domeny (Firebase) zostawiamy przeglądarce. Chart.js i Sortable
+  // serwujemy z własnego serwera właśnie po to, żeby wpadły w cache poniżej.
   if (url.origin !== self.location.origin) return;
 
   // Dane finansowe NIGDY nie trafiają do cache — ani wydatki, ani salda.
