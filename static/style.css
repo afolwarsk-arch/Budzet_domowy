@@ -731,3 +731,16 @@ tr:hover td { background: var(--hover); }
   .nav-samouczek .nav-etykieta { display: none; }
   .nav-samouczek { padding: 6px 10px; }
 }
+
+
+/* Na telefonie "⋯" stoi przy lewej krawedzi (akcje sa pod filtrami), wiec
+   menu zakotwiczone prawa krawedzia wychodzilo poza ekran. Kotwiczymy je
+   lewa i ograniczamy szerokosc do widoku. */
+@media (max-width: 700px) {
+  .hdr-menu-items {
+    left: 0;
+    right: auto;
+    min-width: 232px;
+    max-width: calc(100vw - 28px);
+  }
+}
