@@ -428,19 +428,45 @@ tr:hover td { background: var(--hover); }
 .notatki-inline textarea { flex: 1; min-height: 52px; font-size: 13px; resize: vertical; }
 .notatki-inline .btn { white-space: nowrap; margin-top: 2px; }
 
-/* loader */
-.loader {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(255,255,255,.4);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin .7s linear infinite;
-  vertical-align: middle;
-}
+/* ── wskaźnik pracy: dwie kropki na orbicie ──────────────────────────────
+   Zamiast obracającego się kółka — te same dwie kropki co w logo, krążące
+   wokół wspólnego środka. Znak i wskaźnik mówią tym samym językiem.
 
+   Kropki siedzą na przeciwległych końcach średnicy: obracamy pojemnik,
+   a nie każdą z osobna, więc ruch jest równy i kosztuje jedną animację. */
+.orbita {
+  --orb: 16px;          /* średnica orbity */
+  --orb-k: 5px;         /* średnica kropki */
+  display: inline-block;
+  position: relative;
+  width: var(--orb);
+  height: var(--orb);
+  vertical-align: middle;
+  animation: orbita .85s linear infinite;
+}
+.orbita i {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--orb-k);
+  height: var(--orb-k);
+  margin: calc(var(--orb-k) / -2);
+  border-radius: 50%;
+  background: var(--marka);
+}
+.orbita i:first-child { transform: translateX(calc(var(--orb) / -2 + var(--orb-k) / 2)); }
+.orbita i:last-child  { transform: translateX(calc(var(--orb) / 2 - var(--orb-k) / 2)); }
+
+@keyframes orbita { to { transform: rotate(360deg); } }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* w przycisku o wypełnionym tle kropki muszą odcinać się od niego,
+   a nie od powierzchni strony */
+.btn-primary .orbita i { background: var(--on-primary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .orbita { animation-duration: 2.4s; }
+}
 
 /* stan "AI pracuje" — wspólny dla raportu doradcy i analizy paragonów */
 .ai-praca {
@@ -455,14 +481,7 @@ tr:hover td { background: var(--hover); }
   box-shadow: var(--shadow);
   text-align: center;
 }
-.ai-praca .ai-spinner {
-  width: 46px;
-  height: 46px;
-  border: 4px solid var(--border);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin .9s linear infinite;
-}
+.ai-praca .ai-spinner { --orb: 46px; --orb-k: 11px; }
 .ai-praca .ai-tytul { font-weight: 700; font-size: 15px; }
 .ai-praca .ai-krok { font-size: 13.5px; color: var(--muted); min-height: 20px; transition: opacity .25s; }
 .ai-praca .ai-czas { font-size: 12px; color: var(--muted); }

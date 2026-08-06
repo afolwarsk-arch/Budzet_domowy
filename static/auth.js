@@ -624,7 +624,7 @@ async function authRequireHousehold() {
 function aiPracaStart(el, tytul, kroki, czasInfo) {
   let i = 0;
   el.innerHTML = `<div class="ai-praca">
-      <div class="ai-spinner"></div>
+      <div class="ai-spinner orbita"><i></i><i></i></div>
       <div class="ai-tytul">${tytul}</div>
       <div class="ai-krok">${kroki[0]}</div>
       ${czasInfo ? `<div class="ai-czas">⏱ ${czasInfo}</div>` : ''}

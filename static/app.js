@@ -1027,7 +1027,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       `i pobierz ją najpierw z menu „⋯".`
     )) return;
     btnRun.disabled = true;
-    btnRun.innerHTML = '<span class="loader"></span> Przeliczam...';
+    btnRun.innerHTML = '<span class="orbita"><i></i><i></i></span> Przeliczam...';
     rekatInfo.textContent = 'Trwa przeliczanie — nie zamykaj strony...';
     try {
       const q = rekatParams();
@@ -1416,7 +1416,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
     setAlert('');
     analyzeBtn.disabled = true;
     const fileCount = selectedFiles.length;
-    analyzeBtn.innerHTML = `<span class="loader"></span> Analizuję${fileCount > 1 ? ` ${fileCount} zdjęć...` : '...'}`;
+    analyzeBtn.innerHTML = `<span class="orbita"><i></i><i></i></span> Analizuję${fileCount > 1 ? ` ${fileCount} zdjęć...` : '...'}`;
     const osoba = document.getElementById('osoba').value;
     const kontekst = document.getElementById('kontekst-input').value.trim();
 
@@ -1686,7 +1686,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
     }
 
     saveAllBtn.disabled = true;
-    saveAllBtn.innerHTML = '<span class="loader"></span> Zapisuję...';
+    saveAllBtn.innerHTML = '<span class="orbita"><i></i><i></i></span> Zapisuję...';
 
     try {
       if (editId) {
