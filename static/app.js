@@ -294,10 +294,11 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   function renderStats(wydatki, statKat, kategoria, topProdukt) {
     const suma = wydatki.reduce((s, w) => s + w.suma, 0);
     document.getElementById('stat-suma').textContent = fmt(suma);
-    const sumaLabel = document.querySelector('.stat-card .label');
+    // etykiety po id — wcześniej szły po pozycji w .stats-row, co psuło się
+    // przy każdej zmianie układu kafelków
+    const sumaLabel = document.getElementById('stat-suma-label');
     if (sumaLabel) sumaLabel.textContent = filterMode === 'range' ? 'Suma za okres' : 'Suma miesięczna';
     document.getElementById('stat-paragony').textContent = wydatki.length;
-    const labelEl = document.querySelector('[for-stat="topkat"], .stat-card:last-child .label');
     const statLabel = document.getElementById('stat-topkat-label');
     if (kategoria && topProdukt && topProdukt.nazwa) {
       document.getElementById('stat-topkat').textContent = `${topProdukt.nazwa} (${fmt(topProdukt.suma_total)})`;
@@ -324,7 +325,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     }
     const b = d.bilans;
     el.textContent = (b > 0 ? '+' : '') + fmt(b);   // Intl sam dokłada „−" dla ujemnych
-    el.style.color = b > 0 ? '#2e9b57' : b < 0 ? '#d32f2f' : 'var(--primary)';
+    el.style.color = b > 0 ? 'var(--good)' : b < 0 ? 'var(--danger)' : 'var(--heading)';
     el.title = `Wpływy ${fmt(d.wplywy)} − wydatki ${fmt(d.wydatki)}`;
     // krótki dopisek (zaokrąglone do pełnych zł, żeby zmieścił się w kafelku)
     if (sub) {
