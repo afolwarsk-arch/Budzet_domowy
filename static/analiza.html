@@ -148,7 +148,7 @@
 </head>
 <body>
 <nav>
-  <a href="/" class="logo">&#127968;w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></a>
+  <a href="/" class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></a>
   <a href="/">Dashboard</a>
   <a href="/upload">Dodaj wydatek</a>
   <a href="/konta">Konta</a>
@@ -162,7 +162,7 @@
 <main>
   <div class="doradca-card">
     <div class="doradca-head">
-      <span style="font-size:24px">🤖</span>
+      <span class="ikona-sredn"><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="8" width="16" height="11.6" rx="2.6"/><path d="M12 8V4.6"/><circle class="kropka" cx="12" cy="3.4" r="1.5"/><circle class="kropka" cx="9" cy="13.4" r="1.5"/><circle class="kropka" cx="15" cy="13.4" r="1.5"/></svg></span></span>
       <h2>Doradca budżetowy AI</h2>
     </div>
     <p class="doradca-sub">Claude przeanalizuje Twoje wydatki z ostatnich miesięcy i wskaże konkretne miejsca, gdzie możesz zaoszczędzić — z szacowaną kwotą przy każdej podpowiedzi.</p>
@@ -181,12 +181,12 @@
     <div class="doradca-hist" id="rap-hist">
       <label>Historia analiz</label>
       <select id="rap-hist-sel"></select>
-      <button id="rap-hist-del" title="Usuń wybraną analizę">🗑 Usuń</button>
+      <button id="rap-hist-del" title="Usuń wybraną analizę"><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.4 6.6h15.2"/><path d="M9.4 6.6V4.8a1.4 1.4 0 011.4-1.4h2.4a1.4 1.4 0 011.4 1.4v1.8"/><path d="M6.2 6.6l.9 12.4a1.8 1.8 0 001.8 1.6h6.2a1.8 1.8 0 001.8-1.6l.9-12.4"/><path class="akc" d="M10.4 10.6v6M13.6 10.6v6"/></svg></span> Usuń</button>
     </div>
   </div>
 
   <details class="profil-box" id="profil-box">
-    <summary>🧠 Profil gospodarstwa — co doradca o nas wie (<span id="profil-count">0</span>)</summary>
+    <summary><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.4 4.2a3 3 0 00-3 3 2.8 2.8 0 00-1.6 5 3 3 0 001.9 5.2 3 3 0 003 2.4h.7V4.2z"/><path d="M14.6 4.2a3 3 0 013 3 2.8 2.8 0 011.6 5 3 3 0 01-1.9 5.2 3 3 0 01-3 2.4h-.7V4.2z"/><circle class="kropka" cx="12" cy="12" r="1.5"/></svg></span> Profil gospodarstwa — co doradca o nas wie (<span id="profil-count">0</span>)</summary>
     <p class="profil-hint">Trwałe fakty, które doradca uwzględnia w każdej analizie. Dopisują się z odpowiedzi na pytania pod raportem — możesz też dodać coś ręcznie (np. „Claude Pro używam zawodowo — nie sugeruj rezygnacji").</p>
     <div id="profil-list"></div>
     <div class="profil-add">
@@ -993,7 +993,7 @@ function renderRaport(data) {
       <div class="rap-kstat"><div class="v">${esc(ocenaTxt)}</div><div class="l">Kondycja</div></div>
     </div>
     ${(r.rekomendacje && r.rekomendacje.length) ? `
-      <div class="rap-section-title">💡 Gdzie zaoszczędzić</div>
+      <div class="rap-section-title"><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.4h6M9.8 20.6h4.4"/><path d="M12 3.4a5.8 5.8 0 013.6 10.3c-.6.5-.9 1.1-.9 1.8H9.3c0-.7-.3-1.3-.9-1.8A5.8 5.8 0 0112 3.4z"/><circle class="kropka" cx="12" cy="9" r="1.5"/></svg></span> Gdzie zaoszczędzić</div>
       ${r.rekomendacje.map(x => `
         <div class="rap-item">
           <div class="rap-item-head">
@@ -1016,7 +1016,7 @@ function renderRaport(data) {
           <div class="rap-item-opis">${esc(x.opis || '')}</div>
         </div>`).join('')}` : ''}
     ${(r.trendy && r.trendy.length) ? `
-      <div class="rap-section-title">📈 Trendy</div>
+      <div class="rap-section-title"><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 3.6v17h17"/><path d="M6.6 16.4l4.4-5 3.9 3.3 4.3-5.9"/><circle class="kropka" cx="18.6" cy="8.4" r="1.9"/></svg></span> Trendy</div>
       <div class="rap-item">
         ${r.trendy.map(x => `
           <div class="rap-trend">
@@ -1081,7 +1081,7 @@ async function odpowiedzNaPytanie(i, odp) {
   try {
     await dodajDoProfilu(`${q.pytanie} — ${odp}`);
     const card = document.getElementById('pyt-' + i);
-    if (card) card.innerHTML = `<div class="rap-item-opis">✅ Zapisano do profilu: <strong>${esc(odp)}</strong></div>`;
+    if (card) card.innerHTML = `<div class="rap-item-opis"><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.6"/><path class="akc" d="M8.2 12.2l2.6 2.6 5-5.4"/></svg></span> Zapisano do profilu: <strong>${esc(odp)}</strong></div>`;
   } catch (e) {
     alert(e.message || 'Nie udało się zapisać odpowiedzi.');
   }
@@ -1162,7 +1162,7 @@ async function generujRaport() {
   meta.textContent = '';
   const wynikEl = document.getElementById('raport-wynik');
   wynikEl.className = '';
-  const stopPraca = aiPracaStart(wynikEl, '🤖 Claude analizuje Twój budżet…', [
+  const stopPraca = aiPracaStart(wynikEl, '<span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="8" width="16" height="11.6" rx="2.6"/><path d="M12 8V4.6"/><circle class="kropka" cx="12" cy="3.4" r="1.5"/><circle class="kropka" cx="9" cy="13.4" r="1.5"/><circle class="kropka" cx="15" cy="13.4" r="1.5"/></svg></span> Claude analizuje Twój budżet…', [
     'Zbieram dane z ostatnich miesięcy…',
     'Przeglądam kategorie, sklepy i produkty…',
     'Sprawdzam subskrypcje i wydatki cykliczne…',

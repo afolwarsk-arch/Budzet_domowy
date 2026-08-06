@@ -836,3 +836,12 @@ tr:hover td { background: var(--hover); }
 .sam-znak { font-size: 46px; font-weight: 700; letter-spacing: -.04em; color: #f2efe9; }
 /* logo w tytule slajdu ma iść za stopniem nagłówka, nie dominować nad nim */
 .sam-karta h3 .logo { font-weight: 700; letter-spacing: -.03em; }
+
+
+/* ekran offline — ikona zamiast emoji, w stopniu nagłówka */
+.ikona-duza { display: block; margin-bottom: 14px; }
+.ikona-duza .ikona svg { width: 46px; height: 46px; margin: 0 auto; stroke-width: 1.35; }
+
+
+/* ikona w nagłówku raportu AI */
+.ikona-sredn .ikona svg { width: 26px; height: 26px; }

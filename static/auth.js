@@ -239,7 +239,7 @@ const _SAMOUCZEK_SLAJDY = [
   { ikona: 'pulpit', tytul: 'Dashboard — wszystko na oku',
     opis: 'Filtruj po miesiącu, osobie i kategorii (albo po dowolnym zakresie dat). Kliknij segment wykresu kołowego, żeby zejść do podkategorii, a potem do konkretnych produktów. Wykres trendów przełączysz na „Osobno / Łącznie", a każdy wydatek rozwiniesz do pozycji.' },
   { ikona: 'lupa', tytul: 'Wyszukiwarka i ceny produktów',
-    opis: 'Pole 🔍 na dashboardzie przeszukuje CAŁĄ historię — produkt, sklep, notatkę („ile wydaliśmy na kawę?"). Po wyszukaniu produktu kliknij „📈 Pokaż zmiany cen": zobaczysz gdzie kupujesz taniej i jak cena rosła w czasie.' },
+    opis: 'Pole <span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6"/><path d="M15.6 15.6l4.6 4.6"/><circle class="kropka" cx="10.8" cy="10.8" r="1.8"/></svg></span> na dashboardzie przeszukuje CAŁĄ historię — produkt, sklep, notatkę („ile wydaliśmy na kawę?"). Po wyszukaniu produktu kliknij „<span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 3.6v17h17"/><path d="M6.6 16.4l4.4-5 3.9 3.3 4.3-5.9"/><circle class="kropka" cx="18.6" cy="8.4" r="1.9"/></svg></span> Pokaż zmiany cen": zobaczysz gdzie kupujesz taniej i jak cena rosła w czasie.' },
   { ikona: 'kategorie', tytul: 'Kategorie po Twojemu',
     opis: 'W „Kategorie" ułożysz własną hierarchię kategorii i podkategorii. Przy wydatku możesz dodać „okazję" (np. urodziny) — taki zakup nie zaburzy statystyk Waszych zwykłych nawyków. „Kontekst kategorii" wrzuci cały paragon do jednej kategorii (np. całą imprezę do Rozrywki).' },
   { ikona: 'konta', tytul: 'Konta i salda',
@@ -257,7 +257,7 @@ const _SAMOUCZEK_SLAJDY = [
   { ikona: 'dysk', tytul: 'Twoje dane są bezpieczne',
     opis: 'Cały budżet pobierzesz w każdej chwili z menu „⋯" na dashboardzie — pozycja „Pobierz kopię danych". Statystyki, filtry i pseudonimy dostosujesz pod siebie — kliknij swój pseudonim na górnym pasku, żeby go zmienić.' },
   { ikona: 'telefon', tytul: 'Miej budżet w kieszeni',
-    opis: 'Na telefonie wybierz w przeglądarce „Dodaj do ekranu głównego" — apka działa jak natywna: dolny pasek nawigacji i aparat do paragonów zawsze pod ręką. To wszystko — miłego oszczędzania! 🎉' },
+    opis: 'Na telefonie wybierz w przeglądarce „Dodaj do ekranu głównego" — apka działa jak natywna: dolny pasek nawigacji i aparat do paragonów zawsze pod ręką. To wszystko — miłego oszczędzania!' },
 ];
 
 function pokazSamouczek(pierwszyRaz) {
@@ -285,7 +285,7 @@ function pokazSamouczek(pierwszyRaz) {
             <button data-t="pomin" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:8px 4px">Pomiń</button>
             <span style="flex:1"></span>
             ${idx > 0 ? '<button data-t="wstecz" style="background:var(--surface-3);border:none;border-radius:8px;padding:10px 18px;cursor:pointer;font-size:14px;color:var(--text)">Wstecz</button>' : ''}
-            <button data-t="dalej" style="background:var(--primary);border:none;border-radius:8px;padding:10px 22px;cursor:pointer;font-size:14px;color:var(--on-primary);font-weight:600">${ostatni ? 'Zaczynamy! 🎉' : 'Dalej'}</button>
+            <button data-t="dalej" style="background:var(--primary);border:none;border-radius:8px;padding:10px 22px;cursor:pointer;font-size:14px;color:var(--on-primary);font-weight:600">${ostatni ? 'Zaczynamy!' : 'Dalej'}</button>
           </div>
         </div>
       </div>`;
@@ -326,6 +326,14 @@ const IKONY_SVG = {
   limit: '<path d="M12 3.4v3M12 17.6v3M3.4 12h3M17.6 12h3"/><circle cx="12" cy="12" r="5.6"/><path class="akc" d="M12 9.2v3.4l2.4 1.4"/>',
   przeplyw: '<path d="M3 8.4c2.6-2.4 5.2-2.4 7.8 0s5.2 2.4 7.8 0"/><path d="M3 13.2c2.6-2.4 5.2-2.4 7.8 0s5.2 2.4 7.8 0"/><path class="akc" d="M3 18c2.6-2.4 5.2-2.4 7.8 0s5.2 2.4 7.8 0"/>',
   osiagniete: '<path d="M5.4 20.6V3.6"/><path d="M5.4 4.6h12.2l-2.4 3.8 2.4 3.8H5.4"/><circle class="kropka" cx="5.4" cy="20.6" r="1.6"/>',
+  kosz: '<path d="M4.4 6.6h15.2"/><path d="M9.4 6.6V4.8a1.4 1.4 0 011.4-1.4h2.4a1.4 1.4 0 011.4 1.4v1.8"/><path d="M6.2 6.6l.9 12.4a1.8 1.8 0 001.8 1.6h6.2a1.8 1.8 0 001.8-1.6l.9-12.4"/><path class="akc" d="M10.4 10.6v6M13.6 10.6v6"/>',
+  zarowka: '<path d="M9 17.4h6M9.8 20.6h4.4"/><path d="M12 3.4a5.8 5.8 0 013.6 10.3c-.6.5-.9 1.1-.9 1.8H9.3c0-.7-.3-1.3-.9-1.8A5.8 5.8 0 0112 3.4z"/><circle class="kropka" cx="12" cy="9" r="1.5"/>',
+  trend_dol: '<path d="M3.4 3.6v17h17"/><path d="M6.6 8l4.4 5 3.9-3.3 4.3 5.9"/><circle class="kropka" cx="18.6" cy="15.6" r="1.9"/>',
+  mozg: '<path d="M9.4 4.2a3 3 0 00-3 3 2.8 2.8 0 00-1.6 5 3 3 0 001.9 5.2 3 3 0 003 2.4h.7V4.2z"/><path d="M14.6 4.2a3 3 0 013 3 2.8 2.8 0 011.6 5 3 3 0 01-1.9 5.2 3 3 0 01-3 2.4h-.7V4.2z"/><circle class="kropka" cx="12" cy="12" r="1.5"/>',
+  kompas: '<circle cx="12" cy="12" r="8.6"/><path class="akc" d="M15.2 8.8l-1.9 4.5-4.5 1.9 1.9-4.5z"/>',
+  sygnal: '<path d="M5.6 15.6a8 8 0 010-11.2M18.4 4.4a8 8 0 010 11.2"/><path d="M8.6 12.6a4 4 0 010-5.2M15.4 7.4a4 4 0 010 5.2"/><circle class="kropka" cx="12" cy="10" r="1.9"/><path d="M12 12.4V20.6"/>',
+  notatka: '<path d="M6 3.4h8.4L19.4 8v12.6H6z"/><path d="M14.2 3.4V8h5"/><path class="akc" d="M9 12.6h6M9 16h4"/>',
+  sukces: '<circle cx="12" cy="12" r="8.6"/><path class="akc" d="M8.2 12.2l2.6 2.6 5-5.4"/>',
 };
 
 // Wersje pelne — tylko do dolnego paska. Przy 23 px cienka kreska jest
@@ -393,7 +401,7 @@ const _TIPS_STRONY = {
   '/': [
     'Kliknij segment wykresu kategorii → zejdziesz do podkategorii, a potem do konkretnych produktów.',
     'Wyszukiwarka u góry przeszukuje całą historię — wpisz produkt, sklep albo fragment notatki.',
-    'Po wyszukaniu produktu kliknij „📈 Pokaż zmiany cen" — zobaczysz gdzie taniej i jak cena rosła w czasie.',
+    'Po wyszukaniu produktu kliknij „<span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 3.6v17h17"/><path d="M6.6 16.4l4.4-5 3.9 3.3 4.3-5.9"/><circle class="kropka" cx="18.6" cy="8.4" r="1.9"/></svg></span> Pokaż zmiany cen" — zobaczysz gdzie taniej i jak cena rosła w czasie.',
     'Przełącznik Pierwotne / Kontekstowe zmienia sposób liczenia kategorii dla wydatków z okazji.',
     'Filtruj po miesiącu, osobie i kategorii — jest też tryb dowolnego zakresu dat.',
     'Wykres trendów miesięcznych przełączysz między „Osobno" (per osoba) a „Łącznie".',
@@ -458,7 +466,7 @@ function _injectTip(me) {
   el.id = 'tip-dnia';
   el.style.cssText = 'margin-bottom:14px';
   el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;background:var(--surface-3);border:1px solid #d5e5fb;color:#2c5aa0;border-radius:10px;padding:9px 14px;font-size:13.5px">
-      <span>💡 ${tekst}</span><span style="flex:1"></span>
+      <span><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.4h6M9.8 20.6h4.4"/><path d="M12 3.4a5.8 5.8 0 013.6 10.3c-.6.5-.9 1.1-.9 1.8H9.3c0-.7-.3-1.3-.9-1.8A5.8 5.8 0 0112 3.4z"/><circle class="kropka" cx="12" cy="9" r="1.5"/></svg></span> ${tekst}</span><span style="flex:1"></span>
       <button onclick="localStorage.setItem('${kOff}','1');this.closest('#tip-dnia').remove()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;white-space:nowrap">nie pokazuj więcej</button>
       <button onclick="this.closest('#tip-dnia').remove()" style="background:none;border:none;color:#2c5aa0;cursor:pointer;font-size:16px;line-height:1;padding:0 2px">✕</button>
     </div>`;
@@ -480,7 +488,7 @@ async function authRequireHousehold() {
         if (res.status === 403) {
           const d = await res.json().catch(() => ({}));
           document.body.innerHTML = `<div style="max-width:420px;margin:80px auto;padding:0 20px;text-align:center;font-family:system-ui">
-            <div style="font-size:44px;margin-bottom:12px">🚫</div>
+            <div class="ikona-duza"><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.6"/><path class="akc" d="M6.4 6.4l11.2 11.2"/></svg></span></div>
             <h2 style="margin:0 0 8px;color:var(--text)">Konto zawieszone</h2>
             <p style="color:var(--text);line-height:1.5">${d.detail || 'Twoje konto zostało zawieszone przez administratora.'}</p>
             <button onclick="authLogout()" style="margin-top:18px;padding:9px 18px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer">Wyloguj</button>

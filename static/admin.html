@@ -196,7 +196,7 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
           <div class="dz-meta">${esc(d.strefa) || '—'} · ${nSlow} słów-kluczy</div>
         </div>
         <button class="btn btn-outline btn-sm" data-edit="${d.id}">✏</button>
-        <button class="btn btn-danger btn-sm" data-del="${d.id}">🗑</button>
+        <button class="btn btn-danger btn-sm" data-del="${d.id}"><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.4 6.6h15.2"/><path d="M9.4 6.6V4.8a1.4 1.4 0 011.4-1.4h2.4a1.4 1.4 0 011.4 1.4v1.8"/><path d="M6.2 6.6l.9 12.4a1.8 1.8 0 001.8 1.6h6.2a1.8 1.8 0 001.8-1.6l.9-12.4"/><path class="akc" d="M10.4 10.6v6M13.6 10.6v6"/></svg></span></button>
       </div>`;
     }).join('');
     box.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => otworzEdytorDzialu(dz.find(x => String(x.id) === b.dataset.edit))));

@@ -184,7 +184,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         : '';
       const xbtn = `<button onclick="dismissPrzyp('${encodeURIComponent(_przypKey(p))}')" title="Zamknij na tę sesję" style="border:none;background:none;color:${fg};opacity:.65;cursor:pointer;font-size:18px;line-height:1;padding:0 2px">✕</button>`;
       return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;background:${bg};color:${fg};border-radius:10px;padding:11px 14px;margin-bottom:8px;font-size:14px">
-        <span>🔔 ${txt}</span><span style="display:flex;gap:8px;align-items:center;flex:none">${btn}${xbtn}</span></div>`;
+        <span><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.2 10.4a5.8 5.8 0 0111.6 0c0 4.2 1.6 5.6 1.6 5.6H4.6s1.6-1.4 1.6-5.6z"/><circle class="kropka" cx="12" cy="19.2" r="1.9"/></svg></span> ${txt}</span><span style="display:flex;gap:8px;align-items:center;flex:none">${btn}${xbtn}</span></div>`;
     }).join('');
   }
 
@@ -1158,7 +1158,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       ? `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Znaleziono <strong>${w.length}</strong> ${nParagon}. Produkty pasujące do „${esc(q)}": <strong>${res.liczba_pozycji}</strong> na łącznie <strong>${fmt(res.suma_pozycji)}</strong>.</div>`
       : `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Znaleziono <strong>${w.length}</strong> ${nParagon}.</div>`;
     const cenyBar = res.liczba_pozycji
-      ? `<div style="margin:0 0 12px"><button id="ceny-toggle" class="btn btn-outline btn-sm">📈 Pokaż zmiany cen dla „${esc(q)}"</button></div>
+      ? `<div style="margin:0 0 12px"><button id="ceny-toggle" class="btn btn-outline btn-sm"><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 3.6v17h17"/><path d="M6.6 16.4l4.4-5 3.9 3.3 4.3-5.9"/><circle class="kropka" cx="18.6" cy="8.4" r="1.9"/></svg></span> Pokaż zmiany cen dla „${esc(q)}"</button></div>
          <div id="ceny-panel" style="display:none;margin-bottom:14px"></div>`
       : '';
     const rows = w.map(x => `
@@ -1167,7 +1167,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         <td>
           <span class="sklep-name">${esc(x.sklep) || '—'}</span>
           ${x.trafienia ? `<div class="notatka-hint">${esc(x.trafienia)}</div>` : ''}
-          ${x.notatki ? `<div class="notatka-hint" style="color:var(--muted)">📝 ${esc(x.notatki)}</div>` : ''}
+          ${x.notatki ? `<div class="notatka-hint" style="color:var(--muted)"><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.4h8.4L19.4 8v12.6H6z"/><path d="M14.2 3.4V8h5"/><path class="akc" d="M9 12.6h6M9 16h4"/></svg></span> ${esc(x.notatki)}</div>` : ''}
         </td>
         <td><span class="badge ${x.osoba === 'Ola' ? 'ola' : ''}">${esc(x.osoba)}</span></td>
         <td style="text-align:right;font-weight:600">${fmt(x.suma)}</td>
@@ -1190,11 +1190,11 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     if (!panel) return;
     if (panel.style.display === 'block') {
       panel.style.display = 'none';
-      if (toggle) toggle.textContent = `📈 Pokaż zmiany cen dla „${q}"`;
+      if (toggle) toggle.textContent = `<span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 3.6v17h17"/><path d="M6.6 16.4l4.4-5 3.9 3.3 4.3-5.9"/><circle class="kropka" cx="18.6" cy="8.4" r="1.9"/></svg></span> Pokaż zmiany cen dla „${q}"`;
       return;
     }
     panel.style.display = 'block';
-    if (toggle) toggle.textContent = '📉 Ukryj ceny';
+    if (toggle) toggle.textContent = '<span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 3.6v17h17"/><path d="M6.6 8l4.4 5 3.9-3.3 4.3 5.9"/><circle class="kropka" cx="18.6" cy="15.6" r="1.9"/></svg></span> Ukryj ceny';
     await fetchCeny(q, null, null);
   }
 
@@ -1520,8 +1520,8 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
     const loadEl = document.getElementById('ai-loading');
     loadEl.classList.remove('hidden');
     const stopPraca = aiPracaStart(loadEl,
-      trybTekst ? '🤖 Claude analizuje notatkę…'
-        : (fileCount > 1 ? `🤖 Claude czyta ${fileCount} paragony…` : '🤖 Claude czyta paragon…'),
+      trybTekst ? '<span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="8" width="16" height="11.6" rx="2.6"/><path d="M12 8V4.6"/><circle class="kropka" cx="12" cy="3.4" r="1.5"/><circle class="kropka" cx="9" cy="13.4" r="1.5"/><circle class="kropka" cx="15" cy="13.4" r="1.5"/></svg></span> Claude analizuje notatkę…'
+        : (fileCount > 1 ? `<span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="8" width="16" height="11.6" rx="2.6"/><path d="M12 8V4.6"/><circle class="kropka" cx="12" cy="3.4" r="1.5"/><circle class="kropka" cx="9" cy="13.4" r="1.5"/><circle class="kropka" cx="15" cy="13.4" r="1.5"/></svg></span> Claude czyta ${fileCount} paragony…` : '<span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="8" width="16" height="11.6" rx="2.6"/><path d="M12 8V4.6"/><circle class="kropka" cx="12" cy="3.4" r="1.5"/><circle class="kropka" cx="9" cy="13.4" r="1.5"/><circle class="kropka" cx="15" cy="13.4" r="1.5"/></svg></span> Claude czyta paragon…'),
       trybTekst
         ? ['Rozbijam notatkę na wydatki…', 'Przypisuję kategorie…', 'Jeszcze chwila…']
         : ['Odczytuję pozycje i ceny…', 'Rozpoznaję sklep i datę…', 'Przypisuję kategorie…',
