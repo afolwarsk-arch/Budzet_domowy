@@ -210,7 +210,7 @@ function _injectProfileButton(me) {
   // to wprost. Na wąskim ekranie zostaje sama książka (patrz .nav-etykieta).
   const help = document.createElement('button');
   help.className = 'nav-samouczek';
-  help.innerHTML = '<span aria-hidden="true">📖</span><span class="nav-etykieta">Samouczek</span>';
+  help.innerHTML = ikonaSvg('ksiazka') + '<span class="nav-etykieta">Samouczek</span>';
   help.title = 'Samouczek — jak korzystać z aplikacji';
   help.onclick = () => pokazSamouczek(false);
   grupa.appendChild(help);
@@ -322,6 +322,10 @@ const IKONY_SVG = {
   lupa: '<circle cx="10.8" cy="10.8" r="6.6"/><path d="M15.6 15.6l4.6 4.6"/><circle class="kropka" cx="10.8" cy="10.8" r="1.8"/>',
   robot: '<rect x="4" y="8" width="16" height="11.6" rx="2.6"/><path d="M12 8V4.6"/><circle class="kropka" cx="12" cy="3.4" r="1.5"/><circle class="kropka" cx="9" cy="13.4" r="1.5"/><circle class="kropka" cx="15" cy="13.4" r="1.5"/>',
   dysk: '<rect x="3.4" y="3.4" width="17.2" height="17.2" rx="2.4"/><path d="M7.6 3.4v6h8.8v-6"/><rect x="7.6" y="13" width="8.8" height="7.6" rx="1.2"/><circle class="kropka" cx="14.6" cy="6.2" r="1.3"/>',
+  ksiazka: '<path d="M3.6 5.2A2 2 0 015.6 3.4H11v16.4H5.6a2 2 0 01-2-2z"/><path d="M20.4 5.2a2 2 0 00-2-1.8H13v16.4h5.4a2 2 0 002-2z"/><circle class="kropka" cx="12" cy="12" r="1.5"/>',
+  limit: '<path d="M12 3.4v3M12 17.6v3M3.4 12h3M17.6 12h3"/><circle cx="12" cy="12" r="5.6"/><path class="akc" d="M12 9.2v3.4l2.4 1.4"/>',
+  przeplyw: '<path d="M3 8.4c2.6-2.4 5.2-2.4 7.8 0s5.2 2.4 7.8 0"/><path d="M3 13.2c2.6-2.4 5.2-2.4 7.8 0s5.2 2.4 7.8 0"/><path class="akc" d="M3 18c2.6-2.4 5.2-2.4 7.8 0s5.2 2.4 7.8 0"/>',
+  osiagniete: '<path d="M5.4 20.6V3.6"/><path d="M5.4 4.6h12.2l-2.4 3.8 2.4 3.8H5.4"/><circle class="kropka" cx="5.4" cy="20.6" r="1.6"/>',
 };
 
 function ikonaSvg(nazwa) {
