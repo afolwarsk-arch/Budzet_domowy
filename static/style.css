@@ -610,7 +610,7 @@ tr:hover td { background: var(--hover); }
 /* dolna nawigacja (wstrzykiwana przez auth.js, widoczna tylko na wąskich ekranach) */
 .bottom-nav {
   --surface: #1a1d20;
-  --muted: #8f8a81;
+  --muted: #bdb7ac;          /* jasniej niz w gornym pasku — podpisy maja 11 px */
   --accent: #ff8b8b;
   display: none;
   position: fixed;
@@ -628,6 +628,7 @@ tr:hover td { background: var(--hover); }
 .bottom-nav a {
   flex: 1 0 auto;
   min-width: 62px;
+  color: #bdb7ac;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -637,7 +638,7 @@ tr:hover td { background: var(--hover); }
   color: var(--muted);
   text-decoration: none;
 }
-.bottom-nav a .bn-icon { font-size: 21px; line-height: 1.15; }
+.bottom-nav a .bn-icon { font-size: 23px; line-height: 1.15; }
 .bottom-nav a.active { color: var(--accent); font-weight: 600; }
 
 /* przycisk aparatu (upload) — tylko na telefonie */
@@ -699,3 +700,12 @@ tr:hover td { background: var(--hover); }
 
 /* prawa strona paska: Admin, samouczek, pseudonim, Wyloguj — razem */
 .nav-prawa { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+
+/* akcje dashboardu siedza na koncu rzedu filtrow — samotny rzad zostawial
+   po lewej duza pusta przestrzen */
+.filtry-akcje { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+@media (max-width: 700px) {
+  .filtry-akcje { margin-left: 0; width: 100%; }
+  .filtry-akcje .btn-primary { flex: 1; justify-content: center; }
+}

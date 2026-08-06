@@ -32,44 +32,6 @@
 <script defer src="/static/auth.js"></script>
 
 <main>
-  <!-- bez nagłówka „Dashboard" — aktywna zakładka w pasku już mówi, gdzie jesteś -->
-  <div style="display:flex;justify-content:flex-end;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px">
-    <div style="display:flex;gap:8px;align-items:center">
-      <!-- akcje rzadkie chowamy pod „⋯" — na telefonie w pasku ma zostać
-           tylko akcja główna, a pięć przycisków obok siebie się nie mieściło -->
-      <div class="hdr-menu" id="hdr-menu">
-        <button class="btn btn-outline" id="hdr-menu-btn" onclick="toggleHdrMenu(event)"
-                aria-haspopup="true" aria-expanded="false" title="Więcej akcji">⋯</button>
-        <div class="hdr-menu-items" role="menu">
-          <button role="menuitem" onclick="closeHdrMenu(); showInvite()">👥 Zaproś osobę</button>
-          <button role="menuitem" onclick="closeHdrMenu(); showVirtualMembers()">➕ Osoba bez konta</button>
-          <hr>
-          <button role="menuitem" onclick="closeHdrMenu(); downloadBackup()">↓ Pobierz kopię danych</button>
-          <button role="menuitem" id="btn-restore" onclick="closeHdrMenu(); document.getElementById('restore-file').click()">↑ Wczytaj kopię</button>
-          <!-- pokazywane dopiero, gdy przegladarka zglosi gotowosc do instalacji -->
-          <hr id="mi-install-sep" style="display:none">
-          <button role="menuitem" id="mi-install" style="display:none" onclick="closeHdrMenu(); zainstalujApke()">📲 Zainstaluj na telefonie</button>
-          <!-- narzędzie serwisowe, tylko admin — ukrywane w app.js -->
-          <hr id="mi-rekat-sep">
-          <button role="menuitem" id="mi-rekat" onclick="closeHdrMenu(); openRekat()">⚙️ Przelicz kategorie</button>
-        </div>
-      </div>
-      <input type="file" id="restore-file" accept="application/json,.json" style="display:none" onchange="restoreBackup(this)">
-      <a href="/upload" class="btn btn-primary">+ Dodaj wydatek</a>
-    </div>
-  </div>
-
-  <div class="card" style="margin-bottom:20px;padding:14px 16px">
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <input id="szukaj-input" type="search" autocomplete="off"
-        placeholder="🔍 Szukaj produktu, sklepu lub notatki — np. kawa, Biedronka, wiertarka…"
-        style="flex:1;min-width:220px;padding:10px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;outline:none">
-      <button id="szukaj-btn" class="btn btn-primary">Szukaj</button>
-      <button id="szukaj-clear" class="btn btn-outline" style="display:none">Wyczyść</button>
-    </div>
-    <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">Przeszukuje całą historię (niezależnie od filtrów powyżej).</p>
-    <div id="szukaj-wyniki" style="display:none;margin-top:14px"></div>
-  </div>
 
   <div id="vm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center;">
     <div style="background: var(--surface);border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
@@ -163,6 +125,29 @@
       <option>Prezenty</option>
       <option>Inne</option>
     </select>
+    <div class="filtry-akcje">
+      <!-- akcje rzadkie chowamy pod „⋯" — na telefonie w pasku ma zostać
+           tylko akcja główna, a pięć przycisków obok siebie się nie mieściło -->
+      <div class="hdr-menu" id="hdr-menu">
+        <button class="btn btn-outline" id="hdr-menu-btn" onclick="toggleHdrMenu(event)"
+                aria-haspopup="true" aria-expanded="false" title="Więcej akcji">⋯</button>
+        <div class="hdr-menu-items" role="menu">
+          <button role="menuitem" onclick="closeHdrMenu(); showInvite()">👥 Zaproś osobę</button>
+          <button role="menuitem" onclick="closeHdrMenu(); showVirtualMembers()">➕ Osoba bez konta</button>
+          <hr>
+          <button role="menuitem" onclick="closeHdrMenu(); downloadBackup()">↓ Pobierz kopię danych</button>
+          <button role="menuitem" id="btn-restore" onclick="closeHdrMenu(); document.getElementById('restore-file').click()">↑ Wczytaj kopię</button>
+          <!-- pokazywane dopiero, gdy przegladarka zglosi gotowosc do instalacji -->
+          <hr id="mi-install-sep" style="display:none">
+          <button role="menuitem" id="mi-install" style="display:none" onclick="closeHdrMenu(); zainstalujApke()">📲 Zainstaluj na telefonie</button>
+          <!-- narzędzie serwisowe, tylko admin — ukrywane w app.js -->
+          <hr id="mi-rekat-sep">
+          <button role="menuitem" id="mi-rekat" onclick="closeHdrMenu(); openRekat()">⚙️ Przelicz kategorie</button>
+        </div>
+      </div>
+      <input type="file" id="restore-file" accept="application/json,.json" style="display:none" onchange="restoreBackup(this)">
+      <a href="/upload" class="btn btn-primary">+ Dodaj wydatek</a>
+    </div>
   </div>
 
   <div id="przypomnienia" style="display:none;margin-bottom:20px"></div>
@@ -187,6 +172,18 @@
       <div class="etyk" id="stat-topkat-label">Największa kategoria</div>
       <div class="wart" id="stat-topkat" style="font-size:14px;font-weight:600">—</div>
     </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;padding:14px 16px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="szukaj-input" type="search" autocomplete="off"
+        placeholder="🔍 Szukaj produktu, sklepu lub notatki — np. kawa, Biedronka, wiertarka…"
+        style="flex:1;min-width:220px;padding:10px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;outline:none">
+      <button id="szukaj-btn" class="btn btn-primary">Szukaj</button>
+      <button id="szukaj-clear" class="btn btn-outline" style="display:none">Wyczyść</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">Przeszukuje całą historię (niezależnie od filtrów powyżej).</p>
+    <div id="szukaj-wyniki" style="display:none;margin-top:14px"></div>
   </div>
 
   <div class="charts-grid">
