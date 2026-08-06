@@ -777,6 +777,7 @@ tr:hover td { background: var(--hover); }
   background: linear-gradient(var(--kat, 135deg), #1a1d20, #4a2b2b 55%, var(--marka));
 }
 .sam-emoji { animation: sam-emoji .42s cubic-bezier(.2,.9,.3,1.2); }
+.sam-emoji:has(.sam-znak) { animation: none; }
 .sam-emoji .ikona svg { width: 58px; height: 58px; stroke-width: 1.25; color: #f2efe9; }
 .sam-kropka {
   width: 8px; height: 8px; border-radius: 50%;
@@ -870,13 +871,17 @@ nav .logo.pracuje > .lg-kropka     { animation: znak-puls 1.1s ease-in-out infin
   50%      { opacity: 1;  transform: scale(1); }
 }
 
-h1.logo, h1 .logo { animation: znak-wejscie .55s cubic-bezier(.2,.7,.3,1) both; }
+/* znak na pierwszym slajdzie samouczka wchodzi tak samo jak na ekranach
+   startowych — samouczek oglada sie raz, wiec ruch sie nie opatrzy */
+h1.logo, h1 .logo, .sam-znak .logo { animation: znak-wejscie .55s cubic-bezier(.2,.7,.3,1) both; }
 h1.logo .lg-kropka,
-h1 .logo .lg-kropka { animation: znak-kropki .5s cubic-bezier(.2,.9,.3,1.45) .26s both; }
+h1 .logo .lg-kropka,
+.sam-znak .lg-kropka { animation: znak-kropki .5s cubic-bezier(.2,.9,.3,1.45) .26s both; }
 @keyframes znak-wejscie { from { opacity: 0; transform: translateY(7px); } }
 @keyframes znak-kropki  { from { opacity: 0; transform: translateY(-16px) scale(.4); } }
 
 @media (prefers-reduced-motion: reduce) {
   nav .logo.pracuje .lg-kropka,
-  h1.logo, h1 .logo, h1.logo .lg-kropka, h1 .logo .lg-kropka { animation: none; }
+  h1.logo, h1 .logo, h1.logo .lg-kropka, h1 .logo .lg-kropka,
+  .sam-znak .logo, .sam-znak .lg-kropka { animation: none; }
 }
