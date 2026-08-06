@@ -830,3 +830,9 @@ tr:hover td { background: var(--hover); }
 .ikona.pelna svg { fill: currentColor; stroke: none; }
 .ikona.pelna svg .kropka { fill: var(--marka); }
 .ikona.pelna svg .pusto { fill: #1a1d20; }
+
+
+/* pierwszy slajd samouczka niesie znak marki zamiast ikony */
+.sam-znak { font-size: 46px; font-weight: 700; letter-spacing: -.04em; color: #f2efe9; }
+/* logo w tytule slajdu ma iść za stopniem nagłówka, nie dominować nad nim */
+.sam-karta h3 .logo { font-weight: 700; letter-spacing: -.03em; }
