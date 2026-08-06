@@ -953,3 +953,9 @@ h1 .logo .lg-kropka,
   font-size: 14px;
   cursor: pointer;
 }
+
+
+/* po dotknięciu przycisk musi od razu pokazać, że przyjął — aparat systemowy
+   potrafi wstawać sekundę i bez tego wygląda to na zawieszenie */
+.skan-cel.czeka { opacity: .72; }
+.skan-cel.czeka .skan-napis::after { content: " …"; }
