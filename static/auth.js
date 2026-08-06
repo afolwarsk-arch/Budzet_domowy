@@ -204,10 +204,12 @@ function _injectProfileButton(me) {
     grupa.appendChild(adminLink);
   }
 
+  // „❓" czytało się jak pomoc techniczna — to jest samouczek, więc mówimy
+  // to wprost. Na wąskim ekranie zostaje sama książka (patrz .nav-etykieta).
   const help = document.createElement('button');
-  help.textContent = '❓';
+  help.className = 'nav-samouczek';
+  help.innerHTML = '<span aria-hidden="true">📖</span><span class="nav-etykieta">Samouczek</span>';
   help.title = 'Samouczek — jak korzystać z aplikacji';
-  help.style.cssText = 'padding:6px 10px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.85rem;';
   help.onclick = () => pokazSamouczek(false);
   grupa.appendChild(help);
 
