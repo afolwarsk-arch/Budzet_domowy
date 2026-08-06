@@ -980,6 +980,10 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
     loadCykliczne(),
   ]);
   myDefaultKontoId = def.konto_id || null;
+  // loadKonta() rysuje karty równolegle z tym zapytaniem, więc w chwili
+  // rysowania myDefaultKontoId jest jeszcze puste i gwiazdka nie zapala się
+  // po wejściu na stronę. Po ustawieniu wartości rysujemy ponownie.
+  renderKonta();
   HIERARCHIA = hier || {};
   osobyOpcje = [
     ...(hh.members || []).map(m => m.display_name || m.name),
