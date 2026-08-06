@@ -369,7 +369,7 @@ function pokazSamouczek(pierwszyRaz) {
     const ostatni = idx === _SAMOUCZEK_SLAJDY.length - 1;
     overlay.innerHTML = `
       <div class="sam-karta">
-        <div class="sam-naglowek" style="--kat:${130 + idx * 7}deg"><span class="sam-emoji">${s.znak ? '<span class="sam-znak"><span class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></span></span>' : ikonaSvg(s.ikona)}</span></div>
+        <div class="sam-naglowek" style="--kat:${130 + idx * 7}deg"><span class="sam-emoji">${s.znak ? '<span class="sam-znak"><span class="logo"><span class="lg-lit">w</span><span class="lg-i"><span class="lg-lit">ı</span><i class="lg-kropka"></i></span><span class="lg-lit">em</span><i class="lg-kropka"></i></span></span>' : ikonaSvg(s.ikona)}</span></div>
         <div style="padding:22px 26px 18px">
           <h3 style="font-size:1.15rem;margin:0 0 8px;color:var(--text)">${s.tytul}</h3>
           <p style="font-size:14px;line-height:1.6;color:var(--text);margin:0 0 16px">${s.opis}</p>
