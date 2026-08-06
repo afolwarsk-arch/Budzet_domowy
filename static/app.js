@@ -1260,12 +1260,17 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
 // ── UPLOAD PAGE ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (me) => {
-  await loadOsobaOptions('osoba');
   const osobaSel = document.getElementById('osoba');
-  if (me && me.display_name && [...osobaSel.options].some(o => o.value === me.display_name)) {
-    osobaSel.value = me.display_name;
-  }
-  const OSOBY_OPCJE = [...osobaSel.options].map(o => ({ value: o.value, label: o.text }));
+  // Lista osób ładuje się W TLE. Wcześniej było tu `await`, przez co wszystko
+  // poniżej — łącznie z podpięciem przycisku aparatu — czekało na odpowiedź
+  // serwera. Przycisk był wtedy widoczny, ale martwy.
+  let OSOBY_OPCJE = [];
+  loadOsobaOptions('osoba').then(() => {
+    if (me && me.display_name && [...osobaSel.options].some(o => o.value === me.display_name)) {
+      osobaSel.value = me.display_name;
+    }
+    OSOBY_OPCJE = [...osobaSel.options].map(o => ({ value: o.value, label: o.text }));
+  });
   let HIERARCHIA = {};
   let GLOWNE = [];
 
@@ -1382,9 +1387,16 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   // aparat (mobile) — capture="environment" otwiera od razu tylną kamerę
   const cameraBtn = document.getElementById('btn-camera');
   const cameraInput = document.getElementById('camera-input');
+  window._aparatGotowy = true;
   if (cameraBtn && cameraInput) {
     cameraBtn.addEventListener('click', () => cameraInput.click());
     cameraInput.addEventListener('change', () => { handleFiles(cameraInput.files); cameraInput.value = ''; });
+  }
+  // Zdjęcie mogło powstać, zanim ten plik się wczytał — skrypt w upload.html
+  // odkłada wtedy pliki na bok, a my je tu przejmujemy.
+  if (window._czekajaceZdjecia && window._czekajaceZdjecia.length) {
+    handleFiles(window._czekajaceZdjecia);
+    window._czekajaceZdjecia = null;
   }
 
   function handleFiles(files) {
@@ -1420,7 +1432,8 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
     analyzeBtn.disabled = true;
     const fileCount = selectedFiles.length;
     analyzeBtn.innerHTML = `<span class="orbita"><i></i><i></i></span> Analizuję${fileCount > 1 ? ` ${fileCount} zdjęć...` : '...'}`;
-    const osoba = document.getElementById('osoba').value;
+    // lista osób mogła jeszcze nie dojść — wtedy bierzemy pseudonim z logowania
+    const osoba = document.getElementById('osoba').value || (me && me.display_name) || '';
     const kontekst = document.getElementById('kontekst-input').value.trim();
 
     const trybTekst = !panelText.classList.contains('hidden');

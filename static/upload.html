@@ -118,6 +118,25 @@
   // ani logowania, ani danych z serwera. Czekanie na Firebase i app.js (86 kB)
   // opoznialo go o sekundy. app.js pozniej tylko dokleja obsluge wyniku.
   (function () {
+    var wejscie = document.getElementById('camera-input');
+
+    // Przycisk aparatu w PELNYM widoku tez podpinamy od razu — app.js robi to
+    // dopiero po pobraniu danych, wiec do tego czasu przycisk byl martwy.
+    var wczesnyAparat = function () {
+      var we = document.getElementById('camera-input');
+      var btn = document.getElementById('btn-camera');
+      if (btn && we) btn.addEventListener('click', function () { we.click(); });
+      if (we) we.addEventListener('change', function () {
+        // jesli app.js jeszcze nie wystartowal, odkladamy pliki na bok
+        if (!window._aparatGotowy && we.files && we.files.length) {
+          window._czekajaceZdjecia = we.files;
+        }
+      });
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', wczesnyAparat);
+    } else { wczesnyAparat(); }
+
     if (!new URLSearchParams(location.search).has('skan')) return;
     var pokaz = function () {
       var skan = document.getElementById('ekran-skanu');
