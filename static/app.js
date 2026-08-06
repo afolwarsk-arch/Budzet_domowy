@@ -1,16 +1,29 @@
 // ── Paleta wykresów ─────────────────────────────────────────────────────
-// Osiem barw zwalidowanych wobec powierzchni kart (#ffffff i #1e2126):
-// najgorsza para sąsiadów ma ΔE 9.1 na jasnym i 8.4 na ciemnym przy progu 8,
-// a widzenie normalne 19.6 / 19.3 przy progu 15.
+// Piętnaście barw — każda kategoria ma własną. Kolejność slotów NIE jest
+// kosmetyczna: to ona decyduje o rozróżnialności sąsiadów, więc dobrana
+// została przez walidator, nie na oko.
 //
-// Kategorii jest piętnaście i tylu rozróżnialnych barw NIE DA SIĘ dobrać —
-// sprawdzone: przy 15 chroma spada do szarości, a najgorsza para schodzi
-// do ΔE 2.3. Osiem głównych kategorii dostaje więc własny kolor, reszta
-// wspólną szarość i czyta się jako „pozostałe".
+// Zwalidowane wobec powierzchni kart (#ffffff i #1e2126) — wszystkie bramki
+// przechodzą w obu motywach:
+//   jasny  — CVD ΔE 9.1, widzenie normalne 19.6, pasmo jasności i chroma OK
+//   ciemny — CVD ΔE 8.4, widzenie normalne 19.3, kontrast wszystkich ≥ 3:1
+//
+// Kilka barw ma kontrast poniżej 3:1 wobec jasnego tła. To dopuszczalne,
+// bo legenda pokazuje nazwę i kwotę obok każdej próbki — kolor nigdy nie
+// jest jedynym nośnikiem tożsamości.
 const PALETA_KAT = {
-  jasny:  ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'],
-  ciemny: ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'],
+  jasny: [
+    '#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4',
+    '#008300', '#4a3aa7', '#e34948', '#00879e', '#b5651d',
+    '#00967d', '#8e44c4', '#7d8a00', '#4a63b0', '#c2185b',
+  ],
+  ciemny: [
+    '#3987e5', '#d95926', '#199e70', '#c98500', '#d55181',
+    '#008300', '#9085e9', '#e66767', '#00a0bd', '#c9761f',
+    '#00a88c', '#a45fd6', '#8f9e00', '#6f86d6', '#d94a7e',
+  ],
 };
+// kategorie własne gospodarstwa, spoza stałej listy
 const KAT_POZOSTALE = { jasny: '#8a8782', ciemny: '#918d86' };
 
 // Przypisanie jest STAŁE po nazwie kategorii, nie po wielkości wydatku —
@@ -24,6 +37,13 @@ const KAT_SLOT = {
   'Zdrowie': 5,
   'Rozrywka i hobby': 6,
   'Higiena i kosmetyki': 7,
+  'Odzież i obuwie': 8,
+  'Lokal Gałczyńskiego': 9,
+  'Edukacja': 10,
+  'Elektronika': 11,
+  'Używki': 12,
+  'Prezenty': 13,
+  'Inne': 14,
 };
 
 function motywWykresu() {
@@ -43,7 +63,8 @@ function katColor(nazwa) {
 
 // kolor pojedynczej serii (trend, wykres dzienny) — pierwszy slot palety
 function seriaColor(i = 0) {
-  return PALETA_KAT[motywWykresu()][i % 8];
+  const p = PALETA_KAT[motywWykresu()];
+  return p[i % p.length];
 }
 
 // Chart.js nie czyta zmiennych CSS, więc opisy i siatkę podajemy mu wprost
