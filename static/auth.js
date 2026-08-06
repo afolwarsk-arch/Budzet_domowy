@@ -116,6 +116,47 @@ function ustawChromWykresow() {
 ustawChromWykresow();
 window.addEventListener('DOMContentLoaded', ustawChromWykresow);
 
+// ── przekazanie zdjęcia między stronami ──
+// File nie przejdzie przez adres URL, a zdjęcie z telefonu ma kilka MB —
+// sessionStorage (limit ~5 MB, tylko tekst) się nie nadaje. IndexedDB trzyma
+// pliki binarne i ma znacznie większą pojemność.
+const _BAZA_ZDJEC = 'wiem-zdjecia';
+
+function _otworzBaze() {
+  return new Promise((ok, blad) => {
+    const req = indexedDB.open(_BAZA_ZDJEC, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('pliki');
+    req.onsuccess = () => ok(req.result);
+    req.onerror = () => blad(req.error);
+  });
+}
+
+async function zapiszZdjecieDoPrzekazania(plik) {
+  const db = await _otworzBaze();
+  await new Promise((ok, blad) => {
+    const tx = db.transaction('pliki', 'readwrite');
+    tx.objectStore('pliki').put(plik, 'ostatnie');
+    tx.oncomplete = ok;
+    tx.onerror = () => blad(tx.error);
+  });
+  db.close();
+}
+
+// Odbiór jest jednorazowy — plik kasujemy od razu, żeby odświeżenie strony
+// nie wgrało tego samego paragonu drugi raz.
+async function odbierzPrzekazaneZdjecie() {
+  const db = await _otworzBaze();
+  const plik = await new Promise((ok) => {
+    const tx = db.transaction('pliki', 'readwrite');
+    const st = tx.objectStore('pliki');
+    const req = st.get('ostatnie');
+    req.onsuccess = () => { st.delete('ostatnie'); ok(req.result || null); };
+    req.onerror = () => ok(null);
+  });
+  db.close();
+  return plik;
+}
+
 async function authGetToken() {
   const user = _auth.currentUser;
   if (!user) throw new Error("Nie zalogowany");

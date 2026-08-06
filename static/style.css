@@ -959,3 +959,33 @@ h1 .logo .lg-kropka,
    potrafi wstawać sekundę i bez tego wygląda to na zawieszenie */
 .skan-cel.czeka { opacity: .72; }
 .skan-cel.czeka .skan-napis::after { content: " …"; }
+
+
+/* ── aparat wprost z pulpitu ─────────────────────────────────────────────
+   Przycisk pływający: zawsze w zasięgu kciuka, niezależnie od przewinięcia.
+   Nad dolnym paskiem na telefonie, przy krawędzi na większym ekranie. */
+.aparat-plyw {
+  position: fixed;
+  right: 18px;
+  bottom: 22px;
+  z-index: 90;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+}
+.aparat-plyw .ikona svg { width: 27px; height: 27px; stroke-width: 1.6; }
+.aparat-plyw:active { transform: scale(.94); }
+.aparat-plyw.czeka { opacity: .7; }
+
+@media (max-width: 700px) {
+  /* nad dolnym paskiem nawigacji */
+  .aparat-plyw { bottom: calc(78px + env(safe-area-inset-bottom)); right: 14px; }
+}

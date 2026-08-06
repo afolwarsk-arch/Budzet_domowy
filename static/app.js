@@ -1388,6 +1388,13 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   const cameraBtn = document.getElementById('btn-camera');
   const cameraInput = document.getElementById('camera-input');
   window._aparatGotowy = true;
+
+  // zdjęcie zrobione na pulpicie — odbieramy je i wchodzimy w normalny tok
+  if (new URLSearchParams(location.search).has('zdjecie')) {
+    odbierzPrzekazaneZdjecie().then((plik) => {
+      if (plik) handleFiles([plik]);
+    });
+  }
   if (cameraBtn && cameraInput) {
     cameraBtn.addEventListener('click', () => cameraInput.click());
     cameraInput.addEventListener('change', () => { handleFiles(cameraInput.files); cameraInput.value = ''; });
