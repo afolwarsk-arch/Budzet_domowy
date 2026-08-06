@@ -776,7 +776,8 @@ tr:hover td { background: var(--hover); }
   border-radius: 18px 18px 0 0;
   background: linear-gradient(var(--kat, 135deg), #1a1d20, #4a2b2b 55%, var(--marka));
 }
-.sam-emoji { font-size: 58px; animation: sam-emoji .42s cubic-bezier(.2,.9,.3,1.2); }
+.sam-emoji { animation: sam-emoji .42s cubic-bezier(.2,.9,.3,1.2); }
+.sam-emoji .ikona svg { width: 58px; height: 58px; stroke-width: 1.25; color: #f2efe9; }
 .sam-kropka {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--border);
@@ -796,3 +797,21 @@ tr:hover td { background: var(--hover); }
   .sam-karta, .sam-emoji { animation: none; }
   .sam-kropka { transition: none; }
 }
+
+
+/* ── ikony ───────────────────────────────────────────────────────────────
+   Rysowane w kodzie, nie emoji: biorą kolor z motywu i wyglądają tak samo
+   na Androidzie, iPhonie i w przeglądarce. Klasa „kropka" to koralowy detal
+   — ta sama kropka co w logo. */
+.ikona { display: inline-flex; flex: none; }
+.ikona svg {
+  width: 22px; height: 22px; display: block;
+  fill: none; stroke: currentColor; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.ikona svg .kropka { fill: var(--marka); stroke: none; }
+.ikona svg .akc { stroke: var(--marka); }
+
+.bottom-nav .ikona svg { width: 23px; height: 23px; }
+.hdr-menu-items .ikona svg { width: 18px; height: 18px; }
+.hdr-menu-items button { gap: 10px; }

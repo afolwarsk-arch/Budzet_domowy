@@ -230,33 +230,33 @@ function _injectProfileButton(me) {
 }
 
 const _SAMOUCZEK_SLAJDY = [
-  { emoji: '👋', tytul: 'Witaj w Wiem!',
+  { ikona: 'powitanie', tytul: 'Witaj w Wiem!',
     opis: 'To wspólny budżet całego gospodarstwa: dodajesz wydatki (zdjęciem paragonu, notatką albo ręcznie), a apka pokazuje statystyki, pilnuje płatności i podpowiada, gdzie oszczędzić. Ten przewodnik przejdzie przez wszystkie funkcje — wrócisz do niego kiedy chcesz przyciskiem ❓ u góry.' },
-  { emoji: '📷', tytul: 'Paragon = zdjęcie',
+  { ikona: 'aparat', tytul: 'Paragon = zdjęcie',
     opis: 'W „Dodaj wydatek" zrób zdjęcie paragonu — Claude AI sam odczyta sklep, datę, wszystkie pozycje z cenami i przypisze kategorie. Możesz wrzucić kilka paragonów naraz: każdy stanie się osobnym wydatkiem. Przed zapisem wszystko sprawdzisz i poprawisz.' },
-  { emoji: '✍️', tytul: 'Nie chcesz AI? Wpisz ręcznie',
+  { ikona: 'recznie', tytul: 'Nie chcesz AI? Wpisz ręcznie',
     opis: 'W „Dodaj wydatek" jest zakładka „Ręcznie (bez AI)" — wpisujesz wydatek sam, bez wysyłania do Claude i bez kosztów. Jest też „Notatka tekstowa": wypisujesz wydatki listą, a AI rozbije je na osobne wpisy. Wybierasz to, co Ci pasuje.' },
-  { emoji: '📊', tytul: 'Dashboard — wszystko na oku',
+  { ikona: 'pulpit', tytul: 'Dashboard — wszystko na oku',
     opis: 'Filtruj po miesiącu, osobie i kategorii (albo po dowolnym zakresie dat). Kliknij segment wykresu kołowego, żeby zejść do podkategorii, a potem do konkretnych produktów. Wykres trendów przełączysz na „Osobno / Łącznie", a każdy wydatek rozwiniesz do pozycji.' },
-  { emoji: '🔍', tytul: 'Wyszukiwarka i ceny produktów',
+  { ikona: 'lupa', tytul: 'Wyszukiwarka i ceny produktów',
     opis: 'Pole 🔍 na dashboardzie przeszukuje CAŁĄ historię — produkt, sklep, notatkę („ile wydaliśmy na kawę?"). Po wyszukaniu produktu kliknij „📈 Pokaż zmiany cen": zobaczysz gdzie kupujesz taniej i jak cena rosła w czasie.' },
-  { emoji: '🏷️', tytul: 'Kategorie po Twojemu',
+  { ikona: 'kategorie', tytul: 'Kategorie po Twojemu',
     opis: 'W „Kategorie" ułożysz własną hierarchię kategorii i podkategorii. Przy wydatku możesz dodać „okazję" (np. urodziny) — taki zakup nie zaburzy statystyk Waszych zwykłych nawyków. „Kontekst kategorii" wrzuci cały paragon do jednej kategorii (np. całą imprezę do Rozrywki).' },
-  { emoji: '💳', tytul: 'Konta i salda',
+  { ikona: 'konta', tytul: 'Konta i salda',
     opis: 'W „Konta" prowadzisz konta (bank, gotówka, oszczędności) z aktualnymi saldami. Robisz przelewy między nimi, a inwentaryzacją (spisem rzeczywistego stanu) pilnujesz, czy wszystko się zgadza. Przypisując wydatek do konta, saldo liczy się samo.' },
-  { emoji: '💰', tytul: 'Wpływy i płatności cykliczne',
+  { ikona: 'wplywy', tytul: 'Wpływy i płatności cykliczne',
     opis: 'Dodawaj wpływy (np. pensję), żeby bilans był pełny. Subskrypcje, rachunki i raty ustaw jako wydatki cykliczne — naliczą się automatycznie (z limitem naliczeń albo datą końca). Cykliczny przelew na oszczędności też ustawisz w Kontach.' },
-  { emoji: '🔔', tytul: 'Przypomnienia o płatnościach',
+  { ikona: 'alerty', tytul: 'Przypomnienia o płatnościach',
     opis: 'O ręcznych przelewach apka przypomni z wyprzedzeniem — po zrobieniu klikasz „✓ Zrobione". Przy automatycznych obciążeniach dostaniesz znać, żeby zapewnić środki. Całe archiwum jest w „Powiadomieniach", a pojedyncze przypomnienie schowasz ✕ na bieżącą sesję.' },
-  { emoji: '🤖', tytul: 'Doradca budżetowy AI',
+  { ikona: 'robot', tytul: 'Doradca budżetowy AI',
     opis: 'W „Analiza" Claude przeanalizuje Wasze wydatki i wskaże konkretnie, gdzie da się zaoszczędzić — z kwotami. Odpowiadaj na jego pytania: buduje profil gospodarstwa i z każdą analizą zna Was lepiej. Raporty zapisują się w historii.' },
-  { emoji: '🛒', tytul: 'Listy zakupów na żywo',
+  { ikona: 'lista', tytul: 'Listy zakupów na żywo',
     opis: 'W „Lista" tworzysz wiele nazwanych list (np. „Biedronka", „Leroy"). Są wspólne i synchronizują się NA ŻYWO — jak odhaczysz mleko, druga osoba w sklepie od razu to widzi. Tap = kupione, przeciągnij za ⠿ = kolejność (np. wg alejek), a listę wstrzymasz, zamkniesz lub usuniesz.' },
-  { emoji: '👥', tytul: 'Wspólne gospodarstwo',
+  { ikona: 'osoby', tytul: 'Wspólne gospodarstwo',
     opis: 'Zaproś drugą osobę do gospodarstwa linkiem (przycisk 👥 na dashboardzie) — budżet prowadzicie razem. Kogoś bez konta Google (np. dziecko) dodasz jako „osobę bez konta". Każdy może też usunąć własne konto — jego wydatki zostają, bo należą do gospodarstwa.' },
-  { emoji: '💾', tytul: 'Twoje dane są bezpieczne',
+  { ikona: 'dysk', tytul: 'Twoje dane są bezpieczne',
     opis: 'Cały budżet pobierzesz w każdej chwili przyciskiem „↓ Backup" (plik z danymi). Statystyki, filtry i pseudonimy dostosujesz pod siebie — kliknij swój pseudonim na górnym pasku, żeby go zmienić.' },
-  { emoji: '📱', tytul: 'Miej budżet w kieszeni',
+  { ikona: 'telefon', tytul: 'Miej budżet w kieszeni',
     opis: 'Na telefonie wybierz w przeglądarce „Dodaj do ekranu głównego" — apka działa jak natywna: dolny pasek nawigacji i aparat do paragonów zawsze pod ręką. To wszystko — miłego oszczędzania! 🎉' },
 ];
 
@@ -274,7 +274,7 @@ function pokazSamouczek(pierwszyRaz) {
     const ostatni = idx === _SAMOUCZEK_SLAJDY.length - 1;
     overlay.innerHTML = `
       <div class="sam-karta">
-        <div class="sam-naglowek" style="--kat:${130 + idx * 7}deg"><span class="sam-emoji">${s.emoji}</span></div>
+        <div class="sam-naglowek" style="--kat:${130 + idx * 7}deg"><span class="sam-emoji">${ikonaSvg(s.ikona)}</span></div>
         <div style="padding:22px 26px 18px">
           <h3 style="font-size:1.15rem;margin:0 0 8px;color:var(--text)">${s.tytul}</h3>
           <p style="font-size:14px;line-height:1.6;color:var(--text);margin:0 0 16px">${s.opis}</p>
@@ -299,27 +299,57 @@ function pokazSamouczek(pierwszyRaz) {
 }
 window.pokazSamouczek = pokazSamouczek;
 
+const IKONY_SVG = {
+  pulpit: '<rect x="3" y="12" width="4.5" height="8" rx="1.4"/><rect x="9.7" y="7" width="4.5" height="13" rx="1.4"/><rect x="16.4" y="10" width="4.5" height="10" rx="1.4"/><circle class="kropka" cx="18.65" cy="5.4" r="1.9"/>',
+  dodaj: '<circle cx="12" cy="12" r="8.6"/><path class="akc" d="M12 8.2v7.6M8.2 12h7.6"/>',
+  lista: '<path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9"/><circle class="kropka" cx="18.6" cy="17.5" r="1.9"/>',
+  konta: '<rect x="2.8" y="5.5" width="18.4" height="13" rx="2.4"/><path d="M2.8 10h18.4"/><circle class="kropka" cx="17.4" cy="14.6" r="1.7"/>',
+  wplywy: '<circle cx="12" cy="12" r="8.6"/><path class="akc" d="M12 7.6v8.8M9.2 13.6l2.8 2.8 2.8-2.8"/>',
+  cele: '<circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="4.4"/><circle class="kropka" cx="12" cy="12" r="1.9"/>',
+  kategorie: '<path d="M11.2 3.4H20v8.8l-8.8 8.4L3 12z"/><circle class="kropka" cx="16.1" cy="7.6" r="1.7"/>',
+  analiza: '<path d="M3.4 3.6v17h17"/><path d="M6.6 16.4l4.4-5 3.9 3.3 4.3-5.9"/><circle class="kropka" cx="18.6" cy="8.4" r="1.9"/>',
+  alerty: '<path d="M6.2 10.4a5.8 5.8 0 0111.6 0c0 4.2 1.6 5.6 1.6 5.6H4.6s1.6-1.4 1.6-5.6z"/><circle class="kropka" cx="12" cy="19.2" r="1.9"/>',
+  admin: '<path d="M4 7.5h16M4 12h16M4 16.5h16"/><circle class="kropka" cx="9" cy="7.5" r="2"/><circle class="kropka" cx="15.6" cy="16.5" r="2"/>',
+  osoby: '<circle cx="9.2" cy="8.4" r="3.4"/><path d="M3.4 19.4c0-3.2 2.6-5.4 5.8-5.4s5.8 2.2 5.8 5.4"/><path d="M16.6 6.2a3.2 3.2 0 010 6.2M17.6 14.6c2.1.6 3.4 2.4 3.4 4.8"/>',
+  osoba_plus: '<circle cx="10" cy="8.4" r="3.4"/><path d="M4.2 19.4c0-3.2 2.6-5.4 5.8-5.4 1 0 2 .2 2.8.6"/><path class="akc" d="M17.6 13.4v6.2M14.5 16.5h6.2"/>',
+  pobierz: '<path class="akc" d="M12 3.6v10.2M8.4 10.6l3.6 3.6 3.6-3.6"/><path d="M4.2 16.4v2.2a1.8 1.8 0 001.8 1.8h12a1.8 1.8 0 001.8-1.8v-2.2"/>',
+  wczytaj: '<path class="akc" d="M12 14.2V4M8.4 7.2L12 3.6l3.6 3.6"/><path d="M4.2 16.4v2.2a1.8 1.8 0 001.8 1.8h12a1.8 1.8 0 001.8-1.8v-2.2"/>',
+  telefon: '<rect x="6.6" y="2.6" width="10.8" height="18.8" rx="2.4"/><circle class="kropka" cx="12" cy="18.2" r="1.5"/>',
+  przelicz: '<path d="M20 12a8 8 0 01-13.7 5.6M4 12a8 8 0 0113.7-5.6"/><path d="M4 6.4V12h5.6M20 17.6V12h-5.6"/><circle class="kropka" cx="12" cy="12" r="1.7"/>',
+  powitanie: '<path d="M12 20.6a8.6 8.6 0 100-17.2 8.6 8.6 0 000 17.2z"/><path d="M8.4 14.2a4.6 4.6 0 007.2 0"/><circle class="kropka" cx="9" cy="9.8" r="1.4"/><circle class="kropka" cx="15" cy="9.8" r="1.4"/>',
+  aparat: '<path d="M3.4 8.4a2 2 0 012-2h2.2l1.4-2.2h5.6l1.4 2.2h2.6a2 2 0 012 2v9.2a2 2 0 01-2 2H5.4a2 2 0 01-2-2z"/><circle cx="12" cy="12.6" r="3.8"/><circle class="kropka" cx="12" cy="12.6" r="1.4"/>',
+  recznie: '<path d="M4 20l1.2-4.2L15.6 5.4a2.2 2.2 0 013.1 3.1L8.2 18.8z"/><path d="M14 7l3 3"/><circle class="kropka" cx="5.2" cy="18.8" r="1.5"/>',
+  lupa: '<circle cx="10.8" cy="10.8" r="6.6"/><path d="M15.6 15.6l4.6 4.6"/><circle class="kropka" cx="10.8" cy="10.8" r="1.8"/>',
+  robot: '<rect x="4" y="8" width="16" height="11.6" rx="2.6"/><path d="M12 8V4.6"/><circle class="kropka" cx="12" cy="3.4" r="1.5"/><circle class="kropka" cx="9" cy="13.4" r="1.5"/><circle class="kropka" cx="15" cy="13.4" r="1.5"/>',
+  dysk: '<rect x="3.4" y="3.4" width="17.2" height="17.2" rx="2.4"/><path d="M7.6 3.4v6h8.8v-6"/><rect x="7.6" y="13" width="8.8" height="7.6" rx="1.2"/><circle class="kropka" cx="14.6" cy="6.2" r="1.3"/>',
+};
+
+function ikonaSvg(nazwa) {
+  return `<span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true">${IKONY_SVG[nazwa] || ''}</svg></span>`;
+}
+
 const _BOTTOM_NAV_ITEMS = [
-  { href: '/',              icon: '📊', label: 'Pulpit' },
-  { href: '/upload',        icon: '➕', label: 'Dodaj' },
-  { href: '/lista',         icon: '🛒', label: 'Lista' },
-  { href: '/konta',         icon: '💳', label: 'Konta' },
-  { href: '/wplywy',        icon: '💰', label: 'Wpływy' },
-  { href: '/cele',          icon: '🎯', label: 'Cele' },
-  { href: '/kategorie',     icon: '🏷️', label: 'Kategorie' },
-  { href: '/analiza',       icon: '📈', label: 'Analiza' },
-  { href: '/powiadomienia', icon: '🔔', label: 'Alerty' },
+  { href: '/',              ikona: 'pulpit',    label: 'Pulpit' },
+  { href: '/upload',        ikona: 'dodaj',     label: 'Dodaj' },
+  { href: '/lista',         ikona: 'lista',     label: 'Lista' },
+  { href: '/konta',         ikona: 'konta',     label: 'Konta' },
+  { href: '/wplywy',        ikona: 'wplywy',    label: 'Wpływy' },
+  { href: '/cele',          ikona: 'cele',      label: 'Cele' },
+  { href: '/kategorie',     ikona: 'kategorie', label: 'Kategorie' },
+  { href: '/analiza',       ikona: 'analiza',   label: 'Analiza' },
+  { href: '/powiadomienia', ikona: 'alerty',    label: 'Alerty' },
 ];
+
 
 function _injectBottomNav(me) {
   if (!document.querySelector('nav') || document.querySelector('.bottom-nav')) return;
   const items = [..._BOTTOM_NAV_ITEMS];
-  if (me && authIsAdmin(me)) items.push({ href: '/admin', icon: '⚙️', label: 'Admin' });
+  if (me && authIsAdmin(me)) items.push({ href: '/admin', ikona: 'admin', label: 'Admin' });
   const bar = document.createElement('div');
   bar.className = 'bottom-nav';
   bar.innerHTML = items.map(i => `
     <a href="${i.href}" class="${location.pathname === i.href ? 'active' : ''}">
-      <span class="bn-icon">${i.icon}</span>${i.label}
+      ${ikonaSvg(i.ikona)}${i.label}
     </a>`).join('');
   document.body.appendChild(bar);
   // dosuń aktywną ikonę do widoku (pasek jest przewijany w poziomie)
