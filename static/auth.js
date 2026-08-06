@@ -51,13 +51,11 @@ function _ustawMotyw(m) {
 }
 
 function _odswiezPasekStatusu() {
+  // Pasek nawigacji jest atramentowy w obu motywach, więc pasek statusu
+  // telefonu zostaje ciemny na stałe — inaczej nad ciemnym paskiem apki
+  // świeciłby jasny pas systemu.
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (!meta) return;
-  // color-scheme ustawiamy w palecie razem z resztą tokenów, więc jest
-  // wiarygodnym sygnałem, który motyw faktycznie obowiązuje
-  const ciemny = getComputedStyle(document.documentElement)
-    .getPropertyValue('color-scheme').trim() === 'dark';
-  meta.setAttribute('content', ciemny ? '#16181b' : '#f4f2ee');
+  if (meta) meta.setAttribute('content', '#1a1d20');
 }
 
 function _podepnijMotyw(overlay) {

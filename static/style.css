@@ -109,19 +109,34 @@ body {
   line-height: 1.5;
 }
 
+/* Pasek jest atramentowy w OBU motywach. Logo wyglada najlepiej na czerni,
+   a pasek statusu telefonu i tak jest ciemny — dzieki temu gora ekranu to
+   jedna plaszczyzna, nie dwie. Przedefiniowanie tokenow wewnatrz paska
+   sprawia, ze linki, przyciski i obramowania dostosowuja sie same. */
 nav {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  --surface: #1a1d20;
+  --surface-2: #23262b;
+  --text: #c9c5bc;
+  --heading: #f2efe9;
+  --muted: #8f8a81;
+  --border: #2c3036;
+  --accent: #ff8b8b;
+  --on-primary: #17191c;
+  --primary: #f2efe9;
+  color-scheme: dark;
+
+  background: #1a1d20;
+  border-bottom: 1px solid #2c3036;
   padding: 0 24px;
   display: flex;
   align-items: center;
   gap: 32px;
   height: 56px;
-  box-shadow: var(--shadow);
   position: sticky;
   top: 0;
   z-index: 100;
 }
+nav, nav * { color-scheme: dark; }
 
 nav .logo { font-weight: 700; font-size: 23px; letter-spacing: -.03em; color: var(--heading);
   text-decoration: none; margin-right: 4px; }
@@ -594,11 +609,14 @@ tr:hover td { background: var(--hover); }
 
 /* dolna nawigacja (wstrzykiwana przez auth.js, widoczna tylko na wąskich ekranach) */
 .bottom-nav {
+  --surface: #1a1d20;
+  --muted: #8f8a81;
+  --accent: #ff8b8b;
   display: none;
   position: fixed;
   bottom: 0; left: 0; right: 0;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
+  background: #1a1d20;
+  border-top: 1px solid #2c3036;
   box-shadow: 0 -2px 12px rgba(0,0,0,.06);
   z-index: 200;
   padding-bottom: env(safe-area-inset-bottom);
