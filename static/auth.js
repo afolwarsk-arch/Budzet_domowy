@@ -121,7 +121,7 @@ function _showProfileModal() {
 
     const ostatni = ilu <= 1;
     const wstep = ostatni
-      ? `Jesteś ostatnią osobą w gospodarstwie „${nazwa}". Po wyjściu nikt nie będzie miał dostępu do jego danych — wydatków, wpływów, kont i celów.\n\nDane poczekają 30 dni, po czym zostaną usunięte bezpowrotnie. Zanim wyjdziesz, pobierz kopię przyciskiem „↓ Backup".\n\nWypisać się?`
+      ? `Jesteś ostatnią osobą w gospodarstwie „${nazwa}". Po wyjściu nikt nie będzie miał dostępu do jego danych — wydatków, wpływów, kont i celów.\n\nDane poczekają 30 dni, po czym zostaną usunięte bezpowrotnie. Zanim wyjdziesz, pobierz kopię z menu „⋯" na dashboardzie („Pobierz kopię danych").\n\nWypisać się?`
       : `Wypisać się z gospodarstwa „${nazwa}"? Twoje konto zostanie — od razu będziesz mógł założyć własne gospodarstwo na tym samym mailu.\n\nWspólne dane zostają u pozostałych osób, a Twoje wydatki dalej będą podpisane Twoim pseudonimem.`;
     if (!confirm(wstep)) return;
 
@@ -231,7 +231,7 @@ function _injectProfileButton(me) {
 
 const _SAMOUCZEK_SLAJDY = [
   { znak: true, tytul: 'Witaj w <span class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></span>',
-    opis: 'To wspólny budżet całego gospodarstwa: dodajesz wydatki (zdjęciem paragonu, notatką albo ręcznie), a apka pokazuje statystyki, pilnuje płatności i podpowiada, gdzie oszczędzić. Ten przewodnik przejdzie przez wszystkie funkcje — wrócisz do niego kiedy chcesz przyciskiem ❓ u góry.' },
+    opis: 'To wspólny budżet całego gospodarstwa: dodajesz wydatki (zdjęciem paragonu, notatką albo ręcznie), a apka pokazuje statystyki, pilnuje płatności i podpowiada, gdzie oszczędzić. Ten przewodnik przejdzie przez wszystkie funkcje — wrócisz do niego kiedy chcesz przyciskiem „Samouczek" na górnym pasku.' },
   { ikona: 'aparat', tytul: 'Paragon = zdjęcie',
     opis: 'W „Dodaj wydatek" zrób zdjęcie paragonu — Claude AI sam odczyta sklep, datę, wszystkie pozycje z cenami i przypisze kategorie. Możesz wrzucić kilka paragonów naraz: każdy stanie się osobnym wydatkiem. Przed zapisem wszystko sprawdzisz i poprawisz.' },
   { ikona: 'recznie', tytul: 'Nie chcesz AI? Wpisz ręcznie',
@@ -253,9 +253,9 @@ const _SAMOUCZEK_SLAJDY = [
   { ikona: 'lista', tytul: 'Listy zakupów na żywo',
     opis: 'W „Lista" tworzysz wiele nazwanych list (np. „Biedronka", „Leroy"). Są wspólne i synchronizują się NA ŻYWO — jak odhaczysz mleko, druga osoba w sklepie od razu to widzi. Tap = kupione, przeciągnij za ⠿ = kolejność (np. wg alejek), a listę wstrzymasz, zamkniesz lub usuniesz.' },
   { ikona: 'osoby', tytul: 'Wspólne gospodarstwo',
-    opis: 'Zaproś drugą osobę do gospodarstwa linkiem (przycisk 👥 na dashboardzie) — budżet prowadzicie razem. Kogoś bez konta Google (np. dziecko) dodasz jako „osobę bez konta". Każdy może też usunąć własne konto — jego wydatki zostają, bo należą do gospodarstwa.' },
+    opis: 'Zaproś drugą osobę do gospodarstwa linkiem (menu „⋯” na dashboardzie, pozycja „Zaproś osobę”) — budżet prowadzicie razem. Kogoś bez konta Google (np. dziecko) dodasz jako „osobę bez konta". Każdy może też usunąć własne konto — jego wydatki zostają, bo należą do gospodarstwa.' },
   { ikona: 'dysk', tytul: 'Twoje dane są bezpieczne',
-    opis: 'Cały budżet pobierzesz w każdej chwili przyciskiem „↓ Backup" (plik z danymi). Statystyki, filtry i pseudonimy dostosujesz pod siebie — kliknij swój pseudonim na górnym pasku, żeby go zmienić.' },
+    opis: 'Cały budżet pobierzesz w każdej chwili z menu „⋯" na dashboardzie — pozycja „Pobierz kopię danych". Statystyki, filtry i pseudonimy dostosujesz pod siebie — kliknij swój pseudonim na górnym pasku, żeby go zmienić.' },
   { ikona: 'telefon', tytul: 'Miej budżet w kieszeni',
     opis: 'Na telefonie wybierz w przeglądarce „Dodaj do ekranu głównego" — apka działa jak natywna: dolny pasek nawigacji i aparat do paragonów zawsze pod ręką. To wszystko — miłego oszczędzania! 🎉' },
 ];
@@ -382,12 +382,12 @@ function _injectBottomNav(me) {
 
 // ── Wskazówki kontekstowe (różne per zakładka) ──
 const _TIPS_OGOLNE = [
-  'Samouczek jest zawsze pod przyciskiem ❓ na górnym pasku — wrócisz do niego kiedy chcesz.',
+  'Samouczek jest zawsze pod przyciskiem „Samouczek" na górnym pasku — wrócisz do niego kiedy chcesz.',
   'Na telefonie wybierz „Dodaj do ekranu głównego" — apka działa jak natywna, z dolnym paskiem i aparatem.',
   'Kliknij swój pseudonim na górnym pasku, żeby go zmienić.',
-  'Budżet prowadzicie wspólnie — zaproś drugą osobę przyciskiem 👥 na dashboardzie.',
+  'Budżet prowadzicie wspólnie — zaproś drugą osobę przez menu „⋯" na dashboardzie, pozycja „Zaproś osobę".',
   'Osobę bez konta Google (np. dziecko) dodasz jako „członka bez konta".',
-  'Backup całego budżetu pobierzesz przyciskiem ↓ Backup — to plik, który możesz zachować.',
+  'Kopię całego budżetu pobierzesz z menu „⋯" na dashboardzie — to plik, który możesz zachować.',
 ];
 const _TIPS_STRONY = {
   '/': [
