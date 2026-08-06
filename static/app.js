@@ -78,7 +78,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
             ? `<strong>${esc(p.nazwa)}</strong> — ${kwota} zł przeleje się ${kiedy}${naKonto} — zapewnij środki`
             : `<strong>${esc(p.nazwa)}</strong> — ${kwota} zł zejdzie ${kiedy}${p.konto_nazwa ? ' z konta ' + esc(p.konto_nazwa) : ''} — zapewnij środki`);
       const btn = p.typ === 'reczny'
-        ? `<button onclick="potwierdzPlatnosc(${p.id})" style="white-space:nowrap;border:1px solid ${fg};background:#fff;color:${fg};border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer">✓ Zrobione</button>`
+        ? `<button onclick="potwierdzPlatnosc(${p.id})" style="white-space:nowrap;border:1px solid ${fg};background:var(--surface);color:${fg};border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer">✓ Zrobione</button>`
         : '';
       const xbtn = `<button onclick="dismissPrzyp('${encodeURIComponent(_przypKey(p))}')" title="Zamknij na tę sesję" style="border:none;background:none;color:${fg};opacity:.65;cursor:pointer;font-size:18px;line-height:1;padding:0 2px">✕</button>`;
       return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;background:${bg};color:${fg};border-radius:10px;padding:11px 14px;margin-bottom:8px;font-size:14px">
@@ -548,7 +548,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       <div class="subkat-row" data-idx="${i}">
         <span class="subkat-toggle">▶</span>
         <span style="min-width:160px;font-size:13px">${esc(s.kategoria)}</span>
-        <div class="sklep-bar-wrap"><div class="sklep-bar" style="width:${(s.suma/max*100).toFixed(1)}%;background:#a04ff8"></div></div>
+        <div class="sklep-bar-wrap"><div class="sklep-bar" style="width:${(s.suma/max*100).toFixed(1)}%;background:var(--primary);color:var(--on-primary)"></div></div>
         <span style="white-space:nowrap;color:var(--muted);font-size:13px">${fmt(s.suma)}</span>
       </div>
       <div class="subkat-pozycje hidden" id="subkat-poz-${i}">
@@ -568,7 +568,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
               <td>
                 ${w.sklep || '—'}
                 ${w.notatki ? `<div class="notatka-hint">${w.notatki}</div>` : ''}
-                ${katMode === 'kontekst' && w.kontekst_kategoria === glowna ? `<div style="font-size:11px;color:#a04ff8;margin-top:2px">↩ kontekst${w.kontekst_podkategoria ? ': ' + esc(w.kontekst_podkategoria) : ''}</div>` : ''}
+                ${katMode === 'kontekst' && w.kontekst_kategoria === glowna ? `<div style="font-size:11px;color:var(--accent);margin-top:2px">↩ kontekst${w.kontekst_podkategoria ? ': ' + esc(w.kontekst_podkategoria) : ''}</div>` : ''}
               </td>
               <td><span class="badge ${w.osoba==='Ola'?'ola':''}">${w.osoba}</span></td>
               <td style="text-align:right;font-weight:600">${fmt(w.suma)}</td>
@@ -616,7 +616,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
               ${items.map(p => `<tr>
                 <td>
                   ${esc(p.nazwa)}
-                  ${katMode === 'kontekst' && p.kontekst_podkategoria && p.oryg_subkat !== p.kontekst_podkategoria ? `<div style="font-size:10px;color:#aaa">${esc(p.oryg_subkat)}</div>` : ''}
+                  ${katMode === 'kontekst' && p.kontekst_podkategoria && p.oryg_subkat !== p.kontekst_podkategoria ? `<div style="font-size:10px;color:var(--muted)">${esc(p.oryg_subkat)}</div>` : ''}
                 </td>
                 <td style="color:var(--muted)">${esc(p.sklep || '—')}</td>
                 <td style="color:var(--muted)">${p.data}</td>
@@ -689,7 +689,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         <td>${esc(p.sklep || '—')}</td>
         <td>
           ${esc(p.nazwa)}
-          ${p.kontekst_podkategoria && p.oryg_subkat !== p.kontekst_podkategoria ? `<div style="font-size:10px;color:#aaa">${esc(p.oryg_subkat)}</div>` : ''}
+          ${p.kontekst_podkategoria && p.oryg_subkat !== p.kontekst_podkategoria ? `<div style="font-size:10px;color:var(--muted)">${esc(p.oryg_subkat)}</div>` : ''}
         </td>
         <td style="text-align:right">${fmt(p.cena)} × ${p.ilosc}</td>
         <td style="text-align:right;font-weight:600">${fmt(p.suma)}</td>
@@ -881,7 +881,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         </td>
         <td style="font-size:13px">
           ${w.okazja ? `<span style="font-weight:500;color:#7c3aed">${esc(w.okazja)}</span>` : ''}
-          ${w.kontekst_kategoria ? `<div style="font-size:11px;color:#a04ff8">→ ${esc(w.kontekst_kategoria)}</div>` : ''}
+          ${w.kontekst_kategoria ? `<div style="font-size:11px;color:var(--accent)">→ ${esc(w.kontekst_kategoria)}</div>` : ''}
         </td>
         <td style="font-weight:600">${fmt(w.suma)}</td>
         <td><span class="badge ${w.osoba === 'Ola' ? 'ola' : ''}">${w.osoba}</span></td>
@@ -935,8 +935,8 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
               <tr>
                 <td>${p.nazwa}</td>
                 <td>
-                  <span class="badge" style="background:#eef1fb;margin-right:4px">${p.kategoria_glowna || ''}</span>
-                  <span class="badge" style="background:#f0f3ff;color:#6b7280">${p.kategoria}</span>
+                  <span class="badge" style="background:var(--surface-3);margin-right:4px">${p.kategoria_glowna || ''}</span>
+                  <span class="badge" style="background:var(--surface-3);color:#6b7280">${p.kategoria}</span>
                 </td>
                 <td style="text-align:right;color:var(--muted)">${p.ilosc > 1 ? p.ilosc + ' szt.' : ''}</td>
                 <td style="text-align:right;color:var(--muted)">${fmt(p.cena)}</td>
@@ -1073,7 +1073,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         <td>
           <span class="sklep-name">${esc(x.sklep) || '—'}</span>
           ${x.trafienia ? `<div class="notatka-hint">${esc(x.trafienia)}</div>` : ''}
-          ${x.notatki ? `<div class="notatka-hint" style="color:#8a8f9c">📝 ${esc(x.notatki)}</div>` : ''}
+          ${x.notatki ? `<div class="notatka-hint" style="color:var(--muted)">📝 ${esc(x.notatki)}</div>` : ''}
         </td>
         <td><span class="badge ${x.osoba === 'Ola' ? 'ola' : ''}">${esc(x.osoba)}</span></td>
         <td style="text-align:right;font-weight:600">${fmt(x.suma)}</td>
@@ -1115,7 +1115,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     try {
       res = await authFetch(url).then(r => r.json());
     } catch (e) {
-      panel.innerHTML = '<p style="color:#d32f2f;font-size:13px">Błąd: ' + esc(e.message) + '</p>';
+      panel.innerHTML = '<p style="color:var(--danger);font-size:13px">Błąd: ' + esc(e.message) + '</p>';
       return;
     }
     renderCeny(res, q, kg, k);
@@ -1178,7 +1178,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         </tr>`).join('')}</tbody>
       </table></div>` : '';
     const odrzuconeNote = res.odrzucone
-      ? `<div style="font-size:12px;color:#8a6d00;background:#fff8e1;border:1px solid #f0e3b0;border-radius:8px;padding:7px 11px;margin-bottom:10px">
+      ? `<div style="font-size:12px;color:#8a6d00;background:var(--warn-bg);border:1px solid #f0e3b0;border-radius:8px;padding:7px 11px;margin-bottom:10px">
            Pominięto <strong>${res.odrzucone}</strong> ${res.odrzucone === 1 ? 'nietypowy pomiar' : 'nietypowych pomiarów'} odstający(ch) od reszty — prawdopodobnie wpis „na kwotę" (np. bez ilości), nie cena jednostkowa. Nie psuje wykresu.
          </div>`
       : '';
@@ -1235,7 +1235,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     try {
       res = await authFetch('/api/szukaj?q=' + encodeURIComponent(q)).then(r => r.json());
     } catch (e) {
-      szukajWyniki.innerHTML = '<p style="color:#d32f2f;font-size:13px">Błąd wyszukiwania: ' + esc(e.message) + '</p>';
+      szukajWyniki.innerHTML = '<p style="color:var(--danger);font-size:13px">Błąd wyszukiwania: ' + esc(e.message) + '</p>';
       return;
     }
     renderSearchResults(res, q);
@@ -1403,7 +1403,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
       const del = document.createElement('button');
       del.textContent = '×';
       del.title = 'Usuń';
-      del.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#e74c3c;color:#fff;font-size:12px;line-height:1;cursor:pointer;padding:0';
+      del.style.cssText = 'position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:var(--danger);color:#fff;font-size:12px;line-height:1;cursor:pointer;padding:0';
       del.onclick = (e) => { e.stopPropagation(); selectedFiles.splice(i, 1); renderFilePreviews(); fileInput.value = ''; };
       wrap.appendChild(img);
       wrap.appendChild(del);
@@ -1617,7 +1617,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
             ${subOptions(glowna, p.kategoria)}
           </select>
           ${maKontekst ? `
-          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#888;white-space:nowrap;cursor:pointer;margin-left:4px">
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap;cursor:pointer;margin-left:4px">
             <input type="checkbox" ${p.poza_kontekstem ? 'checked' : ''}
               onchange="updatePozycja(${ri},${pi},'poza_kontekstem',this.checked)"
               style="cursor:pointer">

@@ -22,6 +22,8 @@
   --accent-strong: #5b4585;  /* na tekst przy jasnym tle */
   --accent-soft: #efe9fa;
   --accent-border: #d8c9f0;
+  --marka: #9b6fe8;          /* kropki w logo — jaśniejsze niż --accent,
+                                bo to znak graficzny, nie tekst */
 
   --good: #4f7a52;      --good-bg: #e9f2e9;   --good-border: #c3ddc5;
   --danger: #b4453a;    --danger-bg: #fbeae8; --danger-border: #f0cac5;
@@ -54,6 +56,7 @@
     --accent-strong: #cbb8ee;
     --accent-soft: #2a2440;
     --accent-border: #3d3358;
+    --marka: #c3a8f5;
 
     --good: #6fa572;    --good-bg: #1d2a1f;   --good-border: #2f4432;
     --danger: #d4695c;  --danger-bg: #2e1d1b; --danger-border: #4a2c28;
@@ -85,6 +88,7 @@
   --accent-strong: #cbb8ee;
   --accent-soft: #2a2440;
   --accent-border: #3d3358;
+  --marka: #c3a8f5;
 
   --good: #6fa572;    --good-bg: #1d2a1f;   --good-border: #2f4432;
   --danger: #d4695c;  --danger-bg: #2e1d1b; --danger-border: #4a2c28;
@@ -631,4 +635,28 @@ tr:hover td { background: var(--hover); }
   main { padding: 20px 14px; }
   .btn-camera { display: flex; width: 100%; justify-content: center; margin-bottom: 12px; padding: 13px; font-size: 15px; }
   .drop-zone { padding: 24px 16px; }
+}
+
+
+/* ── logo ────────────────────────────────────────────────────────────────
+   Kropka nad „i" jest częścią litery, więc nie da się jej pokolorować
+   w zwykłym tekście. Używamy bezkropkowego „ı" (U+0131) i dorysowujemy
+   kropkę pseudoelementem — dzięki temu obie są tym samym znakiem. */
+.logo .lg-i { position: relative; }
+.logo .lg-i::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -.06em;
+  width: .17em;
+  height: .17em;
+  margin-left: -.085em;
+  border-radius: 50%;
+  background: var(--marka);
+}
+.logo .lg-kropka {
+  color: var(--marka);
+  font-size: 1.25em;
+  line-height: 0;
+  vertical-align: baseline;
 }

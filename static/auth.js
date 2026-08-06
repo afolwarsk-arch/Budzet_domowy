@@ -85,15 +85,15 @@ function _showProfileModal() {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;';
   overlay.innerHTML = `
-    <div style="background:white;border-radius:12px;padding:28px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
-      <h3 style="margin-bottom:16px;font-size:1.1rem;color:#1a1a1a">Twój pseudonim</h3>
+    <div style="background:var(--surface);border-radius:12px;padding:28px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <h3 style="margin-bottom:16px;font-size:1.1rem;color:var(--text)">Twój pseudonim</h3>
       <input id="_mn" type="text" value="${current}" maxlength="30" placeholder="np. Adam, Ola, Mama"
         style="width:100%;padding:10px 12px;border:1px solid #dadce0;border-radius:8px;font-size:0.95rem;margin-bottom:12px;box-sizing:border-box;outline:none">
       <div style="display:flex;gap:8px">
-        <button id="_ms" style="flex:1;padding:10px;background:#4361ee;color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:500">Zapisz</button>
-        <button id="_mc" style="flex:1;padding:10px;background:#f1f3f5;color:#333;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">Anuluj</button>
+        <button id="_ms" style="flex:1;padding:10px;background:var(--primary);color:var(--on-primary);border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:500">Zapisz</button>
+        <button id="_mc" style="flex:1;padding:10px;background:var(--surface);color:var(--text);border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">Anuluj</button>
       </div>
-      <div id="_me" style="color:#d32f2f;font-size:0.8rem;margin-top:8px;display:none"></div>
+      <div id="_me" style="color:var(--danger);font-size:0.8rem;margin-top:8px;display:none"></div>
       <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px">
         <div style="font-size:0.78rem;color:var(--muted);margin-bottom:7px">Wygląd</div>
         <div id="_mtheme" style="display:flex;gap:6px">
@@ -103,8 +103,8 @@ function _showProfileModal() {
         </div>
       </div>
       <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px;display:flex;flex-direction:column;gap:8px">
-        <button id="_mleave" style="width:100%;padding:9px;background:#fff;color:#b26a00;border:1px solid #e8c07d;border-radius:8px;cursor:pointer;font-size:0.85rem">Wypisz się z gospodarstwa</button>
-        <button id="_mdel" style="width:100%;padding:9px;background:#fff;color:#c0392b;border:1px solid #e6b0aa;border-radius:8px;cursor:pointer;font-size:0.85rem">Usuń moje konto</button>
+        <button id="_mleave" style="width:100%;padding:9px;background:var(--surface);color:var(--warn);border:1px solid #e8c07d;border-radius:8px;cursor:pointer;font-size:0.85rem">Wypisz się z gospodarstwa</button>
+        <button id="_mdel" style="width:100%;padding:9px;background:var(--surface);color:var(--danger);border:1px solid #e6b0aa;border-radius:8px;cursor:pointer;font-size:0.85rem">Usuń moje konto</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -192,7 +192,7 @@ function _injectProfileButton(me) {
     const adminLink = document.createElement('a');
     adminLink.href = '/admin';
     adminLink.textContent = 'Admin';
-    adminLink.style.cssText = 'font-size:0.85rem;color:#888;';
+    adminLink.style.cssText = 'font-size:0.85rem;color:var(--muted);';
     const logoutBtn = nav.querySelector('button');
     if (logoutBtn) nav.insertBefore(adminLink, logoutBtn);
     else nav.appendChild(adminLink);
@@ -200,7 +200,7 @@ function _injectProfileButton(me) {
   const help = document.createElement('button');
   help.textContent = '❓';
   help.title = 'Samouczek — jak korzystać z aplikacji';
-  help.style.cssText = 'padding:6px 10px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;';
+  help.style.cssText = 'padding:6px 10px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:0.85rem;';
   help.onclick = () => pokazSamouczek(false);
   const logoutBtn0 = nav.querySelector('button');
   if (logoutBtn0) nav.insertBefore(help, logoutBtn0);
@@ -210,7 +210,7 @@ function _injectProfileButton(me) {
   btn.id = 'nav-profile-btn';
   btn.textContent = me.display_name || me.name.split(' ')[0];
   btn.title = 'Zmień pseudonim';
-  btn.style.cssText = 'padding:6px 14px;cursor:pointer;border:1px solid #4361ee;border-radius:6px;background:white;color:#4361ee;font-size:0.85rem;font-weight:500;';
+  btn.style.cssText = 'padding:6px 14px;cursor:pointer;border:1px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--accent);font-size:0.85rem;font-weight:500;';
   btn.onclick = _showProfileModal;
   const logoutBtn = nav.querySelector('button');
   if (logoutBtn) nav.insertBefore(btn, logoutBtn);
@@ -261,19 +261,19 @@ function pokazSamouczek(pierwszyRaz) {
     const s = _SAMOUCZEK_SLAJDY[idx];
     const ostatni = idx === _SAMOUCZEK_SLAJDY.length - 1;
     overlay.innerHTML = `
-      <div style="background:#fff;border-radius:18px;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,.3)">
+      <div style="background:var(--surface);border-radius:18px;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,.3)">
         <div style="height:128px;display:flex;align-items:center;justify-content:center;font-size:58px;background:linear-gradient(135deg,hsl(${(idx * 29) % 360}, 78%, 63%),hsl(${(idx * 29 + 40) % 360}, 74%, 52%));border-radius:18px 18px 0 0">${s.emoji}</div>
         <div style="padding:22px 26px 18px">
-          <h3 style="font-size:1.15rem;margin:0 0 8px;color:#1a1f2e">${s.tytul}</h3>
-          <p style="font-size:14px;line-height:1.6;color:#444;margin:0 0 16px">${s.opis}</p>
+          <h3 style="font-size:1.15rem;margin:0 0 8px;color:var(--text)">${s.tytul}</h3>
+          <p style="font-size:14px;line-height:1.6;color:var(--text);margin:0 0 16px">${s.opis}</p>
           <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-bottom:14px">
             ${_SAMOUCZEK_SLAJDY.map((_, i) => `<span style="width:8px;height:8px;border-radius:50%;background:${i === idx ? '#4f7ef8' : '#dde3f0'}"></span>`).join('')}
           </div>
           <div style="display:flex;gap:8px;align-items:center">
-            <button data-t="pomin" style="background:none;border:none;color:#98a0b3;cursor:pointer;font-size:13px;padding:8px 4px">Pomiń</button>
+            <button data-t="pomin" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:8px 4px">Pomiń</button>
             <span style="flex:1"></span>
-            ${idx > 0 ? '<button data-t="wstecz" style="background:#f0f2f8;border:none;border-radius:8px;padding:10px 18px;cursor:pointer;font-size:14px;color:#444">Wstecz</button>' : ''}
-            <button data-t="dalej" style="background:#4f7ef8;border:none;border-radius:8px;padding:10px 22px;cursor:pointer;font-size:14px;color:#fff;font-weight:600">${ostatni ? 'Zaczynamy! 🎉' : 'Dalej'}</button>
+            ${idx > 0 ? '<button data-t="wstecz" style="background:var(--surface-3);border:none;border-radius:8px;padding:10px 18px;cursor:pointer;font-size:14px;color:var(--text)">Wstecz</button>' : ''}
+            <button data-t="dalej" style="background:var(--primary);border:none;border-radius:8px;padding:10px 22px;cursor:pointer;font-size:14px;color:#fff;font-weight:600">${ostatni ? 'Zaczynamy! 🎉' : 'Dalej'}</button>
           </div>
         </div>
       </div>`;
@@ -392,9 +392,9 @@ function _injectTip(me) {
   const el = document.createElement('div');
   el.id = 'tip-dnia';
   el.style.cssText = 'margin-bottom:14px';
-  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;background:#f0f7ff;border:1px solid #d5e5fb;color:#2c5aa0;border-radius:10px;padding:9px 14px;font-size:13.5px">
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;background:var(--surface-3);border:1px solid #d5e5fb;color:#2c5aa0;border-radius:10px;padding:9px 14px;font-size:13.5px">
       <span>💡 ${tekst}</span><span style="flex:1"></span>
-      <button onclick="localStorage.setItem('${kOff}','1');this.closest('#tip-dnia').remove()" style="background:none;border:none;color:#98a0b3;cursor:pointer;font-size:12px;white-space:nowrap">nie pokazuj więcej</button>
+      <button onclick="localStorage.setItem('${kOff}','1');this.closest('#tip-dnia').remove()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;white-space:nowrap">nie pokazuj więcej</button>
       <button onclick="this.closest('#tip-dnia').remove()" style="background:none;border:none;color:#2c5aa0;cursor:pointer;font-size:16px;line-height:1;padding:0 2px">✕</button>
     </div>`;
   main.insertBefore(el, main.firstChild);
@@ -416,9 +416,9 @@ async function authRequireHousehold() {
           const d = await res.json().catch(() => ({}));
           document.body.innerHTML = `<div style="max-width:420px;margin:80px auto;padding:0 20px;text-align:center;font-family:system-ui">
             <div style="font-size:44px;margin-bottom:12px">🚫</div>
-            <h2 style="margin:0 0 8px;color:#1a1f2e">Konto zawieszone</h2>
-            <p style="color:#555;line-height:1.5">${d.detail || 'Twoje konto zostało zawieszone przez administratora.'}</p>
-            <button onclick="authLogout()" style="margin-top:18px;padding:9px 18px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer">Wyloguj</button>
+            <h2 style="margin:0 0 8px;color:var(--text)">Konto zawieszone</h2>
+            <p style="color:var(--text);line-height:1.5">${d.detail || 'Twoje konto zostało zawieszone przez administratora.'}</p>
+            <button onclick="authLogout()" style="margin-top:18px;padding:9px 18px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer">Wyloguj</button>
           </div>`;
           return reject();
         }
