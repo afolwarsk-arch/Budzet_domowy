@@ -1284,6 +1284,25 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   const panelManual = document.getElementById('panel-manual');
   const aiHintGroup = document.getElementById('ai-hint-group');
   const btnManualStart = document.getElementById('btn-manual-start');
+  // ── tryb ekspresowy ──
+  // Wejscie ze skrotu aplikacji (?skan=1): pokazujemy sam przycisk aparatu.
+  // Po zrobieniu zdjecia wracamy do pelnego widoku, bo tam sa wyniki.
+  const ekranSkanu = document.getElementById('ekran-skanu');
+  const ekranPelny = document.getElementById('ekran-pelny');
+  function wyjdzZeSkanu() {
+    if (ekranSkanu) ekranSkanu.style.display = 'none';
+    if (ekranPelny) ekranPelny.style.display = '';
+  }
+  if (ekranSkanu && new URLSearchParams(location.search).has('skan')) {
+    ekranSkanu.style.display = 'block';
+    if (ekranPelny) ekranPelny.style.display = 'none';
+    document.getElementById('btn-skan').onclick = () => {
+      document.getElementById('camera-input').click();
+    };
+    document.getElementById('btn-skan-pelny').onclick = wyjdzZeSkanu;
+    document.getElementById('camera-input').addEventListener('change', wyjdzZeSkanu);
+  }
+
   const cardsContainer = document.getElementById('paragony-cards');
   const saveAllBtn = document.getElementById('btn-save-all');
 
