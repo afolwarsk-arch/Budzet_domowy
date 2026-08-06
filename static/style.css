@@ -46,9 +46,9 @@
     --border: #2e333a;
     --border-soft: #272b31;
 
-    --primary: #a78bda;      /* na atramencie to lawenda niesie akcję */
-    --primary-dark: #b9a2e4;
-    --on-primary: #17151d;
+    --primary: #eceae3;      /* na atramencie akcją steruje kość, nie kolor */
+    --primary-dark: #fbf9f4;
+    --on-primary: #17191c;
 
     --accent: #b9a2e4;
     --accent-strong: #cbb8ee;
@@ -77,9 +77,9 @@
   --border: #2e333a;
   --border-soft: #272b31;
 
-  --primary: #a78bda;
-  --primary-dark: #b9a2e4;
-  --on-primary: #17151d;
+  --primary: #eceae3;
+  --primary-dark: #fbf9f4;
+  --on-primary: #17191c;
 
   --accent: #b9a2e4;
   --accent-strong: #cbb8ee;
@@ -178,7 +178,7 @@ select, input[type=month], input[type=date], input[type=text], input[type=number
   transition: border-color .15s;
 }
 
-select:focus, input:focus, textarea:focus { border-color: var(--primary); }
+select:focus, input:focus, textarea:focus { border-color: var(--accent); }
 
 textarea { resize: vertical; min-height: 90px; width: 100%; }
 
@@ -419,12 +419,12 @@ tr:hover td { background: var(--hover); }
   font-weight: 500;
   transition: color .15s;
 }
-.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 .sklepy-list { display: flex; flex-direction: column; gap: 8px; }
 .sklep-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
 .sklep-bar-wrap { flex: 1; margin: 0 12px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
-.sklep-bar { height: 100%; background: var(--primary); border-radius: 3px; }
+.sklep-bar { height: 100%; background: var(--accent); border-radius: 3px; }
 
 /* paragon cards (upload page) */
 .paragon-card {
@@ -479,7 +479,7 @@ tr:hover td { background: var(--hover); }
 
 .sklep-name { font-weight: 500; }
 
-.pozycje-row td { padding: 0 !important; border-bottom: 2px solid var(--primary) !important; }
+.pozycje-row td { padding: 0 !important; border-bottom: 2px solid var(--accent) !important; }
 .pozycje-row.hidden { display: none; }
 
 .pozycje-detail {
@@ -568,7 +568,7 @@ tr:hover td { background: var(--hover); }
   text-decoration: none;
 }
 .bottom-nav a .bn-icon { font-size: 21px; line-height: 1.15; }
-.bottom-nav a.active { color: var(--primary); font-weight: 600; }
+.bottom-nav a.active { color: var(--accent); font-weight: 600; }
 
 /* przycisk aparatu (upload) — tylko na telefonie */
 .btn-camera { display: none; }
