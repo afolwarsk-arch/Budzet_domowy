@@ -199,11 +199,19 @@ h2 { font-size: 16px; font-weight: 600; margin-bottom: 14px;
 }
 .bento-tile .drobne { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
 
+/* Kafelek bilansu: tlo niesie ZNAK, a nie kolor marki. Wczesniej bylo stale
+   koralowe, wiec dodatni bilans siedzial na czerwonawym polu i sugerowal
+   problem. Domyslnie neutralny; klase plus/minus nadaje renderBilans. */
 .bento-duzy {
   grid-column: span 2; grid-row: span 2;
-  background: var(--accent-soft); border-color: var(--accent-border);
+  background: var(--surface); border-color: var(--border);
+  transition: background .35s ease, border-color .35s ease;
 }
-.bento-duzy .etyk { color: var(--accent-strong); }
+.bento-duzy.plus { background: var(--good-bg); border-color: var(--good-border); }
+.bento-duzy.minus { background: var(--danger-bg); border-color: var(--danger-border); }
+.bento-duzy.plus .etyk { color: var(--good); }
+.bento-duzy.minus .etyk { color: var(--danger); }
+@media (prefers-reduced-motion: reduce) { .bento-duzy { transition: none; } }
 .bento-duzy .wart { font-size: 40px; }
 .bento-szeroki { grid-column: span 2; }
 

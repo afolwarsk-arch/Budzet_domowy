@@ -397,18 +397,27 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   }
 
   // Bilans okresu w kafelku — zielony na plusie, czerwony na minusie.
+  // Tło kafelka też niesie znak: wcześniej było stale w kolorze akcentu
+  // (koral), więc dodatni bilans siedział na czerwonawym polu i sugerował
+  // problem, choć wszystko było w porządku.
   function renderBilans(d) {
     const el = document.getElementById('stat-bilans');
     const sub = document.getElementById('stat-bilans-sub');
+    const kafelek = document.getElementById('bilans-kafelek');
     if (!el) return;
+    const znak = (k) => {
+      if (kafelek) kafelek.classList.remove('plus', 'minus'), k && kafelek.classList.add(k);
+    };
     if (!d || typeof d.bilans !== 'number') {
       el.textContent = '—'; el.style.color = ''; el.title = '';
+      znak(null);
       if (sub) sub.textContent = '';
       return;
     }
     const b = d.bilans;
     el.textContent = (b > 0 ? '+' : '') + fmt(b);   // Intl sam dokłada „−" dla ujemnych
     el.style.color = b > 0 ? 'var(--good)' : b < 0 ? 'var(--danger)' : 'var(--heading)';
+    znak(b > 0 ? 'plus' : b < 0 ? 'minus' : null);
     el.title = `Wpływy ${fmt(d.wplywy)} − wydatki ${fmt(d.wydatki)}`;
     // krótki dopisek (zaokrąglone do pełnych zł, żeby zmieścił się w kafelku)
     if (sub) {
