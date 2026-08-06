@@ -8,6 +8,8 @@
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#1a1d20">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preload" as="script" href="/static/auth.js">
+  <link rel="preload" as="script" href="/static/app.js">
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com">
   <link rel="preconnect" href="https://securetoken.googleapis.com">
@@ -108,6 +110,35 @@
   </div>
 </main>
 
+
+<script>
+  // Tryb ekspresowy musi dzialac natychmiast: przycisk aparatu nie potrzebuje
+  // ani logowania, ani danych z serwera. Czekanie na Firebase i app.js (86 kB)
+  // opoznialo go o sekundy. app.js pozniej tylko dokleja obsluge wyniku.
+  (function () {
+    if (!new URLSearchParams(location.search).has('skan')) return;
+    var pokaz = function () {
+      var skan = document.getElementById('ekran-skanu');
+      var pelny = document.getElementById('ekran-pelny');
+      var wejscie = document.getElementById('camera-input');
+      if (!skan || !wejscie) return;
+      skan.style.display = 'block';
+      if (pelny) pelny.style.display = 'none';
+      document.getElementById('btn-skan').onclick = function () { wejscie.click(); };
+      document.getElementById('btn-skan-pelny').onclick = function () {
+        skan.style.display = 'none';
+        if (pelny) pelny.style.display = '';
+      };
+      wejscie.addEventListener('change', function () {
+        skan.style.display = 'none';
+        if (pelny) pelny.style.display = '';
+      });
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', pokaz);
+    } else { pokaz(); }
+  })();
+</script>
 <script defer src="/static/app.js?v=8"></script>
 </body>
 </html>
