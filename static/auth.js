@@ -186,23 +186,30 @@ window.authIsAdmin = authIsAdmin;
 function _injectProfileButton(me) {
   const nav = document.querySelector('nav');
   if (!nav) return;
+
+  // Wszystko po prawej trafia do jednej grupy. Wcześniej każdy element
+  // wstawiał się przed nav.querySelector('button') — a po dodaniu „❓" to on
+  // stawał się pierwszym przyciskiem, więc kolejność wychodziła przypadkowa
+  // i pseudonim lądował daleko od „Wyloguj".
+  const wyloguj = nav.querySelector('button');
+  const grupa = document.createElement('div');
+  grupa.className = 'nav-prawa';
+  nav.appendChild(grupa);
+
   if (_ADMIN_EMAILS.includes(me.email)) {
     const adminLink = document.createElement('a');
     adminLink.href = '/admin';
     adminLink.textContent = 'Admin';
     adminLink.style.cssText = 'font-size:0.85rem;color:var(--muted);';
-    const logoutBtn = nav.querySelector('button');
-    if (logoutBtn) nav.insertBefore(adminLink, logoutBtn);
-    else nav.appendChild(adminLink);
+    grupa.appendChild(adminLink);
   }
+
   const help = document.createElement('button');
   help.textContent = '❓';
   help.title = 'Samouczek — jak korzystać z aplikacji';
-  help.style.cssText = 'padding:6px 10px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:0.85rem;';
+  help.style.cssText = 'padding:6px 10px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.85rem;';
   help.onclick = () => pokazSamouczek(false);
-  const logoutBtn0 = nav.querySelector('button');
-  if (logoutBtn0) nav.insertBefore(help, logoutBtn0);
-  else nav.appendChild(help);
+  grupa.appendChild(help);
 
   const btn = document.createElement('button');
   btn.id = 'nav-profile-btn';
@@ -210,9 +217,12 @@ function _injectProfileButton(me) {
   btn.title = 'Zmień pseudonim';
   btn.style.cssText = 'padding:6px 14px;cursor:pointer;border:1px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--accent);font-size:0.85rem;font-weight:500;';
   btn.onclick = _showProfileModal;
-  const logoutBtn = nav.querySelector('button');
-  if (logoutBtn) nav.insertBefore(btn, logoutBtn);
-  else nav.appendChild(btn);
+  grupa.appendChild(btn);
+
+  if (wyloguj) {
+    wyloguj.style.marginLeft = '';   // odsuwanie robi teraz grupa
+    grupa.appendChild(wyloguj);
+  }
 }
 
 const _SAMOUCZEK_SLAJDY = [

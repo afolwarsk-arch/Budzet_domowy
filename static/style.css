@@ -18,10 +18,10 @@
   --primary-dark: #14171a;
   --on-primary: #fbf9f4;
 
-  --accent: #7c5fbd;         /* lawenda — marka */
-  --accent-strong: #5b4585;  /* na tekst przy jasnym tle */
-  --accent-soft: #efe9fa;
-  --accent-border: #d8c9f0;
+  --accent: #c94f43;         /* koral przyciemniony — przechodzi kontrast na tekst */
+  --accent-strong: #9c3a30;  /* na tekst przy jasnym tle */
+  --accent-soft: #fbeae7;
+  --accent-border: #f2c9c2;
   --marka: #ff6b6b;          /* koral — kropki w logo */
 
   --good: #4f7a52;      --good-bg: #e9f2e9;   --good-border: #c3ddc5;
@@ -51,10 +51,10 @@
     --primary-dark: #fbf9f4;
     --on-primary: #17191c;
 
-    --accent: #b9a2e4;
-    --accent-strong: #cbb8ee;
-    --accent-soft: #2a2440;
-    --accent-border: #3d3358;
+    --accent: #ff8b8b;
+    --accent-strong: #ffa8a8;
+    --accent-soft: #3a2220;
+    --accent-border: #55302c;
     --marka: #ff6b6b;
 
     --good: #6fa572;    --good-bg: #1d2a1f;   --good-border: #2f4432;
@@ -83,10 +83,10 @@
   --primary-dark: #fbf9f4;
   --on-primary: #17191c;
 
-  --accent: #b9a2e4;
-  --accent-strong: #cbb8ee;
-  --accent-soft: #2a2440;
-  --accent-border: #3d3358;
+  --accent: #ff8b8b;
+  --accent-strong: #ffa8a8;
+  --accent-soft: #3a2220;
+  --accent-border: #55302c;
   --marka: #ff6b6b;
 
   --good: #6fa572;    --good-bg: #1d2a1f;   --good-border: #2f4432;
@@ -138,7 +138,7 @@ nav {
 }
 nav, nav * { color-scheme: dark; }
 
-nav .logo { font-weight: 700; font-size: 23px; letter-spacing: -.03em; color: var(--heading);
+nav .logo { font-weight: 700; font-size: 27px; letter-spacing: -.03em; color: var(--heading);
   text-decoration: none; margin-right: 4px; }
 nav a { color: var(--muted); text-decoration: none; font-size: 14px; }
 nav a:hover, nav a.active { color: var(--accent); }
@@ -695,3 +695,7 @@ tr:hover td { background: var(--hover); }
   left: -.047em;            /* (srednica - szerokosc "ı") / 2 = .095 - .142 */
   vertical-align: .66em;    /* dol kropki wyraznie nad wysokoscia x (~.50em) */
 }
+
+
+/* prawa strona paska: Admin, samouczek, pseudonim, Wyloguj — razem */
+.nav-prawa { margin-left: auto; display: flex; align-items: center; gap: 8px; }
