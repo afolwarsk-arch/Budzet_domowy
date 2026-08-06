@@ -638,24 +638,7 @@ tr:hover td { background: var(--hover); }
 }
 
 
-/* ── logo ────────────────────────────────────────────────────────────────
-   Kropka nad „i" jest częścią litery, więc nie da się jej pokolorować
-   w zwykłym tekście. Używamy bezkropkowego „ı" (U+0131) i dorysowujemy
-   kropkę pseudoelementem — dzięki temu obie są tym samym znakiem. */
-.logo .lg-i { position: relative; }
-.logo .lg-i::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  /* wartosci policzone z metryk kroju: dokladnie tam, gdzie Segoe UI stawia
-     wlasna kropke nad "i", tylko wieksza i w kolorze marki */
-  top: .342em;
-  width: .190em;
-  height: .190em;
-  margin-left: -.095em;
-  border-radius: 50%;
-  background: var(--marka);
-}
+
 /* kropka koncowa rysowana tak samo jak ta nad "i" — rownej wielkosci */
 .logo .lg-kropka {
   display: inline-block;
@@ -667,4 +650,28 @@ tr:hover td { background: var(--hover); }
   text-indent: -9999px;
   overflow: hidden;
   vertical-align: baseline;
+}
+
+/* ── logo ────────────────────────────────────────────────────────────────
+   Obie kropki to ten sam element: kolo o srednicy .19em.
+   Pozycja pionowa przez vertical-align, czyli wzgledem LINII PISMA —
+   inaczej niz top/bottom, ktore zaleza od tego, jak przegladarka wyznacza
+   pole tekstowe kroju. Kropka konczaca siedzi na linii pisma, kropka nad
+   "i" jest podniesiona tuz nad wysokosc x. */
+.logo .lg-kropka,
+.logo .lg-i .lg-kropka {
+  display: inline-block;
+  width: .19em;
+  height: .19em;
+  border-radius: 50%;
+  background: var(--marka);
+  vertical-align: baseline;
+}
+.logo .lg-kropka { margin-left: .085em; }
+.logo .lg-i { white-space: nowrap; }
+.logo .lg-i .lg-kropka {
+  margin-left: -.19em;      /* cofnij nad trzon litery */
+  position: relative;
+  left: -.048em;            /* dosrodkowanie wzgledem szerokosci "ı" */
+  vertical-align: .66em;    /* dol kropki wyraznie nad wysokoscia x (~.50em) */
 }
