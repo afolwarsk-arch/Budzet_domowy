@@ -666,12 +666,15 @@ tr:hover td { background: var(--hover); }
   border-radius: 50%;
   background: var(--marka);
   vertical-align: baseline;
+  /* zerujemy trakting w srodku logo — inaczej ujemny letter-spacing paska
+     dokladalby sie po literze i po kropce, przesuwajac ja w lewo */
+  letter-spacing: normal;
 }
 .logo .lg-kropka { margin-left: .085em; }
-.logo .lg-i { white-space: nowrap; }
+.logo .lg-i { white-space: nowrap; letter-spacing: normal; }
 .logo .lg-i .lg-kropka {
-  margin-left: -.19em;      /* cofnij nad trzon litery */
+  margin-left: -.19em;      /* cofnij nad pole litery */
   position: relative;
-  left: -.048em;            /* dosrodkowanie wzgledem szerokosci "ı" */
+  left: -.047em;            /* (srednica - szerokosc "ı") / 2 = .095 - .142 */
   vertical-align: .66em;    /* dol kropki wyraznie nad wysokoscia x (~.50em) */
 }
