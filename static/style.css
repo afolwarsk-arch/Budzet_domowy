@@ -181,8 +181,8 @@ h2 { font-size: 16px; font-weight: 600; margin-bottom: 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 15px 17px;
-  min-height: 104px;
+  padding: 14px 16px;
+  min-height: 84px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -194,7 +194,7 @@ h2 { font-size: 16px; font-weight: 600; margin-bottom: 14px;
   color: var(--muted); line-height: 1.35;
 }
 .bento-tile .wart {
-  font-size: 21px; font-weight: 700; letter-spacing: -.025em;
+  font-size: 25px; font-weight: 700; letter-spacing: -.025em;
   color: var(--heading); font-variant-numeric: tabular-nums; line-height: 1.15;
 }
 .bento-tile .drobne { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
@@ -204,14 +204,14 @@ h2 { font-size: 16px; font-weight: 600; margin-bottom: 14px;
   background: var(--accent-soft); border-color: var(--accent-border);
 }
 .bento-duzy .etyk { color: var(--accent-strong); }
-.bento-duzy .wart { font-size: 34px; }
+.bento-duzy .wart { font-size: 40px; }
 .bento-szeroki { grid-column: span 2; }
 
 @media (max-width: 700px) {
   .bento { grid-template-columns: 1fr 1fr; gap: 8px; }
   .bento-duzy { grid-row: span 1; }
-  .bento-duzy .wart { font-size: 27px; }
-  .bento-tile { min-height: 88px; padding: 13px 14px; }
+  .bento-duzy .wart { font-size: 30px; }
+  .bento-tile { min-height: 76px; padding: 12px 13px; }
 }
 
 .stat-card { text-align: center; }
