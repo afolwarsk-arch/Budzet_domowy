@@ -823,3 +823,10 @@ tr:hover td { background: var(--hover); }
 /* ikona w treści budowanej przez JS (nazwa celu, konto) */
 .cel-nazwa .ikona svg, .cel-konto .ikona svg, .ok .ikona svg { width: 16px; height: 16px; }
 .cel-nazwa, .cel-konto, .ok { display: inline-flex; align-items: center; gap: 6px; }
+
+
+/* wersja pełna — tylko dolny pasek. „pusto" to wycięcie w bryle, więc musi
+   mieć kolor tła paska: SVG nie zrobi dziury w wypełnieniu bez maski. */
+.ikona.pelna svg { fill: currentColor; stroke: none; }
+.ikona.pelna svg .kropka { fill: var(--marka); }
+.ikona.pelna svg .pusto { fill: #1a1d20; }

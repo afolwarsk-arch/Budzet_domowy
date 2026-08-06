@@ -328,6 +328,25 @@ const IKONY_SVG = {
   osiagniete: '<path d="M5.4 20.6V3.6"/><path d="M5.4 4.6h12.2l-2.4 3.8 2.4 3.8H5.4"/><circle class="kropka" cx="5.4" cy="20.6" r="1.6"/>',
 };
 
+// Wersje pelne — tylko do dolnego paska. Przy 23 px cienka kreska jest
+// zbyt watla, a paska oglada sie w ruchu.
+const IKONY_PELNE = {
+  pulpit: '<rect x="3" y="12" width="4.5" height="8" rx="1.4"/><rect x="9.7" y="7" width="4.5" height="13" rx="1.4"/><rect x="16.4" y="10" width="4.5" height="10" rx="1.4"/><circle class="kropka" cx="18.65" cy="5.4" r="2.1"/>',
+  dodaj: '<circle cx="12" cy="12" r="9"/><path class="pusto" d="M11 7.4h2v9.2h-2z"/><path class="pusto" d="M7.4 11h9.2v2H7.4z"/>',
+  lista: '<rect x="4" y="5.4" width="16" height="2.2" rx="1.1"/><rect x="4" y="10.9" width="16" height="2.2" rx="1.1"/><rect x="4" y="16.4" width="9" height="2.2" rx="1.1"/><circle class="kropka" cx="18.4" cy="17.5" r="2.1"/>',
+  konta: '<rect x="2.8" y="5.5" width="18.4" height="13" rx="2.4"/><rect class="pusto" x="2.8" y="9.2" width="18.4" height="2.1"/><circle class="kropka" cx="17.4" cy="14.8" r="1.9"/>',
+  wplywy: '<circle cx="12" cy="12" r="9"/><path class="pusto" d="M11 7h2v6.6h-2z"/><path class="pusto" d="M12 17.4l-3.6-3.8h7.2z"/>',
+  cele: '<circle cx="12" cy="12" r="9"/><circle class="pusto" cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="3.9"/><circle class="pusto" cx="12" cy="12" r="2.1"/><circle class="kropka" cx="12" cy="12" r="2.1"/>',
+  kategorie: '<path d="M11.2 3.2H20.4v9.2l-9.2 8.8L2.6 12.4z"/><circle class="pusto" cx="16.3" cy="7.5" r="2.4"/><circle class="kropka" cx="16.3" cy="7.5" r="1.7"/>',
+  analiza: '<path d="M3 19h18v2H3zM3 3h2v18H3z"/><path d="M6.6 15.4l4.4-5 3.9 3.3 4.3-5.7 1.6 1.2-5.6 7.4-4-3.4-3 3.4z"/><circle class="kropka" cx="18.6" cy="8" r="2.3"/>',
+  alerty: '<path d="M12 3.2a6 6 0 016 6c0 4.4 1.7 5.9 1.7 5.9H4.3s1.7-1.5 1.7-5.9a6 6 0 016-6z"/><circle class="kropka" cx="12" cy="19" r="2.2"/>',
+  admin: '<rect x="3.6" y="6.2" width="16.8" height="2.4" rx="1.2"/><rect x="3.6" y="15.4" width="16.8" height="2.4" rx="1.2"/><circle class="kropka" cx="9" cy="7.4" r="2.4"/><circle class="kropka" cx="15.6" cy="16.6" r="2.4"/>',
+};
+
+function ikonaPelna(nazwa) {
+  return `<span class="ikona pelna"><svg viewBox="0 0 24 24" aria-hidden="true">${IKONY_PELNE[nazwa] || IKONY_SVG[nazwa] || ''}</svg></span>`;
+}
+
 function ikonaSvg(nazwa) {
   return `<span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true">${IKONY_SVG[nazwa] || ''}</svg></span>`;
 }
@@ -353,7 +372,7 @@ function _injectBottomNav(me) {
   bar.className = 'bottom-nav';
   bar.innerHTML = items.map(i => `
     <a href="${i.href}" class="${location.pathname === i.href ? 'active' : ''}">
-      ${ikonaSvg(i.ikona)}${i.label}
+      ${ikonaPelna(i.ikona)}${i.label}
     </a>`).join('');
   document.body.appendChild(bar);
   // dosuń aktywną ikonę do widoku (pasek jest przewijany w poziomie)
