@@ -14,7 +14,7 @@
 </head>
 <body>
 <nav>
-  <a href="/" class="logo">wiem<span style="color:#a78bda">.</span></a>
+  <a href="/" class="logo">wiem<span style="color:var(--accent)">.</span></a>
   <a href="/" class="active">Dashboard</a>
   <a href="/upload">Dodaj wydatek</a>
   <a href="/lista">Lista</a>
@@ -24,7 +24,7 @@
   <a href="/kategorie">Kategorie</a>
   <a href="/analiza">Analiza</a>
   <a href="/powiadomienia">Powiadomienia</a>
-  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background: var(--surface);font-size:0.85rem;">Wyloguj</button>
 </nav>
 
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
@@ -72,40 +72,40 @@
   </div>
 
   <div id="vm-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center;">
-    <div style="background:white;border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+    <div style="background: var(--surface);border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
       <h2 style="margin-bottom:8px;font-size:1.1rem">Członkowie gospodarstwa</h2>
       <div id="vm-list" style="margin-bottom:16px"></div>
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <input id="vm-input" type="text" placeholder="Imię osoby" maxlength="30"
-          style="flex:1;padding:9px 12px;border:1px solid #dadce0;border-radius:8px;font-size:0.9rem;outline:none">
-        <button onclick="addVirtualMember()" style="padding:9px 16px;background:#4f7ef8;color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">Dodaj</button>
+          style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;outline:none">
+        <button onclick="addVirtualMember()" style="padding:9px 16px;background: var(--primary);color: var(--on-primary);border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">Dodaj</button>
       </div>
-      <div id="vm-err" style="color:#d32f2f;font-size:0.8rem;margin-bottom:8px;display:none"></div>
-      <button onclick="document.getElementById('vm-modal').style.display='none'" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;background:white;cursor:pointer;font-size:0.9rem">Zamknij</button>
+      <div id="vm-err" style="color: var(--danger);font-size:0.8rem;margin-bottom:8px;display:none"></div>
+      <button onclick="document.getElementById('vm-modal').style.display='none'" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background: var(--surface);cursor:pointer;font-size:0.9rem">Zamknij</button>
     </div>
   </div>
 
   <div id="invite-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center;">
-    <div style="background:white;border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+    <div style="background: var(--surface);border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
       <h2 style="margin-bottom:8px;font-size:1.1rem">Zaproś do gospodarstwa</h2>
-      <p style="color:#666;font-size:0.85rem;margin-bottom:20px">Wyślij ten link przez WhatsApp lub SMS. Link jest ważny 7 dni i jednorazowy.</p>
-      <div id="invite-link-box" style="background:#f8f9fa;border-radius:8px;padding:12px;font-size:0.8rem;word-break:break-all;color:#333;margin-bottom:16px;min-height:40px">Generowanie...</div>
+      <p style="color: var(--muted);font-size:0.85rem;margin-bottom:20px">Wyślij ten link przez WhatsApp lub SMS. Link jest ważny 7 dni i jednorazowy.</p>
+      <div id="invite-link-box" style="background: var(--surface-2);border-radius:8px;padding:12px;font-size:0.8rem;word-break:break-all;color: var(--text);margin-bottom:16px;min-height:40px">Generowanie...</div>
       <div style="display:flex;gap:8px">
-        <button onclick="copyInvite()" style="flex:1;padding:10px;background:#4f7ef8;color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;">Kopiuj link</button>
-        <button onclick="document.getElementById('invite-modal').style.display='none'" style="padding:10px 16px;border:1px solid #ccc;border-radius:8px;background:white;cursor:pointer;font-size:0.9rem;">Zamknij</button>
+        <button onclick="copyInvite()" style="flex:1;padding:10px;background: var(--primary);color: var(--on-primary);border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;">Kopiuj link</button>
+        <button onclick="document.getElementById('invite-modal').style.display='none'" style="padding:10px 16px;border:1px solid var(--border);border-radius:8px;background: var(--surface);cursor:pointer;font-size:0.9rem;">Zamknij</button>
       </div>
       <div id="invite-copied" style="color:green;font-size:0.8rem;margin-top:8px;display:none">Skopiowano do schowka!</div>
     </div>
   </div>
 
   <div id="rekat-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center;">
-    <div style="background:white;border-radius:16px;padding:28px;max-width:460px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+    <div style="background: var(--surface);border-radius:16px;padding:28px;max-width:460px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)">
       <h2 style="margin-bottom:8px;font-size:1.1rem">Przelicz kategorie</h2>
-      <p style="color:#666;font-size:0.85rem;margin-bottom:14px;line-height:1.55">
+      <p style="color: var(--muted);font-size:0.85rem;margin-bottom:14px;line-height:1.55">
         Wysyła nazwy produktów do Claude AI, który przypisze im kategorie na nowo,
         według Twojej hierarchii z zakładki <strong>Kategorie</strong>.
       </p>
-      <div style="background:#fff4e5;border-radius:8px;padding:12px 14px;font-size:0.83rem;color:#8a5300;line-height:1.55;margin-bottom:16px">
+      <div style="background: var(--warn-bg);border-radius:8px;padding:12px 14px;font-size:0.83rem;color: var(--warn);line-height:1.55;margin-bottom:16px">
         <strong>Uwaga:</strong> istniejące kategorie zostaną <strong>nadpisane</strong>
         i nie da się tego cofnąć. Ręczne poprawki, które wprowadzałeś, przepadną.
         Przed uruchomieniem pobierz kopię danych („↓ Pobierz kopię danych”).
@@ -129,17 +129,17 @@
   </div>
 
   <div class="filters">
-    <div style="display:flex;gap:4px;border:1px solid #ddd;border-radius:8px;overflow:hidden">
-      <button id="mode-month" onclick="setFilterMode('month')" style="padding:6px 12px;border:none;cursor:pointer;font-size:13px;background:#4f7ef8;color:#fff">Miesiąc</button>
-      <button id="mode-range" onclick="setFilterMode('range')" style="padding:6px 12px;border:none;cursor:pointer;font-size:13px;background:#fff;color:#555">Zakres</button>
+    <div style="display:flex;gap:4px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <button id="mode-month" onclick="setFilterMode('month')" style="padding:6px 12px;border:none;cursor:pointer;font-size:13px;background: var(--primary);color: var(--on-primary)">Miesiąc</button>
+      <button id="mode-range" onclick="setFilterMode('range')" style="padding:6px 12px;border:none;cursor:pointer;font-size:13px;background: var(--surface);color: var(--text)">Zakres</button>
     </div>
     <div id="filter-month-wrap">
       <input type="month" id="filter-month">
     </div>
     <div id="filter-range-wrap" style="display:none;gap:6px;align-items:center">
-      <input type="date" id="filter-od" style="font-size:13px;padding:4px 8px;border:1px solid #ddd;border-radius:6px">
+      <input type="date" id="filter-od" style="font-size:13px;padding:4px 8px;border:1px solid var(--border);border-radius:6px">
       <span style="font-size:13px;color:var(--muted)">—</span>
-      <input type="date" id="filter-do" style="font-size:13px;padding:4px 8px;border:1px solid #ddd;border-radius:6px">
+      <input type="date" id="filter-do" style="font-size:13px;padding:4px 8px;border:1px solid var(--border);border-radius:6px">
     </div>
     <label style="font-size:13px;color:var(--muted)">Osoba:</label>
     <select id="filter-osoba">
@@ -192,11 +192,11 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:8px">
         <h2 style="margin-bottom:0">Wydatki wg kategorii</h2>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <select id="kat-week" title="Zawęź ten wykres do konkretnego tygodnia" style="font-size:12px;padding:5px 8px;border:1px solid #ddd;border-radius:6px"></select>
-          <button id="kat-week-reset" title="Pokaż cały wybrany okres" style="display:none;font-size:12px;padding:5px 9px;border:1px solid #ddd;border-radius:6px;background:#fff;color:#555;cursor:pointer">↩ Cały okres</button>
-          <div style="display:flex;gap:0;border:1px solid #ddd;border-radius:8px;overflow:hidden">
-            <button id="kat-mode-pierwotne" onclick="setKatMode('pierwotne')" style="padding:5px 10px;border:none;cursor:pointer;font-size:12px;background:#4f7ef8;color:#fff">Pierwotne</button>
-            <button id="kat-mode-kontekst" onclick="setKatMode('kontekst')" style="padding:5px 10px;border:none;cursor:pointer;font-size:12px;background:#fff;color:#555">Kontekstowe</button>
+          <select id="kat-week" title="Zawęź ten wykres do konkretnego tygodnia" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px"></select>
+          <button id="kat-week-reset" title="Pokaż cały wybrany okres" style="display:none;font-size:12px;padding:5px 9px;border:1px solid var(--border);border-radius:6px;background: var(--surface);color: var(--text);cursor:pointer">↩ Cały okres</button>
+          <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <button id="kat-mode-pierwotne" onclick="setKatMode('pierwotne')" style="padding:5px 10px;border:none;cursor:pointer;font-size:12px;background: var(--primary);color: var(--on-primary)">Pierwotne</button>
+            <button id="kat-mode-kontekst" onclick="setKatMode('kontekst')" style="padding:5px 10px;border:none;cursor:pointer;font-size:12px;background: var(--surface);color: var(--text)">Kontekstowe</button>
           </div>
         </div>
       </div>
@@ -216,7 +216,7 @@
         </div>
         <div class="sklepy-list" id="subkat-list"></div>
       </div>
-      <div id="drill-panel" class="subkat-panel hidden" style="background:#f0f4ff;border-color:#b8cef8;margin-top:14px">
+      <div id="drill-panel" class="subkat-panel hidden" style="background: var(--surface-3);border-color:var(--accent);margin-top:14px">
         <div class="subkat-header">
           <h2 style="margin-bottom:0;font-size:15px" id="drill-title"></h2>
           <button class="subkat-close" id="drill-close">×</button>
@@ -430,32 +430,32 @@
 
       const members = data.members || [];
       if (members.length) {
-        html += '<p style="font-size:0.75rem;color:#aaa;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Z kontem Google</p>';
+        html += '<p style="font-size:0.75rem;color: var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Z kontem Google</p>';
         html += members.map(m => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f0f4ff;border-radius:8px;margin-bottom:6px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background: var(--surface-3);border-radius:8px;margin-bottom:6px">
             <div>
               <span style="font-size:0.9rem;font-weight:500">${m.display_name || m.name.split(' ')[0]}</span>
-              <span style="font-size:0.78rem;color:#888;margin-left:8px">${m.email}</span>
+              <span style="font-size:0.78rem;color: var(--muted);margin-left:8px">${m.email}</span>
             </div>
-            <span style="font-size:0.75rem;color:#888">${m.role === 'owner' ? 'właściciel' : 'członek'}</span>
+            <span style="font-size:0.75rem;color: var(--muted)">${m.role === 'owner' ? 'właściciel' : 'członek'}</span>
           </div>`).join('');
       }
 
       const vms = data.virtual_members || [];
       if (vms.length) {
-        html += '<p style="font-size:0.75rem;color:#aaa;text-transform:uppercase;letter-spacing:.05em;margin:10px 0 6px">Bez konta Google</p>';
+        html += '<p style="font-size:0.75rem;color: var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 6px">Bez konta Google</p>';
         html += vms.map(m => `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f8f9fa;border-radius:8px;margin-bottom:6px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background: var(--surface-2);border-radius:8px;margin-bottom:6px">
             <span style="font-size:0.9rem">${m.name}</span>
-            <button onclick="deleteVirtualMember(${m.id})" style="padding:3px 10px;border:1px solid #e57373;border-radius:6px;background:white;color:#e57373;cursor:pointer;font-size:0.8rem">Usuń</button>
+            <button onclick="deleteVirtualMember(${m.id})" style="padding:3px 10px;border:1px solid var(--danger);border-radius:6px;background: var(--surface);color: var(--danger);cursor:pointer;font-size:0.8rem">Usuń</button>
           </div>`).join('');
       }
 
       if (!members.length && !vms.length) {
-        html = '<p style="color:#aaa;font-size:0.85rem">Brak członków.</p>';
+        html = '<p style="color: var(--muted);font-size:0.85rem">Brak członków.</p>';
       }
       list.innerHTML = html;
-    } catch { list.innerHTML = '<p style="color:#d32f2f;font-size:0.85rem">Błąd ładowania</p>'; }
+    } catch { list.innerHTML = '<p style="color: var(--danger);font-size:0.85rem">Błąd ładowania</p>'; }
   }
 
   async function addVirtualMember() {

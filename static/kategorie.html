@@ -13,37 +13,37 @@
   <link rel="preconnect" href="https://securetoken.googleapis.com">
   <style>
     .kat-list { display:flex; flex-direction:column; gap:12px; margin-bottom:24px; }
-    .kat-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.07); overflow:hidden; }
+    .kat-card { background: var(--surface); border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.07); overflow:hidden; }
     .kat-header { display:flex; align-items:center; gap:10px; padding:14px 16px; cursor:pointer; user-select:none; }
-    .kat-header:hover { background:#fafafa; }
+    .kat-header:hover { background: var(--surface); }
     .kat-name { font-weight:600; font-size:0.95rem; flex:1; }
-    .kat-count { font-size:0.75rem; color:#aaa; }
-    .kat-toggle { color:#aaa; font-size:14px; transition:transform .2s; }
+    .kat-count { font-size:0.75rem; color: var(--muted); }
+    .kat-toggle { color: var(--muted); font-size:14px; transition:transform .2s; }
     .kat-toggle.open { transform:rotate(90deg); }
-    .kat-del { background:none; border:none; color:#e57373; cursor:pointer; font-size:18px; padding:0 4px; opacity:.6; }
+    .kat-del { background:none; border:none; color: var(--danger); cursor:pointer; font-size:18px; padding:0 4px; opacity:.6; }
     .kat-del:hover { opacity:1; }
-    .kat-body { display:none; padding:0 16px 14px; border-top:1px solid #f4f4f4; }
+    .kat-body { display:none; padding:0 16px 14px; border-top:1px solid var(--border); }
     .kat-body.open { display:block; }
     .sub-list { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
-    .sub-chip { display:flex; align-items:center; gap:5px; background:#f0f4ff; color:#3451d1; padding:4px 10px; border-radius:20px; font-size:13px; }
-    .sub-chip button { background:none; border:none; color:#aaa; cursor:pointer; font-size:14px; line-height:1; padding:0; }
-    .sub-chip button:hover { color:#c62828; }
+    .sub-chip { display:flex; align-items:center; gap:5px; background: var(--surface-3); color: var(--accent); padding:4px 10px; border-radius:20px; font-size:13px; }
+    .sub-chip button { background:none; border:none; color: var(--muted); cursor:pointer; font-size:14px; line-height:1; padding:0; }
+    .sub-chip button:hover { color: var(--danger); }
     .add-sub-row { display:flex; gap:8px; margin-top:8px; }
-    .add-sub-row input { flex:1; padding:7px 10px; border:1px solid #ddd; border-radius:8px; font-size:13px; }
-    .add-sub-row button { padding:7px 14px; background:#4361ee; color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:13px; }
-    .add-sub-row button:hover { background:#3451d1; }
+    .add-sub-row input { flex:1; padding:7px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px; }
+    .add-sub-row button { padding:7px 14px; background: var(--primary); color: var(--on-primary); border:none; border-radius:8px; cursor:pointer; font-size:13px; }
+    .add-sub-row button:hover { background: var(--primary); }
     .add-kat-row { display:flex; gap:8px; margin-bottom:20px; }
-    .add-kat-row input { flex:1; padding:9px 12px; border:1px solid #ddd; border-radius:8px; font-size:14px; }
-    .add-kat-row button { padding:9px 18px; background:#4361ee; color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600; }
-    .add-kat-row button:hover { background:#3451d1; }
+    .add-kat-row input { flex:1; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px; }
+    .add-kat-row button { padding:9px 18px; background: var(--primary); color: var(--on-primary); border:none; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600; }
+    .add-kat-row button:hover { background: var(--primary); }
     .actions-bar { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
-    .btn-save-all { padding:10px 22px; background:#2e7d32; color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600; }
-    .btn-save-all:hover { background:#1b5e20; }
-    .btn-reset { padding:10px 18px; background:#fff; color:#c62828; border:1px solid #e57373; border-radius:8px; cursor:pointer; font-size:14px; }
-    .btn-reset:hover { background:#fde8e8; }
-    .status { font-size:13px; color:#2e7d32; align-self:center; }
-    .status.err { color:#c62828; }
-    .info-box { background:#f0f4ff; border-radius:10px; padding:14px 16px; font-size:13px; color:#3451d1; margin-bottom:20px; line-height:1.6; }
+    .btn-save-all { padding:10px 22px; background: var(--good); color: var(--on-primary); border:none; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600; }
+    .btn-save-all:hover { background: var(--good); }
+    .btn-reset { padding:10px 18px; background: var(--surface); color: var(--danger); border:1px solid var(--danger); border-radius:8px; cursor:pointer; font-size:14px; }
+    .btn-reset:hover { background: var(--danger-bg); }
+    .status { font-size:13px; color: var(--good); align-self:center; }
+    .status.err { color: var(--danger); }
+    .info-box { background: var(--surface-3); border-radius:10px; padding:14px 16px; font-size:13px; color: var(--accent); margin-bottom:20px; line-height:1.6; }
   </style>
 </head>
 <body>
@@ -51,7 +51,7 @@
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script defer src="/static/auth.js"></script>
 <nav>
-  <a href="/" class="logo">wiem<span style="color:#a78bda">.</span></a>
+  <a href="/" class="logo">wiem<span style="color:var(--accent)">.</span></a>
   <a href="/">Dashboard</a>
   <a href="/upload">Dodaj wydatek</a>
   <a href="/konta">Konta</a>
@@ -60,7 +60,7 @@
   <a href="/kategorie" class="active">Kategorie</a>
   <a href="/analiza">Analiza</a>
   <a href="/powiadomienia">Powiadomienia</a>
-  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background: var(--surface);font-size:0.85rem;">Wyloguj</button>
 </nav>
 
 <main style="max-width:800px">
@@ -90,7 +90,7 @@ let hier = {};
 function render() {
   const el = document.getElementById('kat-list');
   const names = Object.keys(hier);
-  if (!names.length) { el.innerHTML = '<p style="color:#aaa;text-align:center;padding:24px">Brak kategorii</p>'; return; }
+  if (!names.length) { el.innerHTML = '<p style="color: var(--muted);text-align:center;padding:24px">Brak kategorii</p>'; return; }
   el.innerHTML = names.map((kat, ki) => `
     <div class="kat-card" id="kc-${ki}">
       <div class="kat-header" onclick="toggleKat(${ki})">

@@ -15,10 +15,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #f0f4f8;
+      background: var(--bg);
     }
     .card {
-      background: white;
+      background: var(--surface);
       border-radius: 16px;
       box-shadow: 0 4px 24px rgba(0,0,0,.1);
       padding: 48px 40px;
@@ -27,11 +27,11 @@
       width: 100%;
     }
     .logo { font-size: 2.5rem; margin-bottom: 12px; }
-    h1 { font-size: 1.5rem; margin-bottom: 8px; color: #1a1a1a; }
-    p { color: #666; margin-bottom: 32px; font-size: 0.9rem; line-height: 1.5; }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; color: var(--text); }
+    p { color: var(--muted); margin-bottom: 32px; font-size: 0.9rem; line-height: 1.5; }
     .household-name {
       font-weight: 600;
-      color: #1a1a1a;
+      color: var(--text);
     }
     .btn-google {
       display: flex;
@@ -39,29 +39,29 @@
       gap: 12px;
       width: 100%;
       padding: 12px 20px;
-      border: 1px solid #dadce0;
+      border: 1px solid var(--border);
       border-radius: 8px;
-      background: white;
+      background: var(--surface);
       cursor: pointer;
       font-size: 0.95rem;
       font-weight: 500;
-      color: #3c4043;
+      color: var(--text);
       justify-content: center;
       transition: background .15s;
     }
-    .btn-google:hover { background: #f8f9fa; }
+    .btn-google:hover { background: var(--surface-2); }
     .btn-google img { width: 20px; height: 20px; }
     #error {
-      color: #d32f2f;
+      color: var(--danger);
       margin-top: 16px;
       font-size: 0.85rem;
       display: none;
-      background: #fdecea;
+      background: var(--danger-bg);
       padding: 10px;
       border-radius: 6px;
     }
     #status {
-      color: #666;
+      color: var(--muted);
       font-size: 0.9rem;
       margin-top: 16px;
     }
@@ -69,8 +69,8 @@
       display: inline-block;
       margin-top: 20px;
       padding: 10px 24px;
-      background: #4361ee;
-      color: white;
+      background: var(--primary);
+      color: var(--on-primary);
       border-radius: 8px;
       text-decoration: none;
       font-size: 0.9rem;
@@ -80,7 +80,7 @@
 <body>
   <div class="card">
     
-    <h1>wiem<span style="color:#a78bda">.</span></h1>
+    <h1>wiem<span style="color:var(--accent)">.</span></h1>
     <p id="desc">Sprawdzanie zaproszenia...</p>
     <div id="google-section" style="display:none">
       <button class="btn-google" id="btn-google">
@@ -135,14 +135,14 @@
       }
       statusEl.innerHTML = `
         <div style="margin-top:16px;text-align:left">
-          <p style="font-size:0.9rem;color:#444;margin-bottom:12px">Czy jesteś jedną z tych osób? Wybierz swoje imię, aby przypisać wcześniejsze wydatki do swojego konta.</p>
+          <p style="font-size:0.9rem;color:var(--text);margin-bottom:12px">Czy jesteś jedną z tych osób? Wybierz swoje imię, aby przypisać wcześniejsze wydatki do swojego konta.</p>
           ${virtualMembers.map(m => `
             <button onclick="claimMember(${m.id},'${m.name}')"
-              style="display:block;width:100%;padding:10px 16px;margin-bottom:8px;background:#f8f9fa;border:1px solid #dadce0;border-radius:8px;cursor:pointer;font-size:0.95rem;text-align:left">
+              style="display:block;width:100%;padding:10px 16px;margin-bottom:8px;background: var(--surface-2);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:0.95rem;text-align:left">
               ${m.name}
             </button>`).join('')}
           <button onclick="document.getElementById('status').innerHTML='<a class=\\'btn-home\\' href=\\'/\\'>Przejdź do aplikacji</a>'"
-            style="display:block;width:100%;padding:10px;margin-top:4px;background:white;border:1px solid #ccc;border-radius:8px;cursor:pointer;font-size:0.85rem;color:#888">
+            style="display:block;width:100%;padding:10px;margin-top:4px;background: var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:0.85rem;color: var(--muted)">
             Żadna z powyższych
           </button>
         </div>`;

@@ -89,9 +89,21 @@ class CachedStaticFiles(StaticFiles):
 app.mount("/static", CachedStaticFiles(directory=STATIC_DIR), name="static")
 
 
+# Wybór motywu musi zadziałać PRZED pierwszym malowaniem, inaczej przy ciemnym
+# ustawieniu mignie jasne tło. Wstrzykujemy w jednym miejscu, bo wszystkie strony
+# aplikacji idą przez _html().
+_MOTYW_BOOT = (
+    "<script>(function(){try{var m=localStorage.getItem('motyw');"
+    "if(m==='ciemny')document.documentElement.setAttribute('data-theme','dark');"
+    "else if(m==='jasny')document.documentElement.setAttribute('data-theme','light');"
+    "}catch(e){}})();</script>"
+)
+
+
 def _html(filename: str) -> HTMLResponse:
     content = (STATIC_DIR / filename).read_text(encoding="utf-8")
     content = re.sub(r'(/static/[^"\']*?\.(?:js|css))(\?v=[^"\']*)?', rf'\1?v={_BUILD}', content)
+    content = content.replace("</head>", _MOTYW_BOOT + "</head>", 1)
     return HTMLResponse(content=content, headers={"Cache-Control": "no-store"})
 
 

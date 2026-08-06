@@ -32,6 +32,54 @@ async function authLogout() {
   window.location.href = "/login";
 }
 
+// ── motyw: auto (za systemem) / jasny / ciemny ──
+// Wybór zapisany w localStorage, stosowany przed pierwszym malowaniem przez
+// skrypt wstrzykiwany w main.py — tutaj tylko przełączanie i pasek statusu.
+function _motywBiezacy() {
+  try { return localStorage.getItem('motyw') || 'auto'; } catch { return 'auto'; }
+}
+
+function _ustawMotyw(m) {
+  const root = document.documentElement;
+  try {
+    if (m === 'auto') localStorage.removeItem('motyw');
+    else localStorage.setItem('motyw', m);
+  } catch {}
+  if (m === 'auto') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', m === 'ciemny' ? 'dark' : 'light');
+  _odswiezPasekStatusu();
+}
+
+function _odswiezPasekStatusu() {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) return;
+  // color-scheme ustawiamy w palecie razem z resztą tokenów, więc jest
+  // wiarygodnym sygnałem, który motyw faktycznie obowiązuje
+  const ciemny = getComputedStyle(document.documentElement)
+    .getPropertyValue('color-scheme').trim() === 'dark';
+  meta.setAttribute('content', ciemny ? '#16181b' : '#f4f2ee');
+}
+
+function _podepnijMotyw(overlay) {
+  const box = overlay.querySelector('#_mtheme');
+  if (!box) return;
+  const zaznacz = () => {
+    const akt = _motywBiezacy();
+    box.querySelectorAll('button').forEach((b) => {
+      const wybrany = b.dataset.motyw === akt;
+      b.style.background = wybrany ? 'var(--primary)' : 'var(--surface)';
+      b.style.color = wybrany ? 'var(--on-primary)' : 'var(--text)';
+      b.style.fontWeight = wybrany ? '600' : '400';
+    });
+  };
+  box.querySelectorAll('button').forEach((b) => {
+    b.onclick = () => { _ustawMotyw(b.dataset.motyw); zaznacz(); };
+  });
+  zaznacz();
+}
+
+window.addEventListener('DOMContentLoaded', _odswiezPasekStatusu);
+
 function _showProfileModal() {
   const current = (window._currentUser || {}).display_name || '';
   const overlay = document.createElement('div');
@@ -46,12 +94,21 @@ function _showProfileModal() {
         <button id="_mc" style="flex:1;padding:10px;background:#f1f3f5;color:#333;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">Anuluj</button>
       </div>
       <div id="_me" style="color:#d32f2f;font-size:0.8rem;margin-top:8px;display:none"></div>
-      <div style="border-top:1px solid #eee;margin-top:16px;padding-top:12px;display:flex;flex-direction:column;gap:8px">
+      <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px">
+        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:7px">Wygląd</div>
+        <div id="_mtheme" style="display:flex;gap:6px">
+          <button data-motyw="auto" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.8rem">Auto</button>
+          <button data-motyw="jasny" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.8rem">Jasny</button>
+          <button data-motyw="ciemny" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.8rem">Ciemny</button>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px;display:flex;flex-direction:column;gap:8px">
         <button id="_mleave" style="width:100%;padding:9px;background:#fff;color:#b26a00;border:1px solid #e8c07d;border-radius:8px;cursor:pointer;font-size:0.85rem">Wypisz się z gospodarstwa</button>
         <button id="_mdel" style="width:100%;padding:9px;background:#fff;color:#c0392b;border:1px solid #e6b0aa;border-radius:8px;cursor:pointer;font-size:0.85rem">Usuń moje konto</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
+  _podepnijMotyw(overlay);
   overlay.querySelector('#_mn').focus();
   overlay.querySelector('#_mc').onclick = () => overlay.remove();
   overlay.querySelector('#_mleave').onclick = async () => {

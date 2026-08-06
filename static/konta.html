@@ -13,94 +13,94 @@
   <link rel="preconnect" href="https://securetoken.googleapis.com">
   <style>
     .konta-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:16px; margin-bottom:24px; }
-    .konto-card { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:20px; }
-    .konto-card.add-card { border:2px dashed #ddd; display:flex; align-items:center; justify-content:center; cursor:pointer; min-height:150px; color:#aaa; font-size:15px; transition:border-color .2s,color .2s; border-radius:14px; }
-    .konto-card.add-card:hover { border-color:#4361ee; color:#4361ee; }
+    .konto-card { background: var(--surface); border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:20px; }
+    .konto-card.add-card { border:2px dashed var(--border); display:flex; align-items:center; justify-content:center; cursor:pointer; min-height:150px; color: var(--muted); font-size:15px; transition:border-color .2s,color .2s; border-radius:14px; }
+    .konto-card.add-card:hover { border-color: var(--accent); color: var(--accent); }
     .konto-typ-badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
-    .konto-nazwa { font-size:1.05rem; font-weight:600; color:#1a1a1a; margin-bottom:2px; }
-    .konto-osoba { font-size:0.8rem; color:#999; margin-bottom:12px; min-height:16px; }
+    .konto-nazwa { font-size:1.05rem; font-weight:600; color: var(--text); margin-bottom:2px; }
+    .konto-osoba { font-size:0.8rem; color:var(--muted); margin-bottom:12px; min-height:16px; }
     .konto-saldo { font-size:1.75rem; font-weight:700; line-height:1; margin-bottom:2px; }
-    .konto-waluta { font-size:0.78rem; color:#aaa; margin-bottom:16px; }
+    .konto-waluta { font-size:0.78rem; color: var(--muted); margin-bottom:16px; }
     .konto-btns { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
     .konto-btns button { padding:9px 6px; border:none; border-radius:8px; cursor:pointer; font-size:12.5px; font-weight:600; }
-    .btn-wplyw  { background:#e8f5e9; color:#2e7d32; }
-    .btn-inwent { background:#fff3e0; color:#e65100; }
-    .btn-hist   { background:#f0f4ff; color:#3451d1; }
-    .btn-przelew { background:#ede7f6; color:#5e35b1; }
+    .btn-wplyw  { background: var(--good-bg); color: var(--good); }
+    .btn-inwent { background: var(--warn-bg); color: var(--warn); }
+    .btn-hist   { background: var(--surface-3); color: var(--accent); }
+    .btn-przelew { background: var(--accent-soft); color: var(--accent); }
     .konto-btns button:hover { filter:brightness(0.93); }
     .hist-filtry { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:2px 0 12px; }
-    .hist-typ { padding:4px 12px; border:1px solid #ddd; border-radius:20px; background:#fff; color:#666; font-size:12.5px; font-weight:600; cursor:pointer; }
-    .hist-typ:hover { border-color:#bbb; }
-    .hist-typ.active { background:#4361ee; border-color:#4361ee; color:#fff; }
-    .hist-suma { margin-left:auto; font-size:13px; font-weight:700; color:#2e7d32; white-space:nowrap; }
+    .hist-typ { padding:4px 12px; border:1px solid var(--border); border-radius:20px; background: var(--surface); color: var(--muted); font-size:12.5px; font-weight:600; cursor:pointer; }
+    .hist-typ:hover { border-color:var(--muted); }
+    .hist-typ.active { background: var(--primary); border-color: var(--accent); color: var(--on-primary); }
+    .hist-suma { margin-left:auto; font-size:13px; font-weight:700; color: var(--good); white-space:nowrap; }
     .konto-icons { margin-left:auto; display:flex; gap:2px; }
-    .konto-icons button { background:none; border:none; cursor:pointer; font-size:14px; color:#c5c5c5; padding:3px 6px; border-radius:6px; line-height:1; transition:color .15s, background .15s; }
-    .konto-icons button:hover { background:#f5f5f5; color:#555; }
-    .konto-icons button.star.active { color:#f59e0b; }
-    .konto-icons button.del:hover { background:#fde8e8; color:#c62828; }
-    .subk-box { margin:4px 0 14px; padding:10px 12px; background:#f7f9fc; border-radius:10px; }
-    .subk-head { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#9aa3b2; margin-bottom:6px; }
+    .konto-icons button { background:none; border:none; cursor:pointer; font-size:14px; color:var(--muted); padding:3px 6px; border-radius:6px; line-height:1; transition:color .15s, background .15s; }
+    .konto-icons button:hover { background: var(--surface-2); color: var(--text); }
+    .konto-icons button.star.active { color:var(--warn); }
+    .konto-icons button.del:hover { background: var(--danger-bg); color: var(--danger); }
+    .subk-box { margin:4px 0 14px; padding:10px 12px; background: var(--surface-2); border-radius:10px; }
+    .subk-head { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color: var(--muted); margin-bottom:6px; }
     .subk-row { display:grid; grid-template-columns:1fr 60px auto; align-items:center; gap:8px; margin-bottom:6px; }
-    .subk-nazwa { font-size:12.5px; color:#333; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .subk-nazwa { font-size:12.5px; color: var(--text); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .subk-bar { height:6px; background:#e4e8ee; border-radius:4px; overflow:hidden; }
     .subk-bar > span { display:block; height:100%; border-radius:4px; }
-    .subk-kwota { font-size:11px; color:#888; white-space:nowrap; }
-    .subk-np { font-size:11.5px; font-weight:600; margin-top:6px; padding-top:6px; border-top:1px dashed #dde3ec; }
-    .subk-info { font-size:12px; color:#aaa; margin:2px 0 14px; }
-    .subk-info a { color:#4361ee; }
-    .subk-add { display:inline-block; margin-top:8px; font-size:12px; font-weight:600; color:#4361ee; text-decoration:none; }
+    .subk-kwota { font-size:11px; color: var(--muted); white-space:nowrap; }
+    .subk-np { font-size:11.5px; font-weight:600; margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); }
+    .subk-info { font-size:12px; color: var(--muted); margin:2px 0 14px; }
+    .subk-info a { color: var(--accent); }
+    .subk-add { display:inline-block; margin-top:8px; font-size:12px; font-weight:600; color: var(--accent); text-decoration:none; }
     .subk-add:hover { text-decoration:underline; }
 
-    .cykl-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #f3f3f3; font-size:0.88rem; gap:10px; }
+    .cykl-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); font-size:0.88rem; gap:10px; }
     .cykl-row:last-child { border-bottom:none; }
     .cykl-row.nieaktywny { opacity:.45; }
-    .cykl-nazwa { font-weight:600; color:#333; }
-    .cykl-meta { font-size:0.75rem; color:#aaa; margin-top:1px; }
+    .cykl-nazwa { font-weight:600; color: var(--text); }
+    .cykl-meta { font-size:0.75rem; color: var(--muted); margin-top:1px; }
     .cykl-kwota { font-weight:700; white-space:nowrap; }
     .cykl-btns { display:flex; gap:5px; flex-shrink:0; }
     .cykl-btns button { border:none; border-radius:7px; cursor:pointer; font-size:12px; padding:5px 9px; }
     .tx-del { background:none; border:none; color:#ddd; cursor:pointer; font-size:14px; padding:2px 6px; margin-left:4px; }
-    .tx-del:hover { color:#c62828; }
+    .tx-del:hover { color: var(--danger); }
 
-    .panel { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:20px; margin-bottom:16px; }
+    .panel { background: var(--surface); border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:20px; margin-bottom:16px; }
     .panel-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
-    .panel-title { font-size:0.85rem; font-weight:700; color:#555; text-transform:uppercase; letter-spacing:.06em; }
-    .panel-close { background:none; border:none; font-size:20px; cursor:pointer; color:#bbb; line-height:1; }
-    .panel-close:hover { color:#555; }
+    .panel-title { font-size:0.85rem; font-weight:700; color: var(--text); text-transform:uppercase; letter-spacing:.06em; }
+    .panel-close { background:none; border:none; font-size:20px; cursor:pointer; color:var(--muted); line-height:1; }
+    .panel-close:hover { color: var(--text); }
 
-    .tx-row { display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid #f3f3f3; font-size:0.88rem; }
+    .tx-row { display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--border); font-size:0.88rem; }
     .tx-row:last-child { border-bottom:none; }
-    .tx-opis { color:#333; font-weight:500; }
-    .tx-meta { font-size:0.75rem; color:#aaa; margin-top:1px; }
+    .tx-opis { color: var(--text); font-weight:500; }
+    .tx-meta { font-size:0.75rem; color: var(--muted); margin-top:1px; }
     .tx-kwota { font-weight:600; white-space:nowrap; margin-left:12px; }
-    .tx-kwota.plus { color:#2e7d32; }
-    .tx-kwota.minus { color:#c62828; }
+    .tx-kwota.plus { color: var(--good); }
+    .tx-kwota.minus { color: var(--danger); }
 
-    .inv-row { display:flex; justify-content:space-between; align-items:flex-start; padding:10px 0; border-bottom:1px solid #f3f3f3; font-size:0.88rem; }
+    .inv-row { display:flex; justify-content:space-between; align-items:flex-start; padding:10px 0; border-bottom:1px solid var(--border); font-size:0.88rem; }
     .inv-row:last-child { border-bottom:none; }
-    .inv-diff.ok  { color:#2e7d32; font-weight:600; }
-    .inv-diff.bad { color:#c62828; font-weight:600; }
+    .inv-diff.ok  { color: var(--good); font-weight:600; }
+    .inv-diff.bad { color: var(--danger); font-weight:600; }
 
     .total-bar { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
-    .total-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:14px 20px; }
-    .total-lbl { font-size:0.72rem; color:#aaa; text-transform:uppercase; letter-spacing:.05em; }
-    .total-val { font-size:1.45rem; font-weight:700; color:#1a1a1a; }
+    .total-card { background: var(--surface); border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:14px 20px; }
+    .total-lbl { font-size:0.72rem; color: var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+    .total-val { font-size:1.45rem; font-weight:700; color: var(--text); }
 
     .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:900; align-items:center; justify-content:center; }
     .modal-backdrop.open { display:flex; }
-    .modal-box { background:#fff; border-radius:16px; padding:28px; width:100%; max-width:420px; margin:16px; max-height:90vh; overflow-y:auto; }
+    .modal-box { background: var(--surface); border-radius:16px; padding:28px; width:100%; max-width:420px; margin:16px; max-height:90vh; overflow-y:auto; }
     .modal-box h3 { font-size:1.05rem; margin:0 0 20px; }
     .fg { margin-bottom:14px; }
-    .fg label { display:block; font-size:11px; font-weight:700; color:#777; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
-    .fg input, .fg select, .fg textarea { width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:8px; font-size:14px; box-sizing:border-box; font-family:inherit; }
+    .fg label { display:block; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
+    .fg input, .fg select, .fg textarea { width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px; box-sizing:border-box; font-family:inherit; }
     .fg textarea { resize:vertical; }
     .modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:20px; }
     .modal-footer button { padding:9px 22px; border:none; border-radius:8px; cursor:pointer; font-size:14px; }
-    .btn-cancel { background:#f0f0f0; color:#555; }
-    .btn-primary { background:#4361ee; color:#fff; font-weight:600; }
-    .btn-primary:hover { background:#3451d1; }
+    .btn-cancel { background: var(--surface-2); color: var(--text); }
+    .btn-primary { background: var(--primary); color: var(--on-primary); font-weight:600; }
+    .btn-primary:hover { background: var(--primary); }
 
-    .empty-hint { text-align:center; color:#bbb; font-size:13px; padding:24px 0; }
+    .empty-hint { text-align:center; color:var(--muted); font-size:13px; padding:24px 0; }
   </style>
 </head>
 <body>
@@ -108,7 +108,7 @@
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script defer src="/static/auth.js"></script>
 <nav>
-  <a href="/" class="logo">wiem<span style="color:#a78bda">.</span></a>
+  <a href="/" class="logo">wiem<span style="color:var(--accent)">.</span></a>
   <a href="/">Dashboard</a>
   <a href="/upload">Dodaj wydatek</a>
   <a href="/konta" class="active">Konta</a>
@@ -117,19 +117,19 @@
   <a href="/kategorie">Kategorie</a>
   <a href="/analiza">Analiza</a>
   <a href="/powiadomienia">Powiadomienia</a>
-  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background: var(--surface);font-size:0.85rem;">Wyloguj</button>
 </nav>
 
 <main style="max-width:1100px">
   <h1 style="margin-bottom:20px">Konta i finanse</h1>
   <div id="total-bar" class="total-bar"></div>
-  <div id="konta-grid" class="konta-grid"><p style="color:#aaa">Ładowanie...</p></div>
+  <div id="konta-grid" class="konta-grid"><p style="color: var(--muted)">Ładowanie...</p></div>
 
   <div id="panel-historia" class="panel" style="display:none">
     <div class="panel-header">
       <span class="panel-title" id="hist-title">Historia</span>
       <div style="display:flex;align-items:center;gap:10px">
-        <input type="month" id="hist-month" style="font-size:13px;padding:5px 8px;border:1px solid #ddd;border-radius:6px">
+        <input type="month" id="hist-month" style="font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:6px">
         <button class="panel-close" onclick="closeHistoria()">✕</button>
       </div>
     </div>
@@ -276,7 +276,7 @@
     <div class="fg" id="c-cel-wrap" style="display:none"><label>Na cel (koperta, opcjonalnie)</label><select id="c-cel"></select></div>
     <div class="fg" id="c-od-wrap"><label>Naliczaj od miesiąca</label><input type="month" id="c-od"></div>
     <div class="fg" id="c-aktywne-wrap" style="display:none">
-      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:14px;font-weight:500;color:#333">
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:14px;font-weight:500;color: var(--text)">
         <input type="checkbox" id="c-aktywne" style="width:auto"> Aktywny (odznacz, by wstrzymać naliczanie)
       </label>
     </div>
@@ -291,7 +291,7 @@
 <div class="modal-backdrop" id="m-inwent">
   <div class="modal-box">
     <h3 id="m-inwent-title">Inwentaryzacja</h3>
-    <p style="font-size:13px;color:#888;margin:-8px 0 18px">Wpisz rzeczywiste saldo — system wyliczy różnicę.</p>
+    <p style="font-size:13px;color: var(--muted);margin:-8px 0 18px">Wpisz rzeczywiste saldo — system wyliczy różnicę.</p>
     <div class="fg"><label>Data</label><input type="date" id="i-data"></div>
     <div class="fg"><label>Rzeczywiste saldo</label><input type="number" id="i-saldo" step="0.01" placeholder="0.00"></div>
     <div class="fg"><label>Notatki (opcjonalnie)</label><textarea id="i-notatki" rows="2"></textarea></div>
@@ -303,7 +303,7 @@
 </div>
 
 <script>
-const TYP_COLOR = { bank:'#4361ee', 'oszczędności':'#2e7d32', gotówka:'#e65100', krypto:'#7b2d8b', inne:'#607d8b' };
+const TYP_COLOR = { bank:'var(--accent)', 'oszczędności':'var(--good)', gotówka:'var(--warn)', krypto:'var(--accent)', inne:'var(--muted)' };
 const TYP_LABEL = { bank:'Bank', 'oszczędności':'Oszczędności', gotówka:'Gotówka', krypto:'Krypto', inne:'Inne' };
 
 let konta = [];
@@ -338,21 +338,21 @@ function renderTotals() {
   document.getElementById('total-bar').innerHTML = Object.entries(byCur).map(([cur, sum]) => `
     <div class="total-card">
       <div class="total-lbl">Suma aktywów ${cur}</div>
-      <div class="total-val">${fmt(sum)} <span style="font-size:0.8rem;font-weight:400;color:#aaa">${cur}</span></div>
+      <div class="total-val">${fmt(sum)} <span style="font-size:0.8rem;font-weight:400;color: var(--muted)">${cur}</span></div>
     </div>`).join('');
 }
 
 function renderKonta() {
   const grid = document.getElementById('konta-grid');
   let html = konta.map(k => {
-    const color = TYP_COLOR[k.typ] || '#607d8b';
+    const color = TYP_COLOR[k.typ] || 'var(--muted)';
     const label = TYP_LABEL[k.typ] || k.typ;
     const saldo = parseFloat(k.saldo_biezace || 0);
     const isDomyslne = k.id === myDefaultKontoId;
     return `<div class="konto-card" ${isDomyslne ? 'style="border:2px solid #f59e0b"' : ''}>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <span class="konto-typ-badge" style="background:${color}18;color:${color}">${label}</span>
-        ${isDomyslne ? '<span style="font-size:11px;color:#f59e0b;font-weight:600">★ domyślne</span>' : ''}
+        ${isDomyslne ? '<span style="font-size:11px;color:var(--warn);font-weight:600">★ domyślne</span>' : ''}
         <div class="konto-icons">
           <button class="star ${isDomyslne ? 'active' : ''}" onclick="toggleDomyslne(${k.id})" title="${isDomyslne ? 'Usuń jako domyślne' : 'Ustaw jako moje domyślne'}">★</button>
           <button onclick="editKonto(${k.id})" title="Edytuj konto">✏</button>
@@ -361,7 +361,7 @@ function renderKonta() {
       </div>
       <div class="konto-nazwa">${k.nazwa}</div>
       <div class="konto-osoba">${k.osoba || 'Wspólne'}</div>
-      <div class="konto-saldo" style="color:${saldo < 0 ? '#c62828' : '#1a1a1a'}">${fmt(saldo)}</div>
+      <div class="konto-saldo" style="color:${saldo < 0 ? 'var(--danger)' : '#1a1a1a'}">${fmt(saldo)}</div>
       <div class="konto-waluta">${k.waluta}</div>
       ${k.typ === 'oszczędności' ? subkontaHtml(k) : ''}
       <div class="konto-btns">
@@ -387,14 +387,14 @@ function subkontaHtml(k) {
     const cel = parseFloat(c.kwota_docelowa || 0);
     const odl = parseFloat(c.odlozone || 0);
     const p = cel > 0 ? Math.min(odl / cel * 100, 100) : 0;
-    const kolor = odl >= cel ? '#2e7d32' : '#4361ee';
+    const kolor = odl >= cel ? 'var(--good)' : 'var(--accent)';
     return `<div class="subk-row">
       <div class="subk-nazwa">${c.nazwa}</div>
       <div class="subk-bar"><span style="width:${p}%;background:${kolor}"></span></div>
       <div class="subk-kwota">${fmt(odl)} / ${fmt(cel)}</div>
     </div>`;
   }).join('');
-  const npKolor = Math.abs(np) < 0.01 ? '#999' : (np < 0 ? '#c62828' : '#b26a00');
+  const npKolor = Math.abs(np) < 0.01 ? 'var(--muted)' : (np < 0 ? 'var(--danger)' : 'var(--warn)');
   return `<div class="subk-box">
     <div class="subk-head">Subkonta (${subs.length})</div>
     ${rows}
@@ -676,11 +676,11 @@ function renderCykliczne() {
     const nal = liczbaNaliczen(c);
     const zakonczony = (c.limit_naliczen && nal >= c.limit_naliczen)
       || (c.do_miesiaca && c.ostatnio_do && c.ostatnio_do.slice(0,7) >= c.do_miesiaca.slice(0,7));
-    const badge = zakonczony ? ' <span style="font-size:11px;color:#2e7d32">(zakończony)</span>'
-      : (c.aktywne ? '' : ' <span style="font-size:11px;color:#c62828">(wstrzymany)</span>');
+    const badge = zakonczony ? ' <span style="font-size:11px;color: var(--good)">(zakończony)</span>'
+      : (c.aktywne ? '' : ' <span style="font-size:11px;color: var(--danger)">(wstrzymany)</span>');
     const raty = c.limit_naliczen ? ` · rata ${Math.min(nal, c.limit_naliczen)}/${c.limit_naliczen}`
       : (c.do_miesiaca ? ` · do ${c.do_miesiaca.slice(5,7)}.${c.do_miesiaca.slice(0,4)}` : '');
-    const sposob = c.automatyczny ? '' : ' · <span style="color:#b26a00">przelew ręczny</span>';
+    const sposob = c.automatyczny ? '' : ' · <span style="color: var(--warn)">przelew ręczny</span>';
     const cel = c.typ === 'przelew'
       ? `przelew → ${c.konto_na_nazwa || 'konto usunięte'}`
       : `${c.kategoria_glowna} / ${c.kategoria}`;
@@ -693,8 +693,8 @@ function renderCykliczne() {
       <div style="display:flex;align-items:center;gap:10px">
         <span class="cykl-kwota">${fmt(c.kwota)} zł/mies.</span>
         <div class="cykl-btns">
-          <button style="background:#f5f5f5;color:#555" onclick="editCykl(${c.id})" title="Edytuj">✏</button>
-          <button style="background:#fde8e8;color:#c62828" onclick="delCykl(${c.id},'${esc(c.nazwa)}')" title="Usuń">✕</button>
+          <button style="background: var(--surface-2);color: var(--text)" onclick="editCykl(${c.id})" title="Edytuj">✏</button>
+          <button style="background: var(--danger-bg);color: var(--danger)" onclick="delCykl(${c.id},'${esc(c.nazwa)}')" title="Usuń">✕</button>
         </div>
       </div>
     </div>`;
@@ -882,7 +882,7 @@ function renderHistoria() {
   const suma = lista.reduce((s, t) => s + parseFloat(t.kwota || 0), 0);
   if (lista.length) {
     sumaEl.textContent = (suma >= 0 ? '+' : '') + fmt(suma);
-    sumaEl.style.color = suma >= 0 ? '#2e7d32' : '#c62828';
+    sumaEl.style.color = suma >= 0 ? 'var(--good)' : 'var(--danger)';
   } else {
     sumaEl.textContent = '';
   }
@@ -956,11 +956,11 @@ async function showPanelInwent(kontoId) {
     return `<div class="inv-row">
       <div>
         <div style="font-weight:600">${fmtDate(i.data)}</div>
-        ${i.notatki ? `<div style="font-size:12px;color:#aaa;margin-top:2px">${i.notatki}</div>` : ''}
+        ${i.notatki ? `<div style="font-size:12px;color: var(--muted);margin-top:2px">${i.notatki}</div>` : ''}
       </div>
       <div style="text-align:right;font-size:0.85rem">
         <div>Rzeczywiste: <strong>${fmt(i.saldo_rzeczywiste)}</strong></div>
-        <div style="color:#aaa;font-size:12px">Wyliczone: ${fmt(i.saldo_obliczone)}</div>
+        <div style="color: var(--muted);font-size:12px">Wyliczone: ${fmt(i.saldo_obliczone)}</div>
         <div class="inv-diff ${cls}">Różnica: ${diffStr}</div>
       </div>
     </div>`;

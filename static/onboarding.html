@@ -15,10 +15,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #f0f4f8;
+      background: var(--bg);
     }
     .card {
-      background: white;
+      background: var(--surface);
       border-radius: 16px;
       box-shadow: 0 4px 24px rgba(0,0,0,.1);
       padding: 40px;
@@ -26,14 +26,14 @@
       width: 100%;
     }
     .logo { font-size: 2rem; margin-bottom: 12px; }
-    h1 { font-size: 1.4rem; margin-bottom: 6px; color: #1a1a1a; }
-    .subtitle { color: #666; margin-bottom: 24px; font-size: 0.9rem; }
+    h1 { font-size: 1.4rem; margin-bottom: 6px; color: var(--text); }
+    .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 0.9rem; }
     .user-info {
-      background: #f8f9fa;
+      background: var(--surface-2);
       border-radius: 8px;
       padding: 10px 14px;
       font-size: 0.85rem;
-      color: #555;
+      color: var(--text);
       margin-bottom: 28px;
       display: flex;
       align-items: center;
@@ -41,23 +41,23 @@
     }
     .user-info img { width: 28px; height: 28px; border-radius: 50%; }
     .section { margin-bottom: 24px; }
-    h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; color: #333; }
+    h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; color: var(--text); }
     input {
       width: 100%;
       padding: 10px 14px;
-      border: 1px solid #dadce0;
+      border: 1px solid var(--border);
       border-radius: 8px;
       font-size: 0.95rem;
       margin-bottom: 10px;
       outline: none;
       transition: border-color .15s;
     }
-    input:focus { border-color: #4285f4; }
+    input:focus { border-color: var(--accent); }
     .btn {
       width: 100%;
       padding: 11px;
-      background: #4285f4;
-      color: white;
+      background: var(--primary);
+      color: var(--on-primary);
       border: none;
       border-radius: 8px;
       font-size: 0.95rem;
@@ -65,10 +65,10 @@
       cursor: pointer;
       transition: background .15s;
     }
-    .btn:hover { background: #3367d6; }
+    .btn:hover { background: var(--primary); }
     .divider {
       text-align: center;
-      color: #aaa;
+      color: var(--muted);
       margin: 20px 0;
       font-size: 0.85rem;
       position: relative;
@@ -79,15 +79,15 @@
       top: 50%;
       width: 42%;
       height: 1px;
-      background: #eee;
+      background:var(--surface-2);
     }
     .divider::before { left: 0; }
     .divider::after { right: 0; }
     .error {
-      color: #d32f2f;
+      color: var(--danger);
       font-size: 0.85rem;
       margin-top: 8px;
-      background: #fdecea;
+      background: var(--danger-bg);
       padding: 8px 12px;
       border-radius: 6px;
       display: none;
@@ -96,15 +96,15 @@
       text-align: center;
       margin-top: 20px;
       font-size: 0.8rem;
-      color: #aaa;
+      color: var(--muted);
     }
-    .logout-link a { color: #aaa; cursor: pointer; text-decoration: underline; }
+    .logout-link a { color: var(--muted); cursor: pointer; text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="card">
     
-    <h1>Witaj w <span style="font-weight:700">wiem<span style="color:#a78bda">.</span></span></h1>
+    <h1>Witaj w <span style="font-weight:700">wiem<span style="color:var(--accent)">.</span></span></h1>
     <div class="subtitle">Jeden krok dzieli Cię od śledzenia wydatków.</div>
     <div class="user-info" id="user-info">Ładowanie...</div>
 

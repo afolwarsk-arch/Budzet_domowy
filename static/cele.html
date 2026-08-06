@@ -16,64 +16,64 @@
     .sekcja-head { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
     .sekcja-head h2 { font-size:1.15rem; margin:0; }
     .sekcja-head p { margin:0; color:var(--muted); font-size:13px; flex:1 1 100%; }
-    .btn-add { margin-left:auto; background:#4361ee; color:#fff; border:none; border-radius:9px; padding:9px 16px; font-size:13.5px; font-weight:600; cursor:pointer; }
-    .btn-add:hover { background:#3451d1; }
-    .btn-add.green { background:#2e7d32; } .btn-add.green:hover { background:#276b2b; }
+    .btn-add { margin-left:auto; background: var(--primary); color: var(--on-primary); border:none; border-radius:9px; padding:9px 16px; font-size:13.5px; font-weight:600; cursor:pointer; }
+    .btn-add:hover { background: var(--primary); }
+    .btn-add.green { background: var(--good); } .btn-add.green:hover { background: var(--good); }
 
     .cele-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
-    .cel-card { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:18px; }
-    .cel-card.osiagniety { border:2px solid #2e7d32; background:linear-gradient(180deg,#f2fbf3,#fff); }
+    .cel-card { background: var(--surface); border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:18px; }
+    .cel-card.osiagniety { border:2px solid var(--good); background:linear-gradient(180deg,#f2fbf3,#fff); }
     .cel-card.arch { opacity:.72; }
-    .arch-toggle { background:none; border:none; cursor:pointer; font-size:13px; font-weight:600; color:#666; padding:6px 0; }
-    .arch-toggle:hover { color:#333; }
+    .arch-toggle { background:none; border:none; cursor:pointer; font-size:13px; font-weight:600; color: var(--muted); padding:6px 0; }
+    .arch-toggle:hover { color: var(--text); }
     .cel-top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:4px; }
-    .cel-nazwa { font-weight:700; font-size:1.05rem; color:#1a1a1a; }
-    .cel-konto { font-size:11px; color:#888; margin-top:2px; }
-    .cel-icons button { background:none; border:none; cursor:pointer; font-size:14px; color:#c5c5c5; padding:3px 5px; border-radius:6px; }
-    .cel-icons button:hover { background:#f5f5f5; color:#555; }
-    .cel-icons button.del:hover { background:#fde8e8; color:#c62828; }
+    .cel-nazwa { font-weight:700; font-size:1.05rem; color: var(--text); }
+    .cel-konto { font-size:11px; color: var(--muted); margin-top:2px; }
+    .cel-icons button { background:none; border:none; cursor:pointer; font-size:14px; color:var(--muted); padding:3px 5px; border-radius:6px; }
+    .cel-icons button:hover { background: var(--surface-2); color: var(--text); }
+    .cel-icons button.del:hover { background: var(--danger-bg); color: var(--danger); }
     .cel-kwoty { display:flex; justify-content:space-between; align-items:baseline; margin:12px 0 6px; }
-    .cel-odlozone { font-size:1.5rem; font-weight:700; color:#2e7d32; }
-    .cel-cel { font-size:0.85rem; color:#999; }
-    .bar { height:10px; background:#eef0f2; border-radius:6px; overflow:hidden; }
+    .cel-odlozone { font-size:1.5rem; font-weight:700; color: var(--good); }
+    .cel-cel { font-size:0.85rem; color:var(--muted); }
+    .bar { height:10px; background: var(--surface-2); border-radius:6px; overflow:hidden; }
     .bar > span { display:block; height:100%; border-radius:6px; transition:width .3s; }
-    .cel-analiza { font-size:12px; color:#666; margin-top:10px; line-height:1.5; }
-    .cel-analiza .ostrzezenie { color:#c62828; font-weight:600; }
-    .cel-analiza .ok { color:#2e7d32; font-weight:600; }
+    .cel-analiza { font-size:12px; color: var(--muted); margin-top:10px; line-height:1.5; }
+    .cel-analiza .ostrzezenie { color: var(--danger); font-weight:600; }
+    .cel-analiza .ok { color: var(--good); font-weight:600; }
     .cel-btns { display:flex; gap:7px; margin-top:12px; }
-    .cel-btns button { flex:1; border:1px solid #ddd; background:#fff; border-radius:8px; padding:7px; font-size:12.5px; font-weight:600; cursor:pointer; color:#444; }
-    .cel-btns button.primary { background:#e8f5e9; border-color:#c8e6c9; color:#2e7d32; }
+    .cel-btns button { flex:1; border:1px solid var(--border); background: var(--surface); border-radius:8px; padding:7px; font-size:12.5px; font-weight:600; cursor:pointer; color:var(--text); }
+    .cel-btns button.primary { background: var(--good-bg); border-color:#c8e6c9; color: var(--good); }
     .cel-btns button:hover { filter:brightness(0.97); }
 
-    .lim-row { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); padding:14px 16px; margin-bottom:10px; }
+    .lim-row { background: var(--surface); border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.06); padding:14px 16px; margin-bottom:10px; }
     .lim-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
-    .lim-kat { font-weight:600; color:#333; }
-    .lim-kwoty { font-size:13px; color:#666; }
-    .lim-icons button { background:none; border:none; cursor:pointer; font-size:14px; color:#c5c5c5; padding:3px 5px; border-radius:6px; margin-left:2px; }
-    .lim-icons button:hover { background:#f5f5f5; color:#555; }
-    .lim-icons button.del:hover { background:#fde8e8; color:#c62828; }
+    .lim-kat { font-weight:600; color: var(--text); }
+    .lim-kwoty { font-size:13px; color: var(--muted); }
+    .lim-icons button { background:none; border:none; cursor:pointer; font-size:14px; color:var(--muted); padding:3px 5px; border-radius:6px; margin-left:2px; }
+    .lim-icons button:hover { background: var(--surface-2); color: var(--text); }
+    .lim-icons button.del:hover { background: var(--danger-bg); color: var(--danger); }
 
-    .flow-card { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:20px; max-width:520px; }
+    .flow-card { background: var(--surface); border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.07); padding:20px; max-width:520px; }
     .flow-big { font-size:1.8rem; font-weight:700; }
-    .flow-meta { color:#666; font-size:13px; margin-top:6px; }
+    .flow-meta { color: var(--muted); font-size:13px; margin-top:6px; }
 
     .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:900; align-items:center; justify-content:center; }
     .modal-backdrop.open { display:flex; }
-    .modal-box { background:#fff; border-radius:16px; padding:28px; width:100%; max-width:440px; margin:16px; max-height:90vh; overflow-y:auto; }
+    .modal-box { background: var(--surface); border-radius:16px; padding:28px; width:100%; max-width:440px; margin:16px; max-height:90vh; overflow-y:auto; }
     .modal-box h3 { font-size:1.05rem; margin:0 0 20px; }
     .fg { margin-bottom:14px; }
-    .fg label { display:block; font-size:11px; font-weight:700; color:#777; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
-    .fg input, .fg select { width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:8px; font-size:14px; box-sizing:border-box; font-family:inherit; }
-    .fg .hint { font-size:11px; color:#999; margin-top:4px; text-transform:none; letter-spacing:0; font-weight:400; }
+    .fg label { display:block; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
+    .fg input, .fg select { width:100%; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px; box-sizing:border-box; font-family:inherit; }
+    .fg .hint { font-size:11px; color:var(--muted); margin-top:4px; text-transform:none; letter-spacing:0; font-weight:400; }
     .modal-footer { display:flex; gap:8px; justify-content:flex-end; margin-top:20px; }
     .modal-footer button { padding:9px 22px; border:none; border-radius:8px; cursor:pointer; font-size:14px; }
-    .btn-cancel { background:#f0f0f0; color:#555; }
-    .btn-primary { background:#4361ee; color:#fff; font-weight:600; }
-    .btn-primary:hover { background:#3451d1; }
-    .empty-hint { text-align:center; color:#bbb; font-size:13px; padding:22px 0; }
-    .wpl-hist-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f3f3f3; font-size:13px; }
+    .btn-cancel { background: var(--surface-2); color: var(--text); }
+    .btn-primary { background: var(--primary); color: var(--on-primary); font-weight:600; }
+    .btn-primary:hover { background: var(--primary); }
+    .empty-hint { text-align:center; color:var(--muted); font-size:13px; padding:22px 0; }
+    .wpl-hist-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
     .radio-row { display:flex; gap:14px; margin-bottom:12px; }
-    .radio-row label { display:flex; align-items:center; gap:6px; font-size:14px; font-weight:500; color:#444; text-transform:none; letter-spacing:0; }
+    .radio-row label { display:flex; align-items:center; gap:6px; font-size:14px; font-weight:500; color:var(--text); text-transform:none; letter-spacing:0; }
   </style>
 </head>
 <body>
@@ -83,7 +83,7 @@
 <script defer src="/static/auth.js"></script>
 
 <nav>
-  <a href="/" class="logo">wiem<span style="color:#a78bda">.</span></a>
+  <a href="/" class="logo">wiem<span style="color:var(--accent)">.</span></a>
   <a href="/">Dashboard</a>
   <a href="/upload">Dodaj wydatek</a>
   <a href="/konta">Konta</a>
@@ -92,7 +92,7 @@
   <a href="/kategorie">Kategorie</a>
   <a href="/analiza">Analiza</a>
   <a href="/powiadomienia">Powiadomienia</a>
-  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background: var(--surface);font-size:0.85rem;">Wyloguj</button>
 </nav>
 
 <main style="max-width:1100px">
@@ -241,7 +241,7 @@
     <div class="fg"><label id="flow-lbl">Kwota miesięczna (zł)</label><input type="number" id="flow-wartosc" step="0.01" min="0.01" placeholder="0.00"></div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal('m-flow')">Anuluj</button>
-      <button id="flow-del" class="btn-cancel" style="display:none;color:#c62828" onclick="deleteFlow()">Usuń cel</button>
+      <button id="flow-del" class="btn-cancel" style="display:none;color: var(--danger)" onclick="deleteFlow()">Usuń cel</button>
       <button class="btn-primary" onclick="saveFlow()">Zapisz</button>
     </div>
   </div>
@@ -272,7 +272,7 @@ async function loadCele() {
   const grid = document.getElementById('cele-grid');
   document.getElementById('cele-empty').style.display = cele.length ? 'none' : '';
   grid.innerHTML = cele.map(c => {
-    const kolor = c.postep >= 100 ? '#2e7d32' : '#4361ee';
+    const kolor = c.postep >= 100 ? 'var(--good)' : 'var(--accent)';
     let analiza = '';
     if (c.brakuje <= 0) {
       analiza = '<span class="ok">🎉 Cel osiągnięty!</span>';
@@ -289,7 +289,7 @@ async function loadCele() {
         const d = new Date(); d.setMonth(d.getMonth() + Math.ceil(c.prognoza_miesiecy));
         analiza += `<br>Przy tym tempie: cel ok. <strong>${miesiacRok(d)}</strong>`;
       } else {
-        analiza += '<br><span style="color:#999">Dodaj wpłaty, policzę tempo i prognozę.</span>';
+        analiza += '<br><span style="color:var(--muted)">Dodaj wpłaty, policzę tempo i prognozę.</span>';
       }
     }
     return `<div class="cel-card${c.brakuje <= 0 ? ' osiagniety' : ''}">
@@ -308,7 +308,7 @@ async function loadCele() {
         <span class="cel-cel">z ${fmtZl(c.kwota_docelowa)} · ${c.postep}%</span>
       </div>
       <div class="bar"><span style="width:${Math.min(c.postep,100)}%;background:${kolor}"></span></div>
-      <div style="font-size:12px;color:#888;margin-top:4px">${c.brakuje > 0 ? 'Brakuje ' + fmtZl(c.brakuje) : 'Odłożone w całości'}</div>
+      <div style="font-size:12px;color: var(--muted);margin-top:4px">${c.brakuje > 0 ? 'Brakuje ' + fmtZl(c.brakuje) : 'Odłożone w całości'}</div>
       <div class="cel-analiza">${analiza}</div>
       <div class="cel-btns">
         <button class="primary" onclick="openWplata(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')">＋ Wpłać</button>
@@ -335,7 +335,7 @@ async function loadArchiwum() {
         ${c.konto_nazwa ? `<div class="cel-konto">💳 ${escHtml(c.konto_nazwa)}</div>` : ''}
       </div>
     </div>
-    <div class="cel-kwoty"><span class="cel-odlozone" style="color:#888">${fmt(c.odlozone)}</span><span class="cel-cel">z ${fmtZl(c.kwota_docelowa)}</span></div>
+    <div class="cel-kwoty"><span class="cel-odlozone" style="color: var(--muted)">${fmt(c.odlozone)}</span><span class="cel-cel">z ${fmtZl(c.kwota_docelowa)}</span></div>
     <div class="cel-btns">
       <button onclick="przywrocCel(${c.id})">↩ Przywróć</button>
       <button onclick="openHist(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')">Historia</button>
@@ -558,8 +558,8 @@ async function openHist(id, nazwa) {
   const ZR = { reczna:'ręczna', przelew:'przelew', cykliczny:'cykliczny', przesuniecie:'przesunięcie' };
   lista.innerHTML = wp.map(w => `<div class="wpl-hist-row">
     <div>
-      <div style="font-weight:600;color:${parseFloat(w.kwota) < 0 ? '#c62828' : '#2e7d32'}">${parseFloat(w.kwota) > 0 ? '+' : ''}${fmtZl(w.kwota)}</div>
-      <div style="font-size:11px;color:#aaa">${fmtDate(w.data)} · ${ZR[w.zrodlo] || w.zrodlo}${w.opis ? ' · ' + escHtml(w.opis) : ''}</div>
+      <div style="font-weight:600;color:${parseFloat(w.kwota) < 0 ? 'var(--danger)' : 'var(--good)'}">${parseFloat(w.kwota) > 0 ? '+' : ''}${fmtZl(w.kwota)}</div>
+      <div style="font-size:11px;color: var(--muted)">${fmtDate(w.data)} · ${ZR[w.zrodlo] || w.zrodlo}${w.opis ? ' · ' + escHtml(w.opis) : ''}</div>
     </div>
     <button onclick="delWplata(${w.id})" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:14px" title="Usuń wpłatę">✕</button>
   </div>`).join('');
@@ -581,10 +581,10 @@ async function loadLimity() {
   document.getElementById('limity-empty').style.display = limity.length ? 'none' : '';
   box.innerHTML = limity.map(l => {
     const p = Math.min(l.procent, 100);
-    const kolor = l.procent >= 100 ? '#c62828' : l.procent >= 80 ? '#f59e0b' : '#2e7d32';
+    const kolor = l.procent >= 100 ? 'var(--danger)' : l.procent >= 80 ? 'var(--warn)' : 'var(--good)';
     const tytul = l.podkategoria
-      ? `${escHtml(l.kategoria_glowna)} <span style="color:#aaa">›</span> ${escHtml(l.podkategoria)}`
-      : `${escHtml(l.kategoria_glowna)} <span style="font-size:10px;color:#aaa">(cała)</span>`;
+      ? `${escHtml(l.kategoria_glowna)} <span style="color: var(--muted)">›</span> ${escHtml(l.podkategoria)}`
+      : `${escHtml(l.kategoria_glowna)} <span style="font-size:10px;color: var(--muted)">(cała)</span>`;
     return `<div class="lim-row">
       <div class="lim-head">
         <span class="lim-kat">${tytul}</span>
@@ -661,17 +661,17 @@ async function loadFlow() {
   flowData = await authFetch('/api/cel-przeplywowy?month=' + month).then(r => r.json());
   const box = document.getElementById('flow-box');
   if (!flowData.cel) {
-    box.innerHTML = `<div class="flow-card"><div style="color:#999;font-size:14px">Nie ustawiono celu przepływowego. Kliknij „Ustaw cel", żeby np. odkładać 20% wpływów miesięcznie.</div>
+    box.innerHTML = `<div class="flow-card"><div style="color:var(--muted);font-size:14px">Nie ustawiono celu przepływowego. Kliknij „Ustaw cel", żeby np. odkładać 20% wpływów miesięcznie.</div>
       <div class="flow-meta" style="margin-top:10px">Bilans tego miesiąca: <strong>${fmtZl(flowData.bilans)}</strong></div></div>`;
     return;
   }
   const c = flowData.cel;
   const opisCel = c.typ === 'kwota' ? fmtZl(c.wartosc) + '/mies.' : c.wartosc + '% wpływów (' + fmtZl(flowData.cel_kwota) + ')';
   const r = flowData.realizacja;
-  const kolor = r == null ? '#999' : r >= 100 ? '#2e7d32' : r >= 60 ? '#f59e0b' : '#c62828';
+  const kolor = r == null ? 'var(--muted)' : r >= 100 ? 'var(--good)' : r >= 60 ? 'var(--warn)' : 'var(--danger)';
   box.innerHTML = `<div class="flow-card">
-    <div style="font-size:13px;color:#888;text-transform:uppercase;letter-spacing:.04em">Cel: odkładać ${opisCel}</div>
-    <div class="flow-big" style="color:${kolor}">${fmtZl(flowData.bilans)} <span style="font-size:0.9rem;font-weight:400;color:#999">w tym miesiącu</span></div>
+    <div style="font-size:13px;color: var(--muted);text-transform:uppercase;letter-spacing:.04em">Cel: odkładać ${opisCel}</div>
+    <div class="flow-big" style="color:${kolor}">${fmtZl(flowData.bilans)} <span style="font-size:0.9rem;font-weight:400;color:var(--muted)">w tym miesiącu</span></div>
     <div class="bar" style="margin:12px 0 8px"><span style="width:${r == null ? 0 : Math.max(Math.min(r,100),0)}%;background:${kolor}"></span></div>
     <div class="flow-meta">${r == null ? '' : 'Realizacja: <strong>' + r + '%</strong> celu · '}wpływy ${fmtZl(flowData.wplywy)} · wydatki ${fmtZl(flowData.wydatki)}</div>
   </div>`;

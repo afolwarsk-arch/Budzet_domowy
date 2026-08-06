@@ -13,13 +13,13 @@
   <link rel="preconnect" href="https://securetoken.googleapis.com">
   <style>
     .pw-row { display:flex; justify-content:space-between; align-items:center; gap:10px; border-radius:10px; padding:11px 14px; margin-bottom:8px; font-size:14px; }
-    .pw-btn { white-space:nowrap; background:#fff; border-radius:8px; padding:6px 14px; font-size:13px; font-weight:600; cursor:pointer; }
+    .pw-btn { white-space:nowrap; background: var(--surface); border-radius:8px; padding:6px 14px; font-size:13px; font-weight:600; cursor:pointer; }
     .arch-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--border); font-size:13.5px; }
     .arch-row:last-child { border-bottom:none; }
     .arch-meta { font-size:12px; color:var(--muted); margin-top:1px; }
     .arch-badge { font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap; }
-    .arch-badge.potwierdzona { background:#eafaf1; color:#1e7e34; }
-    .arch-badge.naliczona { background:#eef1fb; color:#3563d4; }
+    .arch-badge.potwierdzona { background: var(--good-bg); color: var(--good); }
+    .arch-badge.naliczona { background: var(--surface-3); color: var(--accent); }
   </style>
 </head>
 <body>
@@ -27,7 +27,7 @@
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script defer src="/static/auth.js"></script>
 <nav>
-  <a href="/" class="logo">wiem<span style="color:#a78bda">.</span></a>
+  <a href="/" class="logo">wiem<span style="color:var(--accent)">.</span></a>
   <a href="/">Dashboard</a>
   <a href="/upload">Dodaj wydatek</a>
   <a href="/konta">Konta</a>
@@ -36,7 +36,7 @@
   <a href="/kategorie">Kategorie</a>
   <a href="/analiza">Analiza</a>
   <a href="/powiadomienia" class="active">Powiadomienia</a>
-  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background: var(--surface);font-size:0.85rem;">Wyloguj</button>
 </nav>
 
 <main style="max-width:760px">
@@ -68,7 +68,7 @@ async function loadAktywne() {
     el.innerHTML = '<p style="color:var(--muted);text-align:center;padding:16px 0">Brak aktywnych powiadomień — wszystko opłacone. 🎉</p>';
     return;
   }
-  const kolor = { czerwony: ['#fdeaea', '#c0392b'], zolty: ['#fff8e1', '#7d5a00'], info: ['#eef4ff', '#3563d4'] };
+  const kolor = { czerwony: ['#fdeaea', 'var(--danger)'], zolty: ['#fff8e1', 'var(--warn)'], info: ['#eef4ff', 'var(--accent)'] };
   el.innerHTML = items.map(p => {
     const [bg, fg] = kolor[p.poziom] || kolor.info;
     const dni = p.dni_do;
@@ -111,7 +111,7 @@ async function loadArchiwum() {
     const spoznienie = (() => {
       if (!potw || !a.potwierdzona_at) return '';
       const dni = Math.round((new Date(a.potwierdzona_at) - new Date(a.termin + 'T12:00')) / 86400000);
-      return dni > 0 ? ` · <span style="color:#c0392b">${dni} ${dni === 1 ? 'dzień' : 'dni'} po terminie</span>` : '';
+      return dni > 0 ? ` · <span style="color: var(--danger)">${dni} ${dni === 1 ? 'dzień' : 'dni'} po terminie</span>` : '';
     })();
     const cel = a.cel === 'przelew' ? ` · przelew${a.konto_na_nazwa ? ' → ' + esc(a.konto_na_nazwa) : ''}` : '';
     return `<div class="arch-row">

@@ -15,8 +15,8 @@
     .lz-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
     .lz-tab { padding:7px 13px; border:1px solid var(--border); border-radius:20px; background:var(--card,#fff); color:inherit;
               cursor:pointer; font-size:13.5px; white-space:nowrap; display:inline-flex; align-items:center; gap:6px; }
-    .lz-tab.active { background:#4f7ef8; color:#fff; border-color:#4f7ef8; }
-    .lz-tab-new { padding:7px 13px; border:1px dashed #9db4e8; border-radius:20px; background:none; color:#4f7ef8; cursor:pointer; font-size:13.5px; }
+    .lz-tab.active { background: var(--primary); color: var(--on-primary); border-color: var(--accent); }
+    .lz-tab-new { padding:7px 13px; border:1px dashed var(--accent); border-radius:20px; background:none; color: var(--accent); cursor:pointer; font-size:13.5px; }
     .lz-badge { background:rgba(0,0,0,.12); border-radius:10px; padding:0 7px; font-size:12px; min-width:18px; text-align:center; }
     .lz-tab.active .lz-badge { background:rgba(255,255,255,.3); }
     .lz-head { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
@@ -27,20 +27,20 @@
     .lz-add input { flex:1; min-width:0; padding:13px 15px; border:1px solid var(--border); border-radius:12px; font-size:16px; outline:none; }
     .lz-status { font-size:12.5px; color:var(--muted); display:flex; align-items:center; gap:6px; }
     .lz-dot { width:9px; height:9px; border-radius:50%; background:#bbb; flex:none; }
-    .lz-dot.on { background:#22b866; }
+    .lz-dot.on { background: var(--good); }
     .lz-dot.wait { background:#f0ad3c; animation:lzpulse 1s infinite; }
     @keyframes lzpulse { 50% { opacity:.35; } }
     .lz-row { display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:10px; background:var(--card,#fff);
               border:1px solid var(--border); margin-bottom:5px; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; }
     .lz-row:active { transform:scale(.995); }
-    .lz-handle { flex:none; color:#b7bece; font-size:16px; cursor:grab; padding:0 1px; line-height:1; touch-action:none; }
-    .lz-check { width:21px; height:21px; border-radius:50%; border:2px solid #cfd6e4; flex:none; display:flex; align-items:center;
-                justify-content:center; font-size:13px; color:#fff; }
-    .lz-row.done .lz-check { background:#22b866; border-color:#22b866; }
+    .lz-handle { flex:none; color: var(--muted); font-size:16px; cursor:grab; padding:0 1px; line-height:1; touch-action:none; }
+    .lz-check { width:21px; height:21px; border-radius:50%; border:2px solid var(--border); flex:none; display:flex; align-items:center;
+                justify-content:center; font-size:13px; color: var(--on-primary); }
+    .lz-row.done .lz-check { background: var(--good); border-color: var(--good); }
     .lz-name { flex:1; font-size:15px; line-height:1.25; word-break:break-word; }
     .lz-who { font-size:11px; color:var(--muted); }
     .lz-row.done .lz-name { text-decoration:line-through; color:var(--muted); }
-    .lz-del { flex:none; width:30px; height:30px; border:none; background:none; color:#c0392b; font-size:19px; cursor:pointer;
+    .lz-del { flex:none; width:30px; height:30px; border:none; background:none; color: var(--danger); font-size:19px; cursor:pointer;
               border-radius:8px; line-height:1; }
     .lz-row.pending { opacity:.55; }
     .lz-drag-ghost { opacity:.35; }
@@ -50,7 +50,7 @@
     .kal-chip { padding:9px 13px; border:1px solid var(--border); border-radius:20px; background:var(--card,#fff); color:inherit;
                 font-size:14px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
     .kal-chip:active { transform:scale(.96); }
-    .kal-chip.kal-on { background:#4f7ef8; border-color:#4f7ef8; color:#fff; }
+    .kal-chip.kal-on { background: var(--primary); border-color: var(--accent); color: var(--on-primary); }
   </style>
 </head>
 <body>
@@ -59,7 +59,7 @@
 <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script defer src="/static/auth.js"></script>
 <nav>
-  <a href="/" class="logo">wiem<span style="color:#a78bda">.</span></a>
+  <a href="/" class="logo">wiem<span style="color:var(--accent)">.</span></a>
   <a href="/">Dashboard</a>
   <a href="/upload">Dodaj wydatek</a>
   <a href="/lista" class="active">Lista</a>
@@ -69,7 +69,7 @@
   <a href="/kategorie">Kategorie</a>
   <a href="/analiza">Analiza</a>
   <a href="/powiadomienia">Powiadomienia</a>
-  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid #ccc;border-radius:6px;background:white;font-size:0.85rem;">Wyloguj</button>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background: var(--surface);font-size:0.85rem;">Wyloguj</button>
 </nav>
 
 <main style="max-width:640px">
@@ -161,7 +161,7 @@ function renderPanel() {
         <button data-act="rename" title="Zmień nazwę">✏</button>
         <button data-act="wstrzymaj" title="Wstrzymaj listę">⏸</button>
         <button data-act="zamknij" title="Zamknij (zakończ) listę">✓</button>
-        <button data-act="usun" title="Usuń listę" style="color:#c0392b">🗑</button>
+        <button data-act="usun" title="Usuń listę" style="color: var(--danger)">🗑</button>
       </div>
     </div>
     <div class="lz-add">
@@ -411,9 +411,9 @@ async function _otworzKalibracje_NIEUZYWANE(listId, sklep) {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,20,40,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px';
   overlay.innerHTML = `
-    <div style="background:#fff;border-radius:16px;max-width:460px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,.3);padding:20px 22px">
-      <h3 style="margin:0 0 6px;font-size:1.1rem;color:#1a1f2e">Ustaw kolejność — ${esc(sklep)}</h3>
-      <p style="font-size:13px;color:#555;line-height:1.5;margin:0 0 12px">Klikaj produkty w kolejności, w jakiej mijasz je w sklepie (od wejścia do kasy). Czego nie klikniesz — pomijasz. To jednorazowa baza; potem apka sama się dostraja.</p>
+    <div style="background: var(--surface);border-radius:16px;max-width:460px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,.3);padding:20px 22px">
+      <h3 style="margin:0 0 6px;font-size:1.1rem;color: var(--text)">Ustaw kolejność — ${esc(sklep)}</h3>
+      <p style="font-size:13px;color: var(--text);line-height:1.5;margin:0 0 12px">Klikaj produkty w kolejności, w jakiej mijasz je w sklepie (od wejścia do kasy). Czego nie klikniesz — pomijasz. To jednorazowa baza; potem apka sama się dostraja.</p>
       <div id="kal-ordered"></div>
       <div id="kal-pool"></div>
       <div style="display:flex;gap:6px;margin-top:12px">

@@ -12,23 +12,23 @@
     /* Strona publiczna — bez auth.js, musi być czytelna dla robota Google Play. */
     .doc { max-width: 780px; margin: 0 auto; padding: 24px 18px 60px; }
     .doc h1 { font-size: 1.6rem; margin: 0 0 6px; }
-    .doc .updated { color: #888; font-size: 0.85rem; margin-bottom: 28px; }
-    .doc h2 { font-size: 1.1rem; margin: 32px 0 10px; padding-top: 18px; border-top: 1px solid #eee; }
+    .doc .updated { color: var(--muted); font-size: 0.85rem; margin-bottom: 28px; }
+    .doc h2 { font-size: 1.1rem; margin: 32px 0 10px; padding-top: 18px; border-top: 1px solid var(--border); }
     .doc h2:first-of-type { border-top: none; padding-top: 0; }
-    .doc p, .doc li { font-size: 0.94rem; line-height: 1.7; color: #333; }
+    .doc p, .doc li { font-size: 0.94rem; line-height: 1.7; color: var(--text); }
     .doc ul { padding-left: 22px; margin: 10px 0; }
     .doc li { margin-bottom: 6px; }
     .doc table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 0.88rem; }
-    .doc th, .doc td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
-    .doc th { background: #f7f9ff; font-weight: 600; color: #3451d1; }
-    .doc .box { background: #f0f4ff; border-radius: 10px; padding: 14px 16px; margin: 18px 0; color: #3451d1; font-size: 0.9rem; line-height: 1.65; }
-    .doc a { color: #4361ee; }
+    .doc th, .doc td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .doc th { background: var(--surface-3); font-weight: 600; color: var(--accent); }
+    .doc .box { background: var(--surface-3); border-radius: 10px; padding: 14px 16px; margin: 18px 0; color: var(--accent); font-size: 0.9rem; line-height: 1.65; }
+    .doc a { color: var(--accent); }
     .doc .tbl-wrap { overflow-x: auto; }
   </style>
 </head>
 <body>
 <nav>
-  <a href="/" class="logo">wiem<span style="color:#a78bda">.</span></a>
+  <a href="/" class="logo">wiem<span style="color:var(--accent)">.</span></a>
 </nav>
 
 <main class="doc">
