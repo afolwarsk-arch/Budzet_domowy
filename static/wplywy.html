@@ -155,21 +155,32 @@
 </div>
 
 <script>
-const ZR_COLORS = {
-  'Wynagrodzenie':'var(--good)', 'Premia':'var(--good)', 'Zwrot podatku':'var(--good)',
-  'Wynajem':'var(--accent)', 'Sprzedaż':'var(--accent)', 'Zwrot wydatku':'var(--warn)', 'Inne':'var(--muted)',
+// Chart.js NIE rozumie var(--token) — dostaje wtedy wartosc nieprawidlowa
+// i rysuje czernia. Kolory bierzemy wiec ze zwalidowanej palety (auth.js),
+// ktora ma osobne wartosci dla motywu jasnego i ciemnego.
+const ZR_SLOT = {
+  'Wynagrodzenie': 5, 'Premia': 2, 'Zwrot podatku': 10,
+  'Wynajem': 0, 'Sprzedaż': 8, 'Zwrot wydatku': 3, 'Inne': 13,
 };
 function zrColor(nazwa) {
-  if (ZR_COLORS[nazwa]) return ZR_COLORS[nazwa];
+  const slot = ZR_SLOT[nazwa];
+  if (slot !== undefined) return seriaColor(slot);
+  // zrodla spoza listy: deterministyczny slot z nazwy, zeby kolor byl staly
   let h = 0;
   for (let i = 0; i < nazwa.length; i++) h = (h * 31 + nazwa.charCodeAt(i)) >>> 0;
-  return `hsl(${h % 360}, 55%, 50%)`;
+  return seriaColor(h);
 }
 
 let wszystkie = [];   // wszystkie wpływy gospodarstwa
 let konta = [];
 let editWplywId = null;
 let chartMies = null, chartZrodlo = null;
+
+// wykresy nie czytaja zmiennych CSS — przy zmianie motywu rysujemy od nowa
+window.addEventListener('motyw-zmieniony', () => {
+  ustawChromWykresow();
+  if (typeof loadWplywy === 'function') loadWplywy();
+});
 
 const fmt = n => (n == null ? 0 : parseFloat(n)).toLocaleString('pl-PL', { minimumFractionDigits:2, maximumFractionDigits:2 });
 const fmtZl = n => fmt(n) + ' zł';
@@ -254,7 +265,7 @@ function renderWykresMies() {
   if (chartMies) chartMies.destroy();
   chartMies = new Chart(ctx, {
     type: 'bar',
-    data: { labels: etykiety, datasets: [{ data: wartosci, backgroundColor: '#2e7d32', borderRadius: 5 }] },
+    data: { labels: etykiety, datasets: [{ data: wartosci, backgroundColor: seriaColor(5), borderRadius: 5 }] },
     options: {
       maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ' ' + fmtZl(c.raw) } } },
@@ -268,13 +279,13 @@ function renderWykresZrodlo(wgZr) {
   const ctx = document.getElementById('chart-zrodlo').getContext('2d');
   if (chartZrodlo) chartZrodlo.destroy();
   if (!wpisy.length) {
-    chartZrodlo = new Chart(ctx, { type: 'doughnut', data: { labels: ['Brak danych'], datasets: [{ data: [1], backgroundColor: ['#eee'] }] },
+    chartZrodlo = new Chart(ctx, { type: 'doughnut', data: { labels: ['Brak danych'], datasets: [{ data: [1], backgroundColor: [tokenCss('--border')] }] },
       options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } } });
     return;
   }
   chartZrodlo = new Chart(ctx, {
     type: 'doughnut',
-    data: { labels: wpisy.map(e => e[0]), datasets: [{ data: wpisy.map(e => Math.round(e[1] * 100) / 100), backgroundColor: wpisy.map(e => zrColor(e[0])), borderWidth: 2 }] },
+    data: { labels: wpisy.map(e => e[0]), datasets: [{ data: wpisy.map(e => Math.round(e[1] * 100) / 100), backgroundColor: wpisy.map(e => zrColor(e[0])), borderWidth: 2, borderColor: tokenCss('--surface') }] },
     options: {
       maintainAspectRatio: false, cutout: '58%',
       plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },

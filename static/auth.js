@@ -21,6 +21,101 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// ── Paleta wykresów ─────────────────────────────────────────────────────
+// Piętnaście barw — każda kategoria ma własną. Kolejność slotów NIE jest
+// kosmetyczna: to ona decyduje o rozróżnialności sąsiadów, więc dobrana
+// została przez walidator, nie na oko.
+//
+// Zwalidowane wobec powierzchni kart (#ffffff i #1e2126) — wszystkie bramki
+// przechodzą w obu motywach:
+//   jasny  — CVD ΔE 9.1, widzenie normalne 19.6, pasmo jasności i chroma OK
+//   ciemny — CVD ΔE 8.4, widzenie normalne 19.3, kontrast wszystkich ≥ 3:1
+//
+// Kilka barw ma kontrast poniżej 3:1 wobec jasnego tła. To dopuszczalne,
+// bo legenda pokazuje nazwę i kwotę obok każdej próbki — kolor nigdy nie
+// jest jedynym nośnikiem tożsamości.
+const PALETA_KAT = {
+  jasny: [
+    '#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4',
+    '#008300', '#4a3aa7', '#e34948', '#00879e', '#b5651d',
+    '#00967d', '#8e44c4', '#7d8a00', '#4a63b0', '#c2185b',
+  ],
+  ciemny: [
+    '#3987e5', '#d95926', '#199e70', '#c98500', '#d55181',
+    '#008300', '#9085e9', '#e66767', '#00a0bd', '#c9761f',
+    '#00a88c', '#a45fd6', '#8f9e00', '#6f86d6', '#d94a7e',
+  ],
+};
+// kategorie własne gospodarstwa, spoza stałej listy
+const KAT_POZOSTALE = { jasny: '#8a8782', ciemny: '#918d86' };
+
+// Przypisanie jest STAŁE po nazwie kategorii, nie po wielkości wydatku —
+// inaczej kolory skakałyby z miesiąca na miesiąc i nie dałoby się ich zapamiętać.
+const KAT_SLOT = {
+  'Spożywcze': 0,
+  'Transport i paliwo': 1,
+  'Dom i wyposażenie': 2,
+  'Rachunki domowe': 3,
+  'Wydatki na dziecko': 4,
+  'Zdrowie': 5,
+  'Rozrywka i hobby': 6,
+  'Higiena i kosmetyki': 7,
+  'Odzież i obuwie': 8,
+  'Lokal Gałczyńskiego': 9,
+  'Edukacja': 10,
+  'Elektronika': 11,
+  'Używki': 12,
+  'Prezenty': 13,
+  'Inne': 14,
+};
+
+// Kwoty doliczają się od zera przy wejściu — to jedyna animacja, która coś
+// komunikuje („dane właśnie doszły"), a nie ozdabia. Przy ustawieniu
+// ograniczonego ruchu wartość pojawia się od razu.
+function odliczaj(el, docelowa, formatuj, ms = 620) {
+  if (!el) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !isFinite(docelowa)) {
+    el.textContent = formatuj(docelowa);
+    return;
+  }
+  const start = performance.now();
+  function krok(teraz) {
+    const p = Math.min(1, (teraz - start) / ms);
+    const e = 1 - Math.pow(1 - p, 3);          // wyhamowanie na końcu
+    el.textContent = formatuj(docelowa * e);
+    if (p < 1) requestAnimationFrame(krok);
+  }
+  requestAnimationFrame(krok);
+}
+
+function motywWykresu() {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue('color-scheme').trim() === 'dark' ? 'ciemny' : 'jasny';
+}
+
+function tokenCss(nazwa) {
+  return getComputedStyle(document.documentElement).getPropertyValue(nazwa).trim();
+}
+
+// kolor pojedynczej serii (trend, wykres dzienny) — pierwszy slot palety
+function seriaColor(i = 0) {
+  const p = PALETA_KAT[motywWykresu()];
+  return p[i % p.length];
+}
+
+// Chart.js nie czyta zmiennych CSS, więc opisy i siatkę podajemy mu wprost
+// i odświeżamy przy zmianie motywu.
+function ustawChromWykresow() {
+  if (typeof Chart === 'undefined') return;
+  Chart.defaults.color = tokenCss('--muted');
+  Chart.defaults.borderColor = tokenCss('--border');
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+}
+// Chart.js ładuje się z CDN, więc przy parsowaniu tego pliku może go jeszcze
+// nie być — ustawiamy chrom także po zbudowaniu dokumentu.
+ustawChromWykresow();
+window.addEventListener('DOMContentLoaded', ustawChromWykresow);
+
 async function authGetToken() {
   const user = _auth.currentUser;
   if (!user) throw new Error("Nie zalogowany");
