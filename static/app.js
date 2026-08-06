@@ -1,3 +1,65 @@
+// ── Paleta wykresów ─────────────────────────────────────────────────────
+// Osiem barw zwalidowanych wobec powierzchni kart (#ffffff i #1e2126):
+// najgorsza para sąsiadów ma ΔE 9.1 na jasnym i 8.4 na ciemnym przy progu 8,
+// a widzenie normalne 19.6 / 19.3 przy progu 15.
+//
+// Kategorii jest piętnaście i tylu rozróżnialnych barw NIE DA SIĘ dobrać —
+// sprawdzone: przy 15 chroma spada do szarości, a najgorsza para schodzi
+// do ΔE 2.3. Osiem głównych kategorii dostaje więc własny kolor, reszta
+// wspólną szarość i czyta się jako „pozostałe".
+const PALETA_KAT = {
+  jasny:  ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'],
+  ciemny: ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'],
+};
+const KAT_POZOSTALE = { jasny: '#8a8782', ciemny: '#918d86' };
+
+// Przypisanie jest STAŁE po nazwie kategorii, nie po wielkości wydatku —
+// inaczej kolory skakałyby z miesiąca na miesiąc i nie dałoby się ich zapamiętać.
+const KAT_SLOT = {
+  'Spożywcze': 0,
+  'Transport i paliwo': 1,
+  'Dom i wyposażenie': 2,
+  'Rachunki domowe': 3,
+  'Wydatki na dziecko': 4,
+  'Zdrowie': 5,
+  'Rozrywka i hobby': 6,
+  'Higiena i kosmetyki': 7,
+};
+
+function motywWykresu() {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue('color-scheme').trim() === 'dark' ? 'ciemny' : 'jasny';
+}
+
+function tokenCss(nazwa) {
+  return getComputedStyle(document.documentElement).getPropertyValue(nazwa).trim();
+}
+
+function katColor(nazwa) {
+  const m = motywWykresu();
+  const slot = KAT_SLOT[nazwa];
+  return slot === undefined ? KAT_POZOSTALE[m] : PALETA_KAT[m][slot];
+}
+
+// kolor pojedynczej serii (trend, wykres dzienny) — pierwszy slot palety
+function seriaColor(i = 0) {
+  return PALETA_KAT[motywWykresu()][i % 8];
+}
+
+// Chart.js nie czyta zmiennych CSS, więc opisy i siatkę podajemy mu wprost
+// i odświeżamy przy zmianie motywu.
+function ustawChromWykresow() {
+  if (typeof Chart === 'undefined') return;
+  Chart.defaults.color = tokenCss('--muted');
+  Chart.defaults.borderColor = tokenCss('--border');
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+}
+// Chart.js ładuje się z CDN, więc przy parsowaniu tego pliku może go jeszcze
+// nie być — ustawiamy chrom także po zbudowaniu dokumentu.
+ustawChromWykresow();
+window.addEventListener('DOMContentLoaded', ustawChromWykresow);
+
+
 // ── shared helpers ──────────────────────────────────────────────
 
 function fmt(zl) {
@@ -336,31 +398,6 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
 
   // Stałe kolory kategorii głównych — kolor trzyma się nazwy, a nie pozycji na wykresie,
   // więc przełączanie widoków (pierwotne/kontekstowe) nie przetasowuje kolorów.
-  const KAT_COLORS = {
-    'Spożywcze':           '#4f7ef8',
-    'Higiena i kosmetyki': '#f84f8a',
-    'Wydatki na dziecko':  '#f8d74f',
-    'Dom i wyposażenie':   '#f87e4f',
-    'Transport i paliwo':  '#4fc8f8',
-    'Zdrowie':             '#4ff87e',
-    'Odzież i obuwie':     '#a04ff8',
-    'Rozrywka i hobby':    '#f84f4f',
-    'Edukacja':            '#4ff8d7',
-    'Elektronika':         '#8af84f',
-    'Rachunki domowe':     '#5e60ce',
-    'Lokal Gałczyńskiego': '#c47f3d',
-    'Prezenty':            '#ff9ff3',
-    'Używki':              '#8d6e63',
-    'Inne':                '#9e9e9e',
-  };
-  function katColor(nazwa) {
-    if (KAT_COLORS[nazwa]) return KAT_COLORS[nazwa];
-    // kategorie spoza listy (własne w gospodarstwie): deterministyczny kolor z nazwy
-    let h = 0;
-    for (let i = 0; i < nazwa.length; i++) h = (h * 31 + nazwa.charCodeAt(i)) >>> 0;
-    return `hsl(${h % 360}, 65%, 58%)`;
-  }
-
   let activeGlowna = null;
 
   // Plugin: KWOTA na największych wycinkach koła (top 3, udział ≥ 7%). Sama kwota,
@@ -419,7 +456,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         type: 'bar',
         data: {
           labels: statSub.map(s => s.kategoria),
-          datasets: [{ data: statSub.map(s => s.suma), backgroundColor: '#a04ff8', borderRadius: 4 }],
+          datasets: [{ data: statSub.map(s => s.suma), backgroundColor: seriaColor(6), borderRadius: 4 }],
         },
         options: {
           indexAxis: 'y',
@@ -443,7 +480,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         type: 'doughnut',
         data: {
           labels: widoczne.map(d => d.kategoria_glowna),
-          datasets: [{ data: widoczne.map(d => d.suma), backgroundColor: widoczne.map(d => katColor(d.kategoria_glowna)), borderWidth: 2 }],
+          datasets: [{ data: widoczne.map(d => d.suma), backgroundColor: widoczne.map(d => katColor(d.kategoria_glowna)), borderWidth: 2, borderColor: tokenCss('--surface') }],
         },
         options: {
           plugins: {
@@ -706,7 +743,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   });
 
   // ── Wykres trendów: jeden wykres, przełączany miesiąc / tydzień / dzień ──
-  const OSOBA_COLORS = ['#4f7ef8', '#f84f8a', '#4fc8f8', '#f8a04f', '#a04ff8', '#4ff8a0'];
+  const OSOBA_COLORS_IDX = [0, 1, 2, 4];   // sloty palety, nie twarde hexy
 
   function drawTrend(labels, datasets, opts) {
     opts = opts || {};
@@ -799,13 +836,13 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       datasets = osoby.map((os, i) => ({
         label: os,
         data: miesiace.map(m => data.find(d => d.miesiac === m && d.osoba === os)?.suma ?? 0),
-        backgroundColor: OSOBA_COLORS[i % OSOBA_COLORS.length],
+        backgroundColor: seriaColor(OSOBA_COLORS_IDX[i % OSOBA_COLORS_IDX.length]),
         borderRadius: 4,
       }));
       drawTrend(miesiace, datasets, { legend: true, maxX: 12, title: kategoria || null });
     } else {
       const lacznie = miesiace.map(m => data.filter(d => d.miesiac === m).reduce((s, d) => s + d.suma, 0));
-      drawTrend(miesiace, [{ label: 'Łącznie', data: lacznie, backgroundColor: '#4fc8f8', borderRadius: 4 }],
+      drawTrend(miesiace, [{ label: 'Łącznie', data: lacznie, backgroundColor: seriaColor(0), borderRadius: 4 }],
                 { maxX: 12, title: kategoria || null });
     }
   }
@@ -820,7 +857,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     } else { dni = data.map(r => r.dzien); }
     const labels = dni.map(s => { const [, m, dd] = s.split('-'); return `${+dd}.${+m}`; });
     const wart = dni.map(s => sumMap[s] || 0);
-    drawTrend(labels, [{ data: wart, backgroundColor: '#4f7ef8', borderRadius: 3 }], {
+    drawTrend(labels, [{ data: wart, backgroundColor: seriaColor(0), borderRadius: 3 }], {
       maxX: 8, title: kategoria || null,
       tooltipTitle: items => { const [y, m, dd] = dni[items[0].dataIndex].split('-'); return `${dd}.${m}.${y}`; },
     });
@@ -839,7 +876,7 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
     } else { tygodnie = Object.keys(map).sort(); }
     const labels = tygodnie.map(s => 'T' + isoWeek(new Date(s + 'T00:00:00')));
     const wart = tygodnie.map(s => map[s] || 0);
-    drawTrend(labels, [{ data: wart, backgroundColor: '#5e60ce', borderRadius: 3 }], {
+    drawTrend(labels, [{ data: wart, backgroundColor: seriaColor(6), borderRadius: 3 }], {
       maxX: 12, title: kategoria || null,
       tooltipTitle: items => {
         const mon = new Date(tygodnie[items[0].dataIndex] + 'T00:00:00');
@@ -979,6 +1016,12 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
   document.getElementById('kat-week').addEventListener('change', (e) => setKatWeek(e.target.value));
   document.getElementById('kat-week-reset').addEventListener('click', () => setKatWeek(''));
   populateKatWeeks();
+
+  // przy zmianie motywu paleta i chrom muszą pójść za nim
+  window.addEventListener('motyw-zmieniony', () => {
+    ustawChromWykresow();
+    loadDashboard();
+  });
 
   // ── Przelicz kategorie (tylko admin) — pozycja w menu „⋯" ──
   if (!authIsAdmin(me)) {
@@ -1198,10 +1241,10 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
         labels: pts.map(p => p.data),
         datasets: [{
           data: pts.map(p => p.cena),
-          borderColor: '#4f7ef8',
-          backgroundColor: 'rgba(79,126,248,.12)',
+          borderColor: seriaColor(0),
+          backgroundColor: 'transparent',
           pointRadius: 3,
-          pointBackgroundColor: '#4f7ef8',
+          pointBackgroundColor: seriaColor(0),
           tension: 0.2,
           fill: true,
         }],

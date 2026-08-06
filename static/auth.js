@@ -48,6 +48,8 @@ function _ustawMotyw(m) {
   if (m === 'auto') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', m === 'ciemny' ? 'dark' : 'light');
   _odswiezPasekStatusu();
+  // wykresy nie czytaja zmiennych CSS — musza sie przerysowac same
+  window.dispatchEvent(new Event('motyw-zmieniony'));
 }
 
 function _odswiezPasekStatusu() {
