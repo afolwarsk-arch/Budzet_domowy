@@ -161,7 +161,7 @@ function _injectProfileButton(me) {
 }
 
 const _SAMOUCZEK_SLAJDY = [
-  { emoji: '👋', tytul: 'Witaj w Budżecie domowym!',
+  { emoji: '👋', tytul: 'Witaj w Wiem!',
     opis: 'To wspólny budżet całego gospodarstwa: dodajesz wydatki (zdjęciem paragonu, notatką albo ręcznie), a apka pokazuje statystyki, pilnuje płatności i podpowiada, gdzie oszczędzić. Ten przewodnik przejdzie przez wszystkie funkcje — wrócisz do niego kiedy chcesz przyciskiem ❓ u góry.' },
   { emoji: '📷', tytul: 'Paragon = zdjęcie',
     opis: 'W „Dodaj wydatek" zrób zdjęcie paragonu — Claude AI sam odczyta sklep, datę, wszystkie pozycje z cenami i przypisze kategorie. Możesz wrzucić kilka paragonów naraz: każdy stanie się osobnym wydatkiem. Przed zapisem wszystko sprawdzisz i poprawisz.' },

@@ -1,4 +1,4 @@
-// Service worker aplikacji „Budżet domowy".
+// Service worker aplikacji „Wiem".
 //
 // Serwowany z / (trasa w main.py), bo z /static obejmowałby zasięgiem tylko ten
 // katalog. __BUILD__ podmieniane jest przy serwowaniu na hasz commita — dzięki
