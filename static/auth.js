@@ -273,19 +273,19 @@ function pokazSamouczek(pierwszyRaz) {
     const s = _SAMOUCZEK_SLAJDY[idx];
     const ostatni = idx === _SAMOUCZEK_SLAJDY.length - 1;
     overlay.innerHTML = `
-      <div style="background:var(--surface);border-radius:18px;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,.3)">
-        <div style="height:128px;display:flex;align-items:center;justify-content:center;font-size:58px;background:linear-gradient(135deg,hsl(${(idx * 29) % 360}, 78%, 63%),hsl(${(idx * 29 + 40) % 360}, 74%, 52%));border-radius:18px 18px 0 0">${s.emoji}</div>
+      <div class="sam-karta">
+        <div class="sam-naglowek" style="--kat:${130 + idx * 7}deg"><span class="sam-emoji">${s.emoji}</span></div>
         <div style="padding:22px 26px 18px">
           <h3 style="font-size:1.15rem;margin:0 0 8px;color:var(--text)">${s.tytul}</h3>
           <p style="font-size:14px;line-height:1.6;color:var(--text);margin:0 0 16px">${s.opis}</p>
           <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-bottom:14px">
-            ${_SAMOUCZEK_SLAJDY.map((_, i) => `<span style="width:8px;height:8px;border-radius:50%;background:${i === idx ? '#4f7ef8' : '#dde3f0'}"></span>`).join('')}
+            ${_SAMOUCZEK_SLAJDY.map((_, i) => `<span class="sam-kropka${i === idx ? ' jest' : ''}"></span>`).join('')}
           </div>
           <div style="display:flex;gap:8px;align-items:center">
             <button data-t="pomin" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:8px 4px">Pomiń</button>
             <span style="flex:1"></span>
             ${idx > 0 ? '<button data-t="wstecz" style="background:var(--surface-3);border:none;border-radius:8px;padding:10px 18px;cursor:pointer;font-size:14px;color:var(--text)">Wstecz</button>' : ''}
-            <button data-t="dalej" style="background:var(--primary);border:none;border-radius:8px;padding:10px 22px;cursor:pointer;font-size:14px;color:#fff;font-weight:600">${ostatni ? 'Zaczynamy! 🎉' : 'Dalej'}</button>
+            <button data-t="dalej" style="background:var(--primary);border:none;border-radius:8px;padding:10px 22px;cursor:pointer;font-size:14px;color:var(--on-primary);font-weight:600">${ostatni ? 'Zaczynamy! 🎉' : 'Dalej'}</button>
           </div>
         </div>
       </div>`;

@@ -752,3 +752,47 @@ tr:hover td { background: var(--hover); }
     max-width: calc(100vw - 28px);
   }
 }
+
+
+/* ── samouczek ───────────────────────────────────────────────────────────
+   Nagłówek miał losowo generowany odcień (hsl z numeru slajdu), przez co
+   kolory nie miały nic wspólnego z marką. Teraz atrament z koralem, a kąt
+   gradientu drgnie o kilka stopni na slajd — tyle zmienności wystarczy. */
+.sam-karta {
+  background: var(--surface);
+  border-radius: 18px;
+  max-width: 560px;
+  width: 100%;
+  max-height: 92vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 48px rgba(0,0,0,.3);
+  animation: sam-wejscie .3s cubic-bezier(.2,.7,.3,1);
+}
+.sam-naglowek {
+  height: 128px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px 18px 0 0;
+  background: linear-gradient(var(--kat, 135deg), #1a1d20, #4a2b2b 55%, var(--marka));
+}
+.sam-emoji { font-size: 58px; animation: sam-emoji .42s cubic-bezier(.2,.9,.3,1.2); }
+.sam-kropka {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--border);
+  transition: background .25s, transform .25s;
+}
+.sam-kropka.jest { background: var(--marka); transform: scale(1.35); }
+
+@keyframes sam-wejscie {
+  from { opacity: 0; transform: translateY(10px) scale(.99); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes sam-emoji {
+  from { opacity: 0; transform: scale(.6) rotate(-8deg); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sam-karta, .sam-emoji { animation: none; }
+  .sam-kropka { transition: none; }
+}

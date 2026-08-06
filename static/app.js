@@ -46,6 +46,25 @@ const KAT_SLOT = {
   'Inne': 14,
 };
 
+// Kwoty doliczają się od zera przy wejściu — to jedyna animacja, która coś
+// komunikuje („dane właśnie doszły"), a nie ozdabia. Przy ustawieniu
+// ograniczonego ruchu wartość pojawia się od razu.
+function odliczaj(el, docelowa, formatuj, ms = 620) {
+  if (!el) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !isFinite(docelowa)) {
+    el.textContent = formatuj(docelowa);
+    return;
+  }
+  const start = performance.now();
+  function krok(teraz) {
+    const p = Math.min(1, (teraz - start) / ms);
+    const e = 1 - Math.pow(1 - p, 3);          // wyhamowanie na końcu
+    el.textContent = formatuj(docelowa * e);
+    if (p < 1) requestAnimationFrame(krok);
+  }
+  requestAnimationFrame(krok);
+}
+
 function motywWykresu() {
   return getComputedStyle(document.documentElement)
     .getPropertyValue('color-scheme').trim() === 'dark' ? 'ciemny' : 'jasny';
@@ -376,12 +395,13 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
 
   function renderStats(wydatki, statKat, kategoria, topProdukt) {
     const suma = wydatki.reduce((s, w) => s + w.suma, 0);
-    document.getElementById('stat-suma').textContent = fmt(suma);
+    odliczaj(document.getElementById('stat-suma'), suma, fmt);
     // etykiety po id — wcześniej szły po pozycji w .stats-row, co psuło się
     // przy każdej zmianie układu kafelków
     const sumaLabel = document.getElementById('stat-suma-label');
     if (sumaLabel) sumaLabel.textContent = filterMode === 'range' ? 'Suma za okres' : 'Suma miesięczna';
-    document.getElementById('stat-paragony').textContent = wydatki.length;
+    odliczaj(document.getElementById('stat-paragony'), wydatki.length,
+             (v) => String(Math.round(v)));
     const statLabel = document.getElementById('stat-topkat-label');
     if (kategoria && topProdukt && topProdukt.nazwa) {
       document.getElementById('stat-topkat').textContent = `${topProdukt.nazwa} (${fmt(topProdukt.suma_total)})`;
@@ -415,7 +435,8 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       return;
     }
     const b = d.bilans;
-    el.textContent = (b > 0 ? '+' : '') + fmt(b);   // Intl sam dokłada „−" dla ujemnych
+    // Intl sam dokłada „−" dla ujemnych
+    odliczaj(el, b, (v) => (b > 0 ? '+' : '') + fmt(v));
     el.style.color = b > 0 ? 'var(--good)' : b < 0 ? 'var(--danger)' : 'var(--heading)';
     znak(b > 0 ? 'plus' : b < 0 ? 'minus' : null);
     el.title = `Wpływy ${fmt(d.wplywy)} − wydatki ${fmt(d.wydatki)}`;
