@@ -342,7 +342,7 @@ const _SAMOUCZEK_SLAJDY = [
   { ikona: 'wplywy', tytul: 'Wpływy i płatności cykliczne',
     opis: 'Dodawaj wpływy (np. pensję), żeby bilans był pełny. Subskrypcje, rachunki i raty ustaw jako wydatki cykliczne — naliczą się automatycznie (z limitem naliczeń albo datą końca). Cykliczny przelew na oszczędności też ustawisz w Kontach.' },
   { ikona: 'alerty', tytul: 'Przypomnienia o płatnościach',
-    opis: 'O ręcznych przelewach apka przypomni z wyprzedzeniem — po zrobieniu klikasz „✓ Zrobione". Przy automatycznych obciążeniach dostaniesz znać, żeby zapewnić środki. Całe archiwum jest w „Powiadomieniach", a pojedyncze przypomnienie schowasz ✕ na bieżącą sesję.' },
+    opis: 'O ręcznych przelewach apka przypomni z wyprzedzeniem — po zrobieniu klikasz „Zrobione". Przy automatycznych obciążeniach dostaniesz znać, żeby zapewnić środki. Całe archiwum jest w „Powiadomieniach", a pojedyncze przypomnienie schowasz ✕ na bieżącą sesję.' },
   { ikona: 'robot', tytul: 'Doradca budżetowy AI',
     opis: 'W „Analiza" Claude przeanalizuje Wasze wydatki i wskaże konkretnie, gdzie da się zaoszczędzić — z kwotami. Odpowiadaj na jego pytania: buduje profil gospodarstwa i z każdą analizą zna Was lepiej. Raporty zapisują się w historii.' },
   { ikona: 'lista', tytul: 'Listy zakupów na żywo',
@@ -429,6 +429,15 @@ const IKONY_SVG = {
   sygnal: '<path d="M5.6 15.6a8 8 0 010-11.2M18.4 4.4a8 8 0 010 11.2"/><path d="M8.6 12.6a4 4 0 010-5.2M15.4 7.4a4 4 0 010 5.2"/><circle class="kropka" cx="12" cy="10" r="1.9"/><path d="M12 12.4V20.6"/>',
   notatka: '<path d="M6 3.4h8.4L19.4 8v12.6H6z"/><path d="M14.2 3.4V8h5"/><path class="akc" d="M9 12.6h6M9 16h4"/>',
   sukces: '<circle cx="12" cy="12" r="8.6"/><path class="akc" d="M8.2 12.2l2.6 2.6 5-5.4"/>',
+  olowek: '<path d="M4 20l1.2-4.2L15.6 5.4a2.2 2.2 0 013.1 3.1L8.2 18.8z"/><path d="M14 7l3 3"/>',
+  ptaszek: '<path d="M4.8 12.4l4.6 4.6 9.8-10.4"/>',
+  krzyzyk: '<path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/>',
+  pauza: '<path d="M9.4 5.4v13.2M14.6 5.4v13.2"/>',
+  uchwyt: '<circle cx="9" cy="6.4" r="1.5"/><circle cx="15" cy="6.4" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="17.6" r="1.5"/><circle cx="15" cy="17.6" r="1.5"/>',
+  uwaga: '<path d="M12 3.8l9 15.6H3z"/><path class="akc" d="M12 9.6v4.2"/><circle class="kropka" cx="12" cy="16.6" r="1.3"/>',
+  gwiazdka: '<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
+  wymiana: '<path d="M4 8.4h13.2M14 5.2l3.2 3.2-3.2 3.2"/><path d="M20 15.6H6.8M10 12.4l-3.2 3.2 3.2 3.2"/>',
+  do_salda: '<path class="akc" d="M12 4v10.4M8.4 11l3.6 3.6L15.6 11"/><path d="M5 19.2h14"/>',
 };
 
 // Wersje pelne — tylko do dolnego paska. Przy 23 px cienka kreska jest
@@ -500,7 +509,7 @@ const _TIPS_STRONY = {
     'Przełącznik Pierwotne / Kontekstowe zmienia sposób liczenia kategorii dla wydatków z okazji.',
     'Filtruj po miesiącu, osobie i kategorii — jest też tryb dowolnego zakresu dat.',
     'Wykres trendów miesięcznych przełączysz między „Osobno" (per osoba) a „Łącznie".',
-    'Przypomnienie o płatności możesz zamknąć ✕ na tę sesję — wróci następnym razem, aż je zrobisz.',
+    'Przypomnienie o płatności możesz zamknąć krzyżykiem na tę sesję — wróci następnym razem, aż je zrobisz.',
     '„Top sklepy" pokazują, gdzie zostawiacie najwięcej pieniędzy.',
   ],
   '/upload': [
@@ -525,7 +534,7 @@ const _TIPS_STRONY = {
     'Cykliczny przelew na konto oszczędnościowe też ustawisz tutaj (Rodzaj: przelew).',
     'Przelewy między kontami i inwentaryzacje (spis rzeczywistego stanu) robisz na tej stronie.',
     'Dodawaj wpływy (np. pensję), żeby bilans gospodarstwa był pełny.',
-    'Wpływ albo przelew edytujesz ikonką ✏ w historii konta — bez usuwania i dodawania od nowa.',
+    'Wpływ albo przelew edytujesz ikoną ołówka w historii konta — bez usuwania i dodawania od nowa.',
   ],
   '/kategorie': [
     'Dopasuj kategorie i podkategorie do swojego gospodarstwa — apka nie narzuca Ci sztywnej listy.',
@@ -538,7 +547,7 @@ const _TIPS_STRONY = {
   ],
   '/powiadomienia': [
     'To jest archiwum płatności — potwierdzone ręczne przelewy i automatyczne naliczenia.',
-    'Po zrobieniu ręcznego przelewu klikaj „✓ Zrobione", żeby zszedł z aktywnych.',
+    'Po zrobieniu ręcznego przelewu klikaj „Zrobione", żeby zszedł z aktywnych.',
   ],
 };
 

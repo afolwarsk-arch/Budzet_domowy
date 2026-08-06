@@ -97,7 +97,7 @@ function render() {
         <span class="kat-toggle" id="kt-${ki}">▶</span>
         <span class="kat-name">${esc(kat)}</span>
         <span class="kat-count">${hier[kat].length} podkategorii</span>
-        <button class="kat-del" onclick="event.stopPropagation();delKat('${esc2(kat)}')" title="Usuń kategorię">✕</button>
+        <button class="kat-del" onclick="event.stopPropagation();delKat('${esc2(kat)}')" title="Usuń kategorię"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/></svg></span></button>
       </div>
       <div class="kat-body" id="kb-${ki}">
         <div class="sub-list" id="subs-${ki}">
@@ -175,7 +175,7 @@ async function saveAll() {
       body: JSON.stringify({ hierarchia: hier }),
     });
     if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
-    setStatus('✓ Zapisano!');
+    setStatus('<span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 12.4l4.6 4.6 9.8-10.4"/></svg></span> Zapisano!');
   } catch (e) {
     setStatus('Błąd: ' + e.message, true);
   }

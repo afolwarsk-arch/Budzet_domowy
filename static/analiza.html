@@ -1006,7 +1006,7 @@ function renderRaport(data) {
           <div class="rap-item-opis">${esc(x.opis || '')}</div>
         </div>`).join('')}` : ''}
     ${(r.obserwacje && r.obserwacje.length) ? `
-      <div class="rap-section-title">⚠️ Obserwacje</div>
+      <div class="rap-section-title"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8l9 15.6H3z"/><path class="akc" d="M12 9.6v4.2"/><circle class="kropka" cx="12" cy="16.6" r="1.3"/></svg></span> Obserwacje</div>
       ${r.obserwacje.map(x => `
         <div class="rap-item">
           <div class="rap-item-head">
@@ -1061,7 +1061,7 @@ async function loadProfil() {
     const profil = await authFetch('/api/analiza/profil').then(r => r.json());
     document.getElementById('profil-count').textContent = profil.length;
     document.getElementById('profil-list').innerHTML = profil.length
-      ? profil.map(p => `<div class="profil-row"><span>${esc(p.tresc)}</span><button data-profil-del="${p.id}" title="Usuń z profilu">✕</button></div>`).join('')
+      ? profil.map(p => `<div class="profil-row"><span>${esc(p.tresc)}</span><button data-profil-del="${p.id}" title="Usuń z profilu"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/></svg></span></button></div>`).join('')
       : '<p style="color:var(--muted);font-size:13px;padding:6px 0">Profil jest pusty.</p>';
   } catch {}
 }
@@ -1091,7 +1091,7 @@ function showRaportError(msg) {
   const el = document.getElementById('raport-wynik');
   el.className = '';
   el.innerHTML = `<div class="alert alert-error" style="font-size:14px;line-height:1.55">
-      <strong>⚠️ Nie udało się wykonać analizy.</strong><br>
+      <strong><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8l9 15.6H3z"/><path class="akc" d="M12 9.6v4.2"/><circle class="kropka" cx="12" cy="16.6" r="1.3"/></svg></span> Nie udało się wykonać analizy.</strong><br>
       ${esc(msg)}<br>
       <span style="color:var(--muted);font-size:13px">Spróbuj ponownie za chwilę. Jeśli błąd się powtarza, przekaż mi powyższą treść.</span>
     </div>`;
@@ -1185,7 +1185,7 @@ async function generujRaport() {
     if (data.blad_zapisu) {
       const el = document.getElementById('raport-wynik');
       el.insertAdjacentHTML('afterbegin',
-        `<div class="alert alert-warning" style="margin-bottom:14px">⚠️ ${esc(data.blad_zapisu)} — przekaż mi tę treść, naprawię zapis historii.</div>`);
+        `<div class="alert alert-warning" style="margin-bottom:14px"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8l9 15.6H3z"/><path class="akc" d="M12 9.6v4.2"/><circle class="kropka" cx="12" cy="16.6" r="1.3"/></svg></span> ${esc(data.blad_zapisu)} — przekaż mi tę treść, naprawię zapis historii.</div>`);
     }
   } catch (e) {
     const msg = (e && e.message) ? e.message : 'Problem z połączeniem — sprawdź internet i spróbuj ponownie.';

@@ -84,7 +84,7 @@ async function loadAktywne() {
           ? `<strong>${esc(p.nazwa)}</strong> — ${kwota} zł przeleje się ${kiedy}${p.konto_na_nazwa ? ' na ' + esc(p.konto_na_nazwa) : ''} — zapewnij środki`
           : `<strong>${esc(p.nazwa)}</strong> — ${kwota} zł zejdzie ${kiedy}${p.konto_nazwa ? ' z konta ' + esc(p.konto_nazwa) : ''} — zapewnij środki`);
     const btn = p.typ === 'reczny'
-      ? `<button class="pw-btn" style="border:1px solid ${fg};color:${fg}" onclick="potwierdz(${p.id})">✓ Zrobione</button>` : '';
+      ? `<button class="pw-btn" style="border:1px solid ${fg};color:${fg}" onclick="potwierdz(${p.id})"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 12.4l4.6 4.6 9.8-10.4"/></svg></span> Zrobione</button>` : '';
     return `<div class="pw-row" style="background:${bg};color:${fg}"><span><span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.2 10.4a5.8 5.8 0 0111.6 0c0 4.2 1.6 5.6 1.6 5.6H4.6s1.6-1.4 1.6-5.6z"/><circle class="kropka" cx="12" cy="19.2" r="1.9"/></svg></span> ${txt}</span>${btn}</div>`;
   }).join('');
 }

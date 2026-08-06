@@ -845,3 +845,8 @@ tr:hover td { background: var(--hover); }
 
 /* ikona w nagłówku raportu AI */
 .ikona-sredn .ikona svg { width: 26px; height: 26px; }
+
+
+/* glify robocze w przyciskach akcji — mniejsze niż ikony nawigacji */
+.ikona.mini svg { width: 15px; height: 15px; stroke-width: 1.8; }
+.lz-check .ikona.mini svg, .kal-chip .ikona.mini svg { width: 13px; height: 13px; }

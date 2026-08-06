@@ -104,7 +104,7 @@
     <div class="sekcja-head">
       <h2 class="h2-ikona"><span class="ikona" style="--rozm:20px"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="4.4"/><circle class="kropka" cx="12" cy="12" r="1.9"/></svg></span> Cele oszczędnościowe</h2>
       <button class="btn-add green" onclick="openCel()">＋ Nowy cel</button>
-      <button class="btn-add" onclick="openPrzesun()" style="margin-left:8px">⇄ Przesuń</button>
+      <button class="btn-add" onclick="openPrzesun()" style="margin-left:8px"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.4h13.2M14 5.2l3.2 3.2-3.2 3.2"/><path d="M20 15.6H6.8M10 12.4l-3.2 3.2 3.2 3.2"/></svg></span> Przesuń</button>
       <p>Koperty na Waszych kontach. Odłożone liczone z wpłat — możesz je zasilać ręcznie albo automatycznie przelewem.</p>
     </div>
     <div id="cele-grid" class="cele-grid"></div>
@@ -283,7 +283,7 @@ async function loadCele() {
         analiza += ` · termin ${fmtDate(c.termin)}`;
         if (c.wymagane_miesieczne != null) {
           analiza += `<br>Żeby zdążyć: <strong>${fmtZl(c.wymagane_miesieczne)}/mies.</strong> `;
-          analiza += c.na_czas ? '<span class="ok">✓ jesteś na dobrej drodze</span>' : '<span class="ostrzezenie">⚠ za wolno</span>';
+          analiza += c.na_czas ? '<span class="ok"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 12.4l4.6 4.6 9.8-10.4"/></svg></span> jesteś na dobrej drodze</span>' : '<span class="ostrzezenie"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8l9 15.6H3z"/><path class="akc" d="M12 9.6v4.2"/><circle class="kropka" cx="12" cy="16.6" r="1.3"/></svg></span> za wolno</span>';
         }
       } else if (c.prognoza_miesiecy != null && c.prognoza_miesiecy > 0) {
         const d = new Date(); d.setMonth(d.getMonth() + Math.ceil(c.prognoza_miesiecy));
@@ -299,8 +299,8 @@ async function loadCele() {
           ${c.konto_nazwa ? `<div class="cel-konto">${ikonaSvg('konta')} ${escHtml(c.konto_nazwa)}</div>` : '<div class="cel-konto" style="color:#c07">bez konta</div>'}
         </div>
         <div class="cel-icons">
-          <button onclick="editCel(${c.id})" title="Edytuj">✏</button>
-          <button class="del" onclick="delCel(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')" title="Usuń">✕</button>
+          <button onclick="editCel(${c.id})" title="Edytuj"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.2-4.2L15.6 5.4a2.2 2.2 0 013.1 3.1L8.2 18.8z"/><path d="M14 7l3 3"/></svg></span></button>
+          <button class="del" onclick="delCel(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')" title="Usuń"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/></svg></span></button>
         </div>
       </div>
       <div class="cel-kwoty">
@@ -339,7 +339,7 @@ async function loadArchiwum() {
     <div class="cel-btns">
       <button onclick="przywrocCel(${c.id})">↩ Przywróć</button>
       <button onclick="openHist(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')">Historia</button>
-      <button onclick="delCel(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')" title="Usuń trwale">✕</button>
+      <button onclick="delCel(${c.id},'${escHtml(c.nazwa).replace(/'/g,"\\'")}')" title="Usuń trwale"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/></svg></span></button>
     </div>
   </div>`).join('');
 }
@@ -561,7 +561,7 @@ async function openHist(id, nazwa) {
       <div style="font-weight:600;color:${parseFloat(w.kwota) < 0 ? 'var(--danger)' : 'var(--good)'}">${parseFloat(w.kwota) > 0 ? '+' : ''}${fmtZl(w.kwota)}</div>
       <div style="font-size:11px;color: var(--muted)">${fmtDate(w.data)} · ${ZR[w.zrodlo] || w.zrodlo}${w.opis ? ' · ' + escHtml(w.opis) : ''}</div>
     </div>
-    <button onclick="delWplata(${w.id})" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:14px" title="Usuń wpłatę">✕</button>
+    <button onclick="delWplata(${w.id})" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:14px" title="Usuń wpłatę"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/></svg></span></button>
   </div>`).join('');
 }
 
@@ -591,8 +591,8 @@ async function loadLimity() {
         <span style="display:flex;align-items:center;gap:8px">
           <span class="lim-kwoty">${fmt(l.wydane)} / ${fmtZl(l.kwota_miesieczna)}</span>
           <span class="lim-icons">
-            <button onclick="editLimit('${escHtml(l.kategoria_glowna).replace(/'/g,"\\'")}','${escHtml(l.podkategoria||'').replace(/'/g,"\\'")}',${l.kwota_miesieczna})" title="Zmień limit">✏</button>
-            <button class="del" onclick="delLimit(${l.id})" title="Usuń limit">✕</button>
+            <button onclick="editLimit('${escHtml(l.kategoria_glowna).replace(/'/g,"\\'")}','${escHtml(l.podkategoria||'').replace(/'/g,"\\'")}',${l.kwota_miesieczna})" title="Zmień limit"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.2-4.2L15.6 5.4a2.2 2.2 0 013.1 3.1L8.2 18.8z"/><path d="M14 7l3 3"/></svg></span></button>
+            <button class="del" onclick="delLimit(${l.id})" title="Usuń limit"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/></svg></span></button>
           </span>
         </span>
       </div>
