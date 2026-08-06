@@ -22,8 +22,7 @@
   --accent-strong: #5b4585;  /* na tekst przy jasnym tle */
   --accent-soft: #efe9fa;
   --accent-border: #d8c9f0;
-  --marka: #9b6fe8;          /* kropki w logo — jaśniejsze niż --accent,
-                                bo to znak graficzny, nie tekst */
+  --marka: #ff6b6b;          /* koral — kropki w logo */
 
   --good: #4f7a52;      --good-bg: #e9f2e9;   --good-border: #c3ddc5;
   --danger: #b4453a;    --danger-bg: #fbeae8; --danger-border: #f0cac5;
@@ -56,7 +55,7 @@
     --accent-strong: #cbb8ee;
     --accent-soft: #2a2440;
     --accent-border: #3d3358;
-    --marka: #c3a8f5;
+    --marka: #ff6b6b;
 
     --good: #6fa572;    --good-bg: #1d2a1f;   --good-border: #2f4432;
     --danger: #d4695c;  --danger-bg: #2e1d1b; --danger-border: #4a2c28;
@@ -88,7 +87,7 @@
   --accent-strong: #cbb8ee;
   --accent-soft: #2a2440;
   --accent-border: #3d3358;
-  --marka: #c3a8f5;
+  --marka: #ff6b6b;
 
   --good: #6fa572;    --good-bg: #1d2a1f;   --good-border: #2f4432;
   --danger: #d4695c;  --danger-bg: #2e1d1b; --danger-border: #4a2c28;
