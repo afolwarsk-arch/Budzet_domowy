@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import threading
 from contextlib import contextmanager
 
 import psycopg2
@@ -200,19 +201,102 @@ _MIGRACJA_MAP: dict[str, tuple[str, str]] = {
 }
 
 
+# ── Pula połączeń ─────────────────────────────────────────────────────────
+# Bez puli każde get_db() nawiązywało świeże połączenie z Postgresem — pełny
+# uścisk TCP, TLS i uwierzytelnienie. Jedno wejście na pulpit to ok. 50 takich
+# wywołań, czyli sekunda narzutu, zanim baza w ogóle zacznie liczyć.
+#
+# ZASADA: każda awaria puli sprowadza się do dotychczasowego zachowania
+# (świeże połączenie), nigdy do błędu żądania. Najgorszy przypadek po tej
+# zmianie to dokładnie to, co działo się przed nią.
+#
+# keepalives: system operacyjny sam podtrzymuje i wykrywa zerwane połączenia,
+# dzięki czemu nie musimy pingować bazy przed każdym użyciem (ping kosztowałby
+# podróż do serwera, czyli połowę tego, co oszczędzamy).
+_PULA = None
+_PULA_LOCK = threading.Lock()
+_PULA_ODPADA = False  # pula się nie udała — nie próbujemy w kółko przy każdym żądaniu
+
+_KEEPALIVE = dict(
+    keepalives=1, keepalives_idle=30, keepalives_interval=10,
+    keepalives_count=5, connect_timeout=10,
+)
+
+
+def _pula():
+    """Leniwie tworzy pulę. Zwraca None, gdy się nie da — wtedy get_db()
+    łączy się po staremu."""
+    global _PULA, _PULA_ODPADA
+    if _PULA is not None or _PULA_ODPADA:
+        return _PULA
+    with _PULA_LOCK:
+        if _PULA is None and not _PULA_ODPADA:
+            try:
+                from psycopg2 import pool as _pgpool
+                _PULA = _pgpool.ThreadedConnectionPool(1, 10, DATABASE_URL, **_KEEPALIVE)
+            except Exception:
+                _PULA_ODPADA = True
+    return _PULA
+
+
+def _wez_polaczenie():
+    """Zwraca (połączenie, czy_z_puli). Połączenie zamknięte po stronie
+    serwera wyrzucamy i bierzemy następne — inaczej pierwsze żądanie po
+    dłuższej przerwie wywracałoby się na trupie z puli."""
+    pula = _pula()
+    if pula is not None:
+        for _ in range(3):
+            try:
+                conn = pula.getconn()
+            except Exception:
+                break  # pula wyczerpana albo uszkodzona — bierzemy własne
+            if not conn.closed:
+                return conn, True
+            try:
+                pula.putconn(conn, close=True)
+            except Exception:
+                pass
+    return psycopg2.connect(DATABASE_URL, **_KEEPALIVE), False
+
+
 @contextmanager
 def get_db():
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    conn, z_puli = _wez_polaczenie()
+    cur = None
+    zepsute = False
     try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         yield cur
         conn.commit()
     except Exception:
-        conn.rollback()
+        # Dopóki rollback się powiedzie, połączenie jest zdrowe i może wrócić
+        # do puli. Gdy i on padnie — połączenie jest do wyrzucenia.
+        zepsute = True
+        try:
+            conn.rollback()
+            zepsute = False
+        except Exception:
+            pass
         raise
     finally:
-        cur.close()
-        conn.close()
+        try:
+            if cur is not None:
+                cur.close()
+        except Exception:
+            zepsute = True
+        if z_puli:
+            try:
+                _PULA.putconn(conn, close=zepsute)
+            except Exception:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        else:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def init_db():
@@ -1250,10 +1334,12 @@ def create_or_update_user(firebase_uid: str, email: str, name: str, picture: str
                ON CONFLICT (firebase_uid) DO UPDATE SET
                email=EXCLUDED.email, name=EXCLUDED.name, picture=EXCLUDED.picture,
                display_name=COALESCE(users.display_name, EXCLUDED.display_name),
-               last_login=CURRENT_TIMESTAMP""",
+               last_login=CURRENT_TIMESTAMP
+               RETURNING id, display_name""",
             (firebase_uid, email, name, picture, default_display),
         )
-        cur.execute("SELECT id, display_name FROM users WHERE firebase_uid = %s", (firebase_uid,))
+        # RETURNING oddaje wiersz od razu — osobny SELECT był dodatkową podróżą
+        # do bazy przy KAŻDYM żądaniu API (logowanie sprawdzane jest za każdym razem).
         row = cur.fetchone()
         return row["id"], row["display_name"] or default_display
 
