@@ -287,6 +287,7 @@ function _podepnijRodzaje(overlay, stany) {
           body: JSON.stringify({ [rodzaj]: nowy }),
         });
         if (!res.ok) throw new Error();
+        _zapisano(overlay);
       } catch {
         // cofamy przełącznik, żeby nie pokazywał stanu, którego serwer nie zapisał
         p.setAttribute('aria-checked', String(!nowy));
@@ -404,6 +405,69 @@ async function _podepnijPush(overlay) {
   await rysuj();
 }
 
+// ── zapis bez przycisku ─────────────────────────────────────────────────────
+// Wszystko w tym oknie zapisuje się samo. Nie ma „Zapisz", bo przy awatarze
+// i przełącznikach i tak go nie było — a jego obecność przy pseudonimie kazała
+// szukać akcji, której dla reszty nie istnieje.
+
+function _zapisano(overlay) {
+  const el = overlay.querySelector('#_mzap');
+  if (!el) return;
+  el.style.opacity = '1';
+  clearTimeout(el._znika);
+  el._znika = setTimeout(() => { el.style.opacity = '0'; }, 1500);
+}
+
+function _podepnijPseudonim(overlay) {
+  const pole = overlay.querySelector('#_mn');
+  const blad = overlay.querySelector('#_me');
+  let ostatni = pole.value.trim();
+
+  async function zapisz() {
+    const nowy = pole.value.trim();
+    if (nowy === ostatni) return;
+    if (!nowy) { pole.value = ostatni; return; }   // pusty = rezygnacja, nie błąd
+    try {
+      const res = await authFetch('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: nowy }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        blad.textContent = e.detail || 'Nie udało się zapisać.';
+        blad.style.display = 'block';
+        return;
+      }
+      blad.style.display = 'none';
+      ostatni = nowy;
+      overlay._pseudonimZmieniony = true;   // przy zamknięciu odświeżamy stronę
+      if (window._currentUser) window._currentUser.display_name = nowy;
+      const naglowek = overlay.querySelector('.pf-gora h3');
+      if (naglowek) naglowek.textContent = nowy;
+      const wPasku = document.getElementById('nav-profile-name');
+      if (wPasku) wPasku.textContent = nowy;
+      _wypelnijDomownikow(overlay);
+      _zapisano(overlay);
+    } catch {
+      blad.textContent = 'Błąd połączenia.';
+      blad.style.display = 'block';
+    }
+  }
+
+  pole.addEventListener('blur', zapisz);
+  pole.addEventListener('keydown', (e) => { if (e.key === 'Enter') pole.blur(); });
+}
+
+// Pseudonim widnieje przy wydatkach na innych ekranach, więc po jego zmianie
+// odświeżamy stronę — ale dopiero przy zamknięciu okna, żeby nie wyrywać
+// użytkownika w trakcie ustawiania czegokolwiek innego.
+function _zamknijProfil(overlay) {
+  const trzeba = overlay._pseudonimZmieniony;
+  overlay.remove();
+  if (trzeba) location.reload();
+}
+
 // ── lewa kolumna: domownicy ─────────────────────────────────────────────────
 
 async function _wypelnijDomownikow(overlay) {
@@ -463,6 +527,7 @@ function _podepnijAwatary(overlay, ja) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ awatar: nr }),
       });
+      _zapisano(overlay);
     } catch {}
   };
 }
@@ -594,15 +659,12 @@ function _showProfileModal() {
             <h3>${_esc(current || ja.name || '')}</h3>
             <span class="pf-mail">${_esc(ja.email || '')}</span>
           </span>
-          <button id="_mc" type="button" title="Zamknij" style="margin-left:auto;align-self:flex-start;background:none;border:none;color:var(--muted);font-size:22px;line-height:1;cursor:pointer;padding:0 2px">&times;</button>
+          <span id="_mzap" style="margin-left:auto;align-self:flex-start;font-size:11.5px;color:var(--good);opacity:0;transition:opacity .2s">Zapisano</span>
+          <button id="_mc" type="button" title="Zamknij" style="align-self:flex-start;background:none;border:none;color:var(--muted);font-size:22px;line-height:1;cursor:pointer;padding:0 2px">&times;</button>
         </div>
 
         <div class="pf-etyk">Pseudonim</div>
-        <div style="display:flex;gap:8px">
-          <input id="_mn" type="text" value="${_esc(current)}" maxlength="30" placeholder="np. Adam, Ola, Mama"
-            style="flex:1;min-width:0">
-          <button id="_ms" type="button" style="padding:8px 16px;background:var(--primary);color:var(--on-primary);border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:500">Zapisz</button>
-        </div>
+        <input id="_mn" type="text" value="${_esc(current)}" maxlength="30" placeholder="np. Adam, Ola, Mama" style="width:100%">
         <div id="_me" style="color:var(--danger);font-size:0.8rem;margin-top:8px;display:none"></div>
 
         <div class="pf-grupa">
@@ -641,13 +703,16 @@ function _showProfileModal() {
       </div>
     </div>`;
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) _zamknijProfil(overlay); });
   _wypelnijDomownikow(overlay);
   _podepnijAwatary(overlay, ja);
   _podepnijMotyw(overlay);
   _podepnijPush(overlay);
-  overlay.querySelector('#_mn').focus();
-  overlay.querySelector('#_mc').onclick = () => overlay.remove();
+  // ŻADNEGO focus() na polu pseudonimu — na telefonie wyskakiwała od tego
+  // klawiatura przy każdym otwarciu, a to okno służy dziś głównie do rzeczy,
+  // których się nie wpisuje.
+  _podepnijPseudonim(overlay);
+  overlay.querySelector('#_mc').onclick = () => _zamknijProfil(overlay);
   overlay.querySelector('#_mleave').onclick = async () => {
     let ilu = 0, nazwa = '';
     try {
@@ -693,26 +758,6 @@ function _showProfileModal() {
       window.location.href = '/login';
     } catch { alert('Błąd połączenia.'); }
   };
-  overlay.querySelector('#_ms').onclick = async () => {
-    const val = overlay.querySelector('#_mn').value.trim();
-    if (!val) return;
-    try {
-      const res = await authFetch('/api/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display_name: val }),
-      });
-      if (res.ok) { overlay.remove(); location.reload(); }
-      else {
-        const e = await res.json();
-        const err = overlay.querySelector('#_me');
-        err.textContent = e.detail; err.style.display = 'block';
-      }
-    } catch {
-      const err = overlay.querySelector('#_me');
-      err.textContent = 'Błąd połączenia'; err.style.display = 'block';
-    }
-  };
 }
 
 const _ADMIN_EMAILS = ['a.folwarsk@gmail.com'];
@@ -756,7 +801,7 @@ function _injectProfileButton(me) {
   btn.id = 'nav-profile-btn';
   // Awatar obok imienia — pod nim ludzie odruchowo szukają ustawień konta.
   btn.innerHTML = awatarHtml(me, 'aw-maly')
-    + `<span>${_esc(me.display_name || (me.name || '').split(' ')[0])}</span>`;
+    + `<span id="nav-profile-name">${_esc(me.display_name || (me.name || '').split(' ')[0])}</span>`;
   btn.title = 'Twój profil i gospodarstwo';
   btn.style.cssText = 'display:flex;align-items:center;gap:7px;padding:4px 12px 4px 5px;cursor:pointer;border:1px solid var(--accent);border-radius:20px;background:var(--surface);color:var(--accent);font-size:0.85rem;font-weight:500;';
   btn.onclick = _showProfileModal;
