@@ -838,10 +838,18 @@ tr:hover td { background: var(--hover); }
   display: grid; grid-template-columns: 200px 1fr; overflow: hidden;
   width: 720px; max-width: calc(100vw - 28px); max-height: 90vh;
 }
-/* min-width:0 na obu kolumnach jest KONIECZNE: element siatki domyślnie nie
-   kurczy się poniżej szerokości zawartości, więc bez tego okno rozpychało się
-   poza ekran telefonu i ucinało prawą krawędź (przycisk „Zapisz", „Ciemny"). */
-.pf-dom, .pf-ust { min-width: 0; }
+/* Na szerokim ekranie przewijają się KOLUMNY, każda osobno. Żeby to zadziałało,
+   wiersz siatki musi dać się ścisnąć do wysokości okna — samo `auto` rozciąga
+   się do wysokości treści i wtedy `overflow-y` na kolumnie nie ma czego
+   przewijać, a dół okna staje się nieosiągalny. */
+@media (min-width: 701px) {
+  .pf-okno { grid-template-rows: minmax(0, 1fr); }
+}
+/* min-width/min-height 0 na obu kolumnach jest KONIECZNE: element siatki
+   domyślnie nie kurczy się poniżej swojej zawartości. Bez min-width okno
+   rozpychało się na boki, a bez min-height `overflow-y: auto` poniżej nie miało
+   czego przewijać — kolumna była zawsze tak wysoka jak jej treść. */
+.pf-dom, .pf-ust { min-width: 0; min-height: 0; }
 .pf-dom { background: var(--surface-2); border-right: 1px solid var(--border);
           padding: 18px 14px; overflow-y: auto; }
 .pf-tyt { font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em;
@@ -886,7 +894,12 @@ tr:hover td { background: var(--hover); }
 @media (prefers-reduced-motion: reduce) { .pf-prze, .pf-prze::after { transition: none; } }
 
 @media (max-width: 700px) {
-  .pf-okno { grid-template-columns: 1fr; max-height: 92vh; }
+  /* Na telefonie kolumny leżą jedna pod drugą, więc przewijanie musi należeć do
+     CAŁEGO okna, nie do kolumn — inaczej nie ma czego przewijać i dolna część
+     (powiadomienia, wyjście z gospodarstwa) jest nieosiągalna. */
+  .pf-okno { grid-template-columns: 1fr; max-height: 92vh; overflow-y: auto;
+             -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .pf-dom, .pf-ust { overflow: visible; }
   .pf-dom { border-right: none; border-bottom: 1px solid var(--border); }
   .pf-lista { display: flex; gap: 6px; flex-wrap: wrap; }
   .pf-akcje { flex-direction: row; flex-wrap: wrap; }
