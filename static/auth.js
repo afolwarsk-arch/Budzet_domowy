@@ -1,4 +1,4 @@
-const FIREBASE_CONFIG = {
+﻿const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAyrSgsNqGLopkZCsa2ZT0AVFBML9XdTgA",
   authDomain: "budzet-domowy-56761.firebaseapp.com",
   projectId: "budzet-domowy-56761",
@@ -216,6 +216,48 @@ function _podepnijMotyw(overlay) {
 
 window.addEventListener('DOMContentLoaded', _odswiezPasekStatusu);
 
+// Własne escapowanie, bo `esc` z app.js nie jest dostępne wszędzie — ten plik
+// rysuje okno profilu na KAŻDEJ stronie, a app.js ładują tylko trzy.
+function _esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ── awatary ─────────────────────────────────────────────────────────────────
+// Dwanaście gotowych: kolor z palety wykresów + znak w stylu reszty ikon.
+// Kolejność jest STAŁA — numer wybranego awatara siedzi w bazie jako indeks,
+// więc przestawienie tej tablicy przemalowałoby wszystkim domownikom awatary.
+const AWATARY = [
+  { kolor: '#2a78d6', znak: '<path d="M4 20c0-4 3.6-6.4 8-6.4s8 2.4 8 6.4"/><circle cx="12" cy="8" r="4"/>' },
+  { kolor: '#eb6834', znak: '<path d="M4.5 10.5 7 4.6l3.4 3h3.2l3.4-3 2.5 5.9v4.9c0 2.7-3.6 4.6-8 4.6s-8-1.9-8-4.6z"/>' },
+  { kolor: '#1baf7a', znak: '<path d="M12 3.5 14.6 9l6 .8-4.4 4.2 1.1 6-5.3-2.9L6.7 20l1.1-6L3.4 9.8 9.4 9z"/>' },
+  { kolor: '#eda100', znak: '<path d="M12 20.5c4 0 7-2.6 7-6.6S15.6 3.5 12 3.5 5 9.9 5 13.9s3 6.6 7 6.6z"/><path d="M12 20.5V9.5"/>' },
+  { kolor: '#d55181', znak: '<path d="M12 20.5S4.5 15.6 4.5 10.2A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.6c0 5.4-7.5 10.3-7.5 10.3z"/>' },
+  { kolor: '#008300', znak: '<path d="M12 20V11"/><path d="M12 11c0-3.6 2.6-6.5 6-6.5 0 3.6-2.6 6.5-6 6.5z"/><path d="M12 14c0-2.8-2.1-5-4.8-5 0 2.8 2.1 5 4.8 5z"/>' },
+  { kolor: '#4a3aa7', znak: '<path d="M3.5 18.5 9 8l4 6.5 2.5-3.5 5 7.5z"/><circle cx="16.5" cy="6" r="2"/>' },
+  { kolor: '#00879e', znak: '<path d="M3.5 14c1.7-2 3.4-2 5 0s3.4 2 5 0 3.4-2 5 0"/><path d="M3.5 18.5c1.7-2 3.4-2 5 0s3.4 2 5 0 3.4-2 5 0"/><circle cx="12" cy="6.5" r="2.6"/>' },
+  { kolor: '#b5651d', znak: '<path d="M6 20V9.5L12 4l6 5.5V20z"/><path d="M10 20v-5h4v5"/>' },
+  { kolor: '#8e44c4', znak: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2.6M12 17.9v2.6M3.5 12h2.6M17.9 12h2.6M6 6l1.9 1.9M16.1 16.1 18 18M18 6l-1.9 1.9M7.9 16.1 6 18"/>' },
+  { kolor: '#7d8a00', znak: '<path d="M20 13.5A8 8 0 0 1 10.5 4a8 8 0 1 0 9.5 9.5z"/>' },
+  { kolor: '#00967d', znak: '<path d="M7 17.5h9.5a4 4 0 0 0 .4-8A6 6 0 0 0 5.6 11 3.3 3.3 0 0 0 7 17.5z"/>' },
+];
+
+// Kto nic nie wybrał, dostaje awatar wyliczony z własnego id — dzięki temu
+// domownicy różnią się od siebie, zanim ktokolwiek cokolwiek ustawi.
+function awatarNumer(osoba) {
+  if (!osoba) return 0;
+  if (osoba.awatar !== null && osoba.awatar !== undefined) return osoba.awatar % AWATARY.length;
+  return ((osoba.user_id || osoba.id || 0) * 5 + 1) % AWATARY.length;
+}
+
+function awatarHtml(osoba, klasa) {
+  const a = AWATARY[awatarNumer(osoba)];
+  return `<span class="aw ${klasa || ''}" style="background:${a.kolor}">`
+       + `<svg viewBox="0 0 24 24" aria-hidden="true">${a.znak}</svg></span>`;
+}
+window.awatarHtml = awatarHtml;
+
 // ── powiadomienia push ──────────────────────────────────────────────────────
 
 // Klucz VAPID przychodzi w base64url, a pushManager chce surowych bajtów.
@@ -224,6 +266,33 @@ function _kluczNaBajty(b64) {
   const zwykly = (b64 + uzup).replace(/-/g, '+').replace(/_/g, '/');
   const surowy = atob(zwykly);
   return Uint8Array.from(surowy, (c) => c.charCodeAt(0));
+}
+
+// Rodzaje pokazujemy nawet przy wyłączonych powiadomieniach — to preferencja
+// konta, nie urządzenia, więc ustawia się ją raz i obowiązuje wszędzie.
+function _podepnijRodzaje(overlay, stany) {
+  const box = overlay.querySelector('#_mrodzaje');
+  if (!box) return;
+  box.style.display = 'block';
+  box.querySelectorAll('.pf-prze').forEach((p) => {
+    const rodzaj = p.dataset.rodzaj;
+    p.setAttribute('aria-checked', stany[rodzaj] === false ? 'false' : 'true');
+    p.onclick = async () => {
+      const nowy = p.getAttribute('aria-checked') !== 'true';
+      p.setAttribute('aria-checked', String(nowy));
+      try {
+        const res = await authFetch('/api/push/rodzaje', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [rodzaj]: nowy }),
+        });
+        if (!res.ok) throw new Error();
+      } catch {
+        // cofamy przełącznik, żeby nie pokazywał stanu, którego serwer nie zapisał
+        p.setAttribute('aria-checked', String(!nowy));
+      }
+    };
+  });
 }
 
 async function _podepnijPush(overlay) {
@@ -258,6 +327,7 @@ async function _podepnijPush(overlay) {
   }
   box.style.display = 'block';
   btn.style.display = '';
+  _podepnijRodzaje(overlay, stan.rodzaje || {});
 
   const rejestracja = await navigator.serviceWorker.ready.catch(() => null);
   if (!rejestracja) return;
@@ -334,39 +404,246 @@ async function _podepnijPush(overlay) {
   await rysuj();
 }
 
+// ── lewa kolumna: domownicy ─────────────────────────────────────────────────
+
+async function _wypelnijDomownikow(overlay) {
+  const box = overlay.querySelector('#_mdom');
+  const mojeId = (window._currentUser || {}).user_id;
+  try {
+    const dane = await (await authFetch('/api/household')).json();
+    const wiersze = [];
+    (dane.members || []).forEach((m) => {
+      const ja = m.id === mojeId;
+      wiersze.push(`<div class="pf-czlonek${ja ? ' ja' : ''}">${awatarHtml(m)}
+        <span><span class="pf-imie">${_esc(m.display_name || (m.name || '').split(' ')[0])}</span>
+        ${ja ? '<br><span class="pf-rola">to Ty</span>'
+             : (m.role === 'owner' ? '<br><span class="pf-rola">właściciel</span>' : '')}</span></div>`);
+    });
+    (dane.virtual_members || []).forEach((m) => {
+      // osoba bez konta nie ma id użytkownika — awatar dobieramy z nazwy, żeby
+      // był stały między wejściami, a nie losowy przy każdym otwarciu
+      const ziarno = String(m.name || '').split('').reduce((s, z) => s + z.charCodeAt(0), 0);
+      wiersze.push(`<div class="pf-czlonek">${awatarHtml({ awatar: ziarno })}
+        <span><span class="pf-imie">${_esc(m.name)}</span><br>
+        <span class="pf-rola">bez konta</span></span></div>`);
+    });
+    box.innerHTML = wiersze.join('') || '<div class="pf-rola">Tylko Ty.</div>';
+  } catch {
+    box.innerHTML = '<div class="pf-rola">Nie udało się wczytać domowników.</div>';
+  }
+
+  overlay.querySelector('#_minvite').onclick = () => _oknoZaproszenia();
+  overlay.querySelector('#_mvm').onclick = () => _oknoBezKonta(overlay);
+}
+
+// ── wybór awatara ───────────────────────────────────────────────────────────
+
+function _podepnijAwatary(overlay, ja) {
+  const box = overlay.querySelector('#_mav');
+  const biezacy = awatarNumer(ja);
+  box.innerHTML = AWATARY.map((a, i) =>
+    `<button class="aw" style="background:${a.kolor}" data-nr="${i}" aria-pressed="${i === biezacy}" aria-label="Awatar ${i + 1}">`
+    + `<svg viewBox="0 0 24 24" aria-hidden="true">${a.znak}</svg></button>`).join('');
+
+  box.onclick = async (e) => {
+    const b = e.target.closest('.aw');
+    if (!b) return;
+    const nr = parseInt(b.dataset.nr, 10);
+    box.querySelectorAll('.aw').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    // podmieniamy od razu, nie czekając na serwer — wybór awatara ma być natychmiastowy
+    if (window._currentUser) window._currentUser.awatar = nr;
+    overlay.querySelector('#_mavbig').innerHTML = awatarHtml({ awatar: nr }, 'aw-duzy');
+    const wPasku = document.querySelector('#nav-profile-btn .aw');
+    if (wPasku) wPasku.outerHTML = awatarHtml({ awatar: nr }, 'aw-maly');
+    _wypelnijDomownikow(overlay);
+    try {
+      await authFetch('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ awatar: nr }),
+      });
+    } catch {}
+  };
+}
+
+// ── zapraszanie i osoby bez konta ───────────────────────────────────────────
+// Mieszkają tutaj, a nie w index.html, bo okno profilu otwiera się z każdej
+// strony — a tamte funkcje były przywiązane do znaczników pulpitu.
+
+function _nakladka(html) {
+  const o = document.createElement('div');
+  o.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:10000;padding:14px';
+  o.innerHTML = `<div style="background:var(--surface);border-radius:14px;padding:22px;width:380px;max-width:100%;box-shadow:var(--shadow-lg)">${html}</div>`;
+  o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
+  document.body.appendChild(o);
+  return o;
+}
+
+async function _oknoZaproszenia() {
+  const o = _nakladka(`
+    <h3 style="margin:0 0 6px;font-size:1.05rem;color:var(--heading)">Zaproś osobę</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;line-height:1.5">Wyślij ten link osobie, która ma dołączyć do gospodarstwa. Działa 7 dni.</p>
+    <div id="_zlink" style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:12px;word-break:break-all;color:var(--text)">Generowanie…</div>
+    <div id="_zok" style="display:none;font-size:12px;color:var(--good);margin-top:7px">Skopiowano.</div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button id="_zkop" style="flex:1;padding:9px;background:var(--primary);color:var(--on-primary);border:none;border-radius:8px;cursor:pointer;font-size:0.85rem">Kopiuj link</button>
+      <button id="_zzam" style="flex:1;padding:9px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:0.85rem">Zamknij</button>
+    </div>`);
+  o.querySelector('#_zzam').onclick = () => o.remove();
+  let link = '';
+  try {
+    const d = await (await authFetch('/api/household/invite', { method: 'POST' })).json();
+    link = d.link || '';
+    o.querySelector('#_zlink').textContent = link;
+  } catch (e) {
+    o.querySelector('#_zlink').textContent = 'Nie udało się utworzyć zaproszenia.';
+  }
+  o.querySelector('#_zkop').onclick = () => {
+    if (!link) return;
+    navigator.clipboard.writeText(link).then(() => { o.querySelector('#_zok').style.display = 'block'; });
+  };
+}
+
+async function _oknoBezKonta(rodzic) {
+  const o = _nakladka(`
+    <h3 style="margin:0 0 6px;font-size:1.05rem;color:var(--heading)">Osoba bez konta</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;line-height:1.5">Dla kogoś, kto nie loguje się do aplikacji (np. dziecko). Będzie można przypisywać jej wydatki.</p>
+    <div id="_blista" style="margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px">
+      <input id="_binp" type="text" maxlength="30" placeholder="Imię" style="flex:1;min-width:0">
+      <button id="_bdod" style="padding:8px 16px;background:var(--primary);color:var(--on-primary);border:none;border-radius:8px;cursor:pointer;font-size:0.85rem">Dodaj</button>
+    </div>
+    <div id="_berr" style="display:none;color:var(--danger);font-size:12px;margin-top:8px"></div>
+    <button id="_bzam" style="width:100%;margin-top:12px;padding:9px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:0.85rem">Zamknij</button>`);
+
+  async function odswiez() {
+    const lista = o.querySelector('#_blista');
+    try {
+      const d = await (await authFetch('/api/household')).json();
+      const vms = d.virtual_members || [];
+      lista.innerHTML = vms.length ? vms.map((m) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:var(--surface-2);border-radius:8px;margin-bottom:6px">
+          <span style="font-size:13.5px">${_esc(m.name)}</span>
+          <button data-usun="${m.id}" style="padding:3px 10px;border:1px solid var(--danger-border);border-radius:6px;background:var(--surface);color:var(--danger);cursor:pointer;font-size:12px">Usuń</button>
+        </div>`).join('') : '<div style="font-size:12.5px;color:var(--muted)">Nikogo takiego jeszcze nie ma.</div>';
+      lista.querySelectorAll('[data-usun]').forEach((b) => {
+        b.onclick = async () => {
+          if (!confirm('Usunąć tę osobę? Jej dotychczasowe wydatki zostaną w gospodarstwie.')) return;
+          await authFetch('/api/household/virtual-members/' + b.dataset.usun, { method: 'DELETE' });
+          await odswiez();
+          if (rodzic) _wypelnijDomownikow(rodzic);
+        };
+      });
+    } catch { lista.innerHTML = '<div style="font-size:12.5px;color:var(--danger)">Błąd ładowania.</div>'; }
+  }
+  await odswiez();
+
+  o.querySelector('#_bzam').onclick = () => o.remove();
+  o.querySelector('#_bdod').onclick = async () => {
+    const inp = o.querySelector('#_binp');
+    const err = o.querySelector('#_berr');
+    err.style.display = 'none';
+    const name = inp.value.trim();
+    if (!name) return;
+    try {
+      const res = await authFetch('/api/household/virtual-members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        err.textContent = e.detail || 'Nie udało się dodać.'; err.style.display = 'block';
+        return;
+      }
+      inp.value = '';
+      await odswiez();
+      if (rodzic) _wypelnijDomownikow(rodzic);
+    } catch {
+      err.textContent = 'Błąd połączenia.'; err.style.display = 'block';
+    }
+  };
+}
+
 function _showProfileModal() {
   const current = (window._currentUser || {}).display_name || '';
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;';
+  const ja = window._currentUser || {};
+  const RODZAJE_OPIS = [
+    ['przelew',  'Przelew do zrobienia',  'Gdy czeka płatność, którą robisz ręcznie'],
+    ['pobranie', 'Nadchodzące pobranie',  'Zapewnij środki — coś ściągnie się samo'],
+    ['lista',    'Lista zakupów',         'Ktoś z domu dopisał nowe pozycje'],
+    ['raport',   'Raport miesięczny',     'Gdy doradca podsumuje zamknięty miesiąc'],
+  ];
   overlay.innerHTML = `
-    <div style="background:var(--surface);border-radius:12px;padding:28px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
-      <h3 style="margin-bottom:16px;font-size:1.1rem;color:var(--text)">Twój pseudonim</h3>
-      <input id="_mn" type="text" value="${current}" maxlength="30" placeholder="np. Adam, Ola, Mama"
-        style="width:100%;padding:10px 12px;border:1px solid #dadce0;border-radius:8px;font-size:0.95rem;margin-bottom:12px;box-sizing:border-box;outline:none">
-      <div style="display:flex;gap:8px">
-        <button id="_ms" style="flex:1;padding:10px;background:var(--primary);color:var(--on-primary);border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:500">Zapisz</button>
-        <button id="_mc" style="flex:1;padding:10px;background:var(--surface);color:var(--text);border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">Anuluj</button>
-      </div>
-      <div id="_me" style="color:var(--danger);font-size:0.8rem;margin-top:8px;display:none"></div>
-      <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px">
-        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:7px">Wygląd</div>
-        <div id="_mtheme" style="display:flex;gap:6px">
-          <button data-motyw="auto" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.8rem">Auto</button>
-          <button data-motyw="jasny" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.8rem">Jasny</button>
-          <button data-motyw="ciemny" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.8rem">Ciemny</button>
+    <div class="pf-okno">
+      <div class="pf-dom">
+        <div class="pf-tyt">Gospodarstwo</div>
+        <div class="pf-lista" id="_mdom"></div>
+        <div class="pf-akcje">
+          <button id="_minvite" type="button">+ Zaproś osobę</button>
+          <button id="_mvm" type="button">+ Osoba bez konta</button>
         </div>
       </div>
-      <div id="_mpushbox" style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px;display:none">
-        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:7px">Powiadomienia</div>
-        <button id="_mpush" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.85rem">Włącz powiadomienia</button>
-        <div id="_mpushinfo" style="font-size:0.72rem;color:var(--muted);margin-top:7px;line-height:1.45"></div>
-      </div>
-      <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px;display:flex;flex-direction:column;gap:8px">
-        <button id="_mleave" style="width:100%;padding:9px;background:var(--surface);color:var(--warn);border:1px solid #e8c07d;border-radius:8px;cursor:pointer;font-size:0.85rem">Wypisz się z gospodarstwa</button>
-        <button id="_mdel" style="width:100%;padding:9px;background:var(--surface);color:var(--danger);border:1px solid #e6b0aa;border-radius:8px;cursor:pointer;font-size:0.85rem">Usuń moje konto</button>
+      <div class="pf-ust">
+        <div class="pf-gora">
+          <span id="_mavbig">${awatarHtml(ja, 'aw-duzy')}</span>
+          <span>
+            <h3>${_esc(current || ja.name || '')}</h3>
+            <span class="pf-mail">${_esc(ja.email || '')}</span>
+          </span>
+          <button id="_mc" type="button" title="Zamknij" style="margin-left:auto;align-self:flex-start;background:none;border:none;color:var(--muted);font-size:22px;line-height:1;cursor:pointer;padding:0 2px">&times;</button>
+        </div>
+
+        <div class="pf-etyk">Pseudonim</div>
+        <div style="display:flex;gap:8px">
+          <input id="_mn" type="text" value="${_esc(current)}" maxlength="30" placeholder="np. Adam, Ola, Mama"
+            style="flex:1;min-width:0">
+          <button id="_ms" type="button" style="padding:8px 16px;background:var(--primary);color:var(--on-primary);border:none;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:500">Zapisz</button>
+        </div>
+        <div id="_me" style="color:var(--danger);font-size:0.8rem;margin-top:8px;display:none"></div>
+
+        <div class="pf-grupa">
+          <div class="pf-etyk">Awatar</div>
+          <div class="pf-wybor" id="_mav"></div>
+        </div>
+
+        <div class="pf-grupa">
+          <div class="pf-etyk">Wygląd</div>
+          <div id="_mtheme" style="display:flex;gap:6px">
+            <button data-motyw="auto" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.8rem">Auto</button>
+            <button data-motyw="jasny" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.8rem">Jasny</button>
+            <button data-motyw="ciemny" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.8rem">Ciemny</button>
+          </div>
+        </div>
+
+        <div class="pf-grupa" id="_mpushbox" style="display:none">
+          <div class="pf-etyk">Powiadomienia na telefon</div>
+          <button id="_mpush" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.85rem">Włącz powiadomienia</button>
+          <div id="_mpushinfo" style="font-size:0.72rem;color:var(--muted);margin:7px 0 2px;line-height:1.45"></div>
+          <div id="_mrodzaje" style="display:none">
+            ${RODZAJE_OPIS.map(([k, t, o]) => `
+              <div class="pf-poz">
+                <span><span class="pf-poz-t">${t}</span><div class="pf-poz-o">${o}</div></span>
+                <button class="pf-prze" role="switch" aria-checked="true" data-rodzaj="${k}" aria-label="${t}"></button>
+              </div>`).join('')}
+          </div>
+        </div>
+
+        <div class="pf-grupa">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button id="_mleave" style="flex:1;min-width:150px;padding:9px;background:var(--surface);color:var(--warn);border:1px solid var(--warn-border);border-radius:8px;cursor:pointer;font-size:0.82rem">Wypisz się z gospodarstwa</button>
+            <button id="_mdel" style="flex:1;min-width:150px;padding:9px;background:var(--surface);color:var(--danger);border:1px solid var(--danger-border);border-radius:8px;cursor:pointer;font-size:0.82rem">Usuń moje konto</button>
+          </div>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  _wypelnijDomownikow(overlay);
+  _podepnijAwatary(overlay, ja);
   _podepnijMotyw(overlay);
   _podepnijPush(overlay);
   overlay.querySelector('#_mn').focus();
@@ -477,9 +754,11 @@ function _injectProfileButton(me) {
 
   const btn = document.createElement('button');
   btn.id = 'nav-profile-btn';
-  btn.textContent = me.display_name || me.name.split(' ')[0];
-  btn.title = 'Zmień pseudonim';
-  btn.style.cssText = 'padding:6px 14px;cursor:pointer;border:1px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--accent);font-size:0.85rem;font-weight:500;';
+  // Awatar obok imienia — pod nim ludzie odruchowo szukają ustawień konta.
+  btn.innerHTML = awatarHtml(me, 'aw-maly')
+    + `<span>${_esc(me.display_name || (me.name || '').split(' ')[0])}</span>`;
+  btn.title = 'Twój profil i gospodarstwo';
+  btn.style.cssText = 'display:flex;align-items:center;gap:7px;padding:4px 12px 4px 5px;cursor:pointer;border:1px solid var(--accent);border-radius:20px;background:var(--surface);color:var(--accent);font-size:0.85rem;font-weight:500;';
   btn.onclick = _showProfileModal;
   grupa.appendChild(btn);
 

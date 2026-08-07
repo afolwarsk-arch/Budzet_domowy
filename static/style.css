@@ -819,6 +819,79 @@ tr:hover td { background: var(--hover); }
 }
 
 
+/* ── awatary ─────────────────────────────────────────────────────────────
+   Kolor plus rysowany znak, nigdy zdjęcie. Kolory pochodzą z palety wykresów
+   (zwalidowanej), więc trzymają kontrast wobec obu motywów; znak zawsze kością,
+   bo leży na nasyconym tle, nie na powierzchni karty. */
+.aw { width: 34px; height: 34px; border-radius: 50%; display: inline-flex;
+      align-items: center; justify-content: center; flex: none; }
+.aw svg { width: 19px; height: 19px; fill: none; stroke: #f7f4ee; stroke-width: 1.7;
+          stroke-linecap: round; stroke-linejoin: round; }
+.aw.aw-duzy { width: 56px; height: 56px; }
+.aw.aw-duzy svg { width: 30px; height: 30px; }
+.aw.aw-maly { width: 24px; height: 24px; }
+.aw.aw-maly svg { width: 14px; height: 14px; }
+
+/* ── okno profilu / gospodarstwa ───────────────────────────────────────── */
+.pf-okno {
+  background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-lg);
+  display: grid; grid-template-columns: 200px 1fr; overflow: hidden;
+  width: 720px; max-width: calc(100vw - 28px); max-height: 90vh;
+}
+/* min-width:0 na obu kolumnach jest KONIECZNE: element siatki domyślnie nie
+   kurczy się poniżej szerokości zawartości, więc bez tego okno rozpychało się
+   poza ekran telefonu i ucinało prawą krawędź (przycisk „Zapisz", „Ciemny"). */
+.pf-dom, .pf-ust { min-width: 0; }
+.pf-dom { background: var(--surface-2); border-right: 1px solid var(--border);
+          padding: 18px 14px; overflow-y: auto; }
+.pf-tyt { font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em;
+          color: var(--muted); font-weight: 700; margin-bottom: 12px; }
+.pf-czlonek { display: flex; align-items: center; gap: 10px; padding: 7px 8px;
+              border-radius: 10px; min-width: 0; }
+.pf-czlonek > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-czlonek.ja { background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); }
+.pf-imie { font-size: 13.5px; font-weight: 600; line-height: 1.25; color: var(--text); }
+.pf-rola { font-size: 10.5px; color: var(--muted); }
+.pf-akcje { display: flex; flex-direction: column; gap: 2px; margin-top: 10px;
+            padding-top: 10px; border-top: 1px solid var(--border); }
+.pf-akcje button { background: none; border: none; text-align: left; font: inherit;
+                   font-size: 12.5px; color: var(--accent); cursor: pointer;
+                   padding: 6px 8px; border-radius: 8px; }
+.pf-akcje button:hover { background: var(--accent-soft); }
+
+.pf-ust { padding: 20px 24px; overflow-y: auto; }
+.pf-gora { display: flex; align-items: center; gap: 13px; margin-bottom: 16px; }
+.pf-gora h3 { margin: 0 0 1px; font-size: 17px; color: var(--heading); }
+.pf-mail { font-size: 12px; color: var(--muted); }
+.pf-grupa { border-top: 1px solid var(--border); padding-top: 13px; margin-top: 15px; }
+.pf-etyk { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em;
+           color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+
+.pf-wybor { display: flex; flex-wrap: wrap; gap: 7px; }
+.pf-wybor .aw { width: 30px; height: 30px; cursor: pointer; border: none; padding: 0; }
+.pf-wybor .aw svg { width: 17px; height: 17px; }
+.pf-wybor .aw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+
+.pf-poz { display: flex; align-items: flex-start; gap: 12px; padding: 9px 0; }
+.pf-poz + .pf-poz { border-top: 1px solid var(--border-soft); }
+.pf-poz-t { font-size: 13.5px; font-weight: 500; color: var(--text); }
+.pf-poz-o { font-size: 11.5px; color: var(--muted); margin-top: 1px; line-height: 1.4; }
+.pf-prze { width: 38px; height: 22px; border-radius: 11px; background: var(--border);
+           position: relative; flex: none; margin-left: auto; margin-top: 2px;
+           border: none; cursor: pointer; padding: 0; transition: background .15s; }
+.pf-prze::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px;
+                  height: 16px; border-radius: 50%; background: var(--surface); transition: left .15s; }
+.pf-prze[aria-checked="true"] { background: var(--accent); }
+.pf-prze[aria-checked="true"]::after { left: 19px; }
+@media (prefers-reduced-motion: reduce) { .pf-prze, .pf-prze::after { transition: none; } }
+
+@media (max-width: 700px) {
+  .pf-okno { grid-template-columns: 1fr; max-height: 92vh; }
+  .pf-dom { border-right: none; border-bottom: 1px solid var(--border); }
+  .pf-lista { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pf-akcje { flex-direction: row; flex-wrap: wrap; }
+}
+
 /* ── ikony ───────────────────────────────────────────────────────────────
    Rysowane w kodzie, nie emoji: biorą kolor z motywu i wyglądają tak samo
    na Androidzie, iPhonie i w przeglądarce. Klasa „kropka" to koralowy detal

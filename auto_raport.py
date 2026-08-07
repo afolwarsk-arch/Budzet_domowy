@@ -63,7 +63,7 @@ def _powiadom_o_raporcie(hid: int, miesiac: str, raport: dict) -> None:
         else:
             tresc = "Podsumowanie miesiąca czeka na stronie Analiza."
         push.wyslij_do_gospodarstwa(hid, f"Raport za {nazwa} gotowy", tresc,
-                                    "/analiza", f"raport:{miesiac}")
+                                    "/analiza", f"raport:{miesiac}", rodzaj="raport")
     except Exception as e:
         print(f"[auto_raport] gosp {hid}: powiadomienie o raporcie nie poszło — {e!r}")
 

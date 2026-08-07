@@ -261,7 +261,7 @@ async def _lista_push_po_zwloce(hid: int):
             push.wyslij_do_gospodarstwa, hid,
             f"Nowe na liście: {dane['lista']}",
             f"{widoczne} · {autorzy}",
-            "/lista", f"lista:{hid}", dane["autorzy_id"],
+            "/lista", f"lista:{hid}", dane["autorzy_id"], "lista",
         )
     except Exception as e:
         print(f"[push] lista gosp {hid}: BŁĄD — {e!r}")
@@ -486,6 +486,19 @@ def zaliczony_samouczek(current_user: dict = Depends(get_current_user)):
 
 @app.patch("/api/me")
 def update_me(body: dict, current_user: dict = Depends(get_current_user)):
+    # Awatar da się zmienić bez ruszania pseudonimu i odwrotnie — okno profilu
+    # zapisuje każde pole osobno, żeby wybór awatara nie wymagał kliknięcia „Zapisz".
+    if "awatar" in body:
+        try:
+            numer = int(body["awatar"])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Nieprawidłowy awatar")
+        if not 0 <= numer <= 99:
+            raise HTTPException(status_code=400, detail="Nieprawidłowy awatar")
+        database.set_awatar(current_user["user_id"], numer)
+        if "display_name" not in body:
+            return {"ok": True}
+
     display_name = (body.get("display_name") or "").strip()
     if not display_name:
         raise HTTPException(status_code=400, detail="Podaj pseudonim")
@@ -1600,12 +1613,26 @@ def api_push_stan(current_user: dict = Depends(get_current_user)):
     to konto ma już gdziekolwiek włączone powiadomienia. `dostepne=False` znaczy,
     że na serwerze nie ma kluczy VAPID — przełącznik chowamy zamiast pokazywać
     coś, co i tak nie zadziała."""
+    wyciszone = database.get_push_wylaczone(current_user["user_id"])
     return {
         "dostepne": push.skonfigurowane(),
         "klucz": push.klucz_publiczny(),
         "brakuje": push.czego_brakuje(),
         "wlaczone": database.ma_push_subskrypcje(current_user["user_id"]),
+        # brak wpisu = rodzaj włączony, więc odwracamy tu, a nie w przeglądarce
+        "rodzaje": {r: r not in wyciszone for r in push.RODZAJE},
     }
+
+
+@app.put("/api/push/rodzaje")
+def api_push_rodzaje(body: dict, current_user: dict = Depends(get_current_user)):
+    """Które rodzaje powiadomień ta osoba chce dostawać. Przyjmujemy tylko znane
+    nazwy — nieznany klucz w ciele żądania po cichu ignorujemy, żeby starsza
+    przeglądarka z zapamiętanym kodem nie mogła zaśmiecić tabeli."""
+    for rodzaj in push.RODZAJE:
+        if rodzaj in body:
+            database.ustaw_push_rodzaj(current_user["user_id"], rodzaj, bool(body[rodzaj]))
+    return {"ok": True}
 
 
 @app.post("/api/push/subskrypcja", status_code=201)

@@ -57,6 +57,7 @@ def user_from_token(token: str) -> dict | None:
         "role": household["role"] if household else None,
         "status": flags["status"],
         "ai_zablokowane": flags["ai_zablokowane"],
+        "awatar": flags["awatar"],
     }
 
 

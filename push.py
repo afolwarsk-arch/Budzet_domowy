@@ -99,14 +99,25 @@ def _opis(p: dict) -> str:
 
 # ── wysyłka ─────────────────────────────────────────────────────────────────
 
+# Rodzaje powiadomień — po jednym na wyzwalacz. Nazwy trafiają do bazy
+# (`push_wylaczone.rodzaj`) i do interfejsu, więc NIE zmieniaj ich bez migracji.
+RODZAJE = ("przelew", "pobranie", "lista", "raport")
+
+
 def wyslij_do_uzytkownika(user_id: int, tytul: str, tresc: str, url: str = "/",
-                          tag: str | None = None) -> int:
+                          tag: str | None = None, rodzaj: str | None = None) -> int:
     """Wysyła jedno powiadomienie na WSZYSTKIE urządzenia użytkownika.
+
+    `rodzaj` (jeden z RODZAJE) decyduje, czy użytkownik w ogóle chce takie
+    powiadomienie — wyciszenie sprawdzamy TUTAJ, w jednym miejscu, żeby żadna
+    ścieżka wysyłki nie mogła go przypadkiem ominąć.
 
     Zwraca liczbę urządzeń, do których dotarło. Subskrypcje odrzucone przez
     usługę jako wygasłe (404/410 — odinstalowana apka, wyczyszczone dane
     przeglądarki) kasujemy od razu, żeby tabela nie puchła martwymi wpisami."""
     if not skonfigurowane():
+        return 0
+    if rodzaj and rodzaj in database.get_push_wylaczone(user_id):
         return 0
     try:
         from pywebpush import WebPushException, webpush
@@ -148,7 +159,8 @@ def wyslij_do_uzytkownika(user_id: int, tytul: str, tresc: str, url: str = "/",
 
 
 def wyslij_do_gospodarstwa(household_id: int, tytul: str, tresc: str, url: str = "/",
-                           tag: str | None = None, pomin: set[int] | None = None) -> int:
+                           tag: str | None = None, pomin: set[int] | None = None,
+                           rodzaj: str | None = None) -> int:
     """To samo, ale do wszystkich domowników. `pomin` = osoby, które same wywołały
     zdarzenie — nie zawiadamiamy kogoś o jego własnym działaniu."""
     pomin = pomin or set()
@@ -156,11 +168,17 @@ def wyslij_do_gospodarstwa(household_id: int, tytul: str, tresc: str, url: str =
     for czlonek in database.get_household_members(household_id):
         if czlonek["id"] in pomin:
             continue
-        razem += wyslij_do_uzytkownika(czlonek["id"], tytul, tresc, url, tag)
+        razem += wyslij_do_uzytkownika(czlonek["id"], tytul, tresc, url, tag, rodzaj)
     return razem
 
 
 # ── zadanie dzienne (scheduler, 9:00) ───────────────────────────────────────
+
+def _rodzaj(p: dict) -> str:
+    """Płatność ręczna wymaga działania, automatyczna jest tylko do wiadomości —
+    dlatego wyciszają się osobno."""
+    return "przelew" if p.get("typ") == "reczny" else "pobranie"
+
 
 def _klucz_terminu(p: dict) -> str:
     """Identyfikator zdarzenia, żeby to samo powiadomienie nie poszło dwa razy.
@@ -204,12 +222,18 @@ def wyslij_przypomnienia_dzienne() -> None:
                 uid = czlonek["id"]
                 if not database.ma_push_subskrypcje(uid):
                     continue
+                # Wyciszenia pobieramy RAZ na osobę i filtrujemy nimi listy, zamiast
+                # polegać na sprawdzeniu w wyslij_do_uzytkownika. Inaczej zbiorcze
+                # powiadomienie z mieszanką rodzajów albo poszłoby w całości, albo
+                # wcale — a chcemy, żeby zostały w nim same rzeczy, których ktoś chce.
+                wyciszone = database.get_push_wylaczone(uid)
 
                 for p in na_dzis:
+                    if _rodzaj(p) in wyciszone:
+                        continue
                     klucz = _klucz_terminu(p)
                     if database.push_juz_wyslany(uid, klucz):
                         continue
-                    czynnosc = "Przelew" if p.get("typ") == "reczny" else "Pobranie"
                     konto = p.get("konto_nazwa")
                     wyslij_do_uzytkownika(
                         uid,
@@ -217,19 +241,21 @@ def wyslij_przypomnienia_dzienne() -> None:
                         _zl(p.get("kwota")) + (f" z konta {konto}" if konto else ""),
                         url="/powiadomienia",
                         tag=klucz,
+                        rodzaj=_rodzaj(p),
                     )
                     database.oznacz_push_wyslany(uid, klucz)
 
-                if reszta:
+                moje = [p for p in reszta if _rodzaj(p) not in wyciszone]
+                if moje:
                     klucz = f"dzienny:{dzis}"
                     if database.push_juz_wyslany(uid, klucz):
                         continue
-                    n = len(reszta)
+                    n = len(moje)
                     if n == 1:
-                        tytul, tresc = "Do zrobienia", _opis(reszta[0])
+                        tytul, tresc = "Do zrobienia", _opis(moje[0])
                     else:
                         tytul = f"Do zrobienia: {n} {_odmiana(n, 'sprawa', 'sprawy', 'spraw')}"
-                        widoczne = [_opis(p) for p in reszta[:2]]
+                        widoczne = [_opis(p) for p in moje[:2]]
                         if n > 2:
                             widoczne.append(f"i {n - 2} więcej")
                         tresc = " · ".join(widoczne)

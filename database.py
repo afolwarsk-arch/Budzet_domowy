@@ -308,6 +308,10 @@ def init_db():
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'aktywny'")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_zablokowane BOOLEAN NOT NULL DEFAULT FALSE")
+        # numer awatara (indeks w stałym zestawie po stronie frontu); NULL = jeszcze
+        # nie wybrany, wtedy front dobiera go deterministycznie z id użytkownika,
+        # żeby domownicy nie wyglądali identycznie zanim ktokolwiek coś ustawi
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS awatar INTEGER")
         # gospodarstwo bez członków czeka 30 dni na skasowanie — data startu karencji
         cur.execute("ALTER TABLE households ADD COLUMN IF NOT EXISTS usuwane_od TIMESTAMP")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS okazja TEXT")
@@ -468,6 +472,15 @@ def init_db():
             p256dh     TEXT NOT NULL,
             auth       TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+        # Wyciszone rodzaje powiadomień — OBECNOŚĆ wiersza znaczy „wyłączone".
+        # Odwrotnie niż intuicyjnie, ale dzięki temu domyślnie wszystko jest
+        # włączone i dołożenie nowego rodzaju nie wymaga migracji ani dopisywania
+        # wierszy istniejącym użytkownikom.
+        cur.execute("""CREATE TABLE IF NOT EXISTS push_wylaczone (
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            rodzaj  TEXT NOT NULL,
+            PRIMARY KEY (user_id, rodzaj)
         )""")
         # dziennik wysłanych powiadomień — chroni przed wysłaniem tego samego
         # przypomnienia drugi raz (scheduler może odpalić ponownie po restarcie).
@@ -1374,11 +1387,17 @@ _STATUSY_USERA = {"aktywny", "zawieszony"}
 
 def get_user_flags(user_id: int) -> dict:
     with get_db() as cur:
-        cur.execute("SELECT status, ai_zablokowane FROM users WHERE id=%s", (user_id,))
+        cur.execute("SELECT status, ai_zablokowane, awatar FROM users WHERE id=%s", (user_id,))
         row = cur.fetchone()
     if not row:
-        return {"status": "aktywny", "ai_zablokowane": False}
-    return {"status": row["status"], "ai_zablokowane": bool(row["ai_zablokowane"])}
+        return {"status": "aktywny", "ai_zablokowane": False, "awatar": None}
+    return {"status": row["status"], "ai_zablokowane": bool(row["ai_zablokowane"]),
+            "awatar": row["awatar"]}
+
+
+def set_awatar(user_id: int, numer: int | None) -> None:
+    with get_db() as cur:
+        cur.execute("UPDATE users SET awatar=%s WHERE id=%s", (numer, user_id))
 
 
 def set_user_status(user_id: int, status: str) -> bool:
@@ -1583,7 +1602,7 @@ def add_member(user_id: int, household_id: int, role: str = "member") -> None:
 def get_household_members(household_id: int) -> list[dict]:
     with get_db() as cur:
         cur.execute(
-            """SELECT u.id, u.name, u.display_name, u.email, u.picture, m.role
+            """SELECT u.id, u.name, u.display_name, u.email, u.picture, u.awatar, m.role
                FROM users u JOIN memberships m ON m.user_id = u.id
                WHERE m.household_id = %s""",
             (household_id,),
@@ -2609,6 +2628,23 @@ def ma_push_subskrypcje(user_id: int) -> bool:
     with get_db() as cur:
         cur.execute("SELECT 1 FROM push_subskrypcje WHERE user_id=%s LIMIT 1", (user_id,))
         return cur.fetchone() is not None
+
+
+def get_push_wylaczone(user_id: int) -> set[str]:
+    """Rodzaje, które użytkownik wyciszył. Pusty zbiór = chce wszystkiego."""
+    with get_db() as cur:
+        cur.execute("SELECT rodzaj FROM push_wylaczone WHERE user_id=%s", (user_id,))
+        return {r["rodzaj"] for r in cur.fetchall()}
+
+
+def ustaw_push_rodzaj(user_id: int, rodzaj: str, wlaczone: bool) -> None:
+    with get_db() as cur:
+        if wlaczone:
+            cur.execute("DELETE FROM push_wylaczone WHERE user_id=%s AND rodzaj=%s",
+                        (user_id, rodzaj))
+        else:
+            cur.execute("INSERT INTO push_wylaczone (user_id, rodzaj) VALUES (%s,%s) "
+                        "ON CONFLICT DO NOTHING", (user_id, rodzaj))
 
 
 def push_juz_wyslany(user_id: int, klucz: str) -> bool:
