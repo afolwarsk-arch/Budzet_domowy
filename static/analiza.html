@@ -68,10 +68,22 @@
     .analiza-summary strong { color: var(--text); }
     #chart-card { margin-top: 20px; display: none; }
 
-    /* ── Doradca budżetowy ── */
-    .doradca-card { background: linear-gradient(135deg, #4f7ef8 0%, #6a4ff8 100%); color: var(--on-primary); border-radius: 16px; padding: 22px 24px; margin-bottom: 24px; }
+    /* ── Doradca budżetowy ──
+       Ten sam gradient co nagłówek samouczka (style.css): atrament → bordo →
+       koral. Jest ciemny w OBU motywach, tak jak pasek nawigacji, więc tokeny
+       przedefiniowane są lokalnie — inaczej pola formularza brały `--surface`
+       i w ciemnym motywie wtapiały się w tło. Z tego samego powodu tekst na
+       gradiencie ma kość wpisaną wprost: `--on-primary` przeskakuje z motywem
+       i w ciemnym dawał prawie czarny nagłówek na kolorowym tle. */
+    .doradca-card {
+      background: linear-gradient(135deg, #1a1d20, #4a2b2b 55%, var(--marka));
+      color: #f2efe9; border-radius: 16px; padding: 22px 24px; margin-bottom: 24px;
+      --surface: #f2efe9; --surface-2: #e8e4db; --surface-3: #e0dbd1;
+      --text: #1f2226; --muted: #5c574e; --border: #d9d4c9;
+      --accent: #9c3a30;   /* koral przyciemniony — na kości przechodzi kontrast */
+    }
     .doradca-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-    .doradca-head h2 { color: var(--on-primary); margin: 0; font-size: 19px; }
+    .doradca-head h2 { color: #f2efe9; margin: 0; font-size: 19px; }
     .doradca-sub { font-size: 13.5px; color: rgba(255,255,255,.85); margin-bottom: 16px; max-width: 640px; }
     .doradca-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
     .doradca-controls label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.75); margin-bottom: 4px; font-weight: 600; }
@@ -85,7 +97,7 @@
     .doradca-hist { display: none; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
     .doradca-hist label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.75); font-weight: 600; }
     .doradca-hist select { border: none; border-radius: 8px; padding: 7px 10px; font-size: 13px; max-width: 100%; }
-    .doradca-hist button { background: rgba(255,255,255,.15); color: var(--on-primary); border: 1px solid rgba(255,255,255,.35); border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+    .doradca-hist button { background: rgba(255,255,255,.15); color: #f2efe9; border: 1px solid rgba(255,255,255,.35); border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
     .doradca-hist button:hover { background: rgba(255,255,255,.25); }
 
     .profil-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; margin-bottom: 20px; box-shadow: var(--shadow); }
