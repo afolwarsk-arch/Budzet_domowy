@@ -517,20 +517,34 @@ const _BOTTOM_NAV_ITEMS = [
 ];
 
 
-function _injectBottomNav(me) {
-  if (!document.querySelector('nav') || document.querySelector('.bottom-nav')) return;
-  const items = [..._BOTTOM_NAV_ITEMS];
-  if (me && authIsAdmin(me)) items.push({ href: '/admin', ikona: 'admin', label: 'Admin' });
-  const bar = document.createElement('div');
-  bar.className = 'bottom-nav';
-  bar.innerHTML = items.map(i => `
-    <a href="${i.href}" class="${location.pathname === i.href ? 'active' : ''}">
+function _pozycjaPaska(i) {
+  return `<a href="${i.href}" class="${location.pathname === i.href ? 'active' : ''}">
       ${ikonaPelna(i.ikona)}${i.label}
-    </a>`).join('');
-  document.body.appendChild(bar);
-  // dosuń aktywną ikonę do widoku (pasek jest przewijany w poziomie)
-  const act = bar.querySelector('a.active');
-  if (act && act.scrollIntoView) act.scrollIntoView({ inline: 'center', block: 'nearest' });
+    </a>`;
+}
+
+// Pasek rysujemy OD RAZU, nie czekając na potwierdzenie logowania. Wcześniej
+// wołane to było dopiero wewnątrz authRequireHousehold, więc przy każdym
+// przejściu na inną zakładkę pasek znikał i wracał po dwóch podróżach do sieci
+// (Firebase + /api/me). Jego treść i tak nie zależy od użytkownika — poza
+// linkiem „Admin", który doklejamy osobno, gdy już wiemy, kto jest zalogowany.
+function _injectBottomNav(me) {
+  if (!document.querySelector('nav')) return;
+  let bar = document.querySelector('.bottom-nav');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.className = 'bottom-nav';
+    bar.innerHTML = _BOTTOM_NAV_ITEMS.map(_pozycjaPaska).join('');
+    document.body.appendChild(bar);
+    // dosuń aktywną ikonę do widoku (pasek jest przewijany w poziomie)
+    const act = bar.querySelector('a.active');
+    if (act && act.scrollIntoView) act.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }
+  // „Admin" dochodzi później i tylko raz — dopisanie go nie przerysowuje paska,
+  // więc nie ma mrugnięcia ani przeskoku przewinięcia.
+  if (me && authIsAdmin(me) && !bar.querySelector('a[href="/admin"]')) {
+    bar.insertAdjacentHTML('beforeend', _pozycjaPaska({ href: '/admin', ikona: 'admin', label: 'Admin' }));
+  }
 }
 
 // ── Wskazówki kontekstowe (różne per zakładka) ──
@@ -745,3 +759,12 @@ window.authLogout = authLogout;
 window.authRequireHousehold = authRequireHousehold;
 window.authFetch = authFetch;
 window.loadOsobaOptions = loadOsobaOptions;
+
+// Pasek stawiamy, gdy tylko ten plik się wczyta — a leży w cache service
+// workera, więc dzieje się to praktycznie natychmiast. Bez logowania, bez
+// czekania na serwer. Strony bez górnej nawigacji (logowanie) same się wykluczą.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => _injectBottomNav());
+} else {
+  _injectBottomNav();
+}
