@@ -35,6 +35,41 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// ── powiadomienia push ──────────────────────────────────────────────────────
+// Ładunek przychodzi jako JSON: {tytul, tresc, url, tag}. Gdyby przyszło coś
+// innego (albo nic — niektóre usługi wysyłają puste pobudki), pokazujemy
+// komunikat zastępczy zamiast milczeć: powiadomienie, którego nie da się
+// wyświetlić, w Chrome kończy się ostrzeżeniem systemowym.
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = {}; }
+  const tytul = d.tytul || 'Wiem';
+  e.waitUntil(self.registration.showNotification(tytul, {
+    body: d.tresc || '',
+    icon: '/static/icon-192.png',
+    badge: '/static/icon-192.png',
+    tag: d.tag || 'wiem',
+    renotify: false,          // ten sam tag podmienia wpis, nie dzwoni drugi raz
+    data: { url: d.url || '/' },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const cel = (e.notification.data && e.notification.data.url) || '/';
+  // Jeśli apka jest już gdzieś otwarta, przenosimy JĄ na właściwy ekran zamiast
+  // otwierać drugą kartę — inaczej po tygodniu użytkownik ma ich pięć.
+  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then((okna) => {
+    for (const o of okna) {
+      if (new URL(o.url).origin === self.location.origin && 'focus' in o) {
+        if ('navigate' in o) o.navigate(cel);
+        return o.focus();
+      }
+    }
+    return clients.openWindow(cel);
+  }));
+});
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;

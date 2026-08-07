@@ -40,7 +40,32 @@ def _raport_dla_gospodarstwa(hid: int, miesiac: str) -> str:
     etykieta = f"Raport miesięczny (automatyczny) — {miesiac}"
     database.save_raport_ai(hid, MIESIACE_OKNO, etykieta,
                             _json.dumps(raport, ensure_ascii=False), MODEL, auto=True)
+    _powiadom_o_raporcie(hid, miesiac, raport)
     return f"gosp {hid}: raport za {miesiac} zapisany"
+
+
+_NAZWY_MIESIECY = ("styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec", "lipiec",
+                   "sierpień", "wrzesień", "październik", "listopad", "grudzień")
+
+
+def _powiadom_o_raporcie(hid: int, miesiac: str, raport: dict) -> None:
+    """Push do domowników, że raport powstał. Do tej pory lądował po cichu w
+    Historii analiz i nikt się o nim nie dowiadywał. Błąd wysyłki nie może
+    przewrócić generowania raportu — raport jest ważniejszy niż powiadomienie."""
+    try:
+        import push
+        nazwa = _NAZWY_MIESIECY[int(miesiac[5:7]) - 1]
+        potencjal = raport.get("potencjal_oszczednosci_mies") or 0
+        ile = len(raport.get("rekomendacje") or [])
+        if potencjal and ile:
+            miejsc = "miejsce" if ile == 1 else ("miejsca" if 2 <= ile % 10 <= 4 and not 12 <= ile % 100 <= 14 else "miejsc")
+            tresc = f"Potencjał oszczędności: {push._zl(potencjal)}/mies. Znalazłem {ile} {miejsc}."
+        else:
+            tresc = "Podsumowanie miesiąca czeka na stronie Analiza."
+        push.wyslij_do_gospodarstwa(hid, f"Raport za {nazwa} gotowy", tresc,
+                                    "/analiza", f"raport:{miesiac}")
+    except Exception as e:
+        print(f"[auto_raport] gosp {hid}: powiadomienie o raporcie nie poszło — {e!r}")
 
 
 def uruchom_auto_raporty() -> None:

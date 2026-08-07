@@ -15,6 +15,7 @@ load_dotenv(BASE_DIR / ".env")
 
 import ai_processor
 import database
+import push
 from auth import get_current_user, require_admin, user_from_token, delete_firebase_user
 
 database.init_db()
@@ -51,9 +52,24 @@ def _start_scheduler():
             CronTrigger(hour=3, minute=30, timezone=ZoneInfo("Europe/Warsaw")),
             id="purge_gospodarstw", replace_existing=True, misfire_grace_time=3600,
         )
+        # Przypomnienia push. misfire_grace_time celowo krótki (30 min): jeśli
+        # instancja spała i zadanie odpali o 14:00, „przypomnienie na dziś rano"
+        # traci sens — lepiej opuścić dzień niż zaskoczyć powiadomieniem po czasie.
+        _scheduler.add_job(
+            push.wyslij_przypomnienia_dzienne,
+            CronTrigger(hour=9, minute=0, timezone=ZoneInfo("Europe/Warsaw")),
+            id="push_przypomnienia", replace_existing=True, misfire_grace_time=1800,
+        )
+        _scheduler.add_job(
+            lambda: print(f"[scheduler] sprzatanie dziennika push: usunieto {database.sprzataj_push_wyslane(90)}"),
+            CronTrigger(hour=3, minute=40, timezone=ZoneInfo("Europe/Warsaw")),
+            id="push_sprzatanie", replace_existing=True, misfire_grace_time=3600,
+        )
         _scheduler.start()
         print("[scheduler] auto-raport zaplanowany: ostatni dzień miesiąca 18:00 Europe/Warsaw")
         print("[scheduler] purge osieroconych gospodarstw: codziennie 3:30 Europe/Warsaw")
+        print(f"[scheduler] przypomnienia push: codziennie 9:00 Europe/Warsaw "
+              f"(klucze VAPID: {'sa' if push.skonfigurowane() else 'BRAK — push spi'})")
     except Exception as e:
         print(f"[scheduler] NIE uruchomiono auto-raportu: {e!r}")
 
@@ -216,6 +232,57 @@ async def _broadcast_lista(hid: int):
     await _lista_mgr.broadcast(hid, {"typ": "stan", "listy": listy})
 
 
+# ── powiadomienie o dopisaniu do listy zakupów ──────────────────────────────
+# Dopisanie trzech rzeczy pod rząd to jedno zdarzenie, nie trzy. Zbieramy je
+# przez chwilę ciszy i wysyłamy JEDNO powiadomienie — inaczej push o liście
+# byłby serią, a to najszybsza droga do wyłączenia powiadomień na zawsze.
+# Bufor jest w pamięci procesu, tak samo jak połączenia WebSocketa powyżej
+# (Railway = jeden worker; przy wielu trzeba by tego samego pub/sub co dla WS).
+
+_LISTA_PUSH_ZWLOKA = 45          # sekund ciszy przed wysłaniem
+_lista_push_bufor: dict[int, dict] = {}
+
+
+async def _lista_push_po_zwloce(hid: int):
+    try:
+        await asyncio.sleep(_LISTA_PUSH_ZWLOKA)
+    except asyncio.CancelledError:
+        return                    # doszła kolejna pozycja — wysyła nowsze zadanie
+    dane = _lista_push_bufor.pop(hid, None)
+    if not dane or not dane["pozycje"]:
+        return
+    nazwy = dane["pozycje"]
+    widoczne = ", ".join(nazwy[:3])
+    if len(nazwy) > 3:
+        widoczne += f" i {len(nazwy) - 3} więcej"
+    autorzy = ", ".join(sorted(dane["autorzy"]))
+    try:
+        await run_in_threadpool(
+            push.wyslij_do_gospodarstwa, hid,
+            f"Nowe na liście: {dane['lista']}",
+            f"{widoczne} · {autorzy}",
+            "/lista", f"lista:{hid}", dane["autorzy_id"],
+        )
+    except Exception as e:
+        print(f"[push] lista gosp {hid}: BŁĄD — {e!r}")
+
+
+def _lista_push_zbierz(hid: int, lista_nazwa: str, pozycja: str, autor: str | None, autor_id: int):
+    wpis = _lista_push_bufor.get(hid)
+    if wpis is None:
+        wpis = _lista_push_bufor[hid] = {
+            "pozycje": [], "autorzy": set(), "autorzy_id": set(),
+            "lista": lista_nazwa, "zadanie": None,
+        }
+    wpis["pozycje"].append(pozycja)
+    wpis["autorzy"].add(autor or "ktoś z domu")
+    wpis["autorzy_id"].add(autor_id)
+    wpis["lista"] = lista_nazwa
+    if wpis["zadanie"]:
+        wpis["zadanie"].cancel()
+    wpis["zadanie"] = asyncio.create_task(_lista_push_po_zwloce(hid))
+
+
 @app.websocket("/ws/lista")
 async def ws_lista(websocket: WebSocket, token: str = ""):
     user = await run_in_threadpool(user_from_token, token)
@@ -305,6 +372,8 @@ async def pozycja_add(lista_id: int, body: dict, current_user: dict = Depends(ge
     if item is None:
         raise HTTPException(404, "Nie znaleziono listy")
     await _broadcast_lista(hid)
+    _lista_push_zbierz(hid, item.get("lista_nazwa") or "Zakupy", item["nazwa"],
+                       current_user["display_name"], current_user["user_id"])
     return item
 
 
@@ -1521,6 +1590,58 @@ def api_archiwum_powiadomien(current_user: dict = Depends(get_current_user)):
     if not hid:
         return []
     return database.get_archiwum_powiadomien(hid)
+
+
+# --- Powiadomienia push ---
+
+@app.get("/api/push/stan")
+def api_push_stan(current_user: dict = Depends(get_current_user)):
+    """Czym dysponuje przeglądarka: klucz publiczny do zapisu i informacja, czy
+    to konto ma już gdziekolwiek włączone powiadomienia. `dostepne=False` znaczy,
+    że na serwerze nie ma kluczy VAPID — przełącznik chowamy zamiast pokazywać
+    coś, co i tak nie zadziała."""
+    return {
+        "dostepne": push.skonfigurowane(),
+        "klucz": push.klucz_publiczny(),
+        "wlaczone": database.ma_push_subskrypcje(current_user["user_id"]),
+    }
+
+
+@app.post("/api/push/subskrypcja", status_code=201)
+def api_push_zapisz(body: dict, current_user: dict = Depends(get_current_user)):
+    endpoint = (body.get("endpoint") or "").strip()
+    klucze = body.get("keys") or {}
+    p256dh, auth_k = (klucze.get("p256dh") or "").strip(), (klucze.get("auth") or "").strip()
+    if not (endpoint and p256dh and auth_k):
+        raise HTTPException(400, "Niekompletna subskrypcja")
+    database.zapisz_push_subskrypcje(current_user["user_id"], endpoint, p256dh, auth_k)
+    return {"ok": True}
+
+
+@app.delete("/api/push/subskrypcja")
+def api_push_usun(endpoint: str = Query(default=""),
+                  current_user: dict = Depends(get_current_user)):
+    """Bez `endpoint` wyłącza powiadomienia na wszystkich urządzeniach naraz."""
+    if endpoint:
+        database.usun_push_subskrypcje(endpoint)
+    else:
+        database.usun_push_subskrypcje_usera(current_user["user_id"])
+    return {"ok": True}
+
+
+@app.post("/api/push/test")
+async def api_push_test(current_user: dict = Depends(get_current_user)):
+    """Wysyła próbne powiadomienie do siebie. Bez tego diagnozowanie pusha na
+    telefonie jest zgadywanką — nie widać, czy nie doszło z powodu kluczy,
+    subskrypcji, czy ustawień systemowych."""
+    ile = await run_in_threadpool(
+        push.wyslij_do_uzytkownika, current_user["user_id"],
+        "Powiadomienia działają", "Tak będą wyglądać przypomnienia o płatnościach.",
+        "/powiadomienia", "test",
+    )
+    if not ile:
+        raise HTTPException(400, "Nie udało się wysłać — brak zapisanych urządzeń albo kluczy na serwerze.")
+    return {"ok": True, "urzadzen": ile}
 
 
 @app.get("/api/cykliczne")

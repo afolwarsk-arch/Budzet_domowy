@@ -458,6 +458,25 @@ def init_db():
                     baza = (row["slowa"] or "").strip().rstrip(",")
                     cur.execute("UPDATE dzialy SET slowa=%s WHERE id=%s",
                                 ((baza + ", " + ", ".join(nowe)) if baza else ", ".join(nowe), row["id"]))
+        # subskrypcje Web Push — jeden wiersz na URZĄDZENIE, nie na użytkownika
+        # (telefon i laptop to dwa osobne zapisy). `endpoint` jest unikalny, bo
+        # to on identyfikuje urządzenie po stronie usługi dostarczającej.
+        cur.execute("""CREATE TABLE IF NOT EXISTS push_subskrypcje (
+            id         SERIAL PRIMARY KEY,
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            endpoint   TEXT NOT NULL UNIQUE,
+            p256dh     TEXT NOT NULL,
+            auth       TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+        # dziennik wysłanych powiadomień — chroni przed wysłaniem tego samego
+        # przypomnienia drugi raz (scheduler może odpalić ponownie po restarcie).
+        cur.execute("""CREATE TABLE IF NOT EXISTS push_wyslane (
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            klucz      TEXT NOT NULL,
+            wyslane_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, klucz)
+        )""")
         # migracja starego kształtu (jeden raport na gospodarstwo, PK na household_id)
         cur.execute("ALTER TABLE raporty_ai ADD COLUMN IF NOT EXISTS id SERIAL")
         cur.execute("""DO $$
@@ -2550,6 +2569,69 @@ def get_archiwum_powiadomien(household_id: int, limit: int = 100) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+# ── Web Push: subskrypcje urządzeń i dziennik wysyłek ───────────────────────
+
+def zapisz_push_subskrypcje(user_id: int, endpoint: str, p256dh: str, auth: str) -> None:
+    """Zapisuje zgodę urządzenia. Ten sam endpoint może wrócić po ponownym
+    włączeniu powiadomień — wtedy tylko przepinamy go na bieżącego użytkownika
+    (wspólny telefon, dwa konta) i odświeżamy klucze."""
+    with get_db() as cur:
+        cur.execute("""
+            INSERT INTO push_subskrypcje (user_id, endpoint, p256dh, auth)
+            VALUES (%s,%s,%s,%s)
+            ON CONFLICT (endpoint) DO UPDATE
+               SET user_id = EXCLUDED.user_id,
+                   p256dh  = EXCLUDED.p256dh,
+                   auth    = EXCLUDED.auth
+        """, (user_id, endpoint, p256dh, auth))
+
+
+def usun_push_subskrypcje(endpoint: str) -> None:
+    with get_db() as cur:
+        cur.execute("DELETE FROM push_subskrypcje WHERE endpoint=%s", (endpoint,))
+
+
+def usun_push_subskrypcje_usera(user_id: int) -> int:
+    """Wyłączenie powiadomień na wszystkich urządzeniach naraz."""
+    with get_db() as cur:
+        cur.execute("DELETE FROM push_subskrypcje WHERE user_id=%s", (user_id,))
+        return cur.rowcount
+
+
+def get_push_subskrypcje(user_id: int) -> list[dict]:
+    with get_db() as cur:
+        cur.execute("SELECT endpoint, p256dh, auth FROM push_subskrypcje WHERE user_id=%s",
+                    (user_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def ma_push_subskrypcje(user_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("SELECT 1 FROM push_subskrypcje WHERE user_id=%s LIMIT 1", (user_id,))
+        return cur.fetchone() is not None
+
+
+def push_juz_wyslany(user_id: int, klucz: str) -> bool:
+    with get_db() as cur:
+        cur.execute("SELECT 1 FROM push_wyslane WHERE user_id=%s AND klucz=%s", (user_id, klucz))
+        return cur.fetchone() is not None
+
+
+def oznacz_push_wyslany(user_id: int, klucz: str) -> None:
+    with get_db() as cur:
+        cur.execute("INSERT INTO push_wyslane (user_id, klucz) VALUES (%s,%s) "
+                    "ON CONFLICT DO NOTHING", (user_id, klucz))
+
+
+def sprzataj_push_wyslane(dni: int = 90) -> int:
+    """Dziennik rośnie w nieskończoność, a wpis starszy niż kwartał niczego już
+    nie chroni — termin dawno minął i nie wróci."""
+    with get_db() as cur:
+        cur.execute("DELETE FROM push_wyslane WHERE wyslane_at < NOW() - INTERVAL '%s days'"
+                    % int(dni))
+        return cur.rowcount
+
+
 def potwierdz_platnosc(platnosc_id: int, household_id: int) -> int | None:
     """Potwierdzenie płatności ręcznej: tworzy wydatek albo przelew z DZISIEJSZĄ datą
     (data faktycznej płatności) i oznacza wpis jako potwierdzony (archiwum).
@@ -2937,8 +3019,11 @@ def delete_lista(lista_id: int, household_id: int) -> bool:
 
 def add_pozycja_listy(household_id: int, lista_id: int, nazwa: str, dodane_przez: str | None) -> dict | None:
     with get_db() as cur:
-        cur.execute("SELECT 1 FROM listy_zakupow WHERE id = %s AND household_id = %s", (lista_id, household_id))
-        if not cur.fetchone():
+        # nazwa listy przy okazji sprawdzenia właściciela — potrzebna do treści
+        # powiadomienia push, a to i tak jedno zapytanie, które już tu było
+        cur.execute("SELECT nazwa FROM listy_zakupow WHERE id = %s AND household_id = %s", (lista_id, household_id))
+        naglowek = cur.fetchone()
+        if not naglowek:
             return None
         cur.execute(
             "INSERT INTO lista_zakupow (household_id, lista_id, nazwa, dodane_przez, pozycja) "
@@ -2946,7 +3031,9 @@ def add_pozycja_listy(household_id: int, lista_id: int, nazwa: str, dodane_przez
             "RETURNING id, lista_id, nazwa, kupione, dodane_przez",
             (household_id, lista_id, nazwa, dodane_przez, lista_id),
         )
-        return dict(cur.fetchone())
+        item = dict(cur.fetchone())
+        item["lista_nazwa"] = naglowek["nazwa"]
+        return item
 
 
 def reorder_lista(household_id: int, lista_id: int, ids: list[int]) -> None:

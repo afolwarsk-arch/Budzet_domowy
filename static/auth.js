@@ -216,6 +216,113 @@ function _podepnijMotyw(overlay) {
 
 window.addEventListener('DOMContentLoaded', _odswiezPasekStatusu);
 
+// ── powiadomienia push ──────────────────────────────────────────────────────
+
+// Klucz VAPID przychodzi w base64url, a pushManager chce surowych bajtów.
+function _kluczNaBajty(b64) {
+  const uzup = '='.repeat((4 - (b64.length % 4)) % 4);
+  const zwykly = (b64 + uzup).replace(/-/g, '+').replace(/_/g, '/');
+  const surowy = atob(zwykly);
+  return Uint8Array.from(surowy, (c) => c.charCodeAt(0));
+}
+
+async function _podepnijPush(overlay) {
+  const box = overlay.querySelector('#_mpushbox');
+  const btn = overlay.querySelector('#_mpush');
+  const info = overlay.querySelector('#_mpushinfo');
+  if (!box) return;
+
+  // Bez service workera albo bez PushManagera nie ma o czym rozmawiać — tak
+  // wygląda m.in. Safari na iPhonie otwarte jako zwykła zakładka.
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    box.style.display = 'block';
+    btn.style.display = 'none';
+    info.textContent = 'Ta przeglądarka nie obsługuje powiadomień. Na iPhonie działają dopiero po dodaniu aplikacji do ekranu początkowego.';
+    return;
+  }
+
+  let stan;
+  try {
+    stan = await (await authFetch('/api/push/stan')).json();
+  } catch { return; }
+  if (!stan || !stan.dostepne) return;   // brak kluczy na serwerze — nie kusimy martwym przyciskiem
+  box.style.display = 'block';
+
+  const rejestracja = await navigator.serviceWorker.ready.catch(() => null);
+  if (!rejestracja) return;
+
+  async function subskrypcjaTegoUrzadzenia() {
+    try { return await rejestracja.pushManager.getSubscription(); } catch { return null; }
+  }
+
+  async function rysuj() {
+    const sub = await subskrypcjaTegoUrzadzenia();
+    if (Notification.permission === 'denied') {
+      btn.disabled = true;
+      btn.style.opacity = '.6';
+      btn.textContent = 'Powiadomienia zablokowane';
+      info.textContent = 'Zablokowałeś je kiedyś dla tej strony — odblokować można tylko w ustawieniach przeglądarki (kłódka przy adresie → Powiadomienia).';
+      return;
+    }
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    if (sub) {
+      btn.textContent = 'Wyłącz na tym urządzeniu';
+      btn.style.color = 'var(--danger)';
+      info.innerHTML = 'Włączone na tym urządzeniu. <a href="#" id="_mpushtest" style="color:var(--accent)">Wyślij próbne</a>';
+      const t = info.querySelector('#_mpushtest');
+      if (t) t.onclick = async (e) => {
+        e.preventDefault();
+        t.textContent = 'wysyłam…';
+        try {
+          const r = await authFetch('/api/push/test', { method: 'POST' });
+          t.textContent = r.ok ? 'wysłane' : 'nie poszło';
+        } catch { t.textContent = 'nie poszło'; }
+      };
+    } else {
+      btn.textContent = 'Włącz powiadomienia';
+      btn.style.color = 'var(--text)';
+      info.textContent = stan.wlaczone
+        ? 'Masz je włączone na innym urządzeniu. Zgoda jest osobna dla każdego telefonu i przeglądarki.'
+        : 'Przypomnienie o przelewach rano, nowe pozycje na liście zakupów i gotowy raport miesięczny.';
+    }
+  }
+
+  btn.onclick = async () => {
+    const sub = await subskrypcjaTegoUrzadzenia();
+    btn.disabled = true;
+    try {
+      if (sub) {
+        await authFetch('/api/push/subskrypcja?endpoint=' + encodeURIComponent(sub.endpoint), { method: 'DELETE' });
+        await sub.unsubscribe().catch(() => {});
+      } else {
+        // requestPermission MUSI wyjść z kliknięcia — stąd wywołanie tutaj,
+        // a nie przy otwieraniu okna profilu.
+        const zgoda = await Notification.requestPermission();
+        if (zgoda !== 'granted') { await rysuj(); btn.disabled = false; return; }
+        const nowa = await rejestracja.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: _kluczNaBajty(stan.klucz),
+        });
+        const res = await authFetch('/api/push/subskrypcja', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(nowa.toJSON()),
+        });
+        // Gdy serwer nie przyjmie zapisu, cofamy zgodę w przeglądarce — inaczej
+        // przycisk mówiłby „włączone", a nic by nie przychodziło.
+        if (!res.ok) await nowa.unsubscribe().catch(() => {});
+      }
+    } catch (e) {
+      info.textContent = 'Nie udało się: ' + (e && e.message ? e.message : 'nieznany błąd');
+    }
+    btn.disabled = false;
+    await rysuj();
+  };
+
+  await rysuj();
+}
+
 function _showProfileModal() {
   const current = (window._currentUser || {}).display_name || '';
   const overlay = document.createElement('div');
@@ -238,6 +345,11 @@ function _showProfileModal() {
           <button data-motyw="ciemny" style="flex:1;padding:7px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.8rem">Ciemny</button>
         </div>
       </div>
+      <div id="_mpushbox" style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px;display:none">
+        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:7px">Powiadomienia</div>
+        <button id="_mpush" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer;font-size:0.85rem">Włącz powiadomienia</button>
+        <div id="_mpushinfo" style="font-size:0.72rem;color:var(--muted);margin-top:7px;line-height:1.45"></div>
+      </div>
       <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px;display:flex;flex-direction:column;gap:8px">
         <button id="_mleave" style="width:100%;padding:9px;background:var(--surface);color:var(--warn);border:1px solid #e8c07d;border-radius:8px;cursor:pointer;font-size:0.85rem">Wypisz się z gospodarstwa</button>
         <button id="_mdel" style="width:100%;padding:9px;background:var(--surface);color:var(--danger);border:1px solid #e6b0aa;border-radius:8px;cursor:pointer;font-size:0.85rem">Usuń moje konto</button>
@@ -245,6 +357,7 @@ function _showProfileModal() {
     </div>`;
   document.body.appendChild(overlay);
   _podepnijMotyw(overlay);
+  _podepnijPush(overlay);
   overlay.querySelector('#_mn').focus();
   overlay.querySelector('#_mc').onclick = () => overlay.remove();
   overlay.querySelector('#_mleave').onclick = async () => {

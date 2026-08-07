@@ -8,3 +8,4 @@ firebase-admin
 psycopg2-binary
 apscheduler
 tzdata
+pywebpush
