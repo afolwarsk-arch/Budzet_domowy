@@ -69,7 +69,7 @@ def _start_scheduler():
         print("[scheduler] auto-raport zaplanowany: ostatni dzień miesiąca 18:00 Europe/Warsaw")
         print("[scheduler] purge osieroconych gospodarstw: codziennie 3:30 Europe/Warsaw")
         print(f"[scheduler] przypomnienia push: codziennie 9:00 Europe/Warsaw "
-              f"(klucze VAPID: {'sa' if push.skonfigurowane() else 'BRAK — push spi'})")
+              f"(klucze VAPID: {'sa' if push.skonfigurowane() else 'BRAK ' + str(push.czego_brakuje()) + ' — push spi'})")
     except Exception as e:
         print(f"[scheduler] NIE uruchomiono auto-raportu: {e!r}")
 
@@ -1603,6 +1603,7 @@ def api_push_stan(current_user: dict = Depends(get_current_user)):
     return {
         "dostepne": push.skonfigurowane(),
         "klucz": push.klucz_publiczny(),
+        "brakuje": push.czego_brakuje(),
         "wlaczone": database.ma_push_subskrypcje(current_user["user_id"]),
     }
 

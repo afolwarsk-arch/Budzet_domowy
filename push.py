@@ -19,22 +19,51 @@ from datetime import date
 
 import database
 
-_PUBLICZNY = (os.getenv("VAPID_PUBLIC_KEY") or "").strip()
-_PRYWATNY = (os.getenv("VAPID_PRIVATE_KEY") or "").strip()
-# RFC 8292 wymaga kontaktu do właściciela serwera — usługa dostarczająca użyje
-# go, gdyby nasze wysyłki zaczęły sprawiać kłopoty. Nie może być pusty: bez
-# claimu `sub` biblioteka odrzuci wysyłkę, więc trzymamy sensowną wartość
-# domyślną zamiast liczyć na jeszcze jedną zmienną na Railway.
-_KONTAKT = (os.getenv("VAPID_KONTAKT") or "mailto:a.folwarsk@gmail.com").strip()
+def _oczysc(v: str | None) -> str:
+    """Klucz w base64url nigdy nie zawiera białych znaków — a wklejony z panelu
+    potrafi złapać spację albo złamanie wiersza (pole w Railway zawija długą
+    wartość). Usuwamy wszystkie, nie tylko brzegowe."""
+    return "".join((v or "").split())
+
+
+def _klucze() -> tuple[str, str, str]:
+    """Czytane przy KAŻDYM użyciu, nie raz przy imporcie modułu.
+
+    Wcześniej siedziały w stałych modułu i wystarczyło, że proces wystartował,
+    zanim platforma wstrzyknęła zmienne, żeby powiadomienia milczały aż do
+    następnego wdrożenia — bez żadnego śladu poza logiem startowym. Odczyt
+    ze środowiska jest darmowy, więc nie ma czego optymalizować.
+
+    Trzeci element to kontakt wymagany przez RFC 8292: usługa dostarczająca
+    użyje go, gdyby nasze wysyłki sprawiały kłopoty. Nie może być pusty — bez
+    claimu `sub` biblioteka odrzuci wysyłkę."""
+    return (
+        _oczysc(os.getenv("VAPID_PUBLIC_KEY")),
+        _oczysc(os.getenv("VAPID_PRIVATE_KEY")),
+        (os.getenv("VAPID_KONTAKT") or "mailto:a.folwarsk@gmail.com").strip(),
+    )
 
 
 def skonfigurowane() -> bool:
-    return bool(_PUBLICZNY and _PRYWATNY)
+    publiczny, prywatny, _ = _klucze()
+    return bool(publiczny and prywatny)
 
 
 def klucz_publiczny() -> str | None:
     """Klucz podawany przeglądarce przy zapisie na powiadomienia."""
-    return _PUBLICZNY or None
+    return _klucze()[0] or None
+
+
+def czego_brakuje() -> list[str]:
+    """Nazwy brakujących zmiennych — żeby diagnoza nie wymagała zgadywania,
+    która z dwóch nie doszła."""
+    publiczny, prywatny, _ = _klucze()
+    braki = []
+    if not publiczny:
+        braki.append("VAPID_PUBLIC_KEY")
+    if not prywatny:
+        braki.append("VAPID_PRIVATE_KEY")
+    return braki
 
 
 # ── formatowanie ────────────────────────────────────────────────────────────
@@ -85,6 +114,7 @@ def wyslij_do_uzytkownika(user_id: int, tytul: str, tresc: str, url: str = "/",
         print(f"[push] pywebpush niedostępny: {e!r}")
         return 0
 
+    _, prywatny, kontakt = _klucze()
     subskrypcje = database.get_push_subskrypcje(user_id)
     if not subskrypcje:
         return 0
@@ -100,8 +130,8 @@ def wyslij_do_uzytkownika(user_id: int, tytul: str, tresc: str, url: str = "/",
                     "keys": {"p256dh": s["p256dh"], "auth": s["auth"]},
                 },
                 data=ladunek,
-                vapid_private_key=_PRYWATNY,
-                vapid_claims={"sub": _KONTAKT},
+                vapid_private_key=prywatny,
+                vapid_claims={"sub": kontakt},
                 ttl=86400,          # dobę — po tym czasie przypomnienie jest nieaktualne
             )
             dostarczone += 1

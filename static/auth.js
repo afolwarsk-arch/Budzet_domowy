@@ -245,8 +245,19 @@ async function _podepnijPush(overlay) {
   try {
     stan = await (await authFetch('/api/push/stan')).json();
   } catch { return; }
-  if (!stan || !stan.dostepne) return;   // brak kluczy na serwerze — nie kusimy martwym przyciskiem
+  // Wcześniej sekcja po prostu znikała, gdy serwer nie miał kluczy. Wyglądało to
+  // identycznie jak niewdrożony kod i kosztowało godzinę szukania — więc teraz
+  // mówi wprost, czego brakuje, zamiast chować się po cichu.
+  if (!stan || !stan.dostepne) {
+    box.style.display = 'block';
+    btn.style.display = 'none';
+    const brak = ((stan && stan.brakuje) || []).join(', ');
+    info.textContent = 'Powiadomienia nie są skonfigurowane na serwerze'
+      + (brak ? ' — brakuje: ' + brak + '.' : '.');
+    return;
+  }
   box.style.display = 'block';
+  btn.style.display = '';
 
   const rejestracja = await navigator.serviceWorker.ready.catch(() => null);
   if (!rejestracja) return;
