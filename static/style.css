@@ -139,7 +139,11 @@ nav {
 nav, nav * { color-scheme: dark; }
 
 nav .logo { font-weight: 700; font-size: 27px; letter-spacing: -.03em; color: var(--heading);
-  text-decoration: none; margin-right: 4px; }
+  text-decoration: none; margin-right: 4px;
+  /* Znak nie ma prawa się łamać ani kurczyć. Po dołożeniu przełącznika modułów
+     pasek na telefonie zrobił się ciasny i logo zawijało się na dwie linie
+     („wi" / „em."), bo było jedynym elementem, który mógł ustąpić. */
+  white-space: nowrap; flex: none; }
 nav a { color: var(--muted); text-decoration: none; font-size: 14px; }
 nav a:hover, nav a.active { color: var(--accent); }
 nav .logo:hover { color: var(--heading); }
@@ -874,8 +878,14 @@ tr:hover td { background: var(--hover); }
 .bottom-nav a.bn-modul { color: var(--accent); }
 
 @media (max-width: 700px) {
-  /* na wąskim ekranie górny pasek zostawia samo logo i nazwę modułu */
-  .nav-modul { padding: 4px 8px; }
+  /* Na telefonie z przełącznika zostaje sama siatka kropek — nazwa modułu i tak
+     stoi jako pierwsza pozycja dolnego paska, więc powtarzanie jej u góry
+     zabierało miejsce, przez które łamało się logo. */
+  .nav-modul { padding: 4px 6px; }
+  .nav-modul-n { display: none; }
+  /* pas linków jest tu pusty (linki przejmuje dolny pasek), a jako flex:1
+     niepotrzebnie rozpychał zawartość */
+  .nav-linki { display: none; }
   .przelacznik-tlo { align-items: flex-end; padding: 16px; }
   .przelacznik { max-width: 100%; }
 }
