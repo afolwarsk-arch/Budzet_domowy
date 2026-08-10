@@ -416,8 +416,8 @@ zwróć null zamiast zgadywać.
 """
 
 
-def czytaj_etykiete(image_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
-    """Zdjęcie etykiety → wartości odżywcze na 100 g.
+def czytaj_etykiete(image_bytes: bytes, mime_type: str = "image/jpeg") -> tuple[dict, dict]:
+    """Zdjęcie etykiety → (wartości odżywcze na 100 g, zużycie tokenów).
 
     Droga ratunkowa, gdy kodu nie ma w żadnej bazie. Wynik trafia do bazy
     gospodarstwa, więc ten sam produkt czyta się z AI tylko raz w życiu."""
@@ -441,7 +441,7 @@ def czytaj_etykiete(image_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
     surowy = message.content[0].text.strip()
     if surowy.startswith("```"):
         surowy = surowy.split("```")[1].lstrip("json").strip()
-    return _json.loads(surowy)
+    return _json.loads(surowy), _usage(message)
 
 
 _POSILEK_PROMPT = """Szacujesz wartości odżywcze posiłku opisanego słowami po polsku.

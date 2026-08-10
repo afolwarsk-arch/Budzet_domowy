@@ -343,6 +343,11 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
           <div style="font-size:0.72rem;color: var(--muted);margin-top:2px">wydatki $${(totalCost - totalAnaliza).toFixed(4)} · doradca $${totalAnaliza.toFixed(4)}</div>
         </div>
       </div>
+      <div class="card" id="usage-moduly" style="margin-bottom:16px">
+        <h2 style="font-size:1rem;margin-bottom:4px">Koszty AI wg modułu</h2>
+        <div style="font-size:0.78rem;color:var(--muted);margin-bottom:10px">Ile kosztuje każda sekcja osobno.</div>
+        <div id="usage-moduly-tresc" style="font-size:0.85rem;color:var(--muted)">Wczytuję…</div>
+      </div>
       <div class="stats-grid">`;
 
     for (const h of stats) {
@@ -393,10 +398,42 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
     }
     html += '</div><p style="font-size:0.75rem;color: var(--muted);margin-top:8px">Ceny AI: $3/1M tokenów wejściowych, $15/1M wyjściowych (claude-sonnet-4-6)</p>';
     document.getElementById('stats-container').innerHTML = html;
+    wczytajKosztyModulow();
   } catch (e) {
     document.getElementById('stats-container').innerHTML = '<p style="color: var(--danger)">Błąd: ' + e.message + '</p>';
   }
 }));
+
+// Rozbicie kosztów AI na moduły — dociągane osobno, żeby błąd tej jednej tabeli
+// nie zabrał całej strony statystyk.
+async function wczytajKosztyModulow() {
+  const box = document.getElementById('usage-moduly-tresc');
+  if (!box) return;
+  try {
+    const wiersze = await (await authFetch('/api/admin/usage-moduly')).json();
+    if (!wiersze.length) { box.textContent = 'Jeszcze żadnych wywołań AI.'; return; }
+    const wgModulu = {};
+    for (const w of wiersze) {
+      (wgModulu[w.modul] = wgModulu[w.modul] || []).push(w);
+    }
+    box.innerHTML = Object.entries(wgModulu).map(([modul, lista]) => {
+      const suma = lista.reduce((s, w) => s + Number(w.cost_usd || 0), 0);
+      const zapytania = lista.reduce((s, w) => s + Number(w.calls || 0), 0);
+      return `<div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:6px">
+          <b style="color:var(--text);font-size:0.95rem">wiem. ${modul}</b>
+          <span style="color:var(--text)"><b>$${suma.toFixed(4)}</b> · ${zapytania} zapytań</span>
+        </div>
+        ${lista.map((w) => `<div style="display:flex;justify-content:space-between;padding:3px 0">
+            <span>${w.endpoint}</span>
+            <span>$${Number(w.cost_usd || 0).toFixed(4)} · ${w.calls}×</span>
+          </div>`).join('')}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<span style="color:var(--danger)">Nie udało się wczytać rozbicia.</span>';
+  }
+}
 </script>
 </body>
 </html>

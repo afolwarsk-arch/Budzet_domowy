@@ -671,6 +671,13 @@ def admin_usage(admin: dict = Depends(require_admin)):
     return database.get_usage_stats()
 
 
+@app.get("/api/admin/usage-moduly")
+def admin_usage_moduly(admin: dict = Depends(require_admin)):
+    """Koszty AI per moduł i per rodzaj wywołania — żeby dało się zobaczyć,
+    ile kosztuje jedzenie osobno od finansów."""
+    return database.get_usage_wg_modulu()
+
+
 @app.get("/api/admin/stats")
 def admin_stats(admin: dict = Depends(require_admin)):
     return database.get_admin_stats()

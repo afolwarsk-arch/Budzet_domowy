@@ -1680,6 +1680,30 @@ def get_usage_stats() -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def get_usage_wg_modulu() -> list[dict]:
+    """Koszty AI rozbite na moduły aplikacji.
+
+    Moduł rozpoznajemy po przedrostku etykiety endpointu: wszystko, co zaczyna
+    się od `eat-`, należy do sekcji jedzenia, reszta do finansów. Dzięki temu
+    dołożenie kolejnego modułu nie wymaga migracji — wystarczy nazywać jego
+    wywołania z własnym przedrostkiem."""
+    with get_db() as cur:
+        cur.execute("""
+            SELECT
+                CASE WHEN u.endpoint LIKE 'eat-%' THEN 'jedzenie' ELSE 'finanse' END AS modul,
+                u.endpoint,
+                COUNT(*) AS calls,
+                SUM(u.input_tokens)  AS input_tokens,
+                SUM(u.output_tokens) AS output_tokens,
+                ROUND(CAST(SUM(u.input_tokens * 3.0 + u.output_tokens * 15.0) / 1000000 AS numeric), 4) AS cost_usd,
+                MAX(u.created_at) AS last_call
+            FROM api_usage u
+            GROUP BY modul, u.endpoint
+            ORDER BY modul, cost_usd DESC
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+
 def get_admin_stats() -> list[dict]:
     with get_db() as cur:
         cur.execute("""

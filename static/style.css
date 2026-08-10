@@ -819,6 +819,67 @@ tr:hover td { background: var(--hover); }
 }
 
 
+/* ── przełącznik modułów ─────────────────────────────────────────────────
+   Kwadratowa siatka kropek jak w Google — ten gest jest na tyle rozpowszechniony,
+   że nie wymaga tłumaczenia. Obok niej nazwa bieżącego modułu, żeby zawsze było
+   wiadomo, w której części aplikacji się jest. */
+.nav-modul {
+  display: inline-flex; align-items: center; gap: 7px; background: none;
+  border: 1px solid transparent; border-radius: 20px; padding: 4px 11px 4px 8px;
+  cursor: pointer; font: inherit; font-size: .85rem; color: var(--muted);
+}
+.nav-modul:hover { border-color: var(--border); color: var(--text); }
+.nav-modul-n { font-weight: 600; letter-spacing: -.01em; }
+.nav-modul, .nav-prawa { flex: none; }
+/* min-width:0 jest KONIECZNE — bez niego pas nie kurczy się poniżej sumy
+   linków i rozpycha pasek poza ekran zamiast się przewinąć. */
+.nav-linki {
+  display: flex; align-items: center; gap: 18px; flex: 1; min-width: 0;
+  overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none;
+}
+.nav-linki::-webkit-scrollbar { display: none; }
+.nav-linki a { white-space: nowrap; }
+.krata { display: grid; grid-template-columns: repeat(3, 3px); gap: 2px; flex: none; }
+.krata i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; display: block; }
+
+.przelacznik-tlo {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9997;
+  display: flex; align-items: flex-start; justify-content: center; padding: 74px 16px 16px;
+}
+.przelacznik {
+  background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-lg);
+  padding: 16px; width: 100%; max-width: 380px;
+}
+.przelacznik-tyt {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--muted); font-weight: 700; margin-bottom: 12px;
+}
+.przelacznik-siatka { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modul-kafel {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  padding: 14px 13px; border: 1px solid var(--border); border-radius: 13px;
+  background: var(--surface-2); text-decoration: none; color: var(--text);
+}
+.modul-kafel:hover { border-color: var(--accent); }
+.modul-kafel.biezacy { border-color: var(--accent); background: var(--accent-soft); }
+.modul-kafel .ikona { margin-bottom: 5px; }
+.mk-n { font-size: 14px; font-weight: 700; letter-spacing: -.02em; color: var(--heading); }
+.mk-kropka {
+  display: inline-block; width: .19em; height: .19em; border-radius: 50%;
+  background: var(--marka); margin-left: .085em; vertical-align: baseline;
+}
+.mk-o { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+
+/* w dolnym pasku przełącznik jest pierwszą pozycją i wyróżnia się kolorem */
+.bottom-nav a.bn-modul { color: var(--accent); }
+
+@media (max-width: 700px) {
+  /* na wąskim ekranie górny pasek zostawia samo logo i nazwę modułu */
+  .nav-modul { padding: 4px 8px; }
+  .przelacznik-tlo { align-items: flex-end; padding: 16px; }
+  .przelacznik { max-width: 100%; }
+}
+
 /* ── awatary ─────────────────────────────────────────────────────────────
    Kolor plus rysowany znak, nigdy zdjęcie. Kolory pochodzą z palety wykresów
    (zwalidowanej), więc trzymają kontrast wobec obu motywów; znak zawsze kością,

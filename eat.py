@@ -131,13 +131,17 @@ async def czytaj_etykiete(file: UploadFile = File(...),
         raise HTTPException(403, "Funkcje AI są wyłączone dla tego konta.")
     hid = _hid(current_user)
     import ai_processor
+    import database
     zawartosc = await file.read()
     try:
-        dane = await run_in_threadpool(
+        dane, uzycie = await run_in_threadpool(
             ai_processor.czytaj_etykiete, zawartosc, file.content_type or "image/jpeg")
     except Exception as e:
         print(f"[eat] odczyt etykiety nie powiódł się: {e!r}")
         raise HTTPException(502, "Nie udało się odczytać etykiety. Spróbuj ostrzejszego zdjęcia.")
+    # Koszty AI lecą do tego samego dziennika co finansowe, z własną etykietą —
+    # dzięki temu panel admina rozbija je per moduł bez żadnych zmian.
+    database.log_api_usage(hid, "eat-etykieta", uzycie["input_tokens"], uzycie["output_tokens"])
     if dane.get("kcal") is None:
         raise HTTPException(422, "Na tym zdjęciu nie widzę tabeli wartości odżywczych.")
     if kod.strip().isdigit():
@@ -154,16 +158,18 @@ async def z_opisu(body: dict, current_user: dict = Depends(get_current_user)):
     oszacował, zanim to wyląduje w dzienniku."""
     if current_user.get("ai_zablokowane"):
         raise HTTPException(403, "Funkcje AI są wyłączone dla tego konta.")
-    _hid(current_user)
+    hid = _hid(current_user)
     opis = (body.get("opis") or "").strip()
     if len(opis) < 3:
         raise HTTPException(400, "Napisz, co zjadłeś")
     import ai_processor
+    import database
     try:
-        pozycje, _ = await run_in_threadpool(ai_processor.szacuj_posilek, opis)
+        pozycje, uzycie = await run_in_threadpool(ai_processor.szacuj_posilek, opis)
     except Exception as e:
         print(f"[eat] szacowanie posilku nie powiodlo sie: {e!r}")
         raise HTTPException(502, "Nie udało się oszacować. Spróbuj opisać prościej.")
+    database.log_api_usage(hid, "eat-opis", uzycie["input_tokens"], uzycie["output_tokens"])
     if not pozycje:
         raise HTTPException(422, "Za mało informacji, żeby cokolwiek policzyć.")
     return {"pozycje": pozycje}

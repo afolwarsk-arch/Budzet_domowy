@@ -775,7 +775,9 @@ function _injectProfileButton(me) {
   // wstawiał się przed nav.querySelector('button') — a po dodaniu „❓" to on
   // stawał się pierwszym przyciskiem, więc kolejność wychodziła przypadkowa
   // i pseudonim lądował daleko od „Wyloguj".
-  const wyloguj = nav.querySelector('button');
+  // Celujemy w „Wyloguj" po jego akcji, a nie po kolejności — od kiedy pasek
+  // buduje się z kodu, pierwszym przyciskiem jest przełącznik modułów.
+  const wyloguj = nav.querySelector('button[onclick*="authLogout"]');
   const grupa = document.createElement('div');
   grupa.className = 'nav-prawa';
   nav.appendChild(grupa);
@@ -952,24 +954,111 @@ function ikonaSvg(nazwa) {
   return `<span class="ikona"><svg viewBox="0 0 24 24" aria-hidden="true">${IKONY_SVG[nazwa] || ''}</svg></span>`;
 }
 
-const _BOTTOM_NAV_ITEMS = [
-  { href: '/',              ikona: 'pulpit',    label: 'Pulpit' },
-  { href: '/upload',        ikona: 'dodaj',     label: 'Dodaj' },
-  { href: '/lista',         ikona: 'lista',     label: 'Lista' },
-  { href: '/konta',         ikona: 'konta',     label: 'Konta' },
-  { href: '/wplywy',        ikona: 'wplywy',    label: 'Wpływy' },
-  { href: '/cele',          ikona: 'cele',      label: 'Cele' },
-  { href: '/kategorie',     ikona: 'kategorie', label: 'Kategorie' },
-  { href: '/analiza',       ikona: 'analiza',   label: 'Analiza' },
-  { href: '/eat',           ikona: 'lista',     label: 'Jedzenie' },
-  { href: '/powiadomienia', ikona: 'alerty',    label: 'Alerty' },
+// ── moduły ──────────────────────────────────────────────────────────────────
+// JEDNO miejsce, z którego bierze się cała nawigacja: górny pasek, dolny pasek
+// i przełącznik. Wcześniej linki były wpisane na sztywno w dziesięciu plikach
+// HTML — dodanie jednej zakładki wymagało dziesięciu edycji.
+//
+// Dołożenie kolejnego modułu (wiem.health i tak dalej) to dopisanie wpisu tutaj.
+const MODULY = [
+  {
+    id: 'finanse',
+    nazwa: 'finanse',
+    opis: 'Wydatki, konta, cele',
+    ikona: 'wplywy',
+    strony: [
+      { href: '/',              ikona: 'pulpit',    label: 'Pulpit',        pelny: 'Pulpit' },
+      { href: '/upload',        ikona: 'dodaj',     label: 'Dodaj',         pelny: 'Dodaj wydatek' },
+      { href: '/lista',         ikona: 'lista',     label: 'Lista',         pelny: 'Lista zakupów' },
+      { href: '/konta',         ikona: 'konta',     label: 'Konta',         pelny: 'Konta' },
+      { href: '/wplywy',        ikona: 'wplywy',    label: 'Wpływy',        pelny: 'Wpływy' },
+      { href: '/cele',          ikona: 'cele',      label: 'Cele',          pelny: 'Cele' },
+      { href: '/kategorie',     ikona: 'kategorie', label: 'Kategorie',     pelny: 'Kategorie' },
+      { href: '/analiza',       ikona: 'analiza',   label: 'Analiza',       pelny: 'Analiza' },
+      { href: '/powiadomienia', ikona: 'alerty',    label: 'Alerty',        pelny: 'Powiadomienia' },
+    ],
+  },
+  {
+    id: 'jedzenie',
+    nazwa: 'jedzenie',
+    opis: 'Dziennik i kalorie',
+    ikona: 'lista',
+    strony: [
+      { href: '/eat', ikona: 'lista', label: 'Dziennik', pelny: 'Dziennik' },
+    ],
+  },
 ];
 
+function _modulBiezacy() {
+  const sciezka = location.pathname.replace(/\/$/, '') || '/';
+  for (const m of MODULY) {
+    if (m.strony.some((s) => s.href === sciezka)) return m;
+  }
+  return MODULY[0];   // strony spoza modułów (np. /admin) trzymamy przy finansach
+}
 
 function _pozycjaPaska(i) {
   return `<a href="${i.href}" class="${location.pathname === i.href ? 'active' : ''}">
       ${ikonaPelna(i.ikona)}${i.label}
     </a>`;
+}
+
+// ── górny pasek ─────────────────────────────────────────────────────────────
+// Buduje się z definicji modułu, a nie z HTML-a strony. W plikach HTML zostaje
+// samo `<nav>` z logo — resztę dokłada ten kod.
+function _injectNav() {
+  const nav = document.querySelector('nav');
+  if (!nav || nav.dataset.zbudowany) return;
+  const modul = _modulBiezacy();
+
+  const przelacznik = document.createElement('button');
+  przelacznik.className = 'nav-modul';
+  przelacznik.type = 'button';
+  przelacznik.title = 'Przełącz moduł';
+  przelacznik.innerHTML = '<span class="krata" aria-hidden="true">'
+    + '<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>'
+    + `<span class="nav-modul-n">${modul.nazwa}</span>`;
+  przelacznik.onclick = _pokazPrzelacznik;
+
+  const logo = nav.querySelector('.logo');
+  if (logo) logo.insertAdjacentElement('afterend', przelacznik);
+  else nav.prepend(przelacznik);
+
+  // Linki modułu siedzą we WŁASNYM pasie, który potrafi się skurczyć i przewinąć.
+  // Bez tego przy ~1000 px pasek rozpychał całą stronę w bok i ucinał logo —
+  // dziewięć linków plus przełącznik, Admin, samouczek i pseudonim się nie mieści.
+  const pas = document.createElement('div');
+  pas.className = 'nav-linki';
+  modul.strony.forEach((s) => {
+    const a = document.createElement('a');
+    a.href = s.href;
+    a.textContent = s.pelny || s.label;
+    if (location.pathname === s.href) a.className = 'active';
+    pas.appendChild(a);
+  });
+  przelacznik.insertAdjacentElement('afterend', pas);
+  const akt = pas.querySelector('a.active');
+  if (akt && akt.scrollIntoView) akt.scrollIntoView({ inline: 'center', block: 'nearest' });
+  nav.dataset.zbudowany = '1';
+}
+
+function _pokazPrzelacznik() {
+  const biezacy = _modulBiezacy();
+  const o = document.createElement('div');
+  o.className = 'przelacznik-tlo';
+  o.innerHTML = `<div class="przelacznik">
+      <div class="przelacznik-tyt">Moduły</div>
+      <div class="przelacznik-siatka">
+        ${MODULY.map((m) => `
+          <a href="${m.strony[0].href}" class="modul-kafel${m.id === biezacy.id ? ' biezacy' : ''}">
+            ${ikonaPelna(m.ikona)}
+            <span class="mk-n">wiem<i class="mk-kropka"></i> ${m.nazwa}</span>
+            <span class="mk-o">${m.opis}</span>
+          </a>`).join('')}
+      </div>
+    </div>`;
+  o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
+  document.body.appendChild(o);
 }
 
 // Pasek rysujemy OD RAZU, nie czekając na potwierdzenie logowania. Wcześniej
@@ -983,8 +1072,18 @@ function _injectBottomNav(me) {
   if (!bar) {
     bar = document.createElement('div');
     bar.className = 'bottom-nav';
-    bar.innerHTML = _BOTTOM_NAV_ITEMS.map(_pozycjaPaska).join('');
+    // Tylko strony BIEŻĄCEGO modułu. Przełączenie na jedzenie wymienia dolny
+    // pasek w całości — dzięki temu przestał mieć dziewięć pozycji do
+    // przewijania i mieści się na ekranie.
+    const modul = _modulBiezacy();
+    bar.innerHTML = _pozycjaPaska({ href: '#przelacz', ikona: 'kategorie', label: modul.nazwa })
+      + modul.strony.map(_pozycjaPaska).join('');
     document.body.appendChild(bar);
+    const przelacz = bar.querySelector('a[href="#przelacz"]');
+    if (przelacz) {
+      przelacz.classList.add('bn-modul');
+      przelacz.onclick = (e) => { e.preventDefault(); _pokazPrzelacznik(); };
+    }
     // dosuń aktywną ikonę do widoku (pasek jest przewijany w poziomie)
     const act = bar.querySelector('a.active');
     if (act && act.scrollIntoView) act.scrollIntoView({ inline: 'center', block: 'nearest' });
@@ -1212,8 +1311,13 @@ window.loadOsobaOptions = loadOsobaOptions;
 // Pasek stawiamy, gdy tylko ten plik się wczyta — a leży w cache service
 // workera, więc dzieje się to praktycznie natychmiast. Bez logowania, bez
 // czekania na serwer. Strony bez górnej nawigacji (logowanie) same się wykluczą.
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => _injectBottomNav());
-} else {
+function _zbudujNawigacje() {
+  _injectNav();
   _injectBottomNav();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _zbudujNawigacje);
+} else {
+  _zbudujNawigacje();
 }
