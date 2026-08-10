@@ -286,7 +286,9 @@ def dodaj_wpis(body: dict, current_user: dict = Depends(get_current_user)):
             "data": body.get("data") or date.today().isoformat(),
             "posilek": posilek,
             "produkt_id": produkt["id"],
-            "nazwa": produkt["nazwa"],
+            # nazwa z ekranu ma pierwszeństwo — pole jest edytowalne, więc
+            # poprawka użytkownika nie może przepadać na rzecz nazwy z bazy
+            "nazwa": (body.get("nazwa") or "").strip()[:120] or produkt["nazwa"],
             "opis_porcji": (body.get("opis_porcji") or "").strip()[:40] or None,
             "ilosc_g": round(ilosc, 1),
             "kcal": round(float(produkt["kcal"]) * mnoznik, 1),

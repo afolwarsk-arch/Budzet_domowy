@@ -150,6 +150,33 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
             "wegle", "blonnik", "cukry", "sol", "zrodlo")
     w = {p: dane.get(p) for p in pola}
     w["zrodlo"] = w["zrodlo"] if w["zrodlo"] in ZRODLA else "reczne"
+
+    # Dane z Open Food Facts wpisują ludzie, a etykiety czyta model — w obu
+    # źródłach trafiają się wartości bez sensu (kJ w polu kcal, wartości „na
+    # opakowanie" podane jako „na 100 g", liczba jako tekst). Bez tego filtra
+    # jeden taki rekord przekraczał zakres kolumny NUMERIC i zamieniał się w
+    # błąd 500, a użytkownik widział tylko „nie udało się sprawdzić kodu".
+    def _liczba(v, maks):
+        if v is None:
+            return None
+        try:
+            f = float(str(v).replace(",", ".").strip())
+        except (TypeError, ValueError):
+            return None
+        if f != f or f in (float("inf"), float("-inf")) or f < 0:
+            return None
+        return round(min(f, maks), 2)
+
+    for p, maks in (("opak_g", 99999), ("kcal", 9999), ("bialko", 999),
+                    ("tluszcz", 999), ("wegle", 999), ("blonnik", 999),
+                    ("cukry", 999), ("sol", 999)):
+        w[p] = _liczba(w[p], maks)
+
+    w["nazwa"] = (str(w["nazwa"]).strip() if w["nazwa"] else "")[:120] or "Produkt bez nazwy"
+    w["marka"] = (str(w["marka"]).strip()[:80] or None) if w["marka"] else None
+    w["kod"] = (str(w["kod"]).strip()[:20] or None) if w["kod"] else None
+    if w["kcal"] is None:
+        w["kcal"] = 0        # kolumna jest NOT NULL; zero to poprawna wartość dla wody
     with get_db() as cur:
         if w["kod"]:
             cur.execute("""

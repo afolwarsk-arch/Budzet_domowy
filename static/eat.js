@@ -12,6 +12,10 @@ const POSILKI = [
 
 let dzienISO = new Date().toLocaleDateString('sv-SE');   // sv-SE daje YYYY-MM-DD lokalnie
 let stanDnia = null;
+// Kod z nieudanego skanu — dokleja sie do zdjecia etykiety, zeby produkt zapisal
+// sie pod wlasciwym kodem. Czyszczony przy otwarciu i zamknieciu arkusza, bo
+// inaczej potrafil przylgnac do zupelnie innego produktu.
+let ostatniKod = '';
 
 function e(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -107,10 +111,15 @@ let arkusz = null;
 
 function zamknijArkusz() {
   zatrzymajSkaner();
+  ostatniKod = '';
   if (arkusz) { arkusz.remove(); arkusz = null; }
 }
 
 function otworzArkusz(posilek) {
+  // Podwojne stukniecie w ,+ Dodaj' tworzylo drugi arkusz; pierwszy zostawal
+  // w DOM na stale i zaslanial ekran po zamknieciu drugiego.
+  if (arkusz) return;
+  ostatniKod = '';   // kod z poprzedniego, nieudanego skanu nie moze tu przeciec
   posilekDocelowy = posilek;
   const nazwa = (POSILKI.find((p) => p[0] === posilek) || [, 'Posiłek'])[1];
   arkusz = document.createElement('div');
@@ -231,6 +240,7 @@ function pokazWyniki(html) {
 }
 
 async function szukajProduktow(fraza) {
+  zatrzymajSkaner();
   if (!fraza || fraza.length < 3) return;
   pokazWyniki('<div class="komunikat">Szukam…</div>');
   let d;
@@ -283,16 +293,42 @@ function zatrzymajSkaner() {
 }
 
 async function uruchomSkaner() {
+  // Straż przed drugim uruchomieniem. Pierwsze stuknięcie nie daje natychmiast
+  // efektu (czeka na zgodę na aparat), więc ludzie klikają drugi raz — a wtedy
+  // poprzedni strumień gubił się bez zatrzymania i kamera zostawała zajęta.
+  if (strumien || skanujeDalej) return;
+
   if (!('BarcodeDetector' in window)) {
-    komunikat('Ta przeglądarka nie umie czytać kodów. Zrób zdjęcie etykiety — zadziała tak samo, tylko wolniej.', true);
+    komunikat('Ta przeglądarka nie umie czytać kodów. Zrób zdjęcie etykiety albo wpisz cyfry spod kreskówki.', true);
+    pokazReczneWpisanie();
     return;
   }
+
+  // Sam fakt, że BarcodeDetector istnieje, nie znaczy, że działa na tym
+  // telefonie ani że obsłuży wybrane formaty. Konstruktor rzuca — wcześniej
+  // stał poza try i wyjątek przepadał, zostawiając włączoną kamerę.
+  let detektor;
+  try {
+    let obslugiwane = ['ean_13', 'ean_8', 'upc_a', 'upc_e'];
+    if (BarcodeDetector.getSupportedFormats) {
+      const dostepne = await BarcodeDetector.getSupportedFormats();
+      obslugiwane = obslugiwane.filter((f) => dostepne.includes(f));
+    }
+    if (!obslugiwane.length) throw new Error('brak formatów');
+    detektor = new BarcodeDetector({ formats: obslugiwane });
+  } catch {
+    komunikat('Ten telefon nie umie czytać kodów kreskowych w przeglądarce. Zrób zdjęcie etykiety albo wpisz cyfry ręcznie.', true);
+    pokazReczneWpisanie();
+    return;
+  }
+
   const wrap = arkusz.querySelector('#skaner-wrap');
   const video = arkusz.querySelector('#skaner');
   try {
     strumien = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
   } catch {
     komunikat('Nie mam dostępu do aparatu. Sprawdź uprawnienia strony.', true);
+    pokazReczneWpisanie();
     return;
   }
   wrap.style.display = 'block';
@@ -300,28 +336,69 @@ async function uruchomSkaner() {
   await video.play().catch(() => {});
   komunikat('');
 
-  const detektor = new BarcodeDetector({
-    formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'],
-  });
+  // Po dziesięciu sekundach bez trafienia proponujemy wpisanie cyfr — bez tego
+  // przy słabym świetle albo pogniecionym opakowaniu zostaje wpatrywanie się
+  // w podgląd bez końca.
+  const ratunek = setTimeout(() => {
+    if (skanujeDalej) { komunikat('Nie widzę kodu. Podejdź bliżej albo wpisz cyfry spod kreskówki.', false); pokazReczneWpisanie(); }
+  }, 10000);
+
   skanujeDalej = true;
   (async function petla() {
+    let bledy = 0;
     while (skanujeDalej) {
       try {
         const kody = await detektor.detect(video);
-        if (kody.length) {
-          const kod = kody[0].rawValue;
+        // Na opakowaniach obok EAN-13 bywa drugi kod (partia, waga). Bierzemy
+        // pierwszy, który wygląda na kod produktu, a nie pierwszy z brzegu.
+        const trafienie = kody.find((k) => /^\d{6,14}$/.test(String(k.rawValue || '').trim()));
+        if (trafienie) {
+          clearTimeout(ratunek);
           zatrzymajSkaner();
           wrap.style.display = 'none';
-          await poKodzie(kod);
+          await poKodzie(String(trafienie.rawValue).trim());
           return;
         }
-      } catch {}
+      } catch {
+        // Gdy detect() sypie przy każdej klatce, nie kręcimy się w nieskończoność
+        if (++bledy > 20) {
+          clearTimeout(ratunek);
+          zatrzymajSkaner();
+          wrap.style.display = 'none';
+          komunikat('Odczyt kodu nie działa na tym telefonie. Wpisz cyfry albo zrób zdjęcie etykiety.', true);
+          pokazReczneWpisanie();
+          return;
+        }
+      }
       await new Promise((r) => setTimeout(r, 250));
     }
+    clearTimeout(ratunek);
   })();
 }
 
+// Najtańsza droga ratunkowa: cyfry spod kreskówki da się przepisać zawsze.
+function pokazReczneWpisanie() {
+  const box = arkusz && arkusz.querySelector('#ark-wyniki');
+  if (!box || box.querySelector('#kod-reczny')) return;
+  box.style.display = 'block';
+  box.insertAdjacentHTML('afterbegin', `
+    <div class="szukaj" style="margin-bottom:10px">
+      <input type="text" id="kod-reczny" inputmode="numeric" placeholder="Wpisz cyfry spod kreskówki">
+      <button class="mini-btn" id="kod-reczny-ok" type="button" style="padding:8px 14px">Szukaj</button>
+    </div>`);
+  const idz = () => {
+    const v = (box.querySelector('#kod-reczny').value || '').replace(/\D/g, '');
+    if (v.length >= 6) poKodzie(v);
+    else komunikat('Kod ma co najmniej 6 cyfr.', true);
+  };
+  box.querySelector('#kod-reczny-ok').onclick = idz;
+  box.querySelector('#kod-reczny').addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); idz(); }
+  });
+}
+
 async function poKodzie(kod) {
+  zatrzymajSkaner();               // z każdej drogi wchodzimy z wyłączoną kamerą
   komunikat('Szukam produktu ' + kod + '…');
   try {
     const r = await authFetch('/api/eat/produkt?kod=' + encodeURIComponent(kod));
@@ -330,7 +407,13 @@ async function poKodzie(kod) {
       ostatniKod = kod;
       return;
     }
-    if (!r.ok) { komunikat('Nie udało się sprawdzić kodu.', true); return; }
+    if (!r.ok) {
+      // Serwer potrafi powiedzieć, co jest nie tak (zły kod, zablokowane AI) —
+      // wcześniej każdy błąd wyglądał tak samo i nie dało się z tego nic wyczytać.
+      const x = await r.json().catch(() => ({}));
+      komunikat(x.detail || 'Nie udało się sprawdzić kodu.', true);
+      return;
+    }
     const d = await r.json();
     komunikat('');
     ekranProduktu(d.produkt, d.skad, d.niepelne);
@@ -339,9 +422,8 @@ async function poKodzie(kod) {
 
 // ── zdjęcie etykiety ────────────────────────────────────────────────────────
 
-let ostatniKod = '';
-
 async function wyslijEtykiete(ev) {
+  zatrzymajSkaner();
   const plik = ev.target.files && ev.target.files[0];
   if (!plik) return;
   komunikat('Odczytuję etykietę…');
@@ -362,6 +444,7 @@ async function wyslijEtykiete(ev) {
 // ── opis słowami ────────────────────────────────────────────────────────────
 
 async function wyslijOpis(tekst) {
+  zatrzymajSkaner();
   const opis = (tekst || '').trim();
   if (opis.length < 3) { komunikat('Napisz, co zjadłeś.', true); return; }
   komunikat('Szacuję…');
@@ -381,6 +464,7 @@ async function wyslijOpis(tekst) {
 // Dyktowanie działa na Androidzie w Chrome; gdzie indziej po prostu chowamy
 // przycisk zamiast obiecywać coś, co nie zadziała.
 function dyktuj() {
+  zatrzymajSkaner();
   const Rozpoznawanie = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Rozpoznawanie) { komunikat('Ta przeglądarka nie obsługuje dyktowania. Wpisz z klawiatury.', true); return; }
   const btn = arkusz.querySelector('#ark-mik');
@@ -408,6 +492,9 @@ function dyktuj() {
 // (produkt z bazy), zmiana gramatury przelicza wartości z niego; bez tego
 // skalujemy proporcjonalnie od wartości wyjściowych.
 function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
+  // Bez tego strumien zyl dalej po podmianie ekranu i kolejne trafienie skanera
+  // nadpisywalo formularz, ktory user wlasnie wypelnial.
+  zatrzymajSkaner();
   const ark = arkusz && arkusz.querySelector('.ark');
   if (!ark) return;
   const bazowe = { g: Number(poz.ilosc_g) || 100, kcal: Number(poz.kcal) || 0,
@@ -467,9 +554,25 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
     pole('#p-w').value = Math.round(v.wegle);
   }
 
+  let poprzednieGramy = bazowe.g;
+
   function przelicz() {
-    if (recznie) { sprawdzZgodnosc(); return; }
-    const g = Number(pole('#p-gram').value) || 0;
+    const gTeraz = Number(pole('#p-gram').value) || 0;
+    // Po ręcznej korekcie makro nadal skalujemy przy zmianie gramatury — tylko
+    // od TWOICH wartości, nie od wyjściowych. Wcześniej przeliczanie milkło
+    // całkiem i dało się zapisać 30 g z kaloriami wpisanymi dla 100 g.
+    if (recznie) {
+      if (poprzednieGramy > 0 && gTeraz > 0 && gTeraz !== poprzednieGramy) {
+        const m = gTeraz / poprzednieGramy;
+        const v = wartosci();
+        wstaw({ kcal: v.kcal * m, bialko: v.bialko * m, tluszcz: v.tluszcz * m, wegle: v.wegle * m });
+      }
+      poprzednieGramy = gTeraz;
+      sprawdzZgodnosc();
+      return;
+    }
+    poprzednieGramy = gTeraz;
+    const g = gTeraz;
     if (na100) {
       const m = g / 100;
       wstaw({ kcal: na100.kcal * m, bialko: (na100.bialko || 0) * m,
@@ -502,7 +605,12 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
   ark.querySelectorAll('#p-kcal, #p-b, #p-t, #p-w').forEach((i) => {
     i.addEventListener('input', () => { recznie = true; sprawdzZgodnosc(); });
   });
-  pole('#p-gram').addEventListener('input', przelicz);
+  pole('#p-gram').addEventListener('input', () => {
+    // Ręczne wpisanie gramatury odznacza przycisk porcji — inaczej wpis dostawał
+    // podpis „całe opak." przy 37 gramach i tak widniał w dzienniku.
+    ark.querySelectorAll('.porcja').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    przelicz();
+  });
 
   const listaPorcji = ark.querySelector('#porcje');
   if (listaPorcji) listaPorcji.onclick = (ev) => {
@@ -535,7 +643,7 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
     // Po ręcznej poprawce wysyłamy wprost to, co widać na ekranie.
     const cialo = (produktId && !recznie)
       ? { data: dzienISO, posilek: posilekDocelowy, produkt_id: produktId,
-          ilosc_g: v.g, opis_porcji: etyk ? etyk.textContent : null }
+          nazwa, ilosc_g: v.g, opis_porcji: etyk ? etyk.textContent : null }
       : { data: dzienISO, posilek: posilekDocelowy, nazwa,
           opis_porcji: (etyk ? etyk.textContent : poz.opis_porcji) || null,
           ilosc_g: v.g, kcal: v.kcal, bialko: v.bialko, tluszcz: v.tluszcz, wegle: v.wegle };
