@@ -1079,18 +1079,12 @@ function _injectBottomNav(me) {
   if (!bar) {
     bar = document.createElement('div');
     bar.className = 'bottom-nav';
-    // Tylko strony BIEŻĄCEGO modułu. Przełączenie na jedzenie wymienia dolny
-    // pasek w całości — dzięki temu przestał mieć dziewięć pozycji do
-    // przewijania i mieści się na ekranie.
-    const modul = _modulBiezacy();
-    bar.innerHTML = _pozycjaPaska({ href: '#przelacz', ikona: 'kategorie', label: modul.nazwa })
-      + modul.strony.map(_pozycjaPaska).join('');
+    // Tylko strony BIEŻĄCEGO modułu. Przełączenie wymienia dolny pasek w
+    // całości — dzięki temu przestał mieć dziewięć pozycji do przewijania.
+    // Samego przełącznika tu NIE MA: modułami przełącza się siatką kropek w
+    // górnym pasku i dublowanie tego na dole tylko zabierało miejsce.
+    bar.innerHTML = _modulBiezacy().strony.map(_pozycjaPaska).join('');
     document.body.appendChild(bar);
-    const przelacz = bar.querySelector('a[href="#przelacz"]');
-    if (przelacz) {
-      przelacz.classList.add('bn-modul');
-      przelacz.onclick = (e) => { e.preventDefault(); _pokazPrzelacznik(); };
-    }
     // dosuń aktywną ikonę do widoku (pasek jest przewijany w poziomie)
     const act = bar.querySelector('a.active');
     if (act && act.scrollIntoView) act.scrollIntoView({ inline: 'center', block: 'nearest' });

@@ -855,8 +855,11 @@ tr:hover td { background: var(--hover); }
   --accent-soft: #26301a;
   --accent-border: #3d4a2a;
 }
-/* pasek nawigacji ma własne, ciemne tokeny — akcent trzeba w nim powtórzyć */
-:root[data-modul="eat"] nav { --accent: #9bcf3f; }
+/* OBA paski nawigacji mają własne, ciemne bloki tokenów, więc akcent trzeba w
+   nich powtórzyć osobno. Za pierwszym razem podmieniłem tylko górny i dolny
+   został koralowy — przy kolejnym module sprawdzić jedno i drugie. */
+:root[data-modul="eat"] nav,
+:root[data-modul="eat"] .bottom-nav { --accent: #9bcf3f; }
 
 /* ── przełącznik modułów ─────────────────────────────────────────────────
    Kwadratowa siatka kropek jak w Google — ten gest jest na tyle rozpowszechniony,
@@ -908,9 +911,6 @@ tr:hover td { background: var(--hover); }
   background: var(--marka); margin-left: .085em; vertical-align: baseline;
 }
 .mk-o { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
-
-/* w dolnym pasku przełącznik jest pierwszą pozycją i wyróżnia się kolorem */
-.bottom-nav a.bn-modul { color: var(--accent); }
 
 @media (max-width: 700px) {
   /* Na telefonie z przełącznika zostaje sama siatka kropek — nazwa modułu i tak
