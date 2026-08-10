@@ -101,33 +101,58 @@ def _z_produktu_off(p: dict, kod: str) -> dict:
     }
 
 
-def _szukaj_w_off(fraza: str, ile: int = 12) -> list[dict]:
-    """Wyszukiwanie po nazwie. Zwraca listę propozycji BEZ zapisywania ich u nas
-    — do bazy trafia dopiero ta, którą użytkownik wybierze."""
+def _szukaj_w_off_ze_statusem(fraza: str, ile: int = 12) -> tuple[list[dict], bool]:
+    """Wyszukiwanie po nazwie. Zwraca (wyniki, czy_padlo).
+
+    Serwer Open Food Facts odbija większość anonimowych zapytań błędem 503
+    (zmierzone: dwa udane na osiem). Dlatego:
+      - najpierw sprawdzamy własną pamięć podręczną,
+      - przy 503 PONAWIAMY z odczekaniem, zamiast od razu się poddawać,
+      - udany wynik zapisujemy, żeby druga próba tej samej frazy nie wracała
+        już na ich serwer.
+    `czy_padlo` mówi interfejsowi, że to była awaria, a nie brak wyników —
+    wcześniej jedno i drugie wyglądało identycznie."""
+    import time
     import urllib.parse
     import urllib.request
     import json as _json
+
+    zapamietane = eat_db.cache_off_pobierz(fraza)
+    if zapamietane is not None:
+        return zapamietane, False
 
     parametry = urllib.parse.urlencode({
         "search_terms": fraza, "search_simple": 1, "action": "process",
         "json": 1, "page_size": ile,
         "fields": "code,product_name,product_name_pl,brands,product_quantity,nutriments",
     })
-    try:
-        req = urllib.request.Request(f"{_OFF_SZUKAJ}?{parametry}", headers={"User-Agent": _OFF_UA})
-        with urllib.request.urlopen(req, timeout=12) as odp:
-            dane = _json.loads(odp.read().decode("utf-8"))
-    except Exception as e:
-        print(f"[eat] wyszukiwanie w Open Food Facts nie powiodło się: {e!r}")
-        return []
+    dane = None
+    for proba in range(3):
+        try:
+            req = urllib.request.Request(f"{_OFF_SZUKAJ}?{parametry}",
+                                         headers={"User-Agent": _OFF_UA})
+            with urllib.request.urlopen(req, timeout=12) as odp:
+                dane = _json.loads(odp.read().decode("utf-8"))
+            break
+        except Exception as e:
+            kod = getattr(e, "code", None)
+            # 503 znaczy „za dużo ruchu, spróbuj później" — warto odczekać.
+            # Przy innych błędach ponawianie nic nie da.
+            if kod != 503 or proba == 2:
+                print(f"[eat] wyszukiwanie w Open Food Facts padło ({kod}): {e!r}")
+                return [], True
+            time.sleep(0.8 * (proba + 1))
 
     wynik = []
-    for p in dane.get("products") or []:
+    for p in (dane.get("products") if dane else None) or []:
         kod = str(p.get("code") or "").strip()
-        if not kod:
-            continue
-        wynik.append(_z_produktu_off(p, kod))
-    return wynik
+        if kod:
+            wynik.append(_z_produktu_off(p, kod))
+    try:
+        eat_db.cache_off_zapisz(fraza, wynik)
+    except Exception as e:
+        print(f"[eat] nie udało się zapamiętać wyniku wyszukiwania: {e!r}")
+    return wynik, False
 
 
 # ── produkty ────────────────────────────────────────────────────────────────
@@ -170,20 +195,49 @@ def usun_produkt(produkt_id: int, current_user: dict = Depends(get_current_user)
 
 @router.get("/szukaj")
 async def szukaj(fraza: str = Query(""), current_user: dict = Depends(get_current_user)):
-    """Najpierw własna baza (natychmiast), potem propozycje z Open Food Facts.
+    """Trzy źródła, w kolejności niezawodności:
 
-    Wyniki z OFF NIE są jeszcze zapisane — wybranie takiego produktu woła
-    `/produkt?kod=...`, które dopiero wtedy dokłada go do bazy gospodarstwa."""
+    1. własna baza gospodarstwa,
+    2. produkty podstawowe (wspólne, zaszyte w aplikacji),
+    3. Open Food Facts — TYLKO produkty z opakowań i tylko gdy odpowie.
+
+    Punkt 3 zawodzi często: zmierzone dwa udane zapytania na osiem, reszta 503.
+    Dlatego zwracamy `off_padlo`, żeby interfejs mógł powiedzieć prawdę zamiast
+    udawać, że niczego nie ma."""
     hid = _hid(current_user)
     fraza = fraza.strip()
     if len(fraza) < 3:
-        return {"wlasne": [], "propozycje": []}
+        return {"wlasne": [], "podstawowe": [], "propozycje": [], "off_padlo": False}
 
     wlasne = eat_db.szukaj_produktow(hid, fraza)
+    podstawowe = eat_db.szukaj_bazowych(fraza)
+    # nie proponujemy podstawowego, który już siedzi w bazie gospodarstwa
+    nazwy = {w["nazwa"].lower() for w in wlasne}
+    podstawowe = [p for p in podstawowe if p["nazwa"].lower() not in nazwy]
+
+    z_off, off_padlo = await run_in_threadpool(_szukaj_w_off_ze_statusem, fraza)
     znane = {w["kod"] for w in wlasne if w.get("kod")}
-    propozycje = [p for p in await run_in_threadpool(_szukaj_w_off, fraza)
-                  if p["kod"] not in znane]
-    return {"wlasne": wlasne, "propozycje": propozycje}
+    propozycje = [p for p in z_off if p["kod"] not in znane]
+
+    return {"wlasne": wlasne, "podstawowe": podstawowe,
+            "propozycje": propozycje, "off_padlo": off_padlo}
+
+
+@router.post("/produkty/z-bazy/{bazowy_id}", status_code=201)
+def z_bazy_podstawowej(bazowy_id: int, current_user: dict = Depends(get_current_user)):
+    """Kopiuje produkt podstawowy do bazy gospodarstwa, żeby wpis w dzienniku
+    mógł się do niego odwołać i żeby dało się go potem poprawić u siebie."""
+    hid = _hid(current_user)
+    b = eat_db.bazowy_po_id(bazowy_id)
+    if not b:
+        raise HTTPException(404, "Nie znam takiego produktu")
+    produkt = eat_db.zapisz_produkt(hid, {
+        "kod": None, "nazwa": b["nazwa"], "marka": None,
+        "opak_g": b.get("porcja_g"), "kcal": b["kcal"], "bialko": b.get("bialko"),
+        "tluszcz": b.get("tluszcz"), "wegle": b.get("wegle"), "zrodlo": "baza",
+    })
+    produkt["opis_porcji"] = b.get("opis_porcji")
+    return {"produkt": produkt, "skad": "baza"}
 
 
 @router.post("/etykieta")

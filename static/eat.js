@@ -249,33 +249,56 @@ async function szukajProduktow(fraza) {
   } catch { pokazWyniki('<div class="komunikat blad">Nie udało się poszukać.</div>'); return; }
 
   const wlasne = d.wlasne || [];
+  const podstawowe = d.podstawowe || [];
   const propozycje = d.propozycje || [];
-  if (!wlasne.length && !propozycje.length) {
-    pokazWyniki(`<div class="komunikat">Nic takiego nie znalazłem.
+
+  // Awaria bazy zewnętrznej wygląda inaczej niż brak wyników — wcześniej jedno
+  // i drugie dawało „nic nie znalazłem", co było po prostu nieprawdą.
+  const uwagaOff = d.off_padlo
+    ? '<div class="komunikat blad">Baza produktów markowych nie odpowiada (bywa przeciążona). '
+      + 'Spróbuj za chwilę albo zeskanuj kod kreskowy.</div>'
+    : '';
+
+  if (!wlasne.length && !podstawowe.length && !propozycje.length) {
+    pokazWyniki(uwagaOff + `<div class="komunikat">Nic takiego nie znalazłem.
       <button type="button" id="w-opis" class="mini-btn">Oszacuj z opisu</button></div>`);
     const b = arkusz.querySelector('#w-opis');
     if (b) b.onclick = () => wyslijOpis(fraza);
     return;
   }
 
-  const wiersz = (p, zBazy) => `
-    <button class="szybka" data-kod="${e(p.kod || '')}" data-id="${p.id || ''}" type="button">
-      <span class="nz"><b>${e(p.nazwa)}</b><span>${e(p.marka || '')}${p.marka ? ' · ' : ''}${
-        p.kcal ? zaokr(p.kcal) + ' kcal/100 g' : 'brak wartości w bazie'}${
-        zBazy ? ' · u Was' : ''}</span></span>
+  const wiersz = (p, rodzaj) => {
+    const podpis = rodzaj === 'baza'
+      ? (p.opis_porcji ? p.opis_porcji + ' · ' : '') + zaokr(p.kcal) + ' kcal/100 g'
+      : (p.marka ? e(p.marka) + ' · ' : '')
+        + (p.kcal ? zaokr(p.kcal) + ' kcal/100 g' : 'brak wartości w bazie');
+    return `<button class="szybka" data-rodzaj="${rodzaj}" data-kod="${e(p.kod || '')}"
+              data-id="${p.id || ''}" type="button">
+      <span class="nz"><b>${e(p.nazwa)}</b><span>${podpis}</span></span>
     </button>`;
+  };
 
-  pokazWyniki(
-    (wlasne.length ? '<div class="sek-tyt">Wasza baza</div>' + wlasne.map((p) => wiersz(p, true)).join('') : '')
-    + (propozycje.length ? '<div class="sek-tyt">Open Food Facts</div>' + propozycje.map((p) => wiersz(p, false)).join('') : '')
+  pokazWyniki(uwagaOff
+    + (wlasne.length ? '<div class="sek-tyt">Wasza baza</div>' + wlasne.map((p) => wiersz(p, 'wlasna')).join('') : '')
+    + (podstawowe.length ? '<div class="sek-tyt">Produkty podstawowe</div>' + podstawowe.map((p) => wiersz(p, 'baza')).join('') : '')
+    + (propozycje.length ? '<div class="sek-tyt">Produkty z opakowań</div>' + propozycje.map((p) => wiersz(p, 'off')).join('') : '')
   );
 
-  arkusz.querySelectorAll('#ark-wyniki [data-kod]').forEach((b) => {
-    b.onclick = () => {
-      const id = b.dataset.id;
-      if (id) {
-        const p = wlasne.find((x) => String(x.id) === id);
+  arkusz.querySelectorAll('#ark-wyniki [data-rodzaj]').forEach((b) => {
+    b.onclick = async () => {
+      const rodzaj = b.dataset.rodzaj;
+      if (rodzaj === 'wlasna') {
+        const p = wlasne.find((x) => String(x.id) === b.dataset.id);
         if (p) ekranProduktu(p, 'wlasna');
+      } else if (rodzaj === 'baza') {
+        komunikat('Dodaję do Waszej bazy…');
+        try {
+          const r = await authFetch('/api/eat/produkty/z-bazy/' + b.dataset.id, { method: 'POST' });
+          const x = await r.json().catch(() => ({}));
+          if (!r.ok) { komunikat(x.detail || 'Nie udało się.', true); return; }
+          komunikat('');
+          ekranProduktu(x.produkt, 'baza');
+        } catch { komunikat('Błąd połączenia.', true); }
       } else if (b.dataset.kod) {
         poKodzie(b.dataset.kod);   // zapisze produkt u nas i otworzy potwierdzenie
       }
@@ -664,7 +687,7 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
 // potwierdzenia, żeby każda droga dodawania kończyła się tak samo.
 function ekranProduktu(p, skad, niepelne) {
   const zrodla = { off: 'Open Food Facts · zapisano u Was', wlasna: 'Wasza baza',
-                   etykieta: 'Odczytane z etykiety' };
+                   etykieta: 'Odczytane z etykiety', baza: 'Produkt podstawowy' };
   // Część produktów siedzi w bazie bez tabeli wartości — typowo woda mineralna.
   // Nie odrzucamy ich (woda ma zero kalorii i to poprawna wartość), ale mówimy
   // wprost, że liczby trzeba sprawdzić.

@@ -1,4 +1,4 @@
-"""Warstwa bazy dla sekcji wiem.eat — dziennik jedzenia.
+﻿"""Warstwa bazy dla sekcji wiem.eat — dziennik jedzenia.
 
 CELOWO osobny plik. `database.py` ma już 3000 linii i 30 tabel; dokładanie do
 niego drugiej dziedziny zabetonowałoby jedno i drugie. Korzystamy tylko z
@@ -12,7 +12,16 @@ je już przeliczone na zjedzoną ilość — patrz komentarz przy `eat_wpisy`.
 from database import get_db
 
 POSILKI = ("sniadanie", "obiad", "kolacja", "przekaska")
-ZRODLA = ("off", "etykieta", "opis", "reczne")
+ZRODLA = ("off", "etykieta", "opis", "reczne", "baza")
+
+# Na telefonie nikt nie pisze z ogonkami — „maslo" ma znaleźć „Masło", a „ryz"
+# „Ryż". Robimy to własną tablicą zamiast rozszerzenia `unaccent`, bo jego
+# instalacja wymaga uprawnień, których na hostingu możemy nie mieć.
+_OGONKI = str.maketrans("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ", "acelnoszzACELNOSZZ")
+
+
+def bez_ogonkow(s: str) -> str:
+    return (s or "").translate(_OGONKI).lower().strip()
 
 
 def init_eat_db() -> None:
@@ -39,8 +48,9 @@ def init_eat_db() -> None:
         )""")
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS eat_produkty_kod "
                     "ON eat_produkty (household_id, kod) WHERE kod IS NOT NULL")
-        cur.execute("CREATE INDEX IF NOT EXISTS eat_produkty_nazwa "
-                    "ON eat_produkty (household_id, lower(nazwa))")
+        cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS nazwa_szukaj TEXT")
+        cur.execute("CREATE INDEX IF NOT EXISTS eat_produkty_szukaj "
+                    "ON eat_produkty (household_id, nazwa_szukaj)")
 
         # Wpisy dziennika. Wartości odżywcze są tu PRZELICZONE i zapisane na
         # stałe, a nie liczone w locie z produktu — inaczej poprawienie literówki
@@ -65,6 +75,38 @@ def init_eat_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS eat_wpisy_dzien "
                     "ON eat_wpisy (household_id, user_id, data)")
 
+        # Produkty podstawowe — WSPÓLNE dla wszystkich gospodarstw, zasiane
+        # z listy w kodzie. Open Food Facts nie ma surowców (zapytanie o pomidor
+        # zwraca sok, krakersy i chipsy o smaku pomidora) i do tego odbija
+        # trzy czwarte anonimowych zapytań błędem 503. Ta tabela jest jedyną
+        # drogą, która odpowiada zawsze.
+        cur.execute("""CREATE TABLE IF NOT EXISTS eat_produkty_bazowe (
+            id        SERIAL PRIMARY KEY,
+            nazwa     TEXT NOT NULL UNIQUE,
+            kategoria TEXT NOT NULL DEFAULT '',
+            kcal      NUMERIC(7,1) NOT NULL,
+            bialko    NUMERIC(7,1),
+            tluszcz   NUMERIC(7,1),
+            wegle     NUMERIC(7,1),
+            porcja_g  NUMERIC(7,1),
+            opis_porcji TEXT,
+            nazwa_szukaj TEXT
+        )""")
+        cur.execute("ALTER TABLE eat_produkty_bazowe ADD COLUMN IF NOT EXISTS nazwa_szukaj TEXT")
+        cur.execute("CREATE INDEX IF NOT EXISTS eat_bazowe_szukaj "
+                    "ON eat_produkty_bazowe (nazwa_szukaj)")
+        _zasiej_produkty_bazowe(cur)
+
+        # Pamięć podręczna wyszukiwań w Open Food Facts. Ich serwer odbija
+        # większość anonimowych zapytań, a skład produktu nie zmienia się z
+        # godziny na godzinę — powtórzone wpisanie tej samej frazy nie ma
+        # powodu tam wracać.
+        cur.execute("""CREATE TABLE IF NOT EXISTS eat_off_cache (
+            fraza   TEXT PRIMARY KEY,
+            wynik   TEXT NOT NULL,
+            pobrano TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+
         # Cel dzienny — per OSOBA, nie per gospodarstwo. Zapotrzebowanie Adama
         # i Oli to dwie różne liczby, nawet jeśli dziennik jest wspólny.
         cur.execute("""CREATE TABLE IF NOT EXISTS eat_cele (
@@ -74,6 +116,69 @@ def init_eat_db() -> None:
             tluszcz  INTEGER NOT NULL DEFAULT 65,
             wegle    INTEGER NOT NULL DEFAULT 250
         )""")
+
+
+def _zasiej_produkty_bazowe(cur) -> None:
+    """Dosypuje brakujące pozycje. Nie nadpisuje istniejących — gdyby ktoś
+    kiedyś poprawił wartość w bazie, kolejne wdrożenie jej nie cofnie."""
+    from eat_baza import PRODUKTY_BAZOWE
+    for nazwa, kategoria, kcal, b, t, w, porcja, opis in PRODUKTY_BAZOWE:
+        cur.execute("""
+            INSERT INTO eat_produkty_bazowe
+                (nazwa, kategoria, kcal, bialko, tluszcz, wegle, porcja_g, opis_porcji, nazwa_szukaj)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (nazwa) DO UPDATE SET nazwa_szukaj = EXCLUDED.nazwa_szukaj
+        """, (nazwa, kategoria, kcal, b, t, w, porcja, opis, bez_ogonkow(nazwa)))
+
+
+def cache_off_pobierz(fraza: str, wazne_dni: int = 14) -> list | None:
+    """Wynik wyszukiwania w Open Food Facts sprzed najwyżej dwóch tygodni.
+
+    Bez tego drugie wpisanie tej samej frazy znowu trafiało w limit zapytań —
+    a skład produktu nie zmienia się z godziny na godzinę."""
+    import json as _json
+    with get_db() as cur:
+        cur.execute("""SELECT wynik FROM eat_off_cache
+                       WHERE fraza=%s AND pobrano > NOW() - make_interval(days => %s)""",
+                    (fraza.lower(), int(wazne_dni)))
+        row = cur.fetchone()
+    if not row:
+        return None
+    try:
+        return _json.loads(row["wynik"])
+    except Exception:
+        return None
+
+
+def cache_off_zapisz(fraza: str, wynik: list) -> None:
+    import json as _json
+    with get_db() as cur:
+        cur.execute("""
+            INSERT INTO eat_off_cache (fraza, wynik, pobrano)
+            VALUES (%s,%s,NOW())
+            ON CONFLICT (fraza) DO UPDATE SET wynik=EXCLUDED.wynik, pobrano=NOW()
+        """, (fraza.lower(), _json.dumps(wynik, ensure_ascii=False)))
+
+
+def szukaj_bazowych(fraza: str, limit: int = 15) -> list[dict]:
+    """Produkty zaczynające się od frazy idą przed tymi, które ją tylko zawierają
+    — wpisanie „ser" ma pokazać ser, a nie „deser"."""
+    szukana = bez_ogonkow(fraza)
+    with get_db() as cur:
+        cur.execute("""
+            SELECT * FROM eat_produkty_bazowe
+            WHERE nazwa_szukaj LIKE %s
+            ORDER BY (nazwa_szukaj LIKE %s) DESC, length(nazwa), nazwa
+            LIMIT %s
+        """, (f"%{szukana}%", f"{szukana}%", limit))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def bazowy_po_id(bazowy_id: int) -> dict | None:
+    with get_db() as cur:
+        cur.execute("SELECT * FROM eat_produkty_bazowe WHERE id=%s", (bazowy_id,))
+        row = cur.fetchone()
+    return dict(row) if row else None
 
 
 # ── cele ────────────────────────────────────────────────────────────────────
@@ -177,6 +282,7 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
     w["kod"] = (str(w["kod"]).strip()[:20] or None) if w["kod"] else None
     if w["kcal"] is None:
         w["kcal"] = 0        # kolumna jest NOT NULL; zero to poprawna wartość dla wody
+    w["nazwa_szukaj"] = bez_ogonkow(w["nazwa"])
     with get_db() as cur:
         if w["kod"]:
             cur.execute("""
@@ -190,7 +296,8 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
                 -- każdy zapis produktu z kodem kreskowym kończył się błędem 500,
                 -- a skanowanie zwracało „nie udało się sprawdzić kodu".
                 ON CONFLICT (household_id, kod) WHERE kod IS NOT NULL DO UPDATE
-                   SET nazwa=EXCLUDED.nazwa, marka=EXCLUDED.marka, opak_g=EXCLUDED.opak_g,
+                   SET nazwa=EXCLUDED.nazwa, nazwa_szukaj=EXCLUDED.nazwa_szukaj,
+                       marka=EXCLUDED.marka, opak_g=EXCLUDED.opak_g,
                        kcal=EXCLUDED.kcal, bialko=EXCLUDED.bialko, tluszcz=EXCLUDED.tluszcz,
                        wegle=EXCLUDED.wegle, blonnik=EXCLUDED.blonnik, cukry=EXCLUDED.cukry,
                        sol=EXCLUDED.sol
