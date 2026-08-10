@@ -120,6 +120,29 @@ def szukaj_produktow(household_id: int, fraza: str, limit: int = 20) -> list[dic
         return [dict(r) for r in cur.fetchall()]
 
 
+def lista_produktow(household_id: int, limit: int = 500) -> list[dict]:
+    """Cała baza gospodarstwa, do przeglądu w panelu. Dokładamy licznik użyć —
+    produkt, którego nikt nigdy nie zjadł, kasuje się bez wahania."""
+    with get_db() as cur:
+        cur.execute("""
+            SELECT p.*, (SELECT COUNT(*) FROM eat_wpisy w WHERE w.produkt_id = p.id) AS uzyc
+            FROM eat_produkty p
+            WHERE p.household_id = %s
+            ORDER BY p.created_at DESC
+            LIMIT %s
+        """, (household_id, limit))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def usun_produkt(produkt_id: int, household_id: int) -> bool:
+    """Kasuje produkt z bazy. Wpisy w dzienniku ZOSTAJĄ — mają własną kopię
+    nazwy i wartości, więc historia się nie zmienia (FK jest ON DELETE SET NULL)."""
+    with get_db() as cur:
+        cur.execute("DELETE FROM eat_produkty WHERE id=%s AND household_id=%s",
+                    (produkt_id, household_id))
+        return cur.rowcount > 0
+
+
 def zapisz_produkt(household_id: int, dane: dict) -> dict:
     """Dokłada produkt do bazy gospodarstwa. Przy powtórzonym kodzie odświeża
     wartości zamiast tworzyć duplikat."""

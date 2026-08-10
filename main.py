@@ -687,6 +687,11 @@ def admin_usage_moduly(admin: dict = Depends(require_admin)):
     return database.get_usage_wg_modulu()
 
 
+@app.get("/api/admin/usage-osoby")
+def admin_usage_osoby(admin: dict = Depends(require_admin)):
+    return database.get_usage_wg_uzytkownika()
+
+
 @app.get("/api/admin/stats")
 def admin_stats(admin: dict = Depends(require_admin)):
     return database.get_admin_stats()

@@ -114,6 +114,20 @@ def produkt_po_kodzie(kod: str = Query(...), current_user: dict = Depends(get_cu
     return {"produkt": zapisany, "skad": "off"}
 
 
+@router.get("/produkty")
+def lista_produktow(current_user: dict = Depends(get_current_user)):
+    """Baza produktów gospodarstwa — do przeglądu i sprzątania po błędnie
+    odczytanej etykiecie."""
+    return eat_db.lista_produktow(_hid(current_user))
+
+
+@router.delete("/produkty/{produkt_id}")
+def usun_produkt(produkt_id: int, current_user: dict = Depends(get_current_user)):
+    if not eat_db.usun_produkt(produkt_id, _hid(current_user)):
+        raise HTTPException(404, "Nie znaleziono produktu")
+    return {"ok": True}
+
+
 @router.get("/szukaj")
 def szukaj(fraza: str = Query(""), current_user: dict = Depends(get_current_user)):
     fraza = fraza.strip()

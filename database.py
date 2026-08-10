@@ -1711,6 +1711,28 @@ def get_usage_wg_modulu() -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def get_usage_wg_uzytkownika() -> list[dict]:
+    """Koszty AI per osoba, z podziałem na moduł. Wiersze sprzed dodania kolumny
+    `user_id` mają NULL i pokazują się jako „(przed rejestrowaniem osoby)" —
+    kasowanie ich zabrałoby historię kosztów gospodarstwa."""
+    with get_db() as cur:
+        cur.execute("""
+            SELECT
+                COALESCE(u.display_name, u.name, '(przed rejestrowaniem osoby)') AS osoba,
+                COALESCE(h.name, '(brak)') AS household_name,
+                CASE WHEN a.endpoint LIKE 'eat-%' THEN 'eat' ELSE 'finance' END AS modul,
+                COUNT(*) AS calls,
+                ROUND(CAST(SUM(a.input_tokens * 3.0 + a.output_tokens * 15.0) / 1000000 AS numeric), 4) AS cost_usd,
+                MAX(a.created_at) AS last_call
+            FROM api_usage a
+            LEFT JOIN users u ON u.id = a.user_id
+            LEFT JOIN households h ON h.id = a.household_id
+            GROUP BY osoba, household_name, modul
+            ORDER BY cost_usd DESC
+        """)
+        return [dict(r) for r in cur.fetchall()]
+
+
 def get_admin_stats() -> list[dict]:
     with get_db() as cur:
         cur.execute("""

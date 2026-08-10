@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
@@ -42,6 +42,14 @@
     .dz-meta { font-size:0.72rem; color:var(--muted); margin-top:1px; }
     .dz-strefa-h { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color: var(--muted); margin:14px 0 6px; }
     .dz-drag-ghost { opacity:.4; }
+      /* zakladki panelu admina */
+    .adm-taby { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+    .adm-tab { padding: 8px 16px; border: 1px solid var(--border); border-radius: 20px;
+               background: var(--surface); color: var(--muted); font: inherit; font-size: 0.88rem;
+               cursor: pointer; display: inline-flex; align-items: baseline; }
+    .adm-tab:hover { color: var(--text); }
+    .adm-tab.aktywna { background: var(--primary); color: var(--on-primary); border-color: var(--primary); font-weight: 600; }
+    .adm-kropka { display: inline-block; width: 4px; height: 4px; border-radius: 50%; margin: 0 4px 0 1px; }
   </style>
 </head>
 <body>
@@ -51,12 +59,37 @@
 <script defer src="/static/auth.js"></script>
 <nav>
   <a href="/" class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></a>
-  <a href="/">Dashboard</a>
-  <span style="margin-left:auto;font-size:0.85rem;color: var(--muted)">Panel admina</span>
 </nav>
 
 <main style="max-width:1100px">
-  <h1>Panel admina</h1>
+  <h1>Admin</h1>
+
+  <!-- Zakładki zamiast jednej długiej strony: ustawienia finansów sąsiadowały
+       z zarządzaniem kontami i statystykami całej aplikacji. -->
+  <div class="adm-taby" role="tablist">
+    <button class="adm-tab aktywna" data-tab="ogolne" role="tab" type="button">Ogólne</button>
+    <button class="adm-tab" data-tab="finance" role="tab" type="button">wiem<i class="adm-kropka" style="background:#ff6b6b"></i> finance</button>
+    <button class="adm-tab" data-tab="eat" role="tab" type="button">wiem<i class="adm-kropka" style="background:#7cb518"></i> eat</button>
+  </div>
+
+  <section class="adm-panel" data-panel="ogolne">
+
+  <div class="card" style="margin-bottom:24px;padding:20px">
+    <h3 style="margin-bottom:4px;font-size:1rem">Użytkownicy</h3>
+    <p style="font-size:0.8rem;color: var(--muted);margin-bottom:12px">Zawieś konto (blokuje logowanie i korzystanie z apki) albo wyłącz danemu użytkownikowi funkcje AI (wersja podstawowa).</p>
+    <div id="users-list">Ładowanie…</div>
+  </div>
+
+  <div class="card" style="margin-bottom:24px;padding:20px">
+    <h3 style="margin-bottom:4px;font-size:1rem">Koszty AI wg osoby</h3>
+    <p style="font-size:0.8rem;color: var(--muted);margin-bottom:12px">Kto ile wywołał, z podziałem na moduł.</p>
+    <div id="usage-osoby">Ładowanie…</div>
+  </div>
+
+  <div id="stats-container">Ładowanie...</div>
+  </section>
+
+  <section class="adm-panel" data-panel="finance" hidden>
 
   <div class="card" style="margin-bottom:24px;padding:20px">
     <h3 style="margin-bottom:12px;font-size:1rem">Zmień nazwę osoby w wydatkach</h3>
@@ -97,12 +130,6 @@
   </div>
 
   <div class="card" style="margin-bottom:24px;padding:20px">
-    <h3 style="margin-bottom:4px;font-size:1rem">Użytkownicy</h3>
-    <p style="font-size:0.8rem;color: var(--muted);margin-bottom:12px">Zawieś konto (blokuje logowanie i korzystanie z apki) albo wyłącz danemu użytkownikowi funkcje AI (wersja podstawowa).</p>
-    <div id="users-list">Ładowanie…</div>
-  </div>
-
-  <div class="card" style="margin-bottom:24px;padding:20px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px">
       <h3 style="margin:0;font-size:1rem">Działy sklepowe — domyślna kolejność</h3>
       <button id="btn-dzial-add" class="btn btn-primary" style="padding:7px 14px">+ Dodaj dział</button>
@@ -110,8 +137,19 @@
     <p style="font-size:0.8rem;color: var(--muted);margin-bottom:12px">Przeciągnij za <b><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6.4" r="1.5"/><circle cx="15" cy="6.4" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="17.6" r="1.5"/><circle cx="15" cy="17.6" r="1.5"/></svg></span></b>, by ustawić domyślną kolejność obchodu. Kliknij ✏, by zmienić nazwę/strefę/słowa-klucze. To wzorzec dla wszystkich — użytkownik i tak dostosuje kolejność pod swój sklep.</p>
     <div id="dzialy-list">Ładowanie…</div>
   </div>
+  </section>
 
-  <div id="stats-container">Ładowanie...</div>
+  <section class="adm-panel" data-panel="eat" hidden>
+
+  <div class="card" style="margin-bottom:24px;padding:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+      <h3 style="margin:0;font-size:1rem">Baza produktów gospodarstwa</h3>
+      <span id="prod-licznik" style="font-size:0.8rem;color:var(--muted)"></span>
+    </div>
+    <p style="font-size:0.8rem;color: var(--muted);margin-bottom:12px">Produkty zapisane ze skanów, etykiet i Open Food Facts. Jeśli Claude źle odczytał etykietę, usuń wpis — wpisy w dzienniku zostaną, bo mają własną kopię wartości.</p>
+    <div id="produkty-list">Ładowanie…</div>
+  </div>
+  </section>
 </main>
 
 <script>
@@ -399,10 +437,86 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
     html += '</div><p style="font-size:0.75rem;color: var(--muted);margin-top:8px">Ceny AI: $3/1M tokenów wejściowych, $15/1M wyjściowych (claude-sonnet-4-6)</p>';
     document.getElementById('stats-container').innerHTML = html;
     wczytajKosztyModulow();
+    wczytajKosztyOsob();
   } catch (e) {
     document.getElementById('stats-container').innerHTML = '<p style="color: var(--danger)">Błąd: ' + e.message + '</p>';
   }
 }));
+
+// ── zakładki ────────────────────────────────────────────────────────────────
+// Zawartość każdej zakładki dociągamy dopiero przy pierwszym wejściu — przy
+// wejściu na stronę leciało dotąd sześć zapytań naraz, z czego połowa do sekcji,
+// której nikt nie oglądał.
+const _zaladowane = { ogolne: true };
+
+document.querySelectorAll('.adm-tab').forEach((t) => {
+  t.onclick = () => {
+    document.querySelectorAll('.adm-tab').forEach((x) => x.classList.toggle('aktywna', x === t));
+    const cel = t.dataset.tab;
+    document.querySelectorAll('.adm-panel').forEach((p) => { p.hidden = p.dataset.panel !== cel; });
+    if (!_zaladowane[cel]) {
+      _zaladowane[cel] = true;
+      if (cel === 'eat') wczytajProdukty();
+    }
+  };
+});
+
+// ── wiem.eat: baza produktów ────────────────────────────────────────────────
+
+async function wczytajProdukty() {
+  const box = document.getElementById('produkty-list');
+  const licznik = document.getElementById('prod-licznik');
+  try {
+    const lista = await (await authFetch('/api/eat/produkty')).json();
+    if (!lista.length) {
+      box.innerHTML = '<p style="color:var(--muted);font-size:0.85rem">Baza jest pusta. Zeskanuj pierwszy produkt.</p>';
+      licznik.textContent = '';
+      return;
+    }
+    const zrodla = { off: 'Open Food Facts', etykieta: 'etykieta', opis: 'opis', reczne: 'ręcznie' };
+    licznik.textContent = lista.length + ' produktów';
+    box.innerHTML = lista.map((p) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--surface-2);border-radius:9px;margin-bottom:6px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.9rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.nazwa}${p.marka ? ' <span style="color:var(--muted);font-weight:400">· ' + p.marka + '</span>' : ''}</div>
+          <div style="font-size:0.75rem;color:var(--muted)">${Math.round(p.kcal)} kcal/100 g${p.opak_g ? ' · opak. ' + Math.round(p.opak_g) + ' g' : ''} · ${zrodla[p.zrodlo] || p.zrodlo}${p.kod ? ' · ' + p.kod : ''} · użyć: ${p.uzyc}</div>
+        </div>
+        <button data-usun-prod="${p.id}" style="padding:4px 11px;border:1px solid var(--danger-border);border-radius:6px;background:var(--surface);color:var(--danger);cursor:pointer;font-size:0.78rem">Usuń</button>
+      </div>`).join('');
+    box.querySelectorAll('[data-usun-prod]').forEach((b) => {
+      b.onclick = async () => {
+        if (!confirm('Usunąć produkt z bazy? Wpisy w dzienniku zostaną nietknięte.')) return;
+        b.disabled = true;
+        try {
+          const r = await authFetch('/api/eat/produkty/' + b.dataset.usunProd, { method: 'DELETE' });
+          if (r.ok) wczytajProdukty(); else b.disabled = false;
+        } catch { b.disabled = false; }
+      };
+    });
+  } catch {
+    box.innerHTML = '<p style="color:var(--danger);font-size:0.85rem">Nie udało się wczytać bazy.</p>';
+  }
+}
+
+// ── koszty per osoba ────────────────────────────────────────────────────────
+
+async function wczytajKosztyOsob() {
+  const box = document.getElementById('usage-osoby');
+  if (!box) return;
+  try {
+    const wiersze = await (await authFetch('/api/admin/usage-osoby')).json();
+    if (!wiersze.length) { box.textContent = 'Jeszcze żadnych wywołań AI.'; return; }
+    box.innerHTML = `<div style="font-size:0.85rem">${wiersze.map((w) => `
+      <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border-soft)">
+        <span><b style="color:var(--text)">${w.osoba}</b>
+          <span style="color:var(--muted)">· ${w.household_name} · wiem.${w.modul}</span></span>
+        <span style="white-space:nowrap"><b>$${Number(w.cost_usd || 0).toFixed(4)}</b>
+          <span style="color:var(--muted)">· ${w.calls}×</span></span>
+      </div>`).join('')}</div>`;
+  } catch {
+    box.innerHTML = '<span style="color:var(--danger)">Nie udało się wczytać.</span>';
+  }
+}
 
 // Rozbicie kosztów AI na moduły — dociągane osobno, żeby błąd tej jednej tabeli
 // nie zabrał całej strony statystyk.
