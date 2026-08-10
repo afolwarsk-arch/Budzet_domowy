@@ -50,6 +50,19 @@
     .adm-tab:hover { color: var(--text); }
     .adm-tab.aktywna { background: var(--primary); color: var(--on-primary); border-color: var(--primary); font-weight: 600; }
     .adm-kropka { display: inline-block; width: 4px; height: 4px; border-radius: 50%; margin: 0 4px 0 1px; }
+    /* Sekcje zwinięte domyślnie — panel byl jedna dluga przewijana kolumna.
+       <details> zamiast wlasnego mechanizmu: dziala bez JS i z klawiatury. */
+    .adm-sekcja { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+                  margin-bottom: 10px; box-shadow: var(--shadow); }
+    .adm-sekcja > summary { cursor: pointer; padding: 15px 18px; font-size: 0.95rem; font-weight: 600;
+                            color: var(--heading); list-style: none; display: flex; align-items: center; gap: 8px; }
+    .adm-sekcja > summary::-webkit-details-marker { display: none; }
+    .adm-sekcja > summary::before { content: '▸'; color: var(--muted); font-size: 0.8rem; flex: none; }
+    .adm-sekcja[open] > summary::before { content: '▾'; }
+    .adm-sekcja[open] > summary { border-bottom: 1px solid var(--border); }
+    .adm-sekcja > *:not(summary) { margin-left: 18px; margin-right: 18px; }
+    .adm-sekcja > *:last-child { margin-bottom: 16px; }
+    .adm-sekcja > p:first-of-type { margin-top: 12px; }
   </style>
 </head>
 <body>
@@ -74,25 +87,25 @@
 
   <section class="adm-panel" data-panel="ogolne">
 
-  <div class="card" style="margin-bottom:24px;padding:20px">
-    <h3 style="margin-bottom:4px;font-size:1rem">Użytkownicy</h3>
+  <details class="adm-sekcja" data-laduj="users">
+    <summary>Użytkownicy</summary>
     <p style="font-size:0.8rem;color: var(--muted);margin-bottom:12px">Zawieś konto (blokuje logowanie i korzystanie z apki) albo wyłącz danemu użytkownikowi funkcje AI (wersja podstawowa).</p>
     <div id="users-list">Ładowanie…</div>
-  </div>
+  </details>
 
-  <div class="card" style="margin-bottom:24px;padding:20px">
-    <h3 style="margin-bottom:4px;font-size:1rem">Koszty AI wg osoby</h3>
+  <details class="adm-sekcja" data-laduj="osoby">
+    <summary>Koszty AI wg osoby</summary>
     <p style="font-size:0.8rem;color: var(--muted);margin-bottom:12px">Kto ile wywołał, z podziałem na moduł.</p>
     <div id="usage-osoby">Ładowanie…</div>
-  </div>
+  </details>
 
   <div id="stats-container">Ładowanie...</div>
   </section>
 
   <section class="adm-panel" data-panel="finance" hidden>
 
-  <div class="card" style="margin-bottom:24px;padding:20px">
-    <h3 style="margin-bottom:12px;font-size:1rem">Zmień nazwę osoby w wydatkach</h3>
+  <details class="adm-sekcja" data-laduj="rename">
+    <summary>Zmień nazwę osoby w wydatkach</summary>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <select id="rename-stara" style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;background: var(--surface);min-width:200px">
         <option value="">— wybierz osobę —</option>
@@ -102,10 +115,10 @@
       <button id="btn-rename" class="btn btn-primary" style="padding:8px 16px">Zmień</button>
       <span id="rename-info" style="font-size:13px;color:var(--muted)"></span>
     </div>
-  </div>
+  </details>
 
-  <div class="card" style="margin-bottom:24px;padding:20px">
-    <h3 style="margin-bottom:4px;font-size:1rem">Przypomnienia o płatnościach cyklicznych</h3>
+  <details class="adm-sekcja" data-laduj="ustawienia">
+    <summary>Przypomnienia o płatnościach cyklicznych</summary>
     <p style="font-size:0.8rem;color: var(--muted);margin-bottom:6px">Gdyby przypomnienia były zbyt upierdliwe (albo za późne) — dostrój liczby dni.</p>
     <div class="ust-row">
       <span>Przelew ręczny — zacznij przypominać <span class="ust-sub">dni przed terminem</span></span>
@@ -127,28 +140,25 @@
       <button id="btn-ustawienia" class="btn btn-primary" style="padding:8px 16px">Zapisz ustawienia</button>
       <span id="ust-info" style="font-size:13px;color:var(--muted)"></span>
     </div>
-  </div>
+  </details>
 
-  <div class="card" style="margin-bottom:24px;padding:20px">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px">
-      <h3 style="margin:0;font-size:1rem">Działy sklepowe — domyślna kolejność</h3>
+  <details class="adm-sekcja" data-laduj="dzialy">
+    <summary>Działy sklepowe — domyślna kolejność</summary>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
       <button id="btn-dzial-add" class="btn btn-primary" style="padding:7px 14px">+ Dodaj dział</button>
     </div>
     <p style="font-size:0.8rem;color: var(--muted);margin-bottom:12px">Przeciągnij za <b><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6.4" r="1.5"/><circle cx="15" cy="6.4" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="17.6" r="1.5"/><circle cx="15" cy="17.6" r="1.5"/></svg></span></b>, by ustawić domyślną kolejność obchodu. Kliknij ✏, by zmienić nazwę/strefę/słowa-klucze. To wzorzec dla wszystkich — użytkownik i tak dostosuje kolejność pod swój sklep.</p>
     <div id="dzialy-list">Ładowanie…</div>
-  </div>
+  </details>
   </section>
 
   <section class="adm-panel" data-panel="eat" hidden>
 
-  <div class="card" style="margin-bottom:24px;padding:20px">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px">
-      <h3 style="margin:0;font-size:1rem">Baza produktów gospodarstwa</h3>
-      <span id="prod-licznik" style="font-size:0.8rem;color:var(--muted)"></span>
-    </div>
+  <details class="adm-sekcja" data-laduj="produkty">
+    <summary>Baza produktów gospodarstwa <span id="prod-licznik" style="font-size:0.8rem;color:var(--muted);font-weight:400"></span></summary>
     <p style="font-size:0.8rem;color: var(--muted);margin-bottom:12px">Produkty zapisane ze skanów, etykiet i Open Food Facts. Jeśli Claude źle odczytał etykietę, usuń wpis — wpisy w dzienniku zostaną, bo mają własną kopię wartości.</p>
     <div id="produkty-list">Ładowanie…</div>
-  </div>
+  </details>
   </section>
 </main>
 
@@ -177,7 +187,7 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
         osoby.map(o => `<option value="${o.osoba.replace(/"/g,'&quot;')}">${o.osoba} (${o.ile} wydatków)</option>`).join('');
     } catch {}
   }
-  loadOsoby();
+  // ładowanie przypięte do pierwszego rozwinięcia sekcji — patrz niżej
 
   async function loadUsers() {
     const box = document.getElementById('users-list');
@@ -213,7 +223,7 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
       await loadUsers();
     } catch { alert('Błąd połączenia.'); }
   }
-  loadUsers();
+  // ladowanie przy pierwszym rozwinieciu sekcji
 
   // ── Działy sklepowe (domyślna baza) ──
   let dzSortable = null;
@@ -302,7 +312,7 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
   }
 
   document.getElementById('btn-dzial-add').addEventListener('click', () => otworzEdytorDzialu(null));
-  loadDzialy();
+  // ladowanie przy pierwszym rozwinieciu sekcji
 
   document.getElementById('btn-rename').addEventListener('click', async () => {
     const stara = document.getElementById('rename-stara').value;
@@ -332,10 +342,12 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
 
   // ustawienia przypomnień
   const USTA = { przyp_reczne_dni:'ust-reczne', przyp_auto_dni:'ust-auto', przyp_zolte_dni:'ust-zolte', przyp_czerwone_dni:'ust-czerwone' };
-  try {
-    const ust = await authFetch('/api/admin/ustawienia').then(r => r.json());
-    for (const [k, id] of Object.entries(USTA)) document.getElementById(id).value = ust[k];
-  } catch {}
+  async function loadUstawienia() {
+    try {
+      const ust = await authFetch('/api/admin/ustawienia').then(r => r.json());
+      for (const [k, id] of Object.entries(USTA)) document.getElementById(id).value = ust[k];
+    } catch {}
+  }
   document.getElementById('btn-ustawienia').addEventListener('click', async () => {
     const info = document.getElementById('ust-info');
     const body = {};
@@ -347,6 +359,26 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
       if (!res.ok) throw new Error(data.detail || 'Błąd zapisu');
       info.textContent = 'Zapisano.'; info.style.color = 'var(--good)';
     } catch (e) { info.textContent = 'Błąd: ' + e.message; info.style.color = 'var(--danger)'; }
+  });
+
+  // Każda sekcja ciągnie swoje dane DOPIERO przy pierwszym rozwinięciu. Wcześniej
+  // wejście na panel odpalało komplet zapytań naraz — teraz nie pobieramy nic,
+  // czego nie otworzyłeś.
+  const LADOWARKI = {
+    users: loadUsers,
+    osoby: wczytajKosztyOsob,
+    rename: loadOsoby,
+    ustawienia: loadUstawienia,
+    dzialy: loadDzialy,
+    produkty: wczytajProdukty,
+  };
+  document.querySelectorAll('details.adm-sekcja[data-laduj]').forEach((d) => {
+    d.addEventListener('toggle', () => {
+      if (!d.open || d.dataset.zaladowana) return;
+      d.dataset.zaladowana = '1';
+      const f = LADOWARKI[d.dataset.laduj];
+      if (f) f();
+    });
   });
 
   try {
@@ -437,7 +469,6 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
     html += '</div><p style="font-size:0.75rem;color: var(--muted);margin-top:8px">Ceny AI: $3/1M tokenów wejściowych, $15/1M wyjściowych (claude-sonnet-4-6)</p>';
     document.getElementById('stats-container').innerHTML = html;
     wczytajKosztyModulow();
-    wczytajKosztyOsob();
   } catch (e) {
     document.getElementById('stats-container').innerHTML = '<p style="color: var(--danger)">Błąd: ' + e.message + '</p>';
   }
@@ -447,17 +478,12 @@ window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(as
 // Zawartość każdej zakładki dociągamy dopiero przy pierwszym wejściu — przy
 // wejściu na stronę leciało dotąd sześć zapytań naraz, z czego połowa do sekcji,
 // której nikt nie oglądał.
-const _zaladowane = { ogolne: true };
-
 document.querySelectorAll('.adm-tab').forEach((t) => {
   t.onclick = () => {
     document.querySelectorAll('.adm-tab').forEach((x) => x.classList.toggle('aktywna', x === t));
     const cel = t.dataset.tab;
     document.querySelectorAll('.adm-panel').forEach((p) => { p.hidden = p.dataset.panel !== cel; });
-    if (!_zaladowane[cel]) {
-      _zaladowane[cel] = true;
-      if (cel === 'eat') wczytajProdukty();
-    }
+    // Danych nie ciągniemy tutaj — robią to same sekcje przy rozwinięciu.
   };
 });
 
