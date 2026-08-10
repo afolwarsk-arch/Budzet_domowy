@@ -125,9 +125,35 @@
     .komunikat { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin: 8px 0; }
     .komunikat.blad { color: var(--danger); }
 
-    .cele-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
-    .cele-row label { flex: 1; font-size: 13.5px; }
-    .cele-row input { width: 96px; }
+    /* ── ekran potwierdzenia pozycji ── */
+    .makro-siatka { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 4px; }
+    .makro-siatka label { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px;
+                          text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+    .makro-siatka input { width: 100%; padding: 8px 6px; text-align: center;
+                          font-variant-numeric: tabular-nums; font-size: 14px; }
+
+    /* ── lista pozycji z opisu ── */
+    .poz-edyt { display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+                background: var(--surface-2); border: 1px solid var(--border-soft);
+                border-radius: 11px; margin-bottom: 6px; }
+    .poz-edyt input[type=checkbox] { width: 18px; height: 18px; flex: none; }
+    .pe-nazwa { font-size: 13.5px; font-weight: 500; }
+    .pe-linia { display: flex; align-items: center; gap: 6px; margin-top: 3px;
+                font-size: 12px; color: var(--muted); }
+    .pe-linia input { width: 74px; padding: 5px 7px; font-size: 13px; text-align: center; }
+    .pe-kcal { margin-left: auto; font-weight: 600; color: var(--text);
+               font-variant-numeric: tabular-nums; }
+
+    /* ── cel dzienny ── */
+    .cel-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .cel-row label { flex: 1; font-size: 13.5px; }
+    .cel-row input { width: 88px; text-align: center; font-variant-numeric: tabular-nums; }
+    .cel-jedn { font-size: 12.5px; color: var(--muted); width: 12px; }
+    .cel-obok { font-size: 12.5px; color: var(--muted); width: 58px; text-align: right;
+                font-variant-numeric: tabular-nums; }
+    .mini-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+                padding: 2px 9px; font: inherit; font-size: 11.5px; cursor: pointer;
+                color: var(--accent); margin-left: 4px; }
   </style>
 </head>
 <body>

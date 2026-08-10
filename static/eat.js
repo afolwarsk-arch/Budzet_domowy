@@ -194,22 +194,18 @@ async function wczytajOstatnie() {
   }
 }
 
-async function dodajGotowy(p) {
-  komunikat('Dodaję…');
-  try {
-    const r = await authFetch('/api/eat/wpis', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        data: dzienISO, posilek: posilekDocelowy, produkt_id: p.produkt_id || null,
-        nazwa: p.nazwa, opis_porcji: p.opis_porcji, ilosc_g: p.ilosc_g,
-        kcal: p.kcal, bialko: p.bialko, tluszcz: p.tluszcz, wegle: p.wegle,
-      }),
-    });
-    if (!r.ok) { const x = await r.json().catch(() => ({})); komunikat(x.detail || 'Nie udało się dodać.', true); return; }
-    zamknijArkusz();
-    await wczytajDzien();
-  } catch { komunikat('Błąd połączenia.', true); }
+// Powtórka z „ostatnio jadłeś" też idzie przez ekran potwierdzenia — nic nie
+// wpada do dziennika, zanim zobaczysz i ewentualnie poprawisz wartości.
+function dodajGotowy(p) {
+  ekranPotwierdzenia({
+    nazwa: p.nazwa,
+    opis_porcji: p.opis_porcji,
+    ilosc_g: Number(p.ilosc_g) || 100,
+    kcal: Number(p.kcal) || 0,
+    bialko: Number(p.bialko) || 0,
+    tluszcz: Number(p.tluszcz) || 0,
+    wegle: Number(p.wegle) || 0,
+  });
 }
 
 // ── skanowanie kodu ─────────────────────────────────────────────────────────
@@ -339,37 +335,50 @@ function dyktuj() {
   r.start();
 }
 
-// ── ekran produktu (wybór porcji) ───────────────────────────────────────────
+// ── ekran potwierdzenia (wspólny dla wszystkich dróg) ───────────────────────
+// Nic nie ląduje w dzienniku bez tego kroku: widzisz kalorie i makro, możesz
+// poprawić każdą liczbę i dopiero wtedy zatwierdzasz.
+//
+// `poz` opisuje pozycję dla PODANEJ ilości gramów. Gdy przyjdzie `na100`
+// (produkt z bazy), zmiana gramatury przelicza wartości z niego; bez tego
+// skalujemy proporcjonalnie od wartości wyjściowych.
+function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
+  const ark = arkusz && arkusz.querySelector('.ark');
+  if (!ark) return;
+  const bazowe = { g: Number(poz.ilosc_g) || 100, kcal: Number(poz.kcal) || 0,
+                   bialko: Number(poz.bialko) || 0, tluszcz: Number(poz.tluszcz) || 0,
+                   wegle: Number(poz.wegle) || 0 };
+  let recznie = false;   // gdy sam poprawisz makro, przestajemy je przeliczać
 
-function ekranProduktu(p, skad) {
-  const opak = Number(p.opak_g) || 0;
   const porcje = [];
-  if (opak) {
-    porcje.push({ etyk: 'całe opak.', g: opak });
-    porcje.push({ etyk: '½ opak.', g: Math.round(opak / 2) });
+  if (na100 && na100.opak_g) {
+    porcje.push({ etyk: 'całe opak.', g: Math.round(na100.opak_g) });
+    porcje.push({ etyk: '½ opak.', g: Math.round(na100.opak_g / 2) });
   }
-  porcje.push({ etyk: '100 g', g: 100 });
-  porcje.push({ etyk: '50 g', g: 50 });
-  let wybrane = porcje[0].g;
+  porcje.push({ etyk: '100 g', g: 100 }, { etyk: '50 g', g: 50 });
 
-  const zrodlaOpis = { off: 'Open Food Facts · zapisano u Was', wlasna: 'Wasza baza', etykieta: 'Odczytane z etykiety' };
-  const ark = arkusz.querySelector('.ark');
   ark.innerHTML = `
-    <div class="ark-gl"><button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
-      <h2 style="font-size:1rem">Ile zjadłeś</h2>
-      <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button></div>
-    <div class="prod-gora">
-      <div class="marka">${e(p.marka || '')}</div>
-      <h3>${e(p.nazwa)}</h3>
-      <div class="op">${opak ? 'opakowanie ' + zaokr(opak) + ' g · ' : ''}${zaokr(p.kcal)} kcal / 100 g</div>
-      <div class="zrodlo">${e(zrodlaOpis[skad] || 'Wasza baza')}</div>
+    <div class="ark-gl">
+      <button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
+      <h2 style="font-size:1rem">Sprawdź i dodaj</h2>
+      <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button>
     </div>
-    <div class="sek-tyt">Ile zjadłeś</div>
-    <div class="porcje" id="porcje">
+    ${naglowekDodatkowy || ''}
+    <div class="sek-tyt">Nazwa</div>
+    <input type="text" id="p-nazwa" value="${e(poz.nazwa)}" maxlength="120" style="width:100%;margin-bottom:12px">
+    ${na100 ? `<div class="sek-tyt">Porcja</div><div class="porcje" id="porcje">
       ${porcje.map((x, i) => `<button class="porcja" data-g="${x.g}" aria-pressed="${i === 0}" type="button">${x.etyk}</button>`).join('')}
-      <button class="porcja" id="wlasna-g" type="button">wpisz…</button>
+    </div>` : ''}
+    <div class="sek-tyt">Ile gramów</div>
+    <input type="number" id="p-gram" value="${Math.round(bazowe.g)}" min="1" max="5000" style="width:100%;margin-bottom:12px">
+    <div class="sek-tyt">Wartości — możesz poprawić</div>
+    <div class="makro-siatka">
+      <label>kcal<input type="number" id="p-kcal" min="0" max="9000"></label>
+      <label>Białko<input type="number" id="p-b" min="0" max="500"></label>
+      <label>Tłuszcz<input type="number" id="p-t" min="0" max="500"></label>
+      <label>Węgle<input type="number" id="p-w" min="0" max="900"></label>
     </div>
-    <div class="wynik" id="wynik"></div>
+    <div id="p-zgodnosc" class="komunikat"></div>
     <div class="sek-tyt">Do którego posiłku</div>
     <div class="gdzie" id="gdzie">
       ${POSILKI.map(([k, n]) => `<button data-p="${k}" aria-pressed="${k === posilekDocelowy}" type="button">${n}</button>`).join('')}
@@ -377,36 +386,70 @@ function ekranProduktu(p, skad) {
     <div id="ark-komunikat"></div>
     <button class="cta" id="dodaj" type="button">Dodaj do dnia</button>`;
 
-  function przelicz() {
-    const m = wybrane / 100;
-    ark.querySelector('#wynik').innerHTML = `
-      <div class="wynik-kc">${zaokr(p.kcal * m)} kcal</div>
-      <div class="wynik-mk">
-        <span>B <b>${zaokr((p.bialko || 0) * m)} g</b></span>
-        <span>T <b>${zaokr((p.tluszcz || 0) * m)} g</b></span>
-        <span>W <b>${zaokr((p.wegle || 0) * m)} g</b></span>
-        <span>${zaokr(wybrane)} g</span>
-      </div>`;
+  const pole = (id) => ark.querySelector(id);
+  const wartosci = () => ({
+    g: Number(pole('#p-gram').value) || 0,
+    kcal: Number(pole('#p-kcal').value) || 0,
+    bialko: Number(pole('#p-b').value) || 0,
+    tluszcz: Number(pole('#p-t').value) || 0,
+    wegle: Number(pole('#p-w').value) || 0,
+  });
+
+  function wstaw(v) {
+    pole('#p-kcal').value = Math.round(v.kcal);
+    pole('#p-b').value = Math.round(v.bialko);
+    pole('#p-t').value = Math.round(v.tluszcz);
+    pole('#p-w').value = Math.round(v.wegle);
   }
+
+  function przelicz() {
+    if (recznie) { sprawdzZgodnosc(); return; }
+    const g = Number(pole('#p-gram').value) || 0;
+    if (na100) {
+      const m = g / 100;
+      wstaw({ kcal: na100.kcal * m, bialko: (na100.bialko || 0) * m,
+              tluszcz: (na100.tluszcz || 0) * m, wegle: (na100.wegle || 0) * m });
+    } else if (bazowe.g > 0) {
+      const m = g / bazowe.g;
+      wstaw({ kcal: bazowe.kcal * m, bialko: bazowe.bialko * m,
+              tluszcz: bazowe.tluszcz * m, wegle: bazowe.wegle * m });
+    }
+    sprawdzZgodnosc();
+  }
+
+  // 1 g białka i węgli = 4 kcal, 1 g tłuszczu = 9 kcal. Jeśli wpisane makro
+  // rozjeżdża się z kaloriami, mówimy o tym wprost zamiast po cichu zapisać
+  // niespójną pozycję.
+  function sprawdzZgodnosc() {
+    const v = wartosci();
+    const zMakro = v.bialko * 4 + v.tluszcz * 9 + v.wegle * 4;
+    const box = ark.querySelector('#p-zgodnosc');
+    if (!v.kcal || !zMakro) { box.textContent = ''; return; }
+    const roznica = Math.abs(zMakro - v.kcal) / v.kcal;
+    box.className = roznica > 0.15 ? 'komunikat blad' : 'komunikat';
+    box.textContent = roznica > 0.15
+      ? `Z makroskładników wychodzi ${Math.round(zMakro)} kcal, a wpisane jest ${Math.round(v.kcal)}.`
+      : '';
+  }
+
   przelicz();
 
-  ark.querySelector('#porcje').onclick = (ev) => {
+  ark.querySelectorAll('#p-kcal, #p-b, #p-t, #p-w').forEach((i) => {
+    i.addEventListener('input', () => { recznie = true; sprawdzZgodnosc(); });
+  });
+  pole('#p-gram').addEventListener('input', przelicz);
+
+  const listaPorcji = ark.querySelector('#porcje');
+  if (listaPorcji) listaPorcji.onclick = (ev) => {
     const b = ev.target.closest('.porcja');
-    if (!b || b.id === 'wlasna-g') return;
+    if (!b) return;
     ark.querySelectorAll('.porcja').forEach((x) => x.setAttribute('aria-pressed', 'false'));
     b.setAttribute('aria-pressed', 'true');
-    wybrane = Number(b.dataset.g);
+    pole('#p-gram').value = b.dataset.g;
+    recznie = false;
     przelicz();
   };
-  ark.querySelector('#wlasna-g').onclick = () => {
-    const v = prompt('Ile gramów?', String(zaokr(wybrane)));
-    const n = Number(String(v || '').replace(',', '.'));
-    if (!n || n <= 0) return;
-    ark.querySelectorAll('.porcja').forEach((x) => x.setAttribute('aria-pressed', 'false'));
-    ark.querySelector('#wlasna-g').setAttribute('aria-pressed', 'true');
-    wybrane = n;
-    przelicz();
-  };
+
   ark.querySelector('#gdzie').onclick = (ev) => {
     const b = ev.target.closest('[data-p]');
     if (!b) return;
@@ -416,17 +459,24 @@ function ekranProduktu(p, skad) {
   };
   ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
   ark.querySelector('#zamknij2').onclick = zamknijArkusz;
+
   ark.querySelector('#dodaj').onclick = async (ev) => {
     ev.target.disabled = true;
+    const v = wartosci();
+    const nazwa = pole('#p-nazwa').value.trim();
+    if (!nazwa || !v.g) { komunikat('Podaj nazwę i ilość.', true); ev.target.disabled = false; return; }
     const etyk = ark.querySelector('.porcja[aria-pressed="true"]');
+    // Gdy wartości nie były ruszane, wysyłamy produkt_id i liczy je serwer.
+    // Po ręcznej poprawce wysyłamy wprost to, co widać na ekranie.
+    const cialo = (produktId && !recznie)
+      ? { data: dzienISO, posilek: posilekDocelowy, produkt_id: produktId,
+          ilosc_g: v.g, opis_porcji: etyk ? etyk.textContent : null }
+      : { data: dzienISO, posilek: posilekDocelowy, nazwa,
+          opis_porcji: (etyk ? etyk.textContent : poz.opis_porcji) || null,
+          ilosc_g: v.g, kcal: v.kcal, bialko: v.bialko, tluszcz: v.tluszcz, wegle: v.wegle };
     try {
       const r = await authFetch('/api/eat/wpis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          data: dzienISO, posilek: posilekDocelowy, produkt_id: p.id,
-          ilosc_g: wybrane, opis_porcji: etyk && etyk.id !== 'wlasna-g' ? etyk.textContent : null,
-        }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cialo),
       });
       if (!r.ok) { const x = await r.json().catch(() => ({})); komunikat(x.detail || 'Nie udało się dodać.', true); ev.target.disabled = false; return; }
       zamknijArkusz();
@@ -435,29 +485,97 @@ function ekranProduktu(p, skad) {
   };
 }
 
+// ── ekran produktu (wybór porcji) ───────────────────────────────────────────
+
+// Ekran produktu to teraz tylko nagłówek — resztą zajmuje się wspólny ekran
+// potwierdzenia, żeby każda droga dodawania kończyła się tak samo.
+function ekranProduktu(p, skad) {
+  const zrodla = { off: 'Open Food Facts · zapisano u Was', wlasna: 'Wasza baza',
+                   etykieta: 'Odczytane z etykiety' };
+  const naglowek = `
+    <div class="prod-gora">
+      <div class="marka">${e(p.marka || '')}</div>
+      <h3>${e(p.nazwa)}</h3>
+      <div class="op">${p.opak_g ? 'opakowanie ' + zaokr(p.opak_g) + ' g · ' : ''}${zaokr(p.kcal)} kcal / 100 g</div>
+      <div class="zrodlo">${e(zrodla[skad] || 'Wasza baza')}</div>
+    </div>`;
+  const opak = Number(p.opak_g) || 100;
+  ekranPotwierdzenia(
+    { nazwa: p.nazwa, ilosc_g: opak, kcal: 0, bialko: 0, tluszcz: 0, wegle: 0 },
+    { kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
+      tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
+      opak_g: Number(p.opak_g) || 0 },
+    p.id,
+    naglowek,
+  );
+}
+
 // ── ekran pozycji z opisu ───────────────────────────────────────────────────
 
+// Lista pozycji z opisu — kazda z wlasna gramatura do poprawienia. Wartosci
+// skaluja sie proporcjonalnie, bo Claude podal je dla oszacowanej ilosci.
 function ekranPozycji(pozycje, opis) {
   const ark = arkusz.querySelector('.ark');
   ark.innerHTML = `
     <div class="ark-gl"><button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
-      <h2 style="font-size:1rem">Znalazłem</h2>
+      <h2 style="font-size:1rem">Sprawdź i popraw</h2>
       <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button></div>
-    <div class="komunikat">Z opisu „${e(opis)}". Odznacz, czego nie jadłeś.</div>
+    <div class="komunikat">Z opisu „${e(opis)}". Odznacz, czego nie jadłeś, popraw gramatury.</div>
     <div id="lista-poz">
       ${pozycje.map((p, i) => `
-        <label class="szybka" style="cursor:pointer">
-          <input type="checkbox" data-i="${i}" checked style="width:18px;height:18px;flex:none">
-          <span class="nz"><b>${e(p.nazwa)}</b><span>${e(p.opis_porcji || '')} · ${zaokr(p.ilosc_g)} g</span></span>
-          <span class="kc">${zaokr(p.kcal)}</span>
-        </label>`).join('')}
+        <div class="poz-edyt" data-i="${i}">
+          <input type="checkbox" data-zazn="${i}" checked>
+          <div style="flex:1;min-width:0">
+            <div class="pe-nazwa">${e(p.nazwa)}</div>
+            <div class="pe-linia">
+              <input type="number" data-gram="${i}" value="${zaokr(p.ilosc_g)}" min="1" max="5000"> g
+              <span class="pe-kcal" data-kcal="${i}">${zaokr(p.kcal)} kcal</span>
+            </div>
+          </div>
+        </div>`).join('')}
     </div>
-    <div class="sek-tyt" style="margin-top:12px">Do którego posiłku</div>
+    <div class="sek-tyt" style="margin-top:12px">Razem</div>
+    <div class="wynik" id="poz-suma"></div>
+    <div class="sek-tyt">Do którego posiłku</div>
     <div class="gdzie" id="gdzie">
       ${POSILKI.map(([k, n]) => `<button data-p="${k}" aria-pressed="${k === posilekDocelowy}" type="button">${n}</button>`).join('')}
     </div>
     <div id="ark-komunikat"></div>
     <button class="cta" id="dodaj-wsz" type="button">Dodaj do dnia</button>`;
+
+  const bazowe = pozycje.map((p) => ({
+    g: Number(p.ilosc_g) || 100, kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
+    tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
+  }));
+
+  function biezaca(i) {
+    const g = Number(ark.querySelector(`[data-gram="${i}"]`).value) || 0;
+    const b = bazowe[i];
+    const m = b.g > 0 ? g / b.g : 0;
+    return { g, kcal: b.kcal * m, bialko: b.bialko * m, tluszcz: b.tluszcz * m, wegle: b.wegle * m };
+  }
+
+  function przelicz() {
+    const suma = { kcal: 0, bialko: 0, tluszcz: 0, wegle: 0 };
+    pozycje.forEach((_, i) => {
+      const v = biezaca(i);
+      ark.querySelector(`[data-kcal="${i}"]`).textContent = zaokr(v.kcal) + ' kcal';
+      if (ark.querySelector(`[data-zazn="${i}"]`).checked) {
+        suma.kcal += v.kcal; suma.bialko += v.bialko; suma.tluszcz += v.tluszcz; suma.wegle += v.wegle;
+      }
+    });
+    ark.querySelector('#poz-suma').innerHTML = `
+      <div class="wynik-kc">${zaokr(suma.kcal)} kcal</div>
+      <div class="wynik-mk"><span>B <b>${zaokr(suma.bialko)} g</b></span>
+        <span>T <b>${zaokr(suma.tluszcz)} g</b></span>
+        <span>W <b>${zaokr(suma.wegle)} g</b></span></div>`;
+  }
+  przelicz();
+
+  ark.querySelectorAll('[data-gram], [data-zazn]').forEach((el) => {
+    el.addEventListener('input', przelicz);
+    el.addEventListener('change', przelicz);
+  });
 
   ark.querySelector('#gdzie').onclick = (ev) => {
     const b = ev.target.closest('[data-p]');
@@ -468,20 +586,24 @@ function ekranPozycji(pozycje, opis) {
   };
   ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
   ark.querySelector('#zamknij2').onclick = zamknijArkusz;
+
   ark.querySelector('#dodaj-wsz').onclick = async (ev) => {
     ev.target.disabled = true;
-    const wybrane = [...ark.querySelectorAll('#lista-poz input:checked')].map((c) => pozycje[c.dataset.i]);
+    const wybrane = pozycje
+      .map((p, i) => ({ p, i }))
+      .filter(({ i }) => ark.querySelector(`[data-zazn="${i}"]`).checked);
     if (!wybrane.length) { zamknijArkusz(); return; }
     komunikat('Zapisuję…');
     try {
-      for (const p of wybrane) {
+      for (const { p, i } of wybrane) {
+        const v = biezaca(i);
         await authFetch('/api/eat/wpis', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             data: dzienISO, posilek: posilekDocelowy, nazwa: p.nazwa,
-            opis_porcji: p.opis_porcji, ilosc_g: p.ilosc_g,
-            kcal: p.kcal, bialko: p.bialko, tluszcz: p.tluszcz, wegle: p.wegle,
+            opis_porcji: p.opis_porcji, ilosc_g: v.g,
+            kcal: v.kcal, bialko: v.bialko, tluszcz: v.tluszcz, wegle: v.wegle,
           }),
         });
       }
@@ -493,37 +615,166 @@ function ekranPozycji(pozycje, opis) {
 
 // ── cel dzienny ─────────────────────────────────────────────────────────────
 
+// Kaloryczność makroskładników — to z niej bierze się cała arytmetyka celu.
+const KCAL_NA_G = { bialko: 4, tluszcz: 9, wegle: 4 };
+
+// Gotowe rozkłady w procentach: białko / tłuszcz / węglowodany.
+const ROZKLADY = [
+  ['Zbilansowany', 25, 30, 45],
+  ['Wysokobiałkowy', 35, 30, 35],
+  ['Mniej węglowodanów', 30, 45, 25],
+];
+
 function oknoCeli() {
   const c = (stanDnia && stanDnia.cele) || {};
+  let tryb = 'procenty';
+
   const o = document.createElement('div');
   o.className = 'ark-tlo';
   o.innerHTML = `
-    <div class="ark" style="max-width:400px">
+    <div class="ark" style="max-width:430px">
       <div class="ark-gl"><h2 style="font-size:1.05rem">Cel dzienny</h2>
         <button class="x" id="c-x" type="button" aria-label="Zamknij">&times;</button></div>
-      <div class="komunikat">To od niego zależy skala pasków na dole. Cel jest Twój — Ola ma własny.</div>
-      <div class="cele-row"><label for="c-kcal">Kalorie</label><input id="c-kcal" type="number" value="${zaokr(c.kcal)}"></div>
-      <div class="cele-row"><label for="c-b">Białko (g)</label><input id="c-b" type="number" value="${zaokr(c.bialko)}"></div>
-      <div class="cele-row"><label for="c-t">Tłuszcz (g)</label><input id="c-t" type="number" value="${zaokr(c.tluszcz)}"></div>
-      <div class="cele-row"><label for="c-w">Węglowodany (g)</label><input id="c-w" type="number" value="${zaokr(c.wegle)}"></div>
+      <div class="komunikat">Od celu zależy skala pasków na dole. Cel jest Twój — Ola ma własny.</div>
+
+      <div class="sek-tyt">Kalorie na dzień</div>
+      <input id="c-kcal" type="number" min="800" max="6000" value="${zaokr(c.kcal)}" style="width:100%;margin-bottom:14px">
+
+      <div class="sek-tyt">Rozkład makroskładników</div>
+      <div class="gdzie" id="c-tryb" style="margin-bottom:10px">
+        <button data-tryb="procenty" aria-pressed="true" type="button">Procentami</button>
+        <button data-tryb="gramy" aria-pressed="false" type="button">Gramami</button>
+      </div>
+
+      <div id="c-wiersze"></div>
+      <div id="c-status" class="komunikat"></div>
+
+      <div class="sek-tyt">Gotowe rozkłady</div>
+      <div class="porcje" id="c-rozklady">
+        ${ROZKLADY.map((r, i) => `<button class="porcja" data-rozklad="${i}" type="button">${r[0]}</button>`).join('')}
+      </div>
+
       <div id="c-blad" class="komunikat blad"></div>
       <button class="cta" id="c-zapisz" type="button" style="margin-top:8px">Zapisz</button>
     </div>`;
   document.body.appendChild(o);
   o.addEventListener('click', (ev) => { if (ev.target === o) o.remove(); });
   o.querySelector('#c-x').onclick = () => o.remove();
+
+  // Stan trzymamy w GRAMACH — to one idą do bazy. Procenty są tylko sposobem
+  // wpisywania, przeliczanym w obie strony.
+  const gramy = {
+    bialko: Number(c.bialko) || 0,
+    tluszcz: Number(c.tluszcz) || 0,
+    wegle: Number(c.wegle) || 0,
+  };
+  const kcalCelu = () => Number(o.querySelector('#c-kcal').value) || 0;
+  const zMakro = () => Object.keys(KCAL_NA_G).reduce((s, k) => s + gramy[k] * KCAL_NA_G[k], 0);
+
+  const OPISY = [['bialko', 'Białko'], ['tluszcz', 'Tłuszcz'], ['wegle', 'Węglowodany']];
+
+  function rysuj() {
+    const cel = kcalCelu();
+    o.querySelector('#c-wiersze').innerHTML = OPISY.map(([k, nazwa]) => {
+      const pct = cel > 0 ? (gramy[k] * KCAL_NA_G[k] / cel) * 100 : 0;
+      const wartosc = tryb === 'procenty' ? Math.round(pct) : Math.round(gramy[k]);
+      const obok = tryb === 'procenty'
+        ? `${Math.round(gramy[k])} g`
+        : `${Math.round(pct)}%`;
+      return `<div class="cel-row">
+        <label for="c-${k}">${nazwa}</label>
+        <input id="c-${k}" data-makro="${k}" type="number" min="0" max="900" value="${wartosc}">
+        <span class="cel-jedn">${tryb === 'procenty' ? '%' : 'g'}</span>
+        <span class="cel-obok">${obok}</span>
+      </div>`;
+    }).join('');
+
+    o.querySelectorAll('[data-makro]').forEach((i) => {
+      i.addEventListener('input', () => {
+        const k = i.dataset.makro;
+        const v = Number(i.value) || 0;
+        const cel2 = kcalCelu();
+        gramy[k] = tryb === 'procenty' ? (cel2 * (v / 100)) / KCAL_NA_G[k] : v;
+        odswiezStatus();
+        // przeliczoną wartość obok pokazujemy od razu, bez przerysowania pola
+        const wiersz = i.closest('.cel-row').querySelector('.cel-obok');
+        const pct = cel2 > 0 ? (gramy[k] * KCAL_NA_G[k] / cel2) * 100 : 0;
+        wiersz.textContent = tryb === 'procenty' ? Math.round(gramy[k]) + ' g' : Math.round(pct) + '%';
+      });
+    });
+    odswiezStatus();
+  }
+
+  function odswiezStatus() {
+    const cel = kcalCelu();
+    const z = zMakro();
+    const box = o.querySelector('#c-status');
+    if (!cel) { box.textContent = ''; return; }
+    const roznica = Math.round(z - cel);
+    const proc = Math.abs(roznica) / cel;
+    if (proc <= 0.02) {
+      box.className = 'komunikat';
+      box.innerHTML = `Makroskładniki dają <b>${Math.round(z)} kcal</b> — zgadza się z celem.`;
+    } else {
+      box.className = 'komunikat blad';
+      box.innerHTML = `Makroskładniki dają <b>${Math.round(z)} kcal</b>, czyli
+        ${roznica > 0 ? 'o ' + roznica + ' za dużo' : 'o ' + (-roznica) + ' za mało'}.
+        <button type="button" id="c-wyrownaj" class="mini-btn">Wyrównaj</button>`;
+      const b = box.querySelector('#c-wyrownaj');
+      if (b) b.onclick = () => {
+        // skalujemy wszystkie trzy proporcjonalnie, żeby zachować rozkład
+        const wsp = z > 0 ? cel / z : 0;
+        Object.keys(gramy).forEach((k) => { gramy[k] = gramy[k] * wsp; });
+        rysuj();
+      };
+    }
+  }
+
+  o.querySelector('#c-kcal').addEventListener('input', () => {
+    // przy zmianie kalorii trzymamy ROZKŁAD, nie gramy — inaczej podniesienie
+    // celu o 200 kcal cicho psułoby proporcje
+    const z = zMakro();
+    if (z > 0) {
+      const wsp = kcalCelu() / z;
+      Object.keys(gramy).forEach((k) => { gramy[k] = gramy[k] * wsp; });
+    }
+    rysuj();
+  });
+
+  o.querySelector('#c-tryb').onclick = (ev) => {
+    const b = ev.target.closest('[data-tryb]');
+    if (!b) return;
+    o.querySelectorAll('#c-tryb [data-tryb]').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    tryb = b.dataset.tryb;
+    rysuj();
+  };
+
+  o.querySelector('#c-rozklady').onclick = (ev) => {
+    const b = ev.target.closest('[data-rozklad]');
+    if (!b) return;
+    const [, pb, pt, pw] = ROZKLADY[b.dataset.rozklad];
+    const cel = kcalCelu();
+    gramy.bialko = (cel * pb / 100) / 4;
+    gramy.tluszcz = (cel * pt / 100) / 9;
+    gramy.wegle = (cel * pw / 100) / 4;
+    rysuj();
+  };
+
+  rysuj();
+
   o.querySelector('#c-zapisz').onclick = async () => {
-    const ciało = {
-      kcal: Number(o.querySelector('#c-kcal').value),
-      bialko: Number(o.querySelector('#c-b').value),
-      tluszcz: Number(o.querySelector('#c-t').value),
-      wegle: Number(o.querySelector('#c-w').value),
+    const cialo = {
+      kcal: kcalCelu(),
+      bialko: Math.round(gramy.bialko),
+      tluszcz: Math.round(gramy.tluszcz),
+      wegle: Math.round(gramy.wegle),
     };
     try {
       const r = await authFetch('/api/eat/cele', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ciało),
+        body: JSON.stringify(cialo),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { o.querySelector('#c-blad').textContent = d.detail || 'Nie udało się zapisać.'; return; }
