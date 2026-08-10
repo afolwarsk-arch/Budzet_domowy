@@ -157,7 +157,12 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
                                           bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo)
                 VALUES (%(h)s,%(kod)s,%(nazwa)s,%(marka)s,%(opak_g)s,%(kcal)s,
                         %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s)
-                ON CONFLICT (household_id, kod) DO UPDATE
+                -- WHERE kod IS NOT NULL jest KONIECZNE: indeks unikalny jest
+                -- częściowy (ten sam warunek), a Postgres bez powtórzenia
+                -- predykatu nie potrafi go dopasować i przerywa błędem. Przez to
+                -- każdy zapis produktu z kodem kreskowym kończył się błędem 500,
+                -- a skanowanie zwracało „nie udało się sprawdzić kodu".
+                ON CONFLICT (household_id, kod) WHERE kod IS NOT NULL DO UPDATE
                    SET nazwa=EXCLUDED.nazwa, marka=EXCLUDED.marka, opak_g=EXCLUDED.opak_g,
                        kcal=EXCLUDED.kcal, bialko=EXCLUDED.bialko, tluszcz=EXCLUDED.tluszcz,
                        wegle=EXCLUDED.wegle, blonnik=EXCLUDED.blonnik, cukry=EXCLUDED.cukry,
