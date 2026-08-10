@@ -312,6 +312,9 @@ def init_db():
         # nie wybrany, wtedy front dobiera go deterministycznie z id użytkownika,
         # żeby domownicy nie wyglądali identycznie zanim ktokolwiek coś ustawi
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS awatar INTEGER")
+        # kto wywołał AI — wcześniej dziennik kosztów wiedział tylko, które
+        # gospodarstwo. Stare wiersze zostają z NULL i pokazują się jako nieznane.
+        cur.execute("ALTER TABLE api_usage ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)")
         # gospodarstwo bez członków czeka 30 dni na skasowanie — data startu karencji
         cur.execute("ALTER TABLE households ADD COLUMN IF NOT EXISTS usuwane_od TIMESTAMP")
         cur.execute("ALTER TABLE wydatki ADD COLUMN IF NOT EXISTS okazja TEXT")
@@ -1653,11 +1656,15 @@ _INPUT_PRICE  = 3.0 / 1_000_000   # USD per token
 _OUTPUT_PRICE = 15.0 / 1_000_000  # USD per token
 
 
-def log_api_usage(household_id: int | None, endpoint: str, input_tokens: int, output_tokens: int) -> None:
+def log_api_usage(household_id: int | None, endpoint: str, input_tokens: int, output_tokens: int,
+                  user_id: int | None = None) -> None:
+    """`user_id` jest opcjonalny, bo zadania w tle (auto-raport) nie mają
+    użytkownika — tam koszt należy do gospodarstwa, nie do osoby."""
     with get_db() as cur:
         cur.execute(
-            "INSERT INTO api_usage (household_id, endpoint, input_tokens, output_tokens) VALUES (%s,%s,%s,%s)",
-            (household_id, endpoint, input_tokens, output_tokens),
+            "INSERT INTO api_usage (household_id, endpoint, input_tokens, output_tokens, user_id) "
+            "VALUES (%s,%s,%s,%s,%s)",
+            (household_id, endpoint, input_tokens, output_tokens, user_id),
         )
 
 
@@ -1690,7 +1697,7 @@ def get_usage_wg_modulu() -> list[dict]:
     with get_db() as cur:
         cur.execute("""
             SELECT
-                CASE WHEN u.endpoint LIKE 'eat-%' THEN 'jedzenie' ELSE 'finanse' END AS modul,
+                CASE WHEN u.endpoint LIKE 'eat-%' THEN 'eat' ELSE 'finance' END AS modul,
                 u.endpoint,
                 COUNT(*) AS calls,
                 SUM(u.input_tokens)  AS input_tokens,

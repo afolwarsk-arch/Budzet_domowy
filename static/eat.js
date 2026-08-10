@@ -81,11 +81,14 @@ function rysujPosilki() {
 function rysujBilans() {
   const c = stanDnia.cele || {};
   const s = stanDnia.suma || {};
+  // Kalorie biorą kolor modułu (zieleń), reszta ma własne barwy ze zwalidowanej
+  // palety wykresów. Nie używamy tu `--good`, bo po przemalowaniu modułu na
+  // zielono białko zlewało się z kaloriami.
   const wiersze = [
     ['Kalorie', s.kcal, c.kcal, 'kcal', 'var(--accent)'],
-    ['Białko', s.bialko, c.bialko, 'g', 'var(--good)'],
-    ['Tłuszcz', s.tluszcz, c.tluszcz, 'g', 'var(--warn)'],
-    ['Węgle', s.wegle, c.wegle, 'g', 'var(--primary)'],
+    ['Białko', s.bialko, c.bialko, 'g', '#2a78d6'],
+    ['Tłuszcz', s.tluszcz, c.tluszcz, 'g', '#eb6834'],
+    ['Węgle', s.wegle, c.wegle, 'g', '#8e44c4'],
   ];
   document.getElementById('bilans-in').innerHTML = wiersze.map(([n, jest, cel, jedn, kolor]) => {
     const pct = cel > 0 ? Math.min(100, (Number(jest || 0) / cel) * 100) : 0;

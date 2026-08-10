@@ -133,10 +133,19 @@ _MOTYW_BOOT = (
 )
 
 
+# Które strony należą do którego modułu — potrzebne, żeby ustawić kolor akcentu
+# JUŻ W ODPOWIEDZI SERWERA. Robienie tego w JS dałoby mignięcie koralem przed
+# przemalowaniem na zielono.
+_STRONY_MODULU = {"eat.html": "eat"}
+
+
 def _html(filename: str) -> HTMLResponse:
     content = (STATIC_DIR / filename).read_text(encoding="utf-8")
     content = re.sub(r'(/static/[^"\']*?\.(?:js|css))(\?v=[^"\']*)?', rf'\1?v={_BUILD}', content)
     content = content.replace("</head>", _MOTYW_BOOT + "</head>", 1)
+    modul = _STRONY_MODULU.get(filename)
+    if modul:
+        content = content.replace("<html ", f'<html data-modul="{modul}" ', 1)
     return HTMLResponse(content=content, headers={"Cache-Control": "no-store"})
 
 

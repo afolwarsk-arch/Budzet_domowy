@@ -823,6 +823,41 @@ tr:hover td { background: var(--hover); }
 }
 
 
+/* ── kolor akcentu per moduł ─────────────────────────────────────────────
+   Ikona i logo pozostają te same we wszystkich sekcjach — zmienia się TYLKO
+   akcent, żeby od razu było wiadomo, gdzie się jest. `data-modul` ustawia
+   serwer w odpowiedzi (main.py), więc nie ma mignięcia koralem przed
+   przemalowaniem.
+
+   Zieleń dobrana licznikiem kontrastu, nie na oko:
+     kropki logo #7cb518 — 6,84 na atramentowym pasku,
+     akcent jasny #4a7c1f — 5,01 na papierze (obecny koral ma 4,48),
+     akcent ciemny #9bcf3f — 8,76 na powierzchni karty.
+   Świadomie NIE jest to zieleń trawiasta — ta gryzła się z Żabką. */
+:root[data-modul="eat"] {
+  --marka: #7cb518;
+  --accent: #4a7c1f;
+  --accent-strong: #3a6117;
+  --accent-soft: #eef6e2;
+  --accent-border: #cfe3ae;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-modul="eat"]:not([data-theme="light"]) {
+    --accent: #9bcf3f;
+    --accent-strong: #b4dd6b;
+    --accent-soft: #26301a;
+    --accent-border: #3d4a2a;
+  }
+}
+:root[data-theme="dark"][data-modul="eat"] {
+  --accent: #9bcf3f;
+  --accent-strong: #b4dd6b;
+  --accent-soft: #26301a;
+  --accent-border: #3d4a2a;
+}
+/* pasek nawigacji ma własne, ciemne tokeny — akcent trzeba w nim powtórzyć */
+:root[data-modul="eat"] nav { --accent: #9bcf3f; }
+
 /* ── przełącznik modułów ─────────────────────────────────────────────────
    Kwadratowa siatka kropek jak w Google — ten gest jest na tyle rozpowszechniony,
    że nie wymaga tłumaczenia. Obok niej nazwa bieżącego modułu, żeby zawsze było

@@ -695,6 +695,7 @@ function _showProfileModal() {
         </div>
 
         <div class="pf-grupa">
+          <button id="_mout" style="width:100%;padding:10px;background:var(--primary);color:var(--on-primary);border:none;border-radius:9px;cursor:pointer;font-size:0.9rem;font-weight:500;margin-bottom:10px">Wyloguj się</button>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button id="_mleave" style="flex:1;min-width:150px;padding:9px;background:var(--surface);color:var(--warn);border:1px solid var(--warn-border);border-radius:8px;cursor:pointer;font-size:0.82rem">Wypisz się z gospodarstwa</button>
             <button id="_mdel" style="flex:1;min-width:150px;padding:9px;background:var(--surface);color:var(--danger);border:1px solid var(--danger-border);border-radius:8px;cursor:pointer;font-size:0.82rem">Usuń moje konto</button>
@@ -713,6 +714,10 @@ function _showProfileModal() {
   // których się nie wpisuje.
   _podepnijPseudonim(overlay);
   overlay.querySelector('#_mc').onclick = () => _zamknijProfil(overlay);
+  // Wylogowanie przeniosło się tu z górnego paska — pasek musiał zrobić miejsce
+  // na nazwę modułu i przełącznik, a wylogowanie to sprawa konta, nie nawigacji.
+  // W menu „⋯" na pulpicie być nie mogło: tamto menu istnieje tylko na pulpicie.
+  overlay.querySelector('#_mout').onclick = () => authLogout();
   overlay.querySelector('#_mleave').onclick = async () => {
     let ilu = 0, nazwa = '';
     try {
@@ -962,8 +967,9 @@ function ikonaSvg(nazwa) {
 // Dołożenie kolejnego modułu (wiem.health i tak dalej) to dopisanie wpisu tutaj.
 const MODULY = [
   {
-    id: 'finanse',
-    nazwa: 'finanse',
+    id: 'finance',
+    nazwa: 'finance',
+    kolor: '#ff6b6b',
     opis: 'Wydatki, konta, cele',
     ikona: 'wplywy',
     strony: [
@@ -979,8 +985,9 @@ const MODULY = [
     ],
   },
   {
-    id: 'jedzenie',
-    nazwa: 'jedzenie',
+    id: 'eat',
+    nazwa: 'eat',
+    kolor: '#7cb518',
     opis: 'Dziennik i kalorie',
     ikona: 'lista',
     strony: [
@@ -1052,7 +1059,7 @@ function _pokazPrzelacznik() {
         ${MODULY.map((m) => `
           <a href="${m.strony[0].href}" class="modul-kafel${m.id === biezacy.id ? ' biezacy' : ''}">
             ${ikonaPelna(m.ikona)}
-            <span class="mk-n">wiem<i class="mk-kropka"></i> ${m.nazwa}</span>
+            <span class="mk-n">wiem<i class="mk-kropka" style="background:${m.kolor}"></i> ${m.nazwa}</span>
             <span class="mk-o">${m.opis}</span>
           </a>`).join('')}
       </div>
