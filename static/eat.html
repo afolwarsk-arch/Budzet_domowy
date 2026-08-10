@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jedzenie — Wiem</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#1a1d20">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script defer src="/static/auth.js"></script>
+  <style>
+    /* zostawiamy miejsce na przyklejony pasek bilansu + dolna nawigacje */
+    main { padding-bottom: 132px; }
+
+    .dzien-pasek { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .dzien-pasek h1 { margin: 0; font-size: 1.25rem; }
+    .dzien-pasek button { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+                          padding: 6px 11px; cursor: pointer; color: var(--text); font: inherit; font-size: 13px; }
+
+    .posilek { margin-bottom: 14px; }
+    .pgl { display: flex; align-items: baseline; justify-content: space-between; padding: 4px 2px 6px; }
+    .pgl b { font-size: 14px; }
+    .pgl .sum { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .poz { display: flex; align-items: center; gap: 10px; padding: 9px 11px; background: var(--surface);
+           border: 1px solid var(--border-soft); border-radius: 10px; margin-bottom: 5px; }
+    .poz .nz { font-size: 13.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .poz .il { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+    .poz .kc { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .poz .x { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 17px; line-height: 1; padding: 0 2px; }
+    .poz .x:hover { color: var(--danger); }
+    .dodaj-mini { border: 1px dashed var(--border); background: none; color: var(--muted); border-radius: 10px;
+                  padding: 9px; width: 100%; font: inherit; font-size: 13px; cursor: pointer; }
+    .dodaj-mini:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── przyklejony bilans dnia ── */
+    .bilans {
+      position: fixed; left: 0; right: 0; z-index: 60; bottom: 0;
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+      box-shadow: 0 -2px 14px rgba(0,0,0,.07);
+    }
+    /* Na telefonie pod spodem stoi dolna nawigacja (64 px) — pasek siada nad
+       nią, a nie na niej. Na szerokim ekranie nawigacji nie ma, więc wraca do
+       samego dołu. */
+    @media (max-width: 700px) {
+      .bilans { bottom: calc(64px + env(safe-area-inset-bottom)); padding-bottom: 10px; }
+    }
+    .bilans-in { max-width: 1100px; margin: 0 auto; display: flex; gap: 14px; }
+    .bilans-in > div { flex: 1; min-width: 0; }
+    .bl-n { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+    .bl-w { font-size: 13px; font-weight: 600; margin: 2px 0 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .bl-w small { font-weight: 400; color: var(--muted); }
+    .pas { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+    .pas span { display: block; height: 100%; border-radius: 3px; transition: width .35s; }
+    @media (prefers-reduced-motion: reduce) { .pas span { transition: none; } }
+    @media (max-width: 700px) { .bilans-in { gap: 9px; } .bl-w { font-size: 12px; } }
+
+    /* ── arkusz dodawania ── */
+    .ark-tlo { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9998;
+               display: flex; align-items: flex-end; justify-content: center; }
+    .ark { background: var(--surface); width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto;
+           border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
+    @media (min-width: 560px) { .ark-tlo { align-items: center; } .ark { border-radius: 18px; } }
+    .ark-gl { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .ark-gl h2 { margin: 0; font-size: 1.05rem; }
+    .ark-gl .x { margin-left: auto; background: none; border: none; color: var(--muted); font-size: 23px; cursor: pointer; line-height: 1; }
+
+    .szukaj { display: flex; gap: 8px; margin-bottom: 12px; }
+    .szukaj input { flex: 1; min-width: 0; }
+    .mik { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; width: 44px;
+           cursor: pointer; display: flex; align-items: center; justify-content: center; flex: none; }
+    .mik.slucha { border-color: var(--accent); color: var(--accent); }
+    .mik svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+
+    .drogi { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 16px; }
+    .droga { border: 1px solid var(--border); border-radius: 12px; padding: 12px 11px; background: var(--surface-2);
+             cursor: pointer; text-align: left; font: inherit; color: var(--text); }
+    .droga.glowna { grid-column: span 2; background: var(--primary); border-color: var(--primary);
+                    color: var(--on-primary); display: flex; align-items: center; gap: 12px; padding: 14px; }
+    .droga svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .droga .t { font-size: 13.5px; font-weight: 600; display: block; margin-top: 6px; }
+    .droga.glowna .t { margin-top: 0; font-size: 15px; }
+    .droga .o { font-size: 11.5px; color: var(--muted); display: block; margin-top: 2px; line-height: 1.35; }
+    .droga.glowna .o { color: rgba(251,249,244,.72); }
+
+    .sek-tyt { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+               font-weight: 700; margin: 0 0 8px; }
+    .szybka { display: flex; align-items: center; gap: 10px; padding: 9px 11px; background: var(--surface-2);
+              border: 1px solid var(--border-soft); border-radius: 11px; margin-bottom: 6px; cursor: pointer;
+              width: 100%; font: inherit; text-align: left; color: var(--text); }
+    .szybka .nz { flex: 1; min-width: 0; overflow: hidden; }
+    .szybka .nz b { font-size: 13.5px; font-weight: 500; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .szybka .nz span { font-size: 11.5px; color: var(--muted); }
+    .szybka .kc { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    /* ── ekran produktu ── */
+    .prod-gora { text-align: center; padding: 2px 0 12px; }
+    .prod-gora .marka { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 700; }
+    .prod-gora h3 { margin: 4px 0 2px; font-size: 18px; color: var(--heading); }
+    .prod-gora .op { font-size: 12.5px; color: var(--muted); }
+    .zrodlo { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--good);
+              background: var(--good-bg); border-radius: 20px; padding: 3px 10px; margin-top: 8px; }
+    .porcje { display: flex; gap: 7px; flex-wrap: wrap; margin: 4px 0 12px; }
+    .porcja { border: 1px solid var(--border); background: var(--surface); border-radius: 20px; padding: 8px 14px;
+              font: inherit; font-size: 13px; cursor: pointer; color: var(--text); }
+    .porcja[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); border-color: var(--primary); font-weight: 600; }
+    .wynik { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+    .wynik-kc { font-size: 25px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--heading); }
+    .wynik-mk { display: flex; gap: 14px; margin-top: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+    .wynik-mk b { color: var(--text); font-weight: 600; }
+    .gdzie { display: flex; gap: 6px; margin-bottom: 12px; }
+    .gdzie button { flex: 1; border: 1px solid var(--border); background: var(--surface); border-radius: 9px;
+                    padding: 8px 3px; font: inherit; font-size: 12px; cursor: pointer; color: var(--text); }
+    .gdzie button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); border-color: var(--primary); font-weight: 600; }
+    .cta { width: 100%; padding: 13px; border: none; border-radius: 11px; background: var(--primary);
+           color: var(--on-primary); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .cta[disabled] { opacity: .55; cursor: not-allowed; }
+
+    #skaner-wrap { display: none; margin-bottom: 12px; }
+    #skaner { width: 100%; border-radius: 12px; background: #000; aspect-ratio: 4/3; object-fit: cover; }
+    .komunikat { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin: 8px 0; }
+    .komunikat.blad { color: var(--danger); }
+
+    .cele-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .cele-row label { flex: 1; font-size: 13.5px; }
+    .cele-row input { width: 96px; }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></a>
+  <a href="/">Dashboard</a>
+  <a href="/upload">Dodaj wydatek</a>
+  <a href="/konta">Konta</a>
+  <a href="/wplywy">Wpływy</a>
+  <a href="/cele">Cele</a>
+  <a href="/kategorie">Kategorie</a>
+  <a href="/analiza">Analiza</a>
+  <a href="/eat" class="active">Jedzenie</a>
+  <button onclick="authLogout()" style="margin-left:auto;padding:6px 14px;cursor:pointer;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:0.85rem;">Wyloguj</button>
+</nav>
+
+<main>
+  <div class="dzien-pasek">
+    <button id="poprz" type="button" title="Poprzedni dzień">‹</button>
+    <h1 id="tytul-dnia">Dziś</h1>
+    <button id="nast" type="button" title="Następny dzień">›</button>
+    <button id="btn-cele" type="button" style="margin-left:auto">Cel dzienny</button>
+  </div>
+
+  <div id="posilki"></div>
+</main>
+
+<div class="bilans" id="bilans">
+  <div class="bilans-in" id="bilans-in"></div>
+</div>
+
+<script defer src="/static/eat.js"></script>
+</body>
+</html>

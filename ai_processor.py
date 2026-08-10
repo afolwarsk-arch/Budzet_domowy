@@ -398,6 +398,90 @@ def process_image(image_bytes: bytes, mime_type: str = "image/jpeg",
     return _parse_response(message.content[0].text, hier), _usage(message)
 
 
+_ETYKIETA_PROMPT = """Odczytujesz tabelę wartości odżywczych z etykiety produktu spożywczego.
+
+Zwróć WYŁĄCZNIE JSON, bez komentarza:
+{"nazwa": "...", "marka": "..." lub null, "opak_g": liczba lub null,
+ "kcal": liczba, "bialko": liczba, "tluszcz": liczba, "wegle": liczba,
+ "blonnik": liczba lub null, "cukry": liczba lub null, "sol": liczba lub null}
+
+ZASADY:
+- Wszystkie wartości odżywcze podawaj PRZELICZONE NA 100 g produktu. Jeśli tabela \
+podaje je na porcję albo na 100 ml, przelicz. Gdy przeliczenie jest niemożliwe, \
+zwróć null zamiast zgadywać.
+- Energia w kcal, nie w kJ. Jeśli widnieje tylko kJ, podziel przez 4,184.
+- `opak_g` to masa netto CAŁEGO opakowania, jeśli jest widoczna.
+- Jeśli na zdjęciu nie ma tabeli wartości odżywczych, zwróć {"kcal": null}.
+- Nazwa po polsku, krótka i rozpoznawalna (np. "Serek wiejski", nie cała etykieta).
+"""
+
+
+def czytaj_etykiete(image_bytes: bytes, mime_type: str = "image/jpeg") -> dict:
+    """Zdjęcie etykiety → wartości odżywcze na 100 g.
+
+    Droga ratunkowa, gdy kodu nie ma w żadnej bazie. Wynik trafia do bazy
+    gospodarstwa, więc ten sam produkt czyta się z AI tylko raz w życiu."""
+    import json as _json
+
+    client = anthropic.Anthropic()
+    image_bytes, mime_type = prepare_image(image_bytes, mime_type)
+    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1000,
+        system=_ETYKIETA_PROMPT,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": image_b64}},
+                {"type": "text", "text": "Odczytaj tabelę i zwróć JSON."},
+            ],
+        }],
+    )
+    surowy = message.content[0].text.strip()
+    if surowy.startswith("```"):
+        surowy = surowy.split("```")[1].lstrip("json").strip()
+    return _json.loads(surowy)
+
+
+_POSILEK_PROMPT = """Szacujesz wartości odżywcze posiłku opisanego słowami po polsku.
+
+Zwróć WYŁĄCZNIE JSON:
+{"pozycje": [{"nazwa": "...", "ilosc_g": liczba, "opis_porcji": "...",
+              "kcal": liczba, "bialko": liczba, "tluszcz": liczba, "wegle": liczba}]}
+
+ZASADY:
+- Rozbij opis na osobne składniki. „Kanapka z serem" to pieczywo i ser osobno.
+- `kcal` i makroskładniki dotyczą PODANEJ ILOŚCI, nie 100 g.
+- `ilosc_g` to Twoje najlepsze oszacowanie masy w gramach; `opis_porcji` to
+  sposób, w jaki człowiek to opisał (np. "2 kromki", "średnia porcja").
+- Typowe polskie porcje: kromka chleba 35 g, jajko 55 g, łyżka oleju 10 g,
+  szklanka mleka 250 g, średni ziemniak 100 g, porcja mięsa 120 g.
+- Gdy opis jest zbyt ogólny, żeby cokolwiek oszacować, zwróć {"pozycje": []}.
+- Nie dopisuj niczego, czego nie ma w opisie.
+"""
+
+
+def szacuj_posilek(opis: str) -> tuple[list[dict], dict]:
+    """Opis słowami („dwa jajka i kromka chleba") → lista pozycji z wartościami.
+
+    Potrzebne przy domowych posiłkach, które nie mają żadnego kodu kreskowego."""
+    import json as _json
+
+    client = anthropic.Anthropic()
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2000,
+        system=_POSILEK_PROMPT,
+        messages=[{"role": "user", "content": opis.strip()[:600]}],
+    )
+    surowy = message.content[0].text.strip()
+    if surowy.startswith("```"):
+        surowy = surowy.split("```")[1].lstrip("json").strip()
+    dane = _json.loads(surowy)
+    return dane.get("pozycje") or [], _usage(message)
+
+
 _DORADCA_PROMPT = """Jesteś doświadczonym, konkretnym doradcą budżetowym dla polskiego gospodarstwa domowego. \
 Dostajesz zagregowane dane o wydatkach z ostatnich kilku miesięcy (kwoty w PLN). \
 Twoim zadaniem jest znaleźć REALNE, oparte na danych możliwości oszczędzania — nie ogólniki.

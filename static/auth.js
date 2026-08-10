@@ -961,6 +961,7 @@ const _BOTTOM_NAV_ITEMS = [
   { href: '/cele',          ikona: 'cele',      label: 'Cele' },
   { href: '/kategorie',     ikona: 'kategorie', label: 'Kategorie' },
   { href: '/analiza',       ikona: 'analiza',   label: 'Analiza' },
+  { href: '/eat',           ikona: 'lista',     label: 'Jedzenie' },
   { href: '/powiadomienia', ikona: 'alerty',    label: 'Alerty' },
 ];
 

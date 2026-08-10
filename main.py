@@ -15,12 +15,29 @@ load_dotenv(BASE_DIR / ".env")
 
 import ai_processor
 import database
+import eat
+import eat_db
 import push
 from auth import get_current_user, require_admin, user_from_token, delete_firebase_user
 
 database.init_db()
 
+# Nowa sekcja NIE MOŻE przewrócić finansów. Gdyby założenie tabel jedzenia się
+# nie powiodło, aplikacja ma wstać bez tego modułu i powiedzieć o tym w logu —
+# a nie odmówić startu całości.
+try:
+    eat_db.init_eat_db()
+    _EAT_OK = True
+except Exception as _e:
+    print(f"[eat] NIE zalozono tabel, sekcja jedzenia bedzie niedostepna: {_e!r}")
+    _EAT_OK = False
+
 app = FastAPI(title="Budżet domowy")
+
+# Sekcja wiem.eat mieszka we własnym routerze — nowe dziedziny NIE dokładają
+# się już do tego pliku.
+if _EAT_OK:
+    app.include_router(eat.router)
 
 try:
     _BUILD = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
@@ -181,6 +198,11 @@ def wplywy_page():
 @app.get("/cele")
 def cele_page():
     return _html("cele.html")
+
+
+@app.get("/eat")
+def eat_page():
+    return _html("eat.html")
 
 
 @app.get("/kategorie")
