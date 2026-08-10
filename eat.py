@@ -25,6 +25,10 @@ router = APIRouter(prefix="/api/eat", tags=["eat"])
 # Open Food Facts prosi o nazwę aplikacji w nagłówku — to ich jedyny warunek
 # przy darmowym korzystaniu i nie ma powodu go nie spełnić.
 _OFF_URL = "https://world.openfoodfacts.org/api/v2/product/{kod}.json"
+# Szukanie po NAZWIE działa tylko na starszym punkcie /cgi/search.pl — v2 przyjmuje
+# `search_terms`, ale je ignoruje i oddaje całą bazę kraju (sprawdzone: każde
+# zapytanie zwracało te same 36 tys. produktów). Polska poddomena daje polskie nazwy.
+_OFF_SZUKAJ = "https://pl.openfoodfacts.org/cgi/search.pl"
 _OFF_POLA = "product_name,product_name_pl,brands,quantity,product_quantity,nutriments"
 _OFF_UA = "WiemApp/1.0 (budzetdomowy-production.up.railway.app)"
 
@@ -66,22 +70,26 @@ def _z_open_food_facts(kod: str) -> dict | None:
 
     if dane.get("status") != 1:
         return None
-    p = dane.get("product") or {}
+    return _z_produktu_off(dane.get("product") or {}, kod)
+
+
+def _z_produktu_off(p: dict, kod: str) -> dict:
+    """Zamienia rekord Open Food Facts na nasz kształt.
+
+    UWAGA: produkt BEZ wartości kalorycznej przyjmujemy, a nie odrzucamy.
+    Wcześniej odrzucałem takie wpisy jako bezużyteczne i przez to nie dało się
+    zeskanować wody mineralnej — w bazie jest, ale z pustą tabelą wartości.
+    Woda ma zero kalorii, więc odrzucanie jej było odwrotnością tego, co trzeba.
+    Flaga `niepelne` mówi interfejsowi, żeby poprosił o sprawdzenie wartości."""
     n = p.get("nutriments") or {}
     kcal = _liczba(n.get("energy-kcal_100g"))
-    if kcal is None:
-        # Produkt jest w bazie, ale bez wartości odżywczych — dla nas
-        # bezużyteczny, więc odsyłamy do etykiety zamiast zapisywać pustkę.
-        return None
-
     nazwa = (p.get("product_name_pl") or p.get("product_name") or "").strip()
-    opak = _liczba(p.get("product_quantity"))
     return {
         "kod": kod,
         "nazwa": nazwa or f"Produkt {kod}",
         "marka": (p.get("brands") or "").split(",")[0].strip() or None,
-        "opak_g": opak,
-        "kcal": kcal,
+        "opak_g": _liczba(p.get("product_quantity")),
+        "kcal": kcal if kcal is not None else 0,
         "bialko": _liczba(n.get("proteins_100g")),
         "tluszcz": _liczba(n.get("fat_100g")),
         "wegle": _liczba(n.get("carbohydrates_100g")),
@@ -89,7 +97,37 @@ def _z_open_food_facts(kod: str) -> dict | None:
         "cukry": _liczba(n.get("sugars_100g")),
         "sol": _liczba(n.get("salt_100g")),
         "zrodlo": "off",
+        "niepelne": kcal is None,
     }
+
+
+def _szukaj_w_off(fraza: str, ile: int = 12) -> list[dict]:
+    """Wyszukiwanie po nazwie. Zwraca listę propozycji BEZ zapisywania ich u nas
+    — do bazy trafia dopiero ta, którą użytkownik wybierze."""
+    import urllib.parse
+    import urllib.request
+    import json as _json
+
+    parametry = urllib.parse.urlencode({
+        "search_terms": fraza, "search_simple": 1, "action": "process",
+        "json": 1, "page_size": ile,
+        "fields": "code,product_name,product_name_pl,brands,product_quantity,nutriments",
+    })
+    try:
+        req = urllib.request.Request(f"{_OFF_SZUKAJ}?{parametry}", headers={"User-Agent": _OFF_UA})
+        with urllib.request.urlopen(req, timeout=12) as odp:
+            dane = _json.loads(odp.read().decode("utf-8"))
+    except Exception as e:
+        print(f"[eat] wyszukiwanie w Open Food Facts nie powiodło się: {e!r}")
+        return []
+
+    wynik = []
+    for p in dane.get("products") or []:
+        kod = str(p.get("code") or "").strip()
+        if not kod:
+            continue
+        wynik.append(_z_produktu_off(p, kod))
+    return wynik
 
 
 # ── produkty ────────────────────────────────────────────────────────────────
@@ -111,7 +149,9 @@ def produkt_po_kodzie(kod: str = Query(...), current_user: dict = Depends(get_cu
         raise HTTPException(404, "Nie znam tego kodu. Zrób zdjęcie etykiety, "
                                  "a zapamiętam produkt na przyszłość.")
     zapisany = eat_db.zapisz_produkt(hid, z_off)
-    return {"produkt": zapisany, "skad": "off"}
+    # `niepelne` nie jest kolumną w bazie — przekazujemy je dalej, żeby ekran
+    # potwierdzenia poprosił o sprawdzenie wartości, których baza nie miała.
+    return {"produkt": zapisany, "skad": "off", "niepelne": z_off.get("niepelne", False)}
 
 
 @router.get("/produkty")
@@ -129,11 +169,21 @@ def usun_produkt(produkt_id: int, current_user: dict = Depends(get_current_user)
 
 
 @router.get("/szukaj")
-def szukaj(fraza: str = Query(""), current_user: dict = Depends(get_current_user)):
+async def szukaj(fraza: str = Query(""), current_user: dict = Depends(get_current_user)):
+    """Najpierw własna baza (natychmiast), potem propozycje z Open Food Facts.
+
+    Wyniki z OFF NIE są jeszcze zapisane — wybranie takiego produktu woła
+    `/produkt?kod=...`, które dopiero wtedy dokłada go do bazy gospodarstwa."""
+    hid = _hid(current_user)
     fraza = fraza.strip()
-    if len(fraza) < 2:
-        return []
-    return eat_db.szukaj_produktow(_hid(current_user), fraza)
+    if len(fraza) < 3:
+        return {"wlasne": [], "propozycje": []}
+
+    wlasne = eat_db.szukaj_produktow(hid, fraza)
+    znane = {w["kod"] for w in wlasne if w.get("kod")}
+    propozycje = [p for p in await run_in_threadpool(_szukaj_w_off, fraza)
+                  if p["kod"] not in znane]
+    return {"wlasne": wlasne, "propozycje": propozycje}
 
 
 @router.post("/etykieta")

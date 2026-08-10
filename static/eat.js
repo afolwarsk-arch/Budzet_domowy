@@ -1,4 +1,4 @@
-// wiem.eat — dziennik jedzenia.
+﻿// wiem.eat — dziennik jedzenia.
 //
 // Cała logika strony /eat. Osobny plik, nie doklejamy do app.js (1400 linii
 // finansów) — sekcje mają się nie mieszać.
@@ -130,6 +130,8 @@ function otworzArkusz(posilek) {
       </div>
       <div id="ark-komunikat"></div>
 
+      <div id="ark-wyniki" style="display:none;margin-bottom:14px"></div>
+
       <div id="skaner-wrap">
         <video id="skaner" playsinline muted></video>
         <div class="komunikat">Skieruj aparat na kod kreskowy.</div>
@@ -162,8 +164,19 @@ function otworzArkusz(posilek) {
   arkusz.querySelector('#d-opis').onclick = () => wyslijOpis(arkusz.querySelector('#ark-szukaj').value);
   arkusz.querySelector('#ark-plik').onchange = wyslijEtykiete;
   arkusz.querySelector('#ark-mik').onclick = dyktuj;
-  arkusz.querySelector('#ark-szukaj').addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') wyslijOpis(ev.target.value);
+  // Wpisywanie szuka produktów po nazwie (własna baza + Open Food Facts).
+  // Dopiero gdy nic nie ma, proponujemy oszacowanie opisu przez AI.
+  let czekaSzukanie = null;
+  const poleSzukaj = arkusz.querySelector('#ark-szukaj');
+  poleSzukaj.addEventListener('input', () => {
+    clearTimeout(czekaSzukanie);
+    const fraza = poleSzukaj.value.trim();
+    if (fraza.length < 3) { pokazWyniki(null); return; }
+    // odczekujemy pół sekundy, żeby nie odpytywać bazy przy każdej literze
+    czekaSzukanie = setTimeout(() => szukajProduktow(fraza), 500);
+  });
+  poleSzukaj.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { clearTimeout(czekaSzukanie); szukajProduktow(poleSzukaj.value.trim()); }
   });
   wczytajOstatnie();
 }
@@ -205,6 +218,58 @@ function dodajGotowy(p) {
     bialko: Number(p.bialko) || 0,
     tluszcz: Number(p.tluszcz) || 0,
     wegle: Number(p.wegle) || 0,
+  });
+}
+
+// ── szukanie po nazwie ──────────────────────────────────────────────────────
+
+function pokazWyniki(html) {
+  const box = arkusz && arkusz.querySelector('#ark-wyniki');
+  if (!box) return;
+  box.innerHTML = html || '';
+  box.style.display = html ? 'block' : 'none';
+}
+
+async function szukajProduktow(fraza) {
+  if (!fraza || fraza.length < 3) return;
+  pokazWyniki('<div class="komunikat">Szukam…</div>');
+  let d;
+  try {
+    d = await (await authFetch('/api/eat/szukaj?fraza=' + encodeURIComponent(fraza))).json();
+  } catch { pokazWyniki('<div class="komunikat blad">Nie udało się poszukać.</div>'); return; }
+
+  const wlasne = d.wlasne || [];
+  const propozycje = d.propozycje || [];
+  if (!wlasne.length && !propozycje.length) {
+    pokazWyniki(`<div class="komunikat">Nic takiego nie znalazłem.
+      <button type="button" id="w-opis" class="mini-btn">Oszacuj z opisu</button></div>`);
+    const b = arkusz.querySelector('#w-opis');
+    if (b) b.onclick = () => wyslijOpis(fraza);
+    return;
+  }
+
+  const wiersz = (p, zBazy) => `
+    <button class="szybka" data-kod="${e(p.kod || '')}" data-id="${p.id || ''}" type="button">
+      <span class="nz"><b>${e(p.nazwa)}</b><span>${e(p.marka || '')}${p.marka ? ' · ' : ''}${
+        p.kcal ? zaokr(p.kcal) + ' kcal/100 g' : 'brak wartości w bazie'}${
+        zBazy ? ' · u Was' : ''}</span></span>
+    </button>`;
+
+  pokazWyniki(
+    (wlasne.length ? '<div class="sek-tyt">Wasza baza</div>' + wlasne.map((p) => wiersz(p, true)).join('') : '')
+    + (propozycje.length ? '<div class="sek-tyt">Open Food Facts</div>' + propozycje.map((p) => wiersz(p, false)).join('') : '')
+  );
+
+  arkusz.querySelectorAll('#ark-wyniki [data-kod]').forEach((b) => {
+    b.onclick = () => {
+      const id = b.dataset.id;
+      if (id) {
+        const p = wlasne.find((x) => String(x.id) === id);
+        if (p) ekranProduktu(p, 'wlasna');
+      } else if (b.dataset.kod) {
+        poKodzie(b.dataset.kod);   // zapisze produkt u nas i otworzy potwierdzenie
+      }
+    };
   });
 }
 
@@ -268,7 +333,7 @@ async function poKodzie(kod) {
     if (!r.ok) { komunikat('Nie udało się sprawdzić kodu.', true); return; }
     const d = await r.json();
     komunikat('');
-    ekranProduktu(d.produkt, d.skad);
+    ekranProduktu(d.produkt, d.skad, d.niepelne);
   } catch { komunikat('Błąd połączenia.', true); }
 }
 
@@ -489,16 +554,24 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
 
 // Ekran produktu to teraz tylko nagłówek — resztą zajmuje się wspólny ekran
 // potwierdzenia, żeby każda droga dodawania kończyła się tak samo.
-function ekranProduktu(p, skad) {
+function ekranProduktu(p, skad, niepelne) {
   const zrodla = { off: 'Open Food Facts · zapisano u Was', wlasna: 'Wasza baza',
                    etykieta: 'Odczytane z etykiety' };
+  // Część produktów siedzi w bazie bez tabeli wartości — typowo woda mineralna.
+  // Nie odrzucamy ich (woda ma zero kalorii i to poprawna wartość), ale mówimy
+  // wprost, że liczby trzeba sprawdzić.
+  const ostrzezenie = niepelne
+    ? '<div class="komunikat blad">Baza nie ma dla tego produktu wartości odżywczych. '
+      + 'Przy wodzie zero kalorii jest poprawne — przy czymkolwiek innym wpisz je poniżej '
+      + 'albo wróć i zrób zdjęcie etykiety.</div>'
+    : '';
   const naglowek = `
     <div class="prod-gora">
       <div class="marka">${e(p.marka || '')}</div>
       <h3>${e(p.nazwa)}</h3>
       <div class="op">${p.opak_g ? 'opakowanie ' + zaokr(p.opak_g) + ' g · ' : ''}${zaokr(p.kcal)} kcal / 100 g</div>
       <div class="zrodlo">${e(zrodla[skad] || 'Wasza baza')}</div>
-    </div>`;
+    </div>${ostrzezenie}`;
   const opak = Number(p.opak_g) || 100;
   ekranPotwierdzenia(
     { nazwa: p.nazwa, ilosc_g: opak, kcal: 0, bialko: 0, tluszcz: 0, wegle: 0 },
