@@ -88,18 +88,47 @@ function pogrupuj(wpisy) {
   return wynik;
 }
 
+// Rozpiska składników zamrożona przy zjedzeniu dania z przepisu. Nie czytamy
+// jej z przepisu na żywo — ten mógł zostać potem poprawiony albo skasowany,
+// a w dzienniku ma stać to, co było w TAMTYM talerzu.
+function parsujRozpiske(json) {
+  if (!json) return null;
+  try {
+    const x = JSON.parse(json);
+    return Array.isArray(x) && x.length ? x : null;
+  } catch { return null; }
+}
+
 function wiersz(w, wSrodku) {
   // Treść wiersza to prawdziwy <button>, a nie div z role="button": krzyżyk
   // obok jest osobnym przyciskiem, a przycisk w przycisku to nieprawidłowy
   // HTML i klawiatura gubi się w nim. Kliknięcie w treść otwiera edycję —
   // najczęstsza poprawka to gramatura („dodałem 100 g, a zjadłem 180").
-  return `<div class="poz${wSrodku ? ' poz-skl' : ''}">
+  const rozpiska = parsujRozpiske(w.skladniki_json);
+  const klucz = 'w' + w.id;
+  const otwarta = !!rozpiska && grupyOtwarte.has(klucz);
+  const sam = `<div class="poz${wSrodku ? ' poz-skl' : ''}">
+    ${rozpiska ? `<button class="strzalka-btn" data-rozpiska="${klucz}" type="button"
+        aria-expanded="${otwarta}" aria-label="Pokaż składniki"><span class="strzalka">›</span></button>` : ''}
     <button class="poz-tresc" data-edytuj="${w.id}" type="button" title="Stuknij, żeby poprawić">
       <span class="nz">${e(w.nazwa)}</span>
       <span class="il">${e(w.opis_porcji || dziesietne(w.ilosc_g) + ' g')}</span>
       <span class="kc">${zaokr(w.kcal)}</span>
     </button>
     <button class="x" data-usun="${w.id}" title="Usuń">&times;</button>
+  </div>`;
+  if (!rozpiska) return sam;
+  return `<div class="z-rozpiska${otwarta ? ' rozwinieta' : ''}">
+    ${sam}
+    <div class="rozpiska"${otwarta ? '' : ' hidden'}>
+      ${rozpiska.map((s) => `<div class="rz">
+        <span class="rz-n">${e(s.nazwa)}</span>
+        <span class="rz-g">${dziesietne(s.ilosc_g)} g</span>
+        <span class="rz-k">${zaokr(s.kcal)} kcal</span>
+      </div>`).join('')}
+      <div class="rz-stopka">Tyle poszło na tę porcję. Zapisane w chwili zjedzenia —
+        późniejsze poprawki przepisu tego nie zmieniają.</div>
+    </div>
   </div>`;
 }
 
@@ -168,6 +197,13 @@ function rysujPosilki() {
     if (wpis) el.onclick = () => edytujWpis(wpis);
   });
 
+  box.querySelectorAll('[data-rozpiska]').forEach((b) => {
+    b.onclick = () => {
+      const k = b.dataset.rozpiska;
+      if (grupyOtwarte.has(k)) grupyOtwarte.delete(k); else grupyOtwarte.add(k);
+      rysujPosilki();
+    };
+  });
   box.querySelectorAll('[data-grupa]').forEach((b) => {
     b.onclick = () => {
       const id = b.dataset.grupa;

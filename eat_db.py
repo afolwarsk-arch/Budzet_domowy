@@ -104,6 +104,12 @@ def init_eat_db() -> None:
         # a interfejs radzi sobie z tym, że przepisu już nie ma.
         cur.execute("ALTER TABLE eat_wpisy ADD COLUMN IF NOT EXISTS przepis_id INTEGER")
         cur.execute("ALTER TABLE eat_wpisy ADD COLUMN IF NOT EXISTS porcje_zjedzone NUMERIC(6,2)")
+        # Rozpiska składników ZAMROŻONA w chwili zjedzenia — dokładnie tak, jak
+        # kalorie i makro. Podglądając w dzienniku „bigos" masz zobaczyć, co
+        # było w tym konkretnym talerzu, nawet jeśli przepis został potem
+        # poprawiony albo skasowany. Odczytywanie ich z przepisu na żywo
+        # pokazywałoby historię, której nigdy nie było.
+        cur.execute("ALTER TABLE eat_wpisy ADD COLUMN IF NOT EXISTS skladniki_json TEXT")
 
         # Produkty podstawowe — WSPÓLNE dla wszystkich gospodarstw, zasiane
         # z listy w kodzie. Open Food Facts nie ma surowców (zapytanie o pomidor
@@ -430,7 +436,8 @@ def get_dzien(household_id: int, user_id: int, data: str) -> dict:
 
 _POLA_WPISU = ("data", "posilek", "produkt_id", "nazwa", "opis_porcji", "ilosc_g",
                "kcal", "bialko", "tluszcz", "wegle",
-               "grupa_id", "grupa_nazwa", "przepis_id", "porcje_zjedzone")
+               "grupa_id", "grupa_nazwa", "przepis_id", "porcje_zjedzone",
+               "skladniki_json")
 
 
 def dodaj_wpis(household_id: int, user_id: int, dane: dict) -> dict:
@@ -441,10 +448,12 @@ def dodaj_wpis(household_id: int, user_id: int, dane: dict) -> dict:
         cur.execute("""
             INSERT INTO eat_wpisy (household_id, user_id, data, posilek, produkt_id,
                                    nazwa, opis_porcji, ilosc_g, kcal, bialko, tluszcz, wegle,
-                                   grupa_id, grupa_nazwa, przepis_id, porcje_zjedzone)
+                                   grupa_id, grupa_nazwa, przepis_id, porcje_zjedzone,
+                                   skladniki_json)
             VALUES (%(h)s,%(u)s,%(data)s,%(posilek)s,%(produkt_id)s,
                     %(nazwa)s,%(opis_porcji)s,%(ilosc_g)s,%(kcal)s,%(bialko)s,%(tluszcz)s,%(wegle)s,
-                    %(grupa_id)s,%(grupa_nazwa)s,%(przepis_id)s,%(porcje_zjedzone)s)
+                    %(grupa_id)s,%(grupa_nazwa)s,%(przepis_id)s,%(porcje_zjedzone)s,
+                    %(skladniki_json)s)
             RETURNING *
         """, {"h": household_id, "u": user_id, **d})
         return dict(cur.fetchone())
@@ -557,6 +566,14 @@ def get_przepis(przepis_id: int, household_id: int) -> dict | None:
         cur.execute("""SELECT * FROM eat_przepis_skladniki WHERE przepis_id=%s
                        ORDER BY kolejnosc, id""", (przepis_id,))
         przepis["skladniki"] = [dict(r) for r in cur.fetchall()]
+        # Masa, względem której liczymy porcję odmierzoną na wadze. Przy sałatce
+        # czy kanapce nic nie odparowuje, więc gotowe danie waży dokładnie tyle,
+        # co suma składników — i to jest domyślna odpowiedź. Wagę wpisuje się
+        # ręcznie tylko wtedy, gdy danie się gotuje i traci wodę.
+        suma = round(sum(float(s["ilosc_g"] or 0) for s in przepis["skladniki"]), 1)
+        przepis["suma_skladnikow_g"] = suma
+        przepis["waga_odniesienia_g"] = (
+            float(przepis["waga_gotowego_g"]) if przepis["waga_gotowego_g"] else suma)
         return przepis
 
 

@@ -141,7 +141,11 @@ async function otworzPorcje(id) {
   if (!arkusz) return;   // zamknięty, zanim odpowiedź doszła
 
   const porcjeDania = Number(p.porcje) || 1;
-  const waga = Number(p.waga_gotowego_g) || 0;
+  // Waga odniesienia przychodzi z serwera: albo ręcznie wpisana waga gotowego
+  // dania, albo suma składników, gdy nic nie odparowuje. Dzięki temu
+  // odmierzanie w gramach działa przy KAŻDYM przepisie, nie tylko gotowanym.
+  const waga = Number(p.waga_odniesienia_g) || 0;
+  const wagaRecznie = !!Number(p.waga_gotowego_g);
   const naPorcje = Number(p.kcal || 0) / porcjeDania;
   let jednostka = 'porcje';
   let posilekDocelowy = domyslnyPosilek();
@@ -158,7 +162,7 @@ async function otworzPorcje(id) {
         <span>T <b>${dziesietne(Number(p.tluszcz || 0) / porcjeDania)} g</b></span>
         <span>W <b>${dziesietne(Number(p.wegle || 0) / porcjeDania)} g</b></span>
       </div>
-      <div class="suma-pod">całe danie: ${ladna(porcjeDania)} ${odmianaPorcji(porcjeDania)}${waga ? ' · ' + dziesietne(waga) + ' g' : ''}</div>
+      <div class="suma-pod">całe danie: ${ladna(porcjeDania)} ${odmianaPorcji(porcjeDania)}${waga ? ' · ' + dziesietne(waga) + ' g' + (wagaRecznie ? ' po ugotowaniu' : '') : ''}</div>
     </div>
 
     ${waga ? `<div class="jedn-przel" id="jedn">
@@ -398,12 +402,10 @@ function otworzEdytor(przepis) {
     <div class="sek-tyt">Na ile porcji wychodzi</div>
     <input type="text" id="porcje" value="${ladna(stan.porcje)}" inputmode="decimal" autocomplete="off">
 
-    <div class="sek-tyt">Waga gotowego dania — opcjonalnie</div>
+    <div class="sek-tyt">Ile waży gotowe danie</div>
     <input type="text" id="waga" value="${stan.waga ? dziesietne(stan.waga) : ''}"
-           inputmode="decimal" autocomplete="off" placeholder="np. 2200">
-    <div class="komunikat">Potrzebna tylko wtedy, gdy chcesz odmierzać porcję na wadze.
-      Bez niej liczysz w porcjach i wszystko się zgadza — kalorie nie zmieniają się
-      przy gotowaniu, zmienia się tylko masa.</div>
+           inputmode="decimal" autocomplete="off">
+    <div class="komunikat" id="waga-info"></div>
 
     <div id="ark-komunikat"></div>
     <button class="cta" id="zapisz" type="button">${stan.id ? 'Zapisz zmiany' : 'Zapisz przepis'}</button>
@@ -471,11 +473,44 @@ function otworzEdytor(przepis) {
         <span>W <b>${dziesietne(s.wegle / porcje)} g</b></span>
       </div>
       <div class="suma-pod">całe danie: ${zaokr(s.kcal)} kcal · ${dziesietne(s.gramy)} g surowych składników</div>`;
+    odswiezWage(s.gramy);
   }
+
+  // Waga gotowego dania domyślnie RÓWNA SIĘ sumie składników — przy sałatce,
+  // kanapce czy koktajlu nic nie odparowuje, więc to jest poprawna odpowiedź
+  // i nie ma powodu o nią pytać. Pole nadąża za składnikami dopóty, dopóki
+  // sam go nie nadpiszesz; wtedy przestajemy je ruszać, bo znaczy to, że danie
+  // się gotuje i traci wodę.
+  function odswiezWage(sumaG) {
+    const inp = pole('#waga');
+    if (!wagaRecznie) inp.value = sumaG ? dziesietne(sumaG) : '';
+    const wpisana = zPola(inp);
+    const info = pole('#waga-info');
+    if (!sumaG) { info.textContent = 'Dodaj składniki, żeby policzyć wagę.'; return; }
+    if (!wagaRecznie || Math.abs(wpisana - sumaG) < 0.05) {
+      info.innerHTML = 'Tyle, ile ważą składniki — tak jest przy sałatce, kanapce czy '
+        + 'koktajlu. <b>Jeśli danie się gotuje i odparowuje, wpisz wagę garnka po ugotowaniu.</b>';
+    } else if (wpisana > 0) {
+      const ubytek = sumaG - wpisana;
+      info.innerHTML = ubytek > 0
+        ? `Odparowuje ${dziesietne(ubytek)} g (${Math.round(ubytek / sumaG * 100)}%). `
+          + 'Kalorie zostają te same — ubywa tylko wody.'
+        : `Danie waży więcej niż składniki o ${dziesietne(-ubytek)} g — `
+          + 'to normalne, gdy coś nasiąka wodą (kasza, makaron, ryż).';
+    } else {
+      info.textContent = 'Bez wagi liczymy w porcjach.';
+    }
+  }
+
+  let wagaRecznie = !!stan.waga;
 
   rysujSkladniki();
   rysujSume();
   pole('#porcje').addEventListener('input', rysujSume);
+  pole('#waga').addEventListener('input', () => {
+    wagaRecznie = true;
+    odswiezWage(sumy().gramy);
+  });
 
   pole('#zamknij').onclick = () => zamknijArkusz();
   pole('#dodaj-skl').onclick = () => ekranSkladnika((s) => {
@@ -503,7 +538,10 @@ function otworzEdytor(przepis) {
     ev.target.disabled = true;
     const cialo = {
       nazwa, porcje,
-      waga_gotowego_g: zPola(pole('#waga')) || null,
+      // Gdy nie nadpisałeś wagi, wysyłamy null i serwer bierze sumę składników
+      // NA BIEŻĄCO. Zapisanie wyliczonej liczby zamroziłoby ją i po dołożeniu
+      // składnika waga zostałaby stara.
+      waga_gotowego_g: wagaRecznie ? (zPola(pole('#waga')) || null) : null,
       skladniki: stan.skladniki,
     };
     try {

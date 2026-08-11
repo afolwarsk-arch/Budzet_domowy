@@ -639,13 +639,15 @@ def przepis_do_dnia(przepis_id: int, body: dict,
         raise HTTPException(400, "Nieznany posiłek")
 
     porcje_dania = float(p["porcje"]) or 1
-    waga_calosci = float(p["waga_gotowego_g"]) if p["waga_gotowego_g"] else None
+    # Masa, względem której przelicza się porcję odmierzoną na wadze. Gdy nic
+    # nie odparowuje (sałatka, kanapka, koktajl), gotowe danie waży dokładnie
+    # tyle, co suma składników — dlatego gramy działają ZAWSZE, a nie tylko przy
+    # przepisach z ręcznie wpisaną wagą.
+    waga_odniesienia = float(p["waga_odniesienia_g"]) or 1
 
     if body.get("gramy") not in (None, "", 0):
-        if not waga_calosci:
-            raise HTTPException(400, "Ten przepis nie ma zapisanej wagi gotowego dania")
         gramy = _sprawdz_ilosc(body.get("gramy"))
-        udzial = gramy / waga_calosci
+        udzial = gramy / waga_odniesienia
         porcje_zjedzone = round(udzial * porcje_dania, 2)
         ilosc_g = gramy
         opis = f"{_ladna(gramy)} g"
@@ -655,14 +657,21 @@ def przepis_do_dnia(przepis_id: int, body: dict,
             raise HTTPException(400, "Liczba porcji poza zakresem (0,05–20)")
         porcje_zjedzone = round(porcje_zjedzone, 2)
         udzial = porcje_zjedzone / porcje_dania
-        # Bez zapisanej wagi gotowego dania gramaturę wpisu wyprowadzamy z masy
-        # SUROWYCH składników. To przybliżenie (makaron nasiąka, sos odparowuje),
-        # ale kolumna jest wymagana, a kalorie i tak liczą się z udziału.
-        suma_surowych = sum(float(s["ilosc_g"] or 0) for s in p["skladniki"]) or 1
-        ilosc_g = round((waga_calosci or suma_surowych) * udzial, 1)
+        ilosc_g = round(waga_odniesienia * udzial, 1)
         opis = f"{_ladna(porcje_zjedzone)} porcji" if porcje_zjedzone != 1 else "1 porcja"
 
+    # Rozpiska ZAMROŻONA w chwili zjedzenia. Podglądając za miesiąc „bigos"
+    # w dzienniku masz zobaczyć, co było w tym talerzu — nawet jeśli przepis
+    # został w międzyczasie poprawiony albo skasowany.
+    import json as _json
+    rozpiska = _json.dumps([{
+        "nazwa": s["nazwa"],
+        "ilosc_g": round(float(s["ilosc_g"] or 0) * udzial, 1),
+        "kcal": round(float(s["kcal"] or 0) * udzial, 1),
+    } for s in p["skladniki"]], ensure_ascii=False)
+
     wpis = eat_db.dodaj_wpis(hid, current_user["user_id"], {
+        "skladniki_json": rozpiska,
         "data": _dzien(body.get("data")),
         "posilek": posilek,
         "produkt_id": None,
