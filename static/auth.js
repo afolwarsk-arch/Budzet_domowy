@@ -1049,7 +1049,7 @@ function _injectNav() {
   nav.dataset.zbudowany = '1';
 }
 
-function _pokazPrzelacznik() {
+function _pokazPrzelacznik(ev) {
   const biezacy = _modulBiezacy();
   const o = document.createElement('div');
   o.className = 'przelacznik-tlo';
@@ -1066,6 +1066,33 @@ function _pokazPrzelacznik() {
     </div>`;
   o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
   document.body.appendChild(o);
+
+  // Na szerokim ekranie panel siada dokładnie pod siatką kropek, a nie na
+  // środku ekranu — ruch ma wychodzić stamtąd, gdzie się stuknęło. Pozycję
+  // bierzemy z faktycznych współrzędnych przycisku, bo jego odległość od
+  // lewej krawędzi zależy od szerokości logo i nazwy modułu.
+  // Na telefonie zostaje układ z CSS: pełna szerokość tuż pod paskiem.
+  const guzik = (ev && ev.currentTarget) || document.querySelector('.nav-modul');
+  const panel = o.querySelector('.przelacznik');
+  if (guzik && panel && window.innerWidth > 700) {
+    const r = guzik.getBoundingClientRect();
+    const szer = panel.getBoundingClientRect().width;
+    // Przy prawej krawędzi panel musi się cofnąć, żeby nie wyjść poza ekran.
+    const lewa = Math.max(8, Math.min(r.left, window.innerWidth - szer - 8));
+    o.style.display = 'block';
+    o.style.padding = '0';
+    panel.style.position = 'absolute';
+    panel.style.top = Math.round(r.bottom + 8) + 'px';
+    panel.style.left = Math.round(lewa) + 'px';
+    panel.style.width = szer + 'px';
+  }
+
+  // Escape zamyka tak samo jak stuknięcie w tło — bez tego panel dało się
+  // zamknąć wyłącznie myszą.
+  const naKlawisz = (e) => {
+    if (e.key === 'Escape') { o.remove(); document.removeEventListener('keydown', naKlawisz); }
+  };
+  document.addEventListener('keydown', naKlawisz);
 }
 
 // Pasek rysujemy OD RAZU, nie czekając na potwierdzenie logowania. Wcześniej

@@ -25,6 +25,22 @@ function e(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 const zaokr = (v) => Math.round(Number(v) || 0);
+// Makro do dziesiątej części grama — tyle trzyma baza (NUMERIC(7,1)) i tyle
+// podaje Open Food Facts. Końcówka „,0" jest szumem, więc ją ucinamy:
+// 4.9 zostaje 4.9, ale 12.0 pokazujemy jako 12.
+const dziesietne = (v) => {
+  const x = Math.round((Number(v) || 0) * 10) / 10;
+  return Number.isInteger(x) ? String(x) : x.toFixed(1);
+};
+// Pola z ułamkami są type="text", nie type="number". W polu liczbowym
+// wpisanie „4,9" na polskiej klawiaturze daje PUSTĄ wartość — przeglądarka
+// uznaje ją za niepoprawną — a Number('') to zero. Po cichu wyzerowałoby to
+// makro. Tutaj bierzemy przecinek i kropkę tak samo; serwer też oba przyjmuje.
+const zPola = (el) => {
+  if (!el) return 0;
+  const x = parseFloat(String(el.value).replace(',', '.'));
+  return Number.isFinite(x) ? x : 0;
+};
 
 function etykietaDnia(iso) {
   const dzis = new Date().toLocaleDateString('sv-SE');
@@ -71,7 +87,7 @@ function rysujPosilki() {
         <button class="poz-tresc" data-edytuj="${w.id}" type="button"
                 title="Stuknij, żeby poprawić">
           <span class="nz">${e(w.nazwa)}</span>
-          <span class="il">${e(w.opis_porcji || zaokr(w.ilosc_g) + ' g')}</span>
+          <span class="il">${e(w.opis_porcji || dziesietne(w.ilosc_g) + ' g')}</span>
           <span class="kc">${zaokr(w.kcal)}</span>
         </button>
         <button class="x" data-usun="${w.id}" title="Usuń">&times;</button>
@@ -158,11 +174,14 @@ function rysujBilans() {
     const pctNad = nad ? ((z - k) / skala) * 100 : 0;
     // „ile zostało" zamiast „ile zjadłem" — przy odchudzaniu to jest ta liczba,
     // której się szuka, a odejmowanie w pamięci pięć razy dziennie to podatek.
-    const glowna = nad ? '+' + zaokr(z - k) : zaokr(Math.max(0, k - z));
+    // Kalorie w pełnych jednostkach, makro do 0,1 g — w sumie dnia dziesiąte
+    // części kilku pozycji potrafią złożyć się na pełny gram.
+    const licz = jedn === 'g' ? dziesietne : zaokr;
+    const glowna = nad ? '+' + licz(z - k) : licz(Math.max(0, k - z));
     return `<div>
       <div class="bl-n">${n}</div>
       <div class="bl-w">${glowna}<small> ${nad ? 'ponad cel' : 'zostało'}</small></div>
-      <div class="bl-d">${zaokr(z)} / ${zaokr(k)} ${jedn}</div>
+      <div class="bl-d">${licz(z)} / ${zaokr(k)} ${jedn}</div>
       <div class="pas"><span style="width:${pct.toFixed(1)}%;background:${kolor}"></span>
         ${nad ? `<span class="pas-nad" style="width:${pctNad.toFixed(1)}%;background:${kolor}"></span>` : ''}</div>
     </div>`;
@@ -330,7 +349,7 @@ async function wczytajOstatnie() {
     }
     box.innerHTML = lista.map((p, i) => `
       <button class="szybka" data-i="${i}" type="button">
-        <span class="nz"><b>${e(p.nazwa)}</b><span>${e(p.opis_porcji || zaokr(p.ilosc_g) + ' g')}${p.ile > 1 ? ' · ' + p.ile + '×' : ''}</span></span>
+        <span class="nz"><b>${e(p.nazwa)}</b><span>${e(p.opis_porcji || dziesietne(p.ilosc_g) + ' g')}${p.ile > 1 ? ' · ' + p.ile + '×' : ''}</span></span>
         <span class="kc">${zaokr(p.kcal)}</span>
       </button>`).join('');
     box.querySelectorAll('[data-i]').forEach((b) => {
@@ -713,13 +732,14 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja) {
       ${porcje.map((x) => `<button class="porcja" data-g="${x.g}" aria-pressed="${Math.round(x.g) === Math.round(bazowe.g)}" type="button">${x.etyk}</button>`).join('')}
     </div>` : ''}
     <div class="sek-tyt">Ile gramów</div>
-    <input type="number" id="p-gram" value="${Math.round(bazowe.g)}" min="1" max="5000" style="width:100%;margin-bottom:12px">
+    <input type="text" id="p-gram" value="${dziesietne(bazowe.g)}" inputmode="decimal"
+           autocomplete="off" style="width:100%;margin-bottom:12px">
     <div class="sek-tyt">Wartości — możesz poprawić</div>
     <div class="makro-siatka">
-      <label>kcal<input type="number" id="p-kcal" min="0" max="9000"></label>
-      <label>Białko<input type="number" id="p-b" min="0" max="500"></label>
-      <label>Tłuszcz<input type="number" id="p-t" min="0" max="500"></label>
-      <label>Węgle<input type="number" id="p-w" min="0" max="900"></label>
+      <label>kcal<input type="number" id="p-kcal" min="0" max="9000" step="1" inputmode="numeric"></label>
+      <label>Białko<input type="text" id="p-b" inputmode="decimal" autocomplete="off"></label>
+      <label>Tłuszcz<input type="text" id="p-t" inputmode="decimal" autocomplete="off"></label>
+      <label>Węgle<input type="text" id="p-w" inputmode="decimal" autocomplete="off"></label>
     </div>
     <div id="p-zgodnosc" class="komunikat"></div>
     <div class="sek-tyt">Do którego posiłku</div>
@@ -732,24 +752,27 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja) {
 
   const pole = (id) => ark.querySelector(id);
   const wartosci = () => ({
-    g: Number(pole('#p-gram').value) || 0,
-    kcal: Number(pole('#p-kcal').value) || 0,
-    bialko: Number(pole('#p-b').value) || 0,
-    tluszcz: Number(pole('#p-t').value) || 0,
-    wegle: Number(pole('#p-w').value) || 0,
+    g: zPola(pole('#p-gram')),
+    kcal: zPola(pole('#p-kcal')),
+    bialko: zPola(pole('#p-b')),
+    tluszcz: zPola(pole('#p-t')),
+    wegle: zPola(pole('#p-w')),
   });
 
   function wstaw(v) {
+    // Kalorie w pełnych jednostkach — nikt nie liczy siódmych dziesiątych
+    // kilokalorii. Makro z dokładnością do 0,1 g, bo przy 30 g produktu
+    // zaokrąglenie do pełnych gramów potrafi zjeść jedną trzecią wartości.
     pole('#p-kcal').value = Math.round(v.kcal);
-    pole('#p-b').value = Math.round(v.bialko);
-    pole('#p-t').value = Math.round(v.tluszcz);
-    pole('#p-w').value = Math.round(v.wegle);
+    pole('#p-b').value = dziesietne(v.bialko);
+    pole('#p-t').value = dziesietne(v.tluszcz);
+    pole('#p-w').value = dziesietne(v.wegle);
   }
 
   let poprzednieGramy = bazowe.g;
 
   function przelicz() {
-    const gTeraz = Number(pole('#p-gram').value) || 0;
+    const gTeraz = zPola(pole('#p-gram'));
     // Po ręcznej korekcie makro nadal skalujemy przy zmianie gramatury — tylko
     // od TWOICH wartości, nie od wyjściowych. Wcześniej przeliczanie milkło
     // całkiem i dało się zapisać 30 g z kaloriami wpisanymi dla 100 g.
@@ -932,7 +955,8 @@ function ekranPozycji(pozycje, opis) {
           <div style="flex:1;min-width:0">
             <div class="pe-nazwa">${e(p.nazwa)}</div>
             <div class="pe-linia">
-              <input type="number" data-gram="${i}" value="${zaokr(p.ilosc_g)}" min="1" max="5000"> g
+              <input type="text" data-gram="${i}" value="${dziesietne(p.ilosc_g)}"
+                     inputmode="decimal" autocomplete="off"> g
               <span class="pe-kcal" data-kcal="${i}">${zaokr(p.kcal)} kcal</span>
             </div>
           </div>
@@ -953,7 +977,7 @@ function ekranPozycji(pozycje, opis) {
   }));
 
   function biezaca(i) {
-    const g = Number(ark.querySelector(`[data-gram="${i}"]`).value) || 0;
+    const g = zPola(ark.querySelector(`[data-gram="${i}"]`));
     const b = bazowe[i];
     const m = b.g > 0 ? g / b.g : 0;
     return { g, kcal: b.kcal * m, bialko: b.bialko * m, tluszcz: b.tluszcz * m, wegle: b.wegle * m };
@@ -970,9 +994,9 @@ function ekranPozycji(pozycje, opis) {
     });
     ark.querySelector('#poz-suma').innerHTML = `
       <div class="wynik-kc">${zaokr(suma.kcal)} kcal</div>
-      <div class="wynik-mk"><span>B <b>${zaokr(suma.bialko)} g</b></span>
-        <span>T <b>${zaokr(suma.tluszcz)} g</b></span>
-        <span>W <b>${zaokr(suma.wegle)} g</b></span></div>`;
+      <div class="wynik-mk"><span>B <b>${dziesietne(suma.bialko)} g</b></span>
+        <span>T <b>${dziesietne(suma.tluszcz)} g</b></span>
+        <span>W <b>${dziesietne(suma.wegle)} g</b></span></div>`;
   }
   przelicz();
 

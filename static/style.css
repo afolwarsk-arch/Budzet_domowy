@@ -891,7 +891,16 @@ tr:hover td { background: var(--hover); }
 .przelacznik {
   background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-lg);
   padding: 16px; width: 100%; max-width: 380px;
+  /* Rozwija się w dół od górnej krawędzi — ruch wychodzi stamtąd, gdzie
+     stuknąłeś w kropki, więc widać, skąd panel się bierze. */
+  transform-origin: top center;
+  animation: przelacznik-opada .16s cubic-bezier(.2,.7,.3,1) both;
 }
+@keyframes przelacznik-opada {
+  from { opacity: 0; transform: translateY(-8px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .przelacznik { animation: none; } }
 .przelacznik-tyt {
   font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em;
   color: var(--muted); font-weight: 700; margin-bottom: 12px;
@@ -921,7 +930,10 @@ tr:hover td { background: var(--hover); }
   /* pas linków jest tu pusty (linki przejmuje dolny pasek), a jako flex:1
      niepotrzebnie rozpychał zawartość */
   .nav-linki { display: none; }
-  .przelacznik-tlo { align-items: flex-end; padding: 16px; }
+  /* Panel opada spod siatki kropek, a nie wjeżdża od dołu ekranu. Kropki stoją
+     w górnym pasku (56 px), więc otwieranie się przy przeciwnej krawędzi
+     zrywało związek między tym, co nacisnąłeś, a tym, co się pojawiło. */
+  .przelacznik-tlo { align-items: flex-start; padding: 62px 12px 12px; }
   .przelacznik { max-width: 100%; }
 }
 
