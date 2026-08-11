@@ -15,7 +15,7 @@ tygodniach codzienne zakupy rozpoznają się lokalnie.
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
 import eat_db
@@ -226,13 +226,17 @@ def szukaj(fraza: str = Query(""), current_user: dict = Depends(get_current_user
     hid = _hid(current_user)
     fraza = fraza.strip()
     if len(fraza) < 3:
-        return {"wlasne": [], "podstawowe": []}
+        return {"przepisy": [], "wlasne": [], "podstawowe": []}
 
+    # Przepisy PIERWSZE. Wpisując „capucino" szukasz swojej kawy z mlekiem
+    # owsianym, a nie kapsułki z Open Food Facts — i nie masz obowiązku
+    # pamiętać, czy zapisałeś to kiedyś jako produkt, czy jako przepis.
+    przepisy = eat_db.lista_przepisow(hid, fraza)[:6]
     wlasne = eat_db.szukaj_produktow(hid, fraza)
     nazwy = {w["nazwa"].lower() for w in wlasne}
     podstawowe = [p for p in eat_db.szukaj_bazowych(fraza)
                   if p["nazwa"].lower() not in nazwy]
-    return {"wlasne": wlasne, "podstawowe": podstawowe}
+    return {"przepisy": przepisy, "wlasne": wlasne, "podstawowe": podstawowe}
 
 
 @router.get("/szukaj/off")
@@ -271,8 +275,16 @@ def z_bazy_podstawowej(bazowy_id: int, current_user: dict = Depends(get_current_
 @router.post("/etykieta")
 async def czytaj_etykiete(file: UploadFile = File(...),
                           current_user: dict = Depends(get_current_user),
-                          kod: str = Query(default="")):
-    """Zdjęcie tabeli wartości odżywczych → produkt w bazie gospodarstwa."""
+                          kod: str = Query(default=""),
+                          nazwa: str = Form(default=""),
+                          marka: str = Form(default=""),
+                          opak_g: str = Form(default=""),
+                          sztuk: str = Form(default="")):
+    """Zdjęcie tabeli wartości odżywczych → produkt w bazie gospodarstwa.
+
+    Pola `nazwa`, `marka`, `opak_g` i `sztuk` przychodzą z wcześniejszego zdjęcia
+    PRZODU opakowania, jeśli takie było. Tabela z tyłu żadnego z nich nie
+    zawiera — bez nich produkt lądował w bazie jako „Produkt bez nazwy"."""
     if current_user.get("ai_zablokowane"):
         raise HTTPException(403, "Funkcje AI są wyłączone dla tego konta.")
     hid = _hid(current_user)
@@ -293,8 +305,85 @@ async def czytaj_etykiete(file: UploadFile = File(...),
         raise HTTPException(422, "Na tym zdjęciu nie widzę tabeli wartości odżywczych.")
     if kod.strip().isdigit():
         dane["kod"] = kod.strip()
+    # Odczyt z przodu ma pierwszeństwo tylko tam, gdzie tabela milczy: nazwa i
+    # liczba sztuk. Wartości odżywcze zostają z tabeli — to ona jest źródłem.
+    if nazwa.strip():
+        dane["nazwa"] = nazwa.strip()
+    if marka.strip():
+        dane["marka"] = marka.strip()
+    if opak_g.strip() and not dane.get("opak_g"):
+        dane["opak_g"] = _liczba(opak_g)
+    if sztuk.strip():
+        dane["sztuk_w_opak"] = _liczba(sztuk)
     dane["zrodlo"] = "etykieta"
     return {"produkt": eat_db.zapisz_produkt(hid, dane), "skad": "etykieta"}
+
+
+@router.post("/etykieta-przod")
+async def etykieta_przod(file: UploadFile = File(...),
+                         current_user: dict = Depends(get_current_user)):
+    """Zdjęcie PRZODU opakowania → nazwa produktu i wyniki z bazy zewnętrznej.
+
+    Tabela wartości jest z tyłu, ale nazwy produktu tam nie ma — a bez nazwy nie
+    da się go wyszukać. Ten odczyt bierze z przodu to, czego tabela nie zawiera:
+    jak produkt się nazywa, ile waży opakowanie i ile sztuk jest w środku.
+    Liczba sztuk jest tu kluczowa: pudełko pralinek ma kod tylko na opakowaniu
+    zbiorczym, a pojedyncza czekoladka żadnego."""
+    if current_user.get("ai_zablokowane"):
+        raise HTTPException(403, "Funkcje AI są wyłączone dla tego konta.")
+    hid = _hid(current_user)
+    import ai_processor
+    import database
+    zawartosc = await file.read()
+    try:
+        dane, uzycie = await run_in_threadpool(
+            ai_processor.czytaj_przod, zawartosc, file.content_type or "image/jpeg")
+    except Exception as e:
+        print(f"[eat] odczyt przodu opakowania nie powiodl sie: {e!r}")
+        raise HTTPException(502, "Nie udało się odczytać opakowania. Spróbuj ostrzejszego zdjęcia.")
+    database.log_api_usage(hid, "eat-przod", uzycie["input_tokens"], uzycie["output_tokens"],
+                           current_user["user_id"])
+
+    nazwa = (dane.get("nazwa") or "").strip()
+    if not nazwa:
+        raise HTTPException(422, "To nie wygląda na opakowanie jedzenia.")
+
+    fraza = (dane.get("fraza") or "").strip() or " ".join(
+        x for x in [(dane.get("marka") or "").strip(), nazwa] if x)
+    odczyt = {
+        "nazwa": nazwa[:120],
+        "marka": (dane.get("marka") or "").strip()[:80] or None,
+        "opak_g": _liczba(dane.get("opak_g")),
+        "sztuk": _liczba(dane.get("sztuk")),
+        "fraza": fraza[:120],
+    }
+
+    # Nazwa z przodu idzie wprost do bazy zewnętrznej — po to było to zdjęcie.
+    # Gdy nic nie znajdzie, użytkownik i tak ma odczytaną nazwę i gramaturę,
+    # więc może dorobić wartości ze zdjęcia tabeli z tyłu.
+    #
+    # Przez pulę wątków, bo to zwykłe urllib: w `async def` zatrzymałoby całą
+    # pętlę zdarzeń na tyle, ile trwa odpowiedź Open Food Facts — a ta potrafi
+    # milczeć kilkanaście sekund i wtedy stanęłaby cała aplikacja, nie tylko
+    # ten jeden użytkownik.
+    trafienia, padlo = await run_in_threadpool(_szukaj_w_off_ze_statusem, fraza)
+    wlasne = eat_db.szukaj_produktow(hid, nazwa)
+    return {"odczyt": odczyt, "wlasne": wlasne[:6],
+            "propozycje": trafienia[:8], "off_padlo": padlo}
+
+
+@router.patch("/produkty/{produkt_id}/sztuk")
+def ustaw_sztuk(produkt_id: int, body: dict, current_user: dict = Depends(get_current_user)):
+    """Ile sztuk w opakowaniu — żeby dało się zapisać „zjadłem jedną pralinkę",
+    gdy kod kreskowy jest tylko na pudełku."""
+    sztuk = _liczba(body.get("sztuk"))
+    if sztuk is not None and not 2 <= sztuk <= 200:
+        raise HTTPException(400, "Liczba sztuk poza zakresem (2–200)")
+    p = eat_db.ustaw_sztuk_w_opak(produkt_id, _hid(current_user),
+                                  int(sztuk) if sztuk else None)
+    if not p:
+        raise HTTPException(404, "Nie znam takiego produktu")
+    return p
 
 
 @router.post("/opis")

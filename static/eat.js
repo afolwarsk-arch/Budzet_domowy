@@ -16,6 +16,10 @@ let stanDnia = null;
 // sie pod wlasciwym kodem. Czyszczony przy otwarciu i zamknieciu arkusza, bo
 // inaczej potrafil przylgnac do zupelnie innego produktu.
 let ostatniKod = '';
+// Odczyt z PRZODU opakowania czekający na doklejenie do tabeli z tyłu. Tabela
+// nie zawiera ani nazwy produktu, ani liczby sztuk — jedno i drugie stoi
+// z przodu. Czyszczony razem z kodem, żeby nie przylgnął do innego produktu.
+let odczytZPrzodu = null;
 // Numer ostatniego wyszukiwania — starsza, wolniejsza odpowiedź nie może
 // nadpisać nowszej.
 let licznikSzukania = 0;
@@ -387,6 +391,7 @@ function zamknijArkusz(zHistorii) {
   // odpowiedź AI, za którą już zapłaciliśmy.
   if (sluchacz) { try { sluchacz.abort(); } catch {} sluchacz = null; }
   ostatniKod = '';
+  odczytZPrzodu = null;
   if (arkusz) {
     arkusz.remove();
     arkusz = null;
@@ -437,9 +442,13 @@ function otworzArkusz(posilek) {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5V5a1.5 1.5 0 0 1 1.5-1.5h2.5M16.5 3.5H19A1.5 1.5 0 0 1 20.5 5v2.5M20.5 16.5V19a1.5 1.5 0 0 1-1.5 1.5h-2.5M7.5 20.5H5A1.5 1.5 0 0 1 3.5 19v-2.5"/><path d="M7 8v8M10 8v8M13.5 8v8M17 8v8"/></svg>
           <span><span class="t">Skanuj kod kreskowy</span><span class="o">Najszybsze przy wszystkim z opakowania</span></span>
         </button>
+        <button class="droga" id="d-przod" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="3.5" width="13" height="17" rx="2"/><path d="M8.5 8h7M8.5 11.5h7M8.5 15h4"/></svg>
+          <span class="t">Zdjęcie przodu</span><span class="o">Odczyta nazwę i poszuka w bazie</span>
+        </button>
         <button class="droga" id="d-etykieta" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6" width="17" height="13" rx="2.5"/><circle cx="12" cy="12.5" r="3.4"/><path d="M8.5 6l1.4-2.2h4.2L15.5 6"/></svg>
-          <span class="t">Zdjęcie etykiety</span><span class="o">Gdy kodu nie ma albo produkt nieznany</span>
+          <span class="t">Zdjęcie tabeli z tyłu</span><span class="o">Gdy trzeba odczytać wartości odżywcze</span>
         </button>
         <button class="droga" id="d-opis" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9"/></svg>
@@ -450,6 +459,7 @@ function otworzArkusz(posilek) {
       <div class="sek-tyt">Ostatnio jadłeś</div>
       <div id="ark-ostatnie"><div class="komunikat">Wczytuję…</div></div>
       <input type="file" id="ark-plik" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="ark-plik-przod" accept="image/*" capture="environment" style="display:none">
     </div>`;
   document.body.appendChild(arkusz);
   // W trybie aplikacji „wstecz" jest podstawowym gestem zamykania. Bez wpisu w
@@ -459,6 +469,12 @@ function otworzArkusz(posilek) {
   arkusz.querySelector('#ark-x').onclick = zamknijArkusz;
   arkusz.querySelector('#d-skan').onclick = uruchomSkaner;
   arkusz.querySelector('#d-etykieta').onclick = () => arkusz.querySelector('#ark-plik').click();
+  arkusz.querySelector('#d-przod').onclick = () => arkusz.querySelector('#ark-plik-przod').click();
+  arkusz.querySelector('#ark-plik-przod').onchange = (ev) => {
+    const plik = ev.target.files && ev.target.files[0];
+    if (plik) wyslijPrzod(plik);
+    ev.target.value = '';   // ten sam plik dwa razy z rzędu też ma zadziałać
+  };
   arkusz.querySelector('#d-opis').onclick = () => {
     const pole = arkusz.querySelector('#ark-szukaj');
     // Stuknięcie w „Opisz słowami" przy pustym polu to prośba o miejsce na opis,
@@ -560,29 +576,29 @@ async function szukajProduktow(fraza) {
   // starsza, wolniejsza odpowiedź nie może nadpisać nowszej
   if (mojeZadanie !== licznikSzukania || !arkusz) return;
 
-  rysujWyniki(fraza, d.wlasne || [], d.podstawowe || [], [], false, true);
-  dociagnijZOpakowan(fraza, mojeZadanie, d.wlasne || [], d.podstawowe || []);
+  rysujWyniki(fraza, d.przepisy || [], d.wlasne || [], d.podstawowe || [], [], false, true);
+  dociagnijZOpakowan(fraza, mojeZadanie, d.przepisy || [], d.wlasne || [], d.podstawowe || []);
 }
 
 // Produkty z opakowań dociągamy OSOBNYM żądaniem. Wcześniej cała odpowiedź
 // czekała na Open Food Facts — do kilkudziesięciu sekund — mimo że wyniki
 // lokalne były gotowe od razu.
-async function dociagnijZOpakowan(fraza, mojeZadanie, wlasne, podstawowe) {
+async function dociagnijZOpakowan(fraza, mojeZadanie, przepisy, wlasne, podstawowe) {
   let d;
   try {
     d = await (await authFetch('/api/eat/szukaj/off?fraza=' + encodeURIComponent(fraza))).json();
   } catch { return; }
   if (mojeZadanie !== licznikSzukania || !arkusz) return;
-  rysujWyniki(fraza, wlasne, podstawowe, d.propozycje || [], d.off_padlo, false);
+  rysujWyniki(fraza, przepisy, wlasne, podstawowe, d.propozycje || [], d.off_padlo, false);
 }
 
-function rysujWyniki(fraza, wlasne, podstawowe, propozycje, offPadlo, jeszczeSzuka) {
+function rysujWyniki(fraza, przepisy, wlasne, podstawowe, propozycje, offPadlo, jeszczeSzuka) {
   const uwagaOff = offPadlo
     ? '<div class="komunikat blad">Baza produktów markowych nie odpowiada (bywa przeciążona). '
       + 'Spróbuj za chwilę albo zeskanuj kod kreskowy.</div>'
     : '';
 
-  if (!wlasne.length && !podstawowe.length && !propozycje.length) {
+  if (!przepisy.length && !wlasne.length && !podstawowe.length && !propozycje.length) {
     if (jeszczeSzuka) { pokazWyniki('<div class="komunikat">Szukam…</div>'); return; }
     pokazWyniki(uwagaOff + `<div class="komunikat">Nic takiego nie znalazłem.
       <button type="button" id="w-opis" class="mini-btn">Oszacuj z opisu</button></div>`);
@@ -602,12 +618,26 @@ function rysujWyniki(fraza, wlasne, podstawowe, propozycje, offPadlo, jeszczeSzu
     </button>`;
   };
 
+  // Przepisy PIERWSZE i z własnym podpisem — „capucino" ma znaleźć Twoją kawę
+  // z mlekiem owsianym, zanim pokaże cokolwiek z opakowania.
+  const wierszPrzepisu = (p) => {
+    const porcje = Number(p.porcje) || 1;
+    return `<button class="szybka" data-przepis="${p.id}" type="button">
+      <span class="nz"><b>${e(p.nazwa)}</b><span>Twój przepis · ${zaokr(Number(p.kcal || 0) / porcje)} kcal / porcję</span></span>
+    </button>`;
+  };
+
   pokazWyniki(uwagaOff
+    + (przepisy.length ? '<div class="sek-tyt">Twoje przepisy</div>' + przepisy.map(wierszPrzepisu).join('') : '')
     + (wlasne.length ? '<div class="sek-tyt">Wasza baza</div>' + wlasne.map((p) => wiersz(p, 'wlasna')).join('') : '')
     + (podstawowe.length ? '<div class="sek-tyt">Produkty podstawowe</div>' + podstawowe.map((p) => wiersz(p, 'baza')).join('') : '')
     + (propozycje.length ? '<div class="sek-tyt">Produkty z opakowań</div>' + propozycje.map((p) => wiersz(p, 'off')).join('') : '')
     + (jeszczeSzuka ? '<div class="komunikat">Szukam też wśród produktów z opakowań…</div>' : '')
   );
+
+  arkusz.querySelectorAll('#ark-wyniki [data-przepis]').forEach((b) => {
+    b.onclick = () => ekranPrzepisu(b.dataset.przepis);
+  });
 
   arkusz.querySelectorAll('#ark-wyniki [data-rodzaj]').forEach((b) => {
     b.onclick = async () => {
@@ -789,12 +819,23 @@ async function wyslijEtykiete(ev) {
   komunikat('Odczytuję etykietę…');
   const fd = new FormData();
   fd.append('file', plik);
+  // Nazwę, gramaturę i liczbę sztuk odczytane z PRZODU doklejamy do produktu
+  // z tabeli — z tyłu opakowania nie ma żadnej z tych rzeczy, a bez nazwy
+  // produkt lądowałby w bazie jako „Produkt bez nazwy".
+  const zPrzodu = odczytZPrzodu;
+  if (zPrzodu) {
+    if (zPrzodu.nazwa) fd.append('nazwa', zPrzodu.nazwa);
+    if (zPrzodu.marka) fd.append('marka', zPrzodu.marka);
+    if (zPrzodu.opak_g) fd.append('opak_g', String(zPrzodu.opak_g));
+    if (zPrzodu.sztuk) fd.append('sztuk', String(zPrzodu.sztuk));
+  }
   try {
     const url = '/api/eat/etykieta' + (ostatniKod ? '?kod=' + encodeURIComponent(ostatniKod) : '');
     const r = await authFetch(url, { method: 'POST', body: fd });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { komunikat(d.detail || 'Nie udało się odczytać.', true); return; }
     ostatniKod = '';
+    odczytZPrzodu = null;
     komunikat('');
     ekranProduktu(d.produkt, 'etykieta');
   } catch { komunikat('Błąd połączenia.', true); }
@@ -868,6 +909,14 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja) {
   let recznie = false;   // gdy sam poprawisz makro, przestajemy je przeliczać
 
   const porcje = [];
+  // „1 sztuka" idzie PIERWSZA, bo przy pudełku pralinek to jedyna sensowna
+  // porcja: kod kreskowy jest tylko na opakowaniu zbiorczym, a pojedyncza
+  // czekoladka nie ma żadnego i nikt jej nie waży.
+  if (na100 && na100.opak_g && na100.sztuk > 1) {
+    const jedna = na100.opak_g / na100.sztuk;
+    porcje.push({ etyk: '1 szt.', g: Math.round(jedna * 10) / 10 });
+    porcje.push({ etyk: '2 szt.', g: Math.round(jedna * 2 * 10) / 10 });
+  }
   if (na100 && na100.opak_g) {
     porcje.push({ etyk: 'całe opak.', g: Math.round(na100.opak_g) });
     porcje.push({ etyk: '½ opak.', g: Math.round(na100.opak_g / 2) });
@@ -886,6 +935,9 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja) {
     ${na100 ? `<div class="sek-tyt">Porcja</div><div class="porcje" id="porcje">
       ${porcje.map((x) => `<button class="porcja" data-g="${x.g}" aria-pressed="${Math.round(x.g) === Math.round(bazowe.g)}" type="button">${x.etyk}</button>`).join('')}
     </div>` : ''}
+    ${(na100 && na100.opak_g && !na100.sztuk && na100.produkt_id) ? `
+      <div class="komunikat" id="p-sztuk-wiersz">Opakowanie zbiorcze?
+        <button type="button" id="p-sztuk-btn" class="mini-btn">Podaj liczbę sztuk</button></div>` : ''}
     <div class="sek-tyt">Ile gramów</div>
     <input type="text" id="p-gram" value="${dziesietne(bazowe.g)}" inputmode="decimal"
            autocomplete="off" style="width:100%;margin-bottom:12px">
@@ -986,6 +1038,36 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja) {
     przelicz();
   });
 
+  // Liczba sztuk w opakowaniu — jedyny sposób, żeby zapisać „zjadłem jedną
+  // pralinkę", gdy kod kreskowy jest tylko na pudełku. Zapisujemy ją przy
+  // produkcie, więc pytamy raz w życiu.
+  const sztukBtn = ark.querySelector('#p-sztuk-btn');
+  if (sztukBtn) sztukBtn.onclick = () => {
+    const wiersz = ark.querySelector('#p-sztuk-wiersz');
+    wiersz.innerHTML = 'Ile sztuk w opakowaniu? '
+      + '<input type="text" id="p-sztuk" inputmode="numeric" autocomplete="off" '
+      + 'style="width:64px;text-align:center"> '
+      + '<button type="button" id="p-sztuk-ok" class="mini-btn">Zapisz</button>';
+    const inp = ark.querySelector('#p-sztuk');
+    inp.focus();
+    ark.querySelector('#p-sztuk-ok').onclick = async () => {
+      const n = Math.round(zPola(inp));
+      if (!(n >= 2 && n <= 200)) { wiersz.classList.add('blad'); return; }
+      try {
+        const r = await authFetch('/api/eat/produkty/' + produktId + '/sztuk', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sztuk: n }),
+        });
+        if (!r.ok) { wiersz.classList.add('blad'); return; }
+        const p = await r.json();
+        // Przerysowujemy ekran, żeby doszły przyciski „1 szt." i „2 szt.".
+        zamknijArkusz();
+        otworzArkusz(posilekDocelowy);
+        ekranProduktu(p, 'wlasna');
+      } catch { wiersz.classList.add('blad'); }
+    };
+  };
+
   const listaPorcji = ark.querySelector('#porcje');
   if (listaPorcji) listaPorcji.onclick = (ev) => {
     const b = ev.target.closest('.porcja');
@@ -1053,6 +1135,214 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja) {
   };
 }
 
+// ── zdjęcie przodu opakowania ───────────────────────────────────────────────
+
+// Tabela wartości jest z tyłu, ale nazwy produktu tam nie ma — a bez nazwy nie
+// da się go wyszukać. To zdjęcie bierze z przodu to, czego tabela nie zawiera.
+async function wyslijPrzod(plik) {
+  komunikat('Odczytuję opakowanie…');
+  const fd = new FormData();
+  fd.append('file', plik);
+  let d;
+  try {
+    const r = await authFetch('/api/eat/etykieta-przod', { method: 'POST', body: fd });
+    d = await r.json().catch(() => ({}));
+    if (!r.ok) { komunikat(d.detail || 'Nie udało się odczytać.', true); return; }
+  } catch { komunikat('Błąd połączenia.', true); return; }
+  if (!arkusz) return;
+  komunikat('');
+  ekranZPrzodu(d);
+}
+
+function ekranZPrzodu(d) {
+  const ark = arkusz && arkusz.querySelector('.ark');
+  if (!ark) return;
+  zatrzymajSkaner();
+  const o = d.odczyt || {};
+  const wlasne = d.wlasne || [];
+  const propozycje = d.propozycje || [];
+
+  const wiersz = (p, rodzaj) => `<button class="szybka" data-rodzaj="${rodzaj}"
+      data-kod="${e(p.kod || '')}" data-id="${p.id || ''}" type="button">
+    <span class="nz"><b>${e(p.nazwa)}</b><span>${(p.marka ? e(p.marka) + ' · ' : '')
+      + (p.kcal ? zaokr(p.kcal) + ' kcal/100 g' : 'brak wartości w bazie')}</span></span>
+  </button>`;
+
+  ark.innerHTML = `
+    <div class="ark-gl">
+      <button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
+      <h2 style="font-size:1rem">Odczytane z opakowania</h2>
+      <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button>
+    </div>
+    <div class="prod-gora">
+      <div class="marka">${e(o.marka || '')}</div>
+      <h3>${e(o.nazwa || '')}</h3>
+      <div class="op">${o.opak_g ? 'opakowanie ' + zaokr(o.opak_g) + ' g' : 'gramatury nie widać'}${
+        o.sztuk ? ' · ' + zaokr(o.sztuk) + ' szt.' : ''}</div>
+    </div>
+    ${d.off_padlo ? '<div class="komunikat blad">Baza produktów markowych nie odpowiada. '
+      + 'Spróbuj za chwilę albo odczytaj wartości z tabeli z tyłu.</div>' : ''}
+    ${wlasne.length ? '<div class="sek-tyt">Macie już u siebie</div>'
+      + wlasne.map((p) => wiersz(p, 'wlasna')).join('') : ''}
+    ${propozycje.length ? '<div class="sek-tyt">Znalezione w bazie zewnętrznej</div>'
+      + propozycje.map((p) => wiersz(p, 'off')).join('') : ''}
+    ${!wlasne.length && !propozycje.length
+      ? '<div class="komunikat">Nic nie znalazłem pod tą nazwą. Zrób zdjęcie tabeli '
+        + 'z tyłu — nazwę i gramaturę już mam, dojdą tylko wartości odżywcze.</div>' : ''}
+    <div class="sek-tyt">Albo dokończ ręcznie</div>
+    <button class="cta" id="p-tabela" type="button">Zdjęcie tabeli z tyłu</button>
+    <div id="ark-komunikat"></div>`;
+
+  ark.querySelector('#zamknij2').onclick = () => zamknijArkusz();
+  ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+  // Nazwa i liczba sztuk z przodu doklejają się do produktu odczytanego z tyłu —
+  // tamta tabela nie zawiera ani jednego, ani drugiego.
+  odczytZPrzodu = o;
+  ark.querySelector('#p-tabela').onclick = () => {
+    const wej = arkusz.querySelector('#ark-plik');
+    if (wej) wej.click();
+  };
+
+  ark.querySelectorAll('[data-rodzaj]').forEach((b) => {
+    b.onclick = async () => {
+      if (b.dataset.rodzaj === 'wlasna') {
+        const p = wlasne.find((x) => String(x.id) === b.dataset.id);
+        if (p) ekranProduktu(p, 'wlasna');
+      } else if (b.dataset.kod) {
+        poKodzie(b.dataset.kod);
+      }
+    };
+  });
+}
+
+// ── ekran przepisu w dzienniku ──────────────────────────────────────────────
+
+// Przepis wybrany z wyszukiwarki dziennika. Pełne dane dociągamy osobno, bo
+// lista wyszukiwania nie niesie składników ani wagi odniesienia.
+async function ekranPrzepisu(id) {
+  const ark = arkusz && arkusz.querySelector('.ark');
+  if (!ark) return;
+  zatrzymajSkaner();
+  ark.innerHTML = '<div class="komunikat">Wczytuję przepis…</div>';
+  let p;
+  try {
+    const r = await authFetch('/api/eat/przepisy/' + id);
+    if (!r.ok) throw new Error('brak');
+    p = await r.json();
+  } catch {
+    ark.innerHTML = '<div class="komunikat blad">Nie udało się wczytać przepisu.</div>';
+    return;
+  }
+  if (!arkusz) return;
+
+  const porcjeDania = Number(p.porcje) || 1;
+  // Waga odniesienia: ręcznie wpisana waga gotowego dania albo suma składników,
+  // gdy nic nie odparowuje. Dzięki temu gramy działają przy każdym przepisie.
+  const waga = Number(p.waga_odniesienia_g) || 0;
+  let jednostka = 'porcje';
+
+  ark.innerHTML = `
+    <div class="ark-gl">
+      <button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
+      <h2 style="font-size:1rem">${e(p.nazwa)}</h2>
+      <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button>
+    </div>
+    <div class="wynik">
+      <div class="wynik-kc">${zaokr(Number(p.kcal || 0) / porcjeDania)} kcal<span style="font-size:13px;font-weight:400;color:var(--muted)"> / porcję</span></div>
+      <div class="wynik-mk">
+        <span>B <b>${dziesietne(Number(p.bialko || 0) / porcjeDania)} g</b></span>
+        <span>T <b>${dziesietne(Number(p.tluszcz || 0) / porcjeDania)} g</b></span>
+        <span>W <b>${dziesietne(Number(p.wegle || 0) / porcjeDania)} g</b></span>
+      </div>
+    </div>
+    ${waga ? `<div class="gdzie" id="jedn" style="margin-top:12px">
+      <button data-j="porcje" aria-pressed="true" type="button">W porcjach</button>
+      <button data-j="gramy" aria-pressed="false" type="button">W gramach</button>
+    </div>` : ''}
+    <div class="sek-tyt" id="tyt-ile">Ile porcji</div>
+    <div class="porcje" id="szybkie">
+      ${[['0,5', '½'], ['1', '1'], ['1,5', '1½'], ['2', '2']].map(([v, et], i) =>
+        `<button class="porcja" data-p="${v}" aria-pressed="${i === 1}" type="button">${et}</button>`).join('')}
+    </div>
+    <input type="text" id="ile" value="1" inputmode="decimal" autocomplete="off" style="width:100%;margin-bottom:12px">
+    <div class="wynik" id="wynik-ile"></div>
+    <div class="sek-tyt">Do którego posiłku</div>
+    <div class="gdzie" id="gdzie">
+      ${POSILKI.map(([k, n]) => `<button data-p="${k}" aria-pressed="${k === posilekDocelowy}" type="button">${n}</button>`).join('')}
+    </div>
+    <div id="ark-komunikat"></div>
+    <button class="cta" id="dodaj" type="button">Dodaj do dnia</button>`;
+
+  const pole = (s) => ark.querySelector(s);
+
+  function przelicz() {
+    const ile = zPola(pole('#ile'));
+    const udzial = jednostka === 'gramy' && waga > 0 ? ile / waga : ile / porcjeDania;
+    pole('#wynik-ile').innerHTML = `
+      <div class="wynik-kc">${zaokr(Number(p.kcal || 0) * udzial)} kcal</div>
+      <div class="wynik-mk">
+        <span>B <b>${dziesietne(Number(p.bialko || 0) * udzial)} g</b></span>
+        <span>T <b>${dziesietne(Number(p.tluszcz || 0) * udzial)} g</b></span>
+        <span>W <b>${dziesietne(Number(p.wegle || 0) * udzial)} g</b></span>
+      </div>`;
+  }
+  przelicz();
+
+  pole('#ile').addEventListener('input', () => {
+    ark.querySelectorAll('#szybkie .porcja').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    przelicz();
+  });
+  pole('#szybkie').onclick = (ev) => {
+    const b = ev.target.closest('[data-p]');
+    if (!b) return;
+    ark.querySelectorAll('#szybkie .porcja').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    pole('#ile').value = b.dataset.p;
+    przelicz();
+  };
+  const przel = pole('#jedn');
+  if (przel) przel.onclick = (ev) => {
+    const b = ev.target.closest('[data-j]');
+    if (!b) return;
+    ark.querySelectorAll('#jedn [data-j]').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    jednostka = b.dataset.j;
+    pole('#szybkie').style.display = jednostka === 'gramy' ? 'none' : 'flex';
+    pole('#tyt-ile').textContent = jednostka === 'gramy' ? 'Ile gramów' : 'Ile porcji';
+    pole('#ile').value = jednostka === 'gramy' ? String(Math.round(waga / porcjeDania)) : '1';
+    przelicz();
+  };
+  pole('#gdzie').onclick = (ev) => {
+    const b = ev.target.closest('[data-p]');
+    if (!b) return;
+    ark.querySelectorAll('#gdzie [data-p]').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    posilekDocelowy = b.dataset.p;
+  };
+  pole('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+  pole('#zamknij2').onclick = () => zamknijArkusz();
+
+  pole('#dodaj').onclick = async (ev) => {
+    const ile = zPola(pole('#ile'));
+    if (!ile || ile <= 0) { komunikat('Podaj ilość.', true); return; }
+    ev.target.disabled = true;
+    const cialo = { data: dzienISO, posilek: posilekDocelowy };
+    if (jednostka === 'gramy') cialo.gramy = ile; else cialo.porcje = ile;
+    try {
+      const r = await authFetch('/api/eat/przepisy/' + p.id + '/do-dnia', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cialo),
+      });
+      if (!r.ok) {
+        const x = await r.json().catch(() => ({}));
+        komunikat(x.detail || 'Nie udało się dodać.', true);
+        ev.target.disabled = false; return;
+      }
+      zamknijArkusz();
+      await wczytajDzien();
+    } catch { komunikat('Błąd połączenia.', true); ev.target.disabled = false; }
+  };
+}
+
 // ── ekran produktu (wybór porcji) ───────────────────────────────────────────
 
 // Ekran produktu to teraz tylko nagłówek — resztą zajmuje się wspólny ekran
@@ -1079,13 +1369,19 @@ function ekranProduktu(p, skad, niepelne) {
   // zeskanowanie kilograma ryżu i szybkie „Dodaj" zapisywało 3500 kcal.
   // Całe opakowanie ma sens tylko przy małych (jogurt, batonik).
   const opak = Number(p.opak_g) || 0;
-  const domyslna = (opak && opak <= 250) ? opak : 100;
+  const sztuk = Number(p.sztuk_w_opak) || 0;
+  // Gdy wiadomo, ile sztuk jest w opakowaniu, domyślną porcją jest JEDNA —
+  // przy pudełku pralinek nikt nie zjada całego naraz. W przeciwnym razie
+  // 100 g; całe opakowanie tylko przy małych, bo zeskanowanie kilograma ryżu
+  // i szybkie „Dodaj" zapisywało 3500 kcal.
+  const domyslna = (opak && sztuk > 1) ? Math.round(opak / sztuk * 10) / 10
+    : (opak && opak <= 250) ? opak : 100;
   ekranPotwierdzenia(
     { nazwa: p.nazwa, ilosc_g: domyslna, opis_porcji: p.opis_porcji || null,
       kcal: 0, bialko: 0, tluszcz: 0, wegle: 0 },
     { kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
       tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
-      opak_g: Number(p.opak_g) || 0 },
+      opak_g: opak, sztuk: sztuk, produkt_id: p.id },
     p.id,
     naglowek,
   );

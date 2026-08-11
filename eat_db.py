@@ -55,6 +55,10 @@ def init_eat_db() -> None:
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS eat_produkty_kod "
                     "ON eat_produkty (household_id, kod) WHERE kod IS NOT NULL")
         cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS nazwa_szukaj TEXT")
+        # Ile sztuk w opakowaniu. Na pudełku pralinek kod kreskowy jest tylko na
+        # zbiorczym opakowaniu, a pojedyncza czekoladka nie ma żadnego — więc
+        # jedyny sposób, żeby zapisać „zjadłem jedną", to podzielić opakowanie.
+        cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS sztuk_w_opak INTEGER")
         cur.execute("CREATE INDEX IF NOT EXISTS eat_produkty_szukaj "
                     "ON eat_produkty (household_id, nazwa_szukaj)")
 
@@ -349,7 +353,7 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
     """Dokłada produkt do bazy gospodarstwa. Przy powtórzonym kodzie odświeża
     wartości zamiast tworzyć duplikat."""
     pola = ("kod", "nazwa", "marka", "opak_g", "kcal", "bialko", "tluszcz",
-            "wegle", "blonnik", "cukry", "sol", "zrodlo")
+            "wegle", "blonnik", "cukry", "sol", "zrodlo", "sztuk_w_opak")
     w = {p: dane.get(p) for p in pola}
     w["zrodlo"] = w["zrodlo"] if w["zrodlo"] in ZRODLA else "reczne"
 
@@ -379,16 +383,24 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
     w["kod"] = (str(w["kod"]).strip()[:20] or None) if w["kod"] else None
     if w["kcal"] is None:
         w["kcal"] = 0        # kolumna jest NOT NULL; zero to poprawna wartość dla wody
+    # Liczba sztuk musi byc sensowna: 0 dzieliloby przez zero, a tysiac pralinek
+    # w pudelku to blad odczytu, nie produkt.
+    sztuk = w.get("sztuk_w_opak")
+    try:
+        sztuk = int(float(str(sztuk).replace(",", "."))) if sztuk not in (None, "") else None
+    except (TypeError, ValueError):
+        sztuk = None
+    w["sztuk_w_opak"] = sztuk if sztuk and 2 <= sztuk <= 200 else None
     w["nazwa_szukaj"] = bez_ogonkow(w["nazwa"])
     with get_db() as cur:
         if w["kod"]:
             cur.execute("""
                 INSERT INTO eat_produkty (household_id, kod, nazwa, marka, opak_g, kcal,
                                           bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo,
-                                          nazwa_szukaj)
+                                          nazwa_szukaj, sztuk_w_opak)
                 VALUES (%(h)s,%(kod)s,%(nazwa)s,%(marka)s,%(opak_g)s,%(kcal)s,
                         %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s,
-                        %(nazwa_szukaj)s)
+                        %(nazwa_szukaj)s,%(sztuk_w_opak)s)
                 -- WHERE kod IS NOT NULL jest KONIECZNE: indeks unikalny jest
                 -- częściowy (ten sam warunek), a Postgres bez powtórzenia
                 -- predykatu nie potrafi go dopasować i przerywa błędem. Przez to
@@ -399,20 +411,32 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
                        zrodlo=EXCLUDED.zrodlo, marka=EXCLUDED.marka, opak_g=EXCLUDED.opak_g,
                        kcal=EXCLUDED.kcal, bialko=EXCLUDED.bialko, tluszcz=EXCLUDED.tluszcz,
                        wegle=EXCLUDED.wegle, blonnik=EXCLUDED.blonnik, cukry=EXCLUDED.cukry,
-                       sol=EXCLUDED.sol
+                       sol=EXCLUDED.sol,
+                       -- Liczby sztuk nie kasujemy, gdy nowy odczyt jej nie widzi:
+                       -- tabela z tylu opakowania jej nie zawiera, a przod tak.
+                       sztuk_w_opak=COALESCE(EXCLUDED.sztuk_w_opak, eat_produkty.sztuk_w_opak)
                 RETURNING *
             """, {"h": household_id, **w})
         else:
             cur.execute("""
                 INSERT INTO eat_produkty (household_id, nazwa, marka, opak_g, kcal,
                                           bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo,
-                                          nazwa_szukaj)
+                                          nazwa_szukaj, sztuk_w_opak)
                 VALUES (%(h)s,%(nazwa)s,%(marka)s,%(opak_g)s,%(kcal)s,
                         %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s,
-                        %(nazwa_szukaj)s)
+                        %(nazwa_szukaj)s,%(sztuk_w_opak)s)
                 RETURNING *
             """, {"h": household_id, **w})
         return dict(cur.fetchone())
+
+
+def ustaw_sztuk_w_opak(produkt_id: int, household_id: int, sztuk: int | None) -> dict | None:
+    with get_db() as cur:
+        cur.execute("""UPDATE eat_produkty SET sztuk_w_opak=%s
+                       WHERE id=%s AND household_id=%s RETURNING *""",
+                    (sztuk, produkt_id, household_id))
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 
 # ── dziennik ────────────────────────────────────────────────────────────────

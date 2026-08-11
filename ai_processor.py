@@ -444,6 +444,54 @@ def czytaj_etykiete(image_bytes: bytes, mime_type: str = "image/jpeg") -> tuple[
     return _json.loads(surowy), _usage(message)
 
 
+_PRZOD_PROMPT = """Odczytujesz PRZEDNIĄ stronę opakowania produktu spożywczego.
+
+Zwróć WYŁĄCZNIE JSON:
+{"nazwa": "...", "marka": "...", "opak_g": liczba albo null, "sztuk": liczba albo null,
+ "fraza": "..."}
+
+ZASADY:
+- `nazwa` to nazwa produktu tak, jak stoi na opakowaniu, BEZ marki.
+- `marka` to producent (Lays, Wedel, Alpro…). Gdy nie widać — null.
+- `opak_g` to masa netto CAŁEGO opakowania w gramach. Przelicz mililitry na
+  gramy 1:1 dla napojów i mleka. „500 g", „1 kg", „330 ml" → 500, 1000, 330.
+- `sztuk` to liczba sztuk w opakowaniu, jeśli jest podana — „24 praliny",
+  „10 x 25 g", „6 batonów" → 24, 10, 6. Gdy nie ma, null.
+- `fraza` to najlepsze hasło do wyszukania tego produktu w bazie: marka plus
+  nazwa, bez gramatury i haseł reklamowych. Np. „Alpro napój owsiany".
+- Nie zgaduj wartości odżywczych — one są z TYŁU opakowania, nie z przodu.
+- Gdy to nie jest opakowanie jedzenia, zwróć {"nazwa": null}.
+"""
+
+
+def czytaj_przod(image_bytes: bytes, mime_type: str = "image/jpeg") -> tuple[dict, dict]:
+    """Zdjęcie PRZODU opakowania → nazwa, marka, gramatura, liczba sztuk.
+
+    Uzupełnia odczyt tabeli z tyłu: z przodu bierze się to, czego w tabeli nie
+    ma — jak produkt się nazywa i ile sztuk jest w środku."""
+    import json as _json
+
+    client = anthropic.Anthropic()
+    image_bytes, mime_type = prepare_image(image_bytes, mime_type)
+    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=600,
+        system=_PRZOD_PROMPT,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": image_b64}},
+                {"type": "text", "text": "Odczytaj przód opakowania i zwróć JSON."},
+            ],
+        }],
+    )
+    surowy = message.content[0].text.strip()
+    if surowy.startswith("```"):
+        surowy = surowy.split("```")[1].lstrip("json").strip()
+    return _json.loads(surowy), _usage(message)
+
+
 _PRZEPIS_PROMPT = """Rozkładasz PRZEPIS KULINARNY na składniki wraz z wartościami odżywczymi.
 
 Zwróć WYŁĄCZNIE JSON:
