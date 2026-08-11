@@ -871,7 +871,27 @@ tr:hover td { background: var(--hover); }
   cursor: pointer; font: inherit; font-size: .85rem; color: var(--muted);
 }
 .nav-modul:hover { border-color: var(--border); color: var(--text); }
-.nav-modul-n { font-weight: 600; letter-spacing: -.01em; }
+/* ── dopisek modułu w znaku ──────────────────────────────────────────────
+   „wiem.finance", „wiem.eat". Krój i kropki bez zmian — dopisek dopasowany
+   traktowaniem, nie rodziną:
+   · .62em — znak zostaje znakiem, moduł podpisem;
+   · 600 zamiast 400 — litera złożona mniejszym stopniem wygląda cieńsza przy
+     tej samej wartości font-weight, więc żeby trzymała masę znaku (700),
+     potrzebuje więcej niż on w przeliczeniu na wagę nominalną;
+   · letter-spacing: 0, a NIE -.03em ze znaku — ściągnięcie dobre dla 27 px
+     zlepia litery przy 17 px. Mniejszy stopień chce luźniejszego rytmu;
+   · margin-left — kropka jest kołem i litera tuż za nią wygląda na przyklejoną.
+     To nie spacja, tylko oddech.
+   Kolor bierze var(--marka), czyli DOKŁADNIE ten sam co kropki w znaku — ta
+   zmienna przełącza się per moduł, więc nie ma czego trzymać w drugim miejscu. */
+.logo .dop-modul {
+  color: var(--marka);
+  font-size: .62em;
+  font-weight: 600;
+  letter-spacing: 0;
+  margin-left: .06em;
+}
+.logo .dop-skrot { display: none; }
 .nav-modul, .nav-prawa { flex: none; }
 /* min-width:0 jest KONIECZNE — bez niego pas nie kurczy się poniżej sumy
    linków i rozpycha pasek poza ekran zamiast się przewinąć. */
@@ -922,11 +942,22 @@ tr:hover td { background: var(--hover); }
 .mk-o { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
 
 @media (max-width: 700px) {
-  /* Na telefonie z przełącznika zostaje sama siatka kropek — nazwa modułu i tak
-     stoi jako pierwsza pozycja dolnego paska, więc powtarzanie jej u góry
-     zabierało miejsce, przez które łamało się logo. */
   .nav-modul { padding: 4px 6px; }
-  .nav-modul-n { display: none; }
+  /* Najwęższe telefony (iPhone SE, 320 px): „wiem.finance" plus kropki plus
+     pigułka z pseudonimem przekraczały pasek o kilka pikseli. Ciaśniejszy
+     margines i odstępy oddają ~19 px — dość, żeby najdłuższa nazwa modułu
+     weszła bez skracania znaku. */
+  @media (max-width: 360px) {
+    nav { padding: 0 11px; gap: 9px; }
+  }
+  /* Zmierzony zapas przy 320 px z „finance" wynosił dokładnie 0 px. Poniżej
+     340 px z dopisku zostaje sama litera — „wiem.f", „wiem.e". Kolor i tak
+     niesie informację o module, a pasek przestaje zależeć od tego, jak szeroko
+     dany telefon składa to konkretne słowo. */
+  @media (max-width: 340px) {
+    .logo .dop-pelny { display: none; }
+    .logo .dop-skrot { display: inline; }
+  }
   /* pas linków jest tu pusty (linki przejmuje dolny pasek), a jako flex:1
      niepotrzebnie rozpychał zawartość */
   .nav-linki { display: none; }

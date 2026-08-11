@@ -1022,14 +1022,34 @@ function _injectNav() {
   przelacznik.className = 'nav-modul';
   przelacznik.type = 'button';
   przelacznik.title = 'Przełącz moduł';
+  // Nazwa modułu siedzi teraz w samym znaku („wiem.finance"), więc przy
+  // kropkach byłaby drugi raz. Zostaje sama siatka — z etykietą dla czytników
+  // ekranu, bo bez podpisu przycisk nie miałby nazwy.
+  przelacznik.setAttribute('aria-label', `Przełącz moduł (teraz: ${modul.nazwa})`);
   przelacznik.innerHTML = '<span class="krata" aria-hidden="true">'
-    + '<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>'
-    + `<span class="nav-modul-n">${modul.nazwa}</span>`;
+    + '<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>';
   przelacznik.onclick = _pokazPrzelacznik;
 
   const logo = nav.querySelector('.logo');
-  if (logo) logo.insertAdjacentElement('afterend', przelacznik);
-  else nav.prepend(przelacznik);
+  if (logo) {
+    // Dopisek dokładamy z kodu, a nie w każdym pliku HTML z osobna — inaczej
+    // jedenaście stron musiałoby wiedzieć, w którym są module.
+    if (!logo.querySelector('.dop-modul')) {
+      const dop = document.createElement('span');
+      dop.className = 'dop-modul';
+      // Dwie wersje w kodzie, przełączane w CSS. Na ekranach do 340 px pełne
+      // „wiem.finance" zajmowało pasek co do piksela — zapas wynosił zero,
+      // więc każda inna metryka kroju rozsypywała układ. Poniżej tego progu
+      // zostaje sama litera; wyżej nikt tego przełączenia nie zobaczy.
+      dop.innerHTML = `<span class="dop-pelny"></span><span class="dop-skrot"></span>`;
+      dop.querySelector('.dop-pelny').textContent = modul.nazwa;
+      dop.querySelector('.dop-skrot').textContent = modul.nazwa.charAt(0);
+      logo.appendChild(dop);
+    }
+    logo.insertAdjacentElement('afterend', przelacznik);
+  } else {
+    nav.prepend(przelacznik);
+  }
 
   // Linki modułu siedzą we WŁASNYM pasie, który potrafi się skurczyć i przewinąć.
   // Bez tego przy ~1000 px pasek rozpychał całą stronę w bok i ucinał logo —
