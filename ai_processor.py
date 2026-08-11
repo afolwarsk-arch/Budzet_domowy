@@ -457,8 +457,10 @@ ZASADY:
   gramy 1:1 dla napojów i mleka. „500 g", „1 kg", „330 ml" → 500, 1000, 330.
 - `sztuk` to liczba sztuk w opakowaniu, jeśli jest podana — „24 praliny",
   „10 x 25 g", „6 batonów" → 24, 10, 6. Gdy nie ma, null.
-- `fraza` to najlepsze hasło do wyszukania tego produktu w bazie: marka plus
-  nazwa, bez gramatury i haseł reklamowych. Np. „Alpro napój owsiany".
+- `fraza` to hasło do wyszukania produktu w bazie — KRÓTKIE, najwyżej cztery
+  słowa: marka plus to, czym produkt jest. Bez gramatury, bez haseł
+  reklamowych, bez opisów smaku. „Alpro napój owsiany", „Fizz Up cola zero".
+  Długie hasła nie trafiają w nic, bo baza dopasowuje wszystkie słowa naraz.
 - Nie zgaduj wartości odżywczych — one są z TYŁU opakowania, nie z przodu.
 - Gdy to nie jest opakowanie jedzenia, zwróć {"nazwa": null}.
 """

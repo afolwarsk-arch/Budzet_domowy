@@ -1302,15 +1302,23 @@ function ekranZPrzodu(d) {
       <div class="op">${o.opak_g ? 'opakowanie ' + zaokr(o.opak_g) + ' g' : 'gramatury nie widać'}${
         o.sztuk ? ' · ' + zaokr(o.sztuk) + ' szt.' : ''}</div>
     </div>
-    ${d.off_padlo ? '<div class="komunikat blad">Baza produktów markowych nie odpowiada. '
-      + 'Spróbuj za chwilę albo odczytaj wartości z tabeli z tyłu.</div>' : ''}
+    ${d.off_padlo ? '<div class="komunikat blad">Baza produktów markowych odmówiła odpowiedzi '
+      + '(odbija większość zapytań przy natłoku). To NIE znaczy, że produktu tam nie ma — '
+      + 'spróbuj poszukać jeszcze raz.</div>' : ''}
     ${wlasne.length ? '<div class="sek-tyt">Macie już u siebie</div>'
       + wlasne.map((p) => wiersz(p, 'wlasna')).join('') : ''}
-    ${propozycje.length ? '<div class="sek-tyt">Znalezione w bazie zewnętrznej</div>'
-      + propozycje.map((p) => wiersz(p, 'off')).join('') : ''}
-    ${!wlasne.length && !propozycje.length
-      ? '<div class="komunikat">Nic nie znalazłem pod tą nazwą. Zrób zdjęcie tabeli '
-        + 'z tyłu — nazwę i gramaturę już mam, dojdą tylko wartości odżywcze.</div>' : ''}
+    <div class="sek-tyt">Znalezione w bazie zewnętrznej</div>
+    <div id="p-wyniki">${propozycje.length
+      ? propozycje.map((p) => wiersz(p, 'off')).join('')
+      : `<div class="komunikat">${d.off_padlo ? 'Nie udało się sprawdzić.'
+        : 'Nic nie znalazłem pod tą nazwą.'}</div>`}</div>
+    <div class="szukaj" style="margin-top:8px">
+      <input type="text" id="p-fraza" value="${e(d.szukano_zapasowo || d.szukano || o.nazwa || '')}"
+             autocomplete="off" aria-label="Czego szukać w bazie">
+      <button class="mini-btn" id="p-szukaj" type="button" style="margin:0">Szukaj</button>
+    </div>
+    <div class="komunikat">Możesz poprawić hasło i poszukać ponownie — bez robienia
+      zdjęcia od nowa.</div>
     <div class="sek-tyt">Albo dokończ ręcznie</div>
     <!-- Etykieta, nie przycisk: aparat otwiera się natywnie, bez .click() ze
          skryptu. Pole jest WŁASNE — ten ekran podmienia całą zawartość arkusza,
@@ -1332,15 +1340,43 @@ function ekranZPrzodu(d) {
     ark.querySelector('#p-plik-tyl').click();
   };
 
-  ark.querySelectorAll('[data-rodzaj]').forEach((b) => {
-    b.onclick = async () => {
-      if (b.dataset.rodzaj === 'wlasna') {
-        const p = wlasne.find((x) => String(x.id) === b.dataset.id);
-        if (p) ekranProduktu(p, 'wlasna');
-      } else if (b.dataset.kod) {
-        poKodzie(b.dataset.kod);
-      }
-    };
+  function podepnijWyniki() {
+    ark.querySelectorAll('[data-rodzaj]').forEach((b) => {
+      b.onclick = () => {
+        if (b.dataset.rodzaj === 'wlasna') {
+          const p = wlasne.find((x) => String(x.id) === b.dataset.id);
+          if (p) ekranProduktu(p, 'wlasna');
+        } else if (b.dataset.kod) {
+          poKodzie(b.dataset.kod);
+        }
+      };
+    });
+  }
+  podepnijWyniki();
+
+  // Powtórne szukanie BEZ ponownego zdjęcia. Open Food Facts odbija większość
+  // anonimowych zapytań i wtedy „nic nie znalazłem" jest nieprawdą — produkt
+  // często tam jest, tylko serwer odmówił odpowiedzi.
+  const szukajPonownie = async () => {
+    const fraza = ark.querySelector('#p-fraza').value.trim();
+    if (fraza.length < 3) return;
+    const box = ark.querySelector('#p-wyniki');
+    box.innerHTML = '<div class="komunikat">Szukam…</div>';
+    try {
+      const r = await authFetch('/api/eat/szukaj/off?fraza=' + encodeURIComponent(fraza));
+      const x = await r.json().catch(() => ({}));
+      const lista = x.propozycje || [];
+      box.innerHTML = lista.length
+        ? lista.map((p) => wiersz(p, 'off')).join('')
+        : `<div class="komunikat${x.off_padlo ? ' blad' : ''}">${x.off_padlo
+          ? 'Baza znowu odmówiła. Spróbuj jeszcze raz za chwilę.'
+          : 'Nic nie znalazłem pod tym hasłem.'}</div>`;
+      podepnijWyniki();
+    } catch { box.innerHTML = '<div class="komunikat blad">Błąd połączenia.</div>'; }
+  };
+  ark.querySelector('#p-szukaj').onclick = szukajPonownie;
+  ark.querySelector('#p-fraza').addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); szukajPonownie(); }
   });
 }
 

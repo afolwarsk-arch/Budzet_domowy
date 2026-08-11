@@ -120,7 +120,8 @@ def _z_produktu_off(p: dict, kod: str) -> dict:
     }
 
 
-def _szukaj_w_off_ze_statusem(fraza: str, ile: int = 12) -> tuple[list[dict], bool]:
+def _szukaj_w_off_ze_statusem(fraza: str, ile: int = 12,
+                              proby: int = 2) -> tuple[list[dict], bool]:
     """Wyszukiwanie po nazwie. Zwraca (wyniki, czy_padlo).
 
     Serwer Open Food Facts odbija większość anonimowych zapytań błędem 503
@@ -146,10 +147,12 @@ def _szukaj_w_off_ze_statusem(fraza: str, ile: int = 12) -> tuple[list[dict], bo
         "fields": "code,product_name,product_name_pl,brands,product_quantity,nutriments",
     })
     dane = None
-    # Dwie próby zamiast trzech i krótszy limit czasu: OFF odpowiada mniej
-    # więcej dwa razy na osiem, więc uparte ponawianie kupuje niewiele,
-    # a kosztuje sekundy przy każdym wpisaniu.
-    for proba in range(2):
+    # Liczba prób zależy od tego, KTO czeka. Przy pisaniu w wyszukiwarce dwie —
+    # człowiek pisze dalej i uparte ponawianie tylko opóźnia. Po zrobieniu
+    # zdjęcia opakowania warto próbować dłużej: użytkownik świadomie coś zrobił,
+    # stoi przed ekranem oczekiwania, a odmowa 503 przychodzi natychmiast, więc
+    # kolejna próba kosztuje głównie odczekanie, nie czas oczekiwania na serwer.
+    for proba in range(max(1, proby)):
         try:
             req = urllib.request.Request(f"{_OFF_SZUKAJ}?{parametry}",
                                          headers={"User-Agent": _OFF_UA})
@@ -160,10 +163,12 @@ def _szukaj_w_off_ze_statusem(fraza: str, ile: int = 12) -> tuple[list[dict], bo
             kod = getattr(e, "code", None)
             # 503 znaczy „za dużo ruchu, spróbuj później" — warto odczekać.
             # Przy innych błędach ponawianie nic nie da.
-            if kod != 503 or proba == 1:
+            if kod != 503 or proba == proby - 1:
                 print(f"[eat] wyszukiwanie w Open Food Facts padło ({kod}): {e!r}")
                 return [], True
-            time.sleep(0.6)
+            # Odczekanie rośnie: 0,6 s, 1,2 s, 2,4 s. Ich serwer odmawia przy
+            # natłoku, więc dokładanie się co pół sekundy niczego nie zmienia.
+            time.sleep(0.6 * (2 ** proba))
 
     wynik = []
     for p in (dane.get("products") if dane else None) or []:
@@ -366,9 +371,32 @@ async def etykieta_przod(file: UploadFile = File(...),
     # pętlę zdarzeń na tyle, ile trwa odpowiedź Open Food Facts — a ta potrafi
     # milczeć kilkanaście sekund i wtedy stanęłaby cała aplikacja, nie tylko
     # ten jeden użytkownik.
-    trafienia, padlo = await run_in_threadpool(_szukaj_w_off_ze_statusem, fraza)
+    #
+    # Cztery próby, a nie dwie: ich serwer odbija większość anonimowych zapytań
+    # błędem 503 (zmierzone: trzy odmowy na pięć zapytań), a odmowa przychodzi
+    # natychmiast. Po zrobieniu zdjęcia użytkownik i tak stoi przed ekranem
+    # oczekiwania, więc kilka sekund na ponowienie jest tańsze niż powiedzenie
+    # mu, że produktu nie ma, gdy w rzeczywistości tam jest.
+    trafienia, padlo = await run_in_threadpool(_szukaj_w_off_ze_statusem, fraza, 12, 4)
+
+    # Gdy pełna fraza nic nie zwróciła, próbujemy krótszej — sama nazwa bez
+    # marki. „Fizz Up napój gazowany typu cola zero cukru" nie trafia w nic,
+    # a „cola zero" owszem.
+    zapasowa = None
+    if not trafienia and not padlo:
+        # Marka ZOSTAJE — bez niej „Cola Zero" wraca trzydziestoma butelkami
+        # Coca-Coli, a szukamy konkretnego produktu ze sklepowej półki.
+        # Skracamy tylko nazwę, bo to ona bywa rozdmuchana opisem smaku.
+        czesci = [odczyt["marka"] or "", " ".join(odczyt["nazwa"].split()[:2])]
+        krotsza = " ".join(x for x in czesci if x).strip()
+        if krotsza and krotsza.lower() != fraza.lower():
+            zapasowa = krotsza
+            trafienia, padlo = await run_in_threadpool(
+                _szukaj_w_off_ze_statusem, krotsza, 12, 3)
+
     wlasne = eat_db.szukaj_produktow(hid, nazwa)
-    return {"odczyt": odczyt, "wlasne": wlasne[:6],
+    return {"odczyt": odczyt, "wlasne": wlasne[:6], "szukano": fraza,
+            "szukano_zapasowo": zapasowa,
             "propozycje": trafienia[:8], "off_padlo": padlo}
 
 
