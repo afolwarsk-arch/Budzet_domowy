@@ -61,11 +61,19 @@ function rysujPosilki() {
   box.innerHTML = POSILKI.map(([klucz, nazwa]) => {
     const wpisy = (stanDnia.posilki && stanDnia.posilki[klucz]) || [];
     const suma = wpisy.reduce((s, w) => s + Number(w.kcal || 0), 0);
+    // Treść wiersza to prawdziwy <button>, a nie div z role="button": krzyżyk
+    // obok jest osobnym przyciskiem, a przycisk w przycisku to nieprawidłowy
+    // HTML i klawiatura gubi się w nim. Kliknięcie w treść otwiera edycję —
+    // najczęstsza poprawka to gramatura („dodałem 100 g, a zjadłem 180"),
+    // więc nie chowamy jej pod dodatkową ikonką.
     const wiersze = wpisy.map((w) => `
       <div class="poz">
-        <span class="nz">${e(w.nazwa)}</span>
-        <span class="il">${e(w.opis_porcji || zaokr(w.ilosc_g) + ' g')}</span>
-        <span class="kc">${zaokr(w.kcal)}</span>
+        <button class="poz-tresc" data-edytuj="${w.id}" type="button"
+                title="Stuknij, żeby poprawić">
+          <span class="nz">${e(w.nazwa)}</span>
+          <span class="il">${e(w.opis_porcji || zaokr(w.ilosc_g) + ' g')}</span>
+          <span class="kc">${zaokr(w.kcal)}</span>
+        </button>
         <button class="x" data-usun="${w.id}" title="Usuń">&times;</button>
       </div>`).join('');
     return `<div class="posilek">
@@ -87,6 +95,39 @@ function rysujPosilki() {
       } catch { b.disabled = false; }
     };
   });
+  const poId = {};
+  Object.values(stanDnia.posilki || {}).forEach((lista) => {
+    (lista || []).forEach((w) => { poId[w.id] = w; });
+  });
+  box.querySelectorAll('[data-edytuj]').forEach((el) => {
+    const wpis = poId[el.dataset.edytuj];
+    if (wpis) el.onclick = () => edytujWpis(wpis);
+  });
+}
+
+// Poprawka pozycji już wpisanej do dnia. Podstawę „na 100 g" odtwarzamy z
+// SAMEGO WPISU, nie z produktu: wartości zamrożone przy zapisie są tym, co
+// zatwierdziłeś, i zmiana gramatury nie ma po cichu wciągnąć innych liczb,
+// gdyby ktoś w międzyczasie poprawił produkt w bazie.
+function edytujWpis(w) {
+  if (arkusz) return;
+  posilekDocelowy = w.posilek;
+  arkusz = document.createElement('div');
+  arkusz.className = 'ark-tlo';
+  arkusz.innerHTML = '<div class="ark"></div>';
+  document.body.appendChild(arkusz);
+  try { history.pushState({ ark: 1 }, ''); } catch {}
+  arkusz.addEventListener('click', (ev) => { if (ev.target === arkusz) zamknijArkusz(); });
+
+  const g = Number(w.ilosc_g) || 0;
+  const na100 = g > 0 ? {
+    kcal: Number(w.kcal || 0) / g * 100,
+    bialko: Number(w.bialko || 0) / g * 100,
+    tluszcz: Number(w.tluszcz || 0) / g * 100,
+    wegle: Number(w.wegle || 0) / g * 100,
+    opak_g: 0,
+  } : null;
+  ekranPotwierdzenia(w, na100, w.produkt_id || null, '', { id: w.id });
 }
 
 // Paski na dole: skala bierze się z celu, więc bez ustawionego celu nie mają
@@ -638,7 +679,10 @@ function dyktuj() {
 // `poz` opisuje pozycję dla PODANEJ ilości gramów. Gdy przyjdzie `na100`
 // (produkt z bazy), zmiana gramatury przelicza wartości z niego; bez tego
 // skalujemy proporcjonalnie od wartości wyjściowych.
-function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
+// `edycja` = { id } zmienia ten sam ekran w poprawianie istniejącej pozycji:
+// inny tytuł, zapis przez PATCH i przycisk usunięcia zamiast drogi powrotnej
+// do wyszukiwarki (przy edycji nie ma dokąd wracać).
+function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja) {
   // Bez tego strumien zyl dalej po podmianie ekranu i kolejne trafienie skanera
   // nadpisywalo formularz, ktory user wlasnie wypelnial.
   zatrzymajSkaner();
@@ -658,15 +702,15 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
 
   ark.innerHTML = `
     <div class="ark-gl">
-      <button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
-      <h2 style="font-size:1rem">Sprawdź i dodaj</h2>
+      ${edycja ? '' : '<button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>'}
+      <h2 style="font-size:1rem">${edycja ? 'Edytuj pozycję' : 'Sprawdź i dodaj'}</h2>
       <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button>
     </div>
     ${naglowekDodatkowy || ''}
     <div class="sek-tyt">Nazwa</div>
     <input type="text" id="p-nazwa" value="${e(poz.nazwa)}" maxlength="120" style="width:100%;margin-bottom:12px">
     ${na100 ? `<div class="sek-tyt">Porcja</div><div class="porcje" id="porcje">
-      ${porcje.map((x, i) => `<button class="porcja" data-g="${x.g}" aria-pressed="${i === 0}" type="button">${x.etyk}</button>`).join('')}
+      ${porcje.map((x) => `<button class="porcja" data-g="${x.g}" aria-pressed="${Math.round(x.g) === Math.round(bazowe.g)}" type="button">${x.etyk}</button>`).join('')}
     </div>` : ''}
     <div class="sek-tyt">Ile gramów</div>
     <input type="number" id="p-gram" value="${Math.round(bazowe.g)}" min="1" max="5000" style="width:100%;margin-bottom:12px">
@@ -683,7 +727,8 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
       ${POSILKI.map(([k, n]) => `<button data-p="${k}" aria-pressed="${k === posilekDocelowy}" type="button">${n}</button>`).join('')}
     </div>
     <div id="ark-komunikat"></div>
-    <button class="cta" id="dodaj" type="button">Dodaj do dnia</button>`;
+    <button class="cta" id="dodaj" type="button">${edycja ? 'Zapisz zmiany' : 'Dodaj do dnia'}</button>
+    ${edycja ? '<button class="cta-usun" id="usun-wpis" type="button">Usuń z dnia</button>' : ''}`;
 
   const pole = (id) => ark.querySelector(id);
   const wartosci = () => ({
@@ -781,8 +826,20 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
     b.setAttribute('aria-pressed', 'true');
     posilekDocelowy = b.dataset.p;
   };
-  ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+  const wroc = ark.querySelector('#wroc');
+  if (wroc) wroc.onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
   ark.querySelector('#zamknij2').onclick = zamknijArkusz;
+
+  const kasuj = ark.querySelector('#usun-wpis');
+  if (kasuj) kasuj.onclick = async (ev) => {
+    ev.target.disabled = true;
+    try {
+      const r = await authFetch('/api/eat/wpis/' + edycja.id, { method: 'DELETE' });
+      if (!r.ok) { komunikat('Nie udało się usunąć.', true); ev.target.disabled = false; return; }
+      zamknijArkusz();
+      await wczytajDzien();
+    } catch { komunikat('Błąd połączenia.', true); ev.target.disabled = false; }
+  };
 
   ark.querySelector('#dodaj').onclick = async (ev) => {
     ev.target.disabled = true;
@@ -790,19 +847,28 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
     const nazwa = pole('#p-nazwa').value.trim();
     if (!nazwa || !v.g) { komunikat('Podaj nazwę i ilość.', true); ev.target.disabled = false; return; }
     const etyk = ark.querySelector('.porcja[aria-pressed="true"]');
-    // Gdy wartości nie były ruszane, wysyłamy produkt_id i liczy je serwer.
-    // Po ręcznej poprawce wysyłamy wprost to, co widać na ekranie.
-    const cialo = (produktId && !recznie)
-      ? { data: dzienISO, posilek: posilekDocelowy, produkt_id: produktId,
-          nazwa, ilosc_g: v.g, opis_porcji: etyk ? etyk.textContent : null }
-      : { data: dzienISO, posilek: posilekDocelowy, nazwa,
-          opis_porcji: (etyk ? etyk.textContent : poz.opis_porcji) || null,
-          ilosc_g: v.g, kcal: v.kcal, bialko: v.bialko, tluszcz: v.tluszcz, wegle: v.wegle };
+    const opis = (etyk ? etyk.textContent : poz.opis_porcji) || null;
+    // Przy edycji zawsze wysyłamy wartości wprost z ekranu — pozycja ma zostać
+    // taka, jaką widzisz, niezależnie od tego, co dziś stoi w bazie produktów.
+    // Przy dodawaniu nietkniętych wartości liczy serwer z `produkt_id`.
+    const cialo = edycja
+      ? { posilek: posilekDocelowy, nazwa, opis_porcji: opis, ilosc_g: v.g,
+          kcal: v.kcal, bialko: v.bialko, tluszcz: v.tluszcz, wegle: v.wegle }
+      : (produktId && !recznie)
+        ? { data: dzienISO, posilek: posilekDocelowy, produkt_id: produktId,
+            nazwa, ilosc_g: v.g, opis_porcji: etyk ? etyk.textContent : null }
+        : { data: dzienISO, posilek: posilekDocelowy, nazwa, opis_porcji: opis,
+            ilosc_g: v.g, kcal: v.kcal, bialko: v.bialko, tluszcz: v.tluszcz, wegle: v.wegle };
     try {
-      const r = await authFetch('/api/eat/wpis', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cialo),
+      const r = await authFetch(edycja ? '/api/eat/wpis/' + edycja.id : '/api/eat/wpis', {
+        method: edycja ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cialo),
       });
-      if (!r.ok) { const x = await r.json().catch(() => ({})); komunikat(x.detail || 'Nie udało się dodać.', true); ev.target.disabled = false; return; }
+      if (!r.ok) {
+        const x = await r.json().catch(() => ({}));
+        komunikat(x.detail || (edycja ? 'Nie udało się zapisać.' : 'Nie udało się dodać.'), true);
+        ev.target.disabled = false; return;
+      }
       zamknijArkusz();
       await wczytajDzien();
     } catch { komunikat('Błąd połączenia.', true); ev.target.disabled = false; }

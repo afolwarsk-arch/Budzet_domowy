@@ -375,6 +375,33 @@ def dodaj_wpis(household_id: int, user_id: int, dane: dict) -> dict:
         return dict(cur.fetchone())
 
 
+def get_wpis(wpis_id: int, household_id: int, user_id: int) -> dict | None:
+    with get_db() as cur:
+        cur.execute("SELECT * FROM eat_wpisy WHERE id=%s AND household_id=%s AND user_id=%s",
+                    (wpis_id, household_id, user_id))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def aktualizuj_wpis(wpis_id: int, household_id: int, user_id: int, dane: dict) -> dict | None:
+    """Poprawka istniejącego wpisu — najczęściej gramatury.
+
+    `produkt_id` zostaje bez zmian: pozycja ma nadal wskazywać na ten sam
+    produkt, nawet jeśli poprawiłeś jej wartości ręcznie. Ta sama zasada co
+    przy kasowaniu — ruszać można wyłącznie własne wpisy."""
+    with get_db() as cur:
+        cur.execute("""
+            UPDATE eat_wpisy
+               SET posilek=%(posilek)s, nazwa=%(nazwa)s, opis_porcji=%(opis_porcji)s,
+                   ilosc_g=%(ilosc_g)s, kcal=%(kcal)s, bialko=%(bialko)s,
+                   tluszcz=%(tluszcz)s, wegle=%(wegle)s
+             WHERE id=%(id)s AND household_id=%(h)s AND user_id=%(u)s
+            RETURNING *
+        """, {"id": wpis_id, "h": household_id, "u": user_id, **dane})
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
 def usun_wpis(wpis_id: int, household_id: int, user_id: int) -> bool:
     """Kasować można tylko własne wpisy — dziennik jest wspólny do oglądania,
     ale nie do poprawiania po kimś."""

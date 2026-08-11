@@ -30,12 +30,21 @@
     .pgl { display: flex; align-items: baseline; justify-content: space-between; padding: 4px 2px 6px; }
     .pgl b { font-size: 14px; }
     .pgl .sum { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
-    .poz { display: flex; align-items: center; gap: 10px; padding: 9px 11px; background: var(--surface);
+    .poz { display: flex; align-items: center; gap: 4px; padding: 0 11px 0 0; background: var(--surface);
            border: 1px solid var(--border-soft); border-radius: 10px; margin-bottom: 5px; }
+    /* Treść wiersza jest przyciskiem (otwiera edycję), ale ma wyglądać jak
+       wiersz — stąd zdjęte tło i obramowanie. Padding przeniesiony tutaj z
+       .poz, żeby cała wysokość wiersza była klikalna, a nie sam tekst. */
+    .poz-tresc { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
+                 background: none; border: none; font: inherit; color: inherit; text-align: left;
+                 padding: 10px 4px 10px 11px; min-height: 44px; cursor: pointer; border-radius: 10px; }
+    .poz-tresc:hover { background: var(--surface-2); }
+    .poz-tresc:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
     .poz .nz { font-size: 13.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .poz .il { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
     .poz .kc { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .poz .x { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 17px; line-height: 1; padding: 0 2px; }
+    .poz .x { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 17px;
+              line-height: 1; padding: 0 2px; min-width: 34px; min-height: 44px; flex: none; }
     .poz .x:hover { color: var(--danger); }
     .dodaj-mini { border: 1px dashed var(--border); background: none; color: var(--muted); border-radius: 10px;
                   padding: 9px; width: 100%; font: inherit; font-size: 13px; cursor: pointer; }
@@ -140,6 +149,13 @@
     .cta { width: 100%; padding: 13px; border: none; border-radius: 11px; background: var(--primary);
            color: var(--on-primary); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
     .cta[disabled] { opacity: .55; cursor: not-allowed; }
+    /* Usuwanie ma być dostępne, ale nie ma konkurować wzrokowo z zapisem —
+       stąd tekstowy przycisk, nie druga kolorowa płachta. */
+    .cta-usun { width: 100%; margin-top: 8px; padding: 11px; background: none; border: none;
+                border-radius: 11px; color: var(--danger); font: inherit; font-size: 13.5px;
+                cursor: pointer; min-height: 44px; }
+    .cta-usun:hover { background: var(--danger-bg); }
+    .cta-usun[disabled] { opacity: .55; cursor: not-allowed; }
 
     #skaner-wrap { display: none; margin-bottom: 12px; }
     #skaner { width: 100%; border-radius: 12px; background: #000; aspect-ratio: 4/3; object-fit: cover; }

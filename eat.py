@@ -336,6 +336,34 @@ def ostatnie(current_user: dict = Depends(get_current_user)):
     return eat_db.ostatnio_jadl(_hid(current_user), current_user["user_id"])
 
 
+def _sprawdz_wartosci(body: dict) -> dict:
+    """Kalorie i makro podane wprost przez klienta.
+
+    Bez tego dało się wpisać przez formularz wartość ujemną (obniżała sumę
+    dnia) albo tak dużą, że przekraczała zakres kolumny — a wtedy zamiast
+    komunikatu wracał błąd 500. Wspólne dla dodawania i edycji, żeby jedno
+    wejście nie zostało kiedyś poprawione bez drugiego."""
+    kcal = _liczba(body.get("kcal"))
+    if kcal is None:
+        raise HTTPException(400, "Brak wartości kalorycznej")
+    if not 0 <= kcal <= 9000:
+        raise HTTPException(400, "Kalorie poza sensownym zakresem (0–9000)")
+    wynik = {"kcal": round(kcal, 1)}
+    for pole, etykieta in (("bialko", "Białko"), ("tluszcz", "Tłuszcz"), ("wegle", "Węglowodany")):
+        v = _liczba(body.get(pole)) or 0
+        if not 0 <= v <= 900:
+            raise HTTPException(400, f"{etykieta}: wartość poza zakresem (0–900 g)")
+        wynik[pole] = round(v, 1)
+    return wynik
+
+
+def _sprawdz_ilosc(wartosc) -> float:
+    ilosc = _liczba(wartosc)
+    if not ilosc or ilosc <= 0 or ilosc > 5000:
+        raise HTTPException(400, "Podaj sensowną ilość w gramach")
+    return round(ilosc, 1)
+
+
 @router.post("/wpis", status_code=201)
 def dodaj_wpis(body: dict, current_user: dict = Depends(get_current_user)):
     """Wartości odżywcze przelicza SERWER, nie przeglądarka — inaczej wpis
@@ -344,9 +372,7 @@ def dodaj_wpis(body: dict, current_user: dict = Depends(get_current_user)):
     posilek = body.get("posilek")
     if posilek not in eat_db.POSILKI:
         raise HTTPException(400, "Nieznany posiłek")
-    ilosc = _liczba(body.get("ilosc_g"))
-    if not ilosc or ilosc <= 0 or ilosc > 5000:
-        raise HTTPException(400, "Podaj sensowną ilość w gramach")
+    ilosc = _sprawdz_ilosc(body.get("ilosc_g"))
 
     # Produkt bierzemy z bazy po id, żeby klient nie mógł podać własnych kalorii.
     produkt_id = body.get("produkt_id")
@@ -383,18 +409,7 @@ def dodaj_wpis(body: dict, current_user: dict = Depends(get_current_user)):
         nazwa = (body.get("nazwa") or "").strip()
         if not nazwa:
             raise HTTPException(400, "Podaj nazwę")
-        kcal = _liczba(body.get("kcal"))
-        if kcal is None:
-            raise HTTPException(400, "Brak wartości kalorycznej")
-        # Bez tego dało się wpisać przez formularz wartość ujemną (obniżała sumę
-        # dnia) albo tak dużą, że przekraczała zakres kolumny — a wtedy zamiast
-        # komunikatu wracał błąd 500.
-        if not 0 <= kcal <= 9000:
-            raise HTTPException(400, "Kalorie poza sensownym zakresem (0–9000)")
-        for pole, etykieta in (("bialko", "Białko"), ("tluszcz", "Tłuszcz"), ("wegle", "Węglowodany")):
-            v = _liczba(body.get(pole)) or 0
-            if not 0 <= v <= 900:
-                raise HTTPException(400, f"{etykieta}: wartość poza zakresem (0–900 g)")
+        wartosci = _sprawdz_wartosci(body)
         wpis = {
             "data": _dzien(body.get("data")),
             "posilek": posilek,
@@ -402,12 +417,40 @@ def dodaj_wpis(body: dict, current_user: dict = Depends(get_current_user)):
             "nazwa": nazwa[:120],
             "opis_porcji": (body.get("opis_porcji") or "").strip()[:40] or None,
             "ilosc_g": round(ilosc, 1),
-            "kcal": round(kcal, 1),
-            "bialko": round(_liczba(body.get("bialko")) or 0, 1),
-            "tluszcz": round(_liczba(body.get("tluszcz")) or 0, 1),
-            "wegle": round(_liczba(body.get("wegle")) or 0, 1),
+            **wartosci,
         }
     return eat_db.dodaj_wpis(hid, current_user["user_id"], wpis)
+
+
+@router.patch("/wpis/{wpis_id}")
+def zmien_wpis(wpis_id: int, body: dict, current_user: dict = Depends(get_current_user)):
+    """Poprawka pozycji już wpisanej do dnia — zwykle gramatury.
+
+    Wartości przychodzą wprost z ekranu, bo tam użytkownik je widzi i mógł
+    poprawić ręcznie. Nie przeliczamy ich z `produkt_id`: pozycja ma zostać
+    taka, jaką zatwierdził, nawet gdyby ktoś w międzyczasie zmienił produkt
+    w bazie."""
+    hid = _hid(current_user)
+    biezacy = eat_db.get_wpis(wpis_id, hid, current_user["user_id"])
+    if not biezacy:
+        raise HTTPException(404, "Nie znaleziono wpisu")
+
+    posilek = body.get("posilek", biezacy["posilek"])
+    if posilek not in eat_db.POSILKI:
+        raise HTTPException(400, "Nieznany posiłek")
+    nazwa = (body.get("nazwa") or "").strip() or biezacy["nazwa"]
+
+    dane = {
+        "posilek": posilek,
+        "nazwa": nazwa[:120],
+        "opis_porcji": (body.get("opis_porcji") or "").strip()[:40] or None,
+        "ilosc_g": _sprawdz_ilosc(body.get("ilosc_g")),
+        **_sprawdz_wartosci(body),
+    }
+    wynik = eat_db.aktualizuj_wpis(wpis_id, hid, current_user["user_id"], dane)
+    if not wynik:
+        raise HTTPException(404, "Nie znaleziono wpisu")
+    return wynik
 
 
 @router.delete("/wpis/{wpis_id}")
