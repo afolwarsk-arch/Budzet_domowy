@@ -16,6 +16,9 @@ let stanDnia = null;
 // sie pod wlasciwym kodem. Czyszczony przy otwarciu i zamknieciu arkusza, bo
 // inaczej potrafil przylgnac do zupelnie innego produktu.
 let ostatniKod = '';
+// Numer ostatniego wyszukiwania — starsza, wolniejsza odpowiedź nie może
+// nadpisać nowszej.
+let licznikSzukania = 0;
 
 function e(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -37,10 +40,16 @@ function etykietaDnia(iso) {
 async function wczytajDzien() {
   document.getElementById('tytul-dnia').textContent = etykietaDnia(dzienISO);
   try {
-    stanDnia = await (await authFetch('/api/eat/dzien?data=' + dzienISO)).json();
+    const r = await authFetch('/api/eat/dzien?data=' + dzienISO);
+    if (!r.ok) throw new Error();
+    stanDnia = await r.json();
   } catch {
+    // Komunikat bez wyjścia jest ślepym zaułkiem — dajemy drogę naprzód.
     document.getElementById('posilki').innerHTML =
-      '<p class="komunikat blad">Nie udało się wczytać dnia.</p>';
+      '<p class="komunikat blad">Nie udało się wczytać dnia. '
+      + '<button type="button" id="d-ponow" class="mini-btn">Spróbuj ponownie</button></p>';
+    const b = document.getElementById('d-ponow');
+    if (b) b.onclick = wczytajDzien;
     return;
   }
   rysujPosilki();
@@ -95,25 +104,87 @@ function rysujBilans() {
     ['Węgle', s.wegle, c.wegle, 'g', '#8e44c4'],
   ];
   document.getElementById('bilans-in').innerHTML = wiersze.map(([n, jest, cel, jedn, kolor]) => {
-    const pct = cel > 0 ? Math.min(100, (Number(jest || 0) / cel) * 100) : 0;
+    const z = Number(jest || 0);
+    const k = Number(cel || 0);
+    // Przekroczenie ma być WIDOCZNE — przy zwykłym Math.min 2000/2000 i
+    // 2900/2000 wyglądały identycznie. Bez czerwieni i bez wykrzykników:
+    // apka informuje, nie robi wyrzutów.
+    const nad = k > 0 && z > k;
+    // Pasek pokazuje większą z dwóch wartości, więc po przekroczeniu oba
+    // odcinki sumują się dokładnie do 100% i nic nie wychodzi poza tor.
+    const skala = Math.max(z, k);
+    const pct = skala > 0 ? (Math.min(z, k) / skala) * 100 : 0;
+    const pctNad = nad ? ((z - k) / skala) * 100 : 0;
+    // „ile zostało" zamiast „ile zjadłem" — przy odchudzaniu to jest ta liczba,
+    // której się szuka, a odejmowanie w pamięci pięć razy dziennie to podatek.
+    const glowna = nad ? '+' + zaokr(z - k) : zaokr(Math.max(0, k - z));
     return `<div>
       <div class="bl-n">${n}</div>
-      <div class="bl-w">${zaokr(jest)}<small> / ${zaokr(cel)} ${jedn}</small></div>
-      <div class="pas"><span style="width:${pct.toFixed(1)}%;background:${kolor}"></span></div>
+      <div class="bl-w">${glowna}<small> ${nad ? 'ponad cel' : 'zostało'}</small></div>
+      <div class="bl-d">${zaokr(z)} / ${zaokr(k)} ${jedn}</div>
+      <div class="pas"><span style="width:${pct.toFixed(1)}%;background:${kolor}"></span>
+        ${nad ? `<span class="pas-nad" style="width:${pctNad.toFixed(1)}%;background:${kolor}"></span>` : ''}</div>
     </div>`;
   }).join('');
+
+  // Dopóki nikt nie ustawił celu, paski mierzą wobec wartości domyślnej —
+  // trzeba to powiedzieć, zamiast udawać, że to czyjś wybór.
+  const stopka = document.getElementById('bilans-uwaga');
+  if (stopka) {
+    stopka.innerHTML = c.domyslne
+      ? 'Cel jest domyślny — <button type="button" id="b-cel" class="mini-btn">ustaw swój</button>'
+      : '';
+    const b = document.getElementById('b-cel');
+    if (b) b.onclick = oknoCeli;
+  }
+  odstepPodBilans();
 }
+
+// Pasek bilansu jest przyklejony do dołu i zasłaniałby ostatni posiłek, więc
+// pod treścią musi zostać dokładnie tyle miejsca, ile pasek zajmuje. Sztywna
+// liczba w CSS rozjeżdżała się przy każdej zmianie zawartości paska (doszedł
+// wiersz „zjedzone / cel" i uwaga o celu domyślnym), a na dodatek pasek jest
+// wyższy przy większej czcionce systemowej. Mierzymy zamiast zgadywać.
+function odstepPodBilans() {
+  const pasek = document.querySelector('.bilans');
+  if (!pasek) return;
+  // Liczymy od GÓRY paska do dołu okna, nie samą jego wysokość: na telefonie
+  // pasek stoi 64 px nad dołem (nad dolną nawigacją), więc trzeba zostawić
+  // miejsce także na to, co jest pod nim.
+  const g = pasek.getBoundingClientRect();
+  const zajete = Math.ceil(window.innerHeight - g.top);
+  document.querySelector('main').style.paddingBottom = (zajete + 24) + 'px';
+}
+
+// Obrót telefonu i wejście klawiatury zmieniają wysokość okna, a razem z nią
+// zawijanie się paska — wtedy odstęp trzeba przeliczyć.
+window.addEventListener('resize', odstepPodBilans);
 
 // ── arkusz dodawania ────────────────────────────────────────────────────────
 
 let posilekDocelowy = 'sniadanie';
 let arkusz = null;
+let sluchacz = null;
 
-function zamknijArkusz() {
+function zamknijArkusz(zHistorii) {
   zatrzymajSkaner();
+  // Wynik dyktowania docierający po zamknięciu arkusza wywoływał błąd i gubił
+  // odpowiedź AI, za którą już zapłaciliśmy.
+  if (sluchacz) { try { sluchacz.abort(); } catch {} sluchacz = null; }
   ostatniKod = '';
-  if (arkusz) { arkusz.remove(); arkusz = null; }
+  if (arkusz) {
+    arkusz.remove();
+    arkusz = null;
+    if (!zHistorii && history.state && history.state.ark) {
+      try { history.back(); } catch {}
+    }
+  }
 }
+
+window.addEventListener('popstate', () => { if (arkusz) zamknijArkusz(true); });
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && arkusz) zamknijArkusz();
+});
 
 function otworzArkusz(posilek) {
   // Podwojne stukniecie w ,+ Dodaj' tworzylo drugi arkusz; pierwszy zostawal
@@ -166,11 +237,24 @@ function otworzArkusz(posilek) {
       <input type="file" id="ark-plik" accept="image/*" capture="environment" style="display:none">
     </div>`;
   document.body.appendChild(arkusz);
+  // W trybie aplikacji „wstecz" jest podstawowym gestem zamykania. Bez wpisu w
+  // historii wychodziło z modułu i kasowało wypełniony formularz.
+  try { history.pushState({ ark: 1 }, ''); } catch {}
   arkusz.addEventListener('click', (ev) => { if (ev.target === arkusz) zamknijArkusz(); });
   arkusz.querySelector('#ark-x').onclick = zamknijArkusz;
   arkusz.querySelector('#d-skan').onclick = uruchomSkaner;
   arkusz.querySelector('#d-etykieta').onclick = () => arkusz.querySelector('#ark-plik').click();
-  arkusz.querySelector('#d-opis').onclick = () => wyslijOpis(arkusz.querySelector('#ark-szukaj').value);
+  arkusz.querySelector('#d-opis').onclick = () => {
+    const pole = arkusz.querySelector('#ark-szukaj');
+    // Stuknięcie w „Opisz słowami" przy pustym polu to prośba o miejsce na opis,
+    // a nie błąd — wcześniej witało czerwonym komunikatem.
+    if (!pole.value.trim()) {
+      pole.placeholder = 'np. dwa jajka i kromka chleba';
+      pole.focus();
+      return;
+    }
+    wyslijOpis(pole.value);
+  };
   arkusz.querySelector('#ark-plik').onchange = wyslijEtykiete;
   arkusz.querySelector('#ark-mik').onclick = dyktuj;
   // Wpisywanie szuka produktów po nazwie (własna baza + Open Food Facts).
@@ -242,24 +326,49 @@ function pokazWyniki(html) {
 async function szukajProduktow(fraza) {
   zatrzymajSkaner();
   if (!fraza || fraza.length < 3) return;
+  const mojeZadanie = ++licznikSzukania;
   pokazWyniki('<div class="komunikat">Szukam…</div>');
+
   let d;
   try {
     d = await (await authFetch('/api/eat/szukaj?fraza=' + encodeURIComponent(fraza))).json();
-  } catch { pokazWyniki('<div class="komunikat blad">Nie udało się poszukać.</div>'); return; }
+  } catch {
+    pokazWyniki(`<div class="komunikat blad">Nie udało się poszukać.
+      <button type="button" id="w-ponow" class="mini-btn">Spróbuj ponownie</button>
+      <button type="button" id="w-opis" class="mini-btn">Oszacuj z opisu</button></div>`);
+    const p = arkusz && arkusz.querySelector('#w-ponow');
+    if (p) p.onclick = () => szukajProduktow(fraza);
+    const o = arkusz && arkusz.querySelector('#w-opis');
+    if (o) o.onclick = () => wyslijOpis(fraza);
+    return;
+  }
+  // starsza, wolniejsza odpowiedź nie może nadpisać nowszej
+  if (mojeZadanie !== licznikSzukania || !arkusz) return;
 
-  const wlasne = d.wlasne || [];
-  const podstawowe = d.podstawowe || [];
-  const propozycje = d.propozycje || [];
+  rysujWyniki(fraza, d.wlasne || [], d.podstawowe || [], [], false, true);
+  dociagnijZOpakowan(fraza, mojeZadanie, d.wlasne || [], d.podstawowe || []);
+}
 
-  // Awaria bazy zewnętrznej wygląda inaczej niż brak wyników — wcześniej jedno
-  // i drugie dawało „nic nie znalazłem", co było po prostu nieprawdą.
-  const uwagaOff = d.off_padlo
+// Produkty z opakowań dociągamy OSOBNYM żądaniem. Wcześniej cała odpowiedź
+// czekała na Open Food Facts — do kilkudziesięciu sekund — mimo że wyniki
+// lokalne były gotowe od razu.
+async function dociagnijZOpakowan(fraza, mojeZadanie, wlasne, podstawowe) {
+  let d;
+  try {
+    d = await (await authFetch('/api/eat/szukaj/off?fraza=' + encodeURIComponent(fraza))).json();
+  } catch { return; }
+  if (mojeZadanie !== licznikSzukania || !arkusz) return;
+  rysujWyniki(fraza, wlasne, podstawowe, d.propozycje || [], d.off_padlo, false);
+}
+
+function rysujWyniki(fraza, wlasne, podstawowe, propozycje, offPadlo, jeszczeSzuka) {
+  const uwagaOff = offPadlo
     ? '<div class="komunikat blad">Baza produktów markowych nie odpowiada (bywa przeciążona). '
       + 'Spróbuj za chwilę albo zeskanuj kod kreskowy.</div>'
     : '';
 
   if (!wlasne.length && !podstawowe.length && !propozycje.length) {
+    if (jeszczeSzuka) { pokazWyniki('<div class="komunikat">Szukam…</div>'); return; }
     pokazWyniki(uwagaOff + `<div class="komunikat">Nic takiego nie znalazłem.
       <button type="button" id="w-opis" class="mini-btn">Oszacuj z opisu</button></div>`);
     const b = arkusz.querySelector('#w-opis');
@@ -269,7 +378,7 @@ async function szukajProduktow(fraza) {
 
   const wiersz = (p, rodzaj) => {
     const podpis = rodzaj === 'baza'
-      ? (p.opis_porcji ? p.opis_porcji + ' · ' : '') + zaokr(p.kcal) + ' kcal/100 g'
+      ? (p.opis_porcji ? e(p.opis_porcji) + ' · ' : '') + zaokr(p.kcal) + ' kcal/100 g'
       : (p.marka ? e(p.marka) + ' · ' : '')
         + (p.kcal ? zaokr(p.kcal) + ' kcal/100 g' : 'brak wartości w bazie');
     return `<button class="szybka" data-rodzaj="${rodzaj}" data-kod="${e(p.kod || '')}"
@@ -282,6 +391,7 @@ async function szukajProduktow(fraza) {
     + (wlasne.length ? '<div class="sek-tyt">Wasza baza</div>' + wlasne.map((p) => wiersz(p, 'wlasna')).join('') : '')
     + (podstawowe.length ? '<div class="sek-tyt">Produkty podstawowe</div>' + podstawowe.map((p) => wiersz(p, 'baza')).join('') : '')
     + (propozycje.length ? '<div class="sek-tyt">Produkty z opakowań</div>' + propozycje.map((p) => wiersz(p, 'off')).join('') : '')
+    + (jeszczeSzuka ? '<div class="komunikat">Szukam też wśród produktów z opakowań…</div>' : '')
   );
 
   arkusz.querySelectorAll('#ark-wyniki [data-rodzaj]').forEach((b) => {
@@ -300,7 +410,7 @@ async function szukajProduktow(fraza) {
           ekranProduktu(x.produkt, 'baza');
         } catch { komunikat('Błąd połączenia.', true); }
       } else if (b.dataset.kod) {
-        poKodzie(b.dataset.kod);   // zapisze produkt u nas i otworzy potwierdzenie
+        poKodzie(b.dataset.kod);
       }
     };
   });
@@ -309,6 +419,9 @@ async function szukajProduktow(fraza) {
 // ── skanowanie kodu ─────────────────────────────────────────────────────────
 
 let strumien = null, skanujeDalej = false;
+// Bez tego druga próba w czasie pytania o zgodę na aparat tworzyła drugi
+// strumień, a pierwszy nigdy nie był zatrzymywany.
+let uruchamiamSkaner = false;
 
 function zatrzymajSkaner() {
   skanujeDalej = false;
@@ -319,7 +432,16 @@ async function uruchomSkaner() {
   // Straż przed drugim uruchomieniem. Pierwsze stuknięcie nie daje natychmiast
   // efektu (czeka na zgodę na aparat), więc ludzie klikają drugi raz — a wtedy
   // poprzedni strumień gubił się bez zatrzymania i kamera zostawała zajęta.
-  if (strumien || skanujeDalej) return;
+  if (strumien || skanujeDalej || uruchamiamSkaner) return;
+  uruchamiamSkaner = true;
+  try {
+    await _uruchomSkaner();
+  } finally {
+    uruchamiamSkaner = false;
+  }
+}
+
+async function _uruchomSkaner() {
 
   if (!('BarcodeDetector' in window)) {
     komunikat('Ta przeglądarka nie umie czytać kodów. Zrób zdjęcie etykiety albo wpisz cyfry spod kreskówki.', true);
@@ -488,6 +610,7 @@ async function wyslijOpis(tekst) {
 // przycisk zamiast obiecywać coś, co nie zadziała.
 function dyktuj() {
   zatrzymajSkaner();
+  if (sluchacz) return;   // drugie stuknięcie nie tworzy drugiego nasłuchu
   const Rozpoznawanie = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Rozpoznawanie) { komunikat('Ta przeglądarka nie obsługuje dyktowania. Wpisz z klawiatury.', true); return; }
   const btn = arkusz.querySelector('#ark-mik');
@@ -495,6 +618,7 @@ function dyktuj() {
   const r = new Rozpoznawanie();
   r.lang = 'pl-PL';
   r.interimResults = false;
+  sluchacz = r;
   btn.classList.add('slucha');
   komunikat('Słucham…');
   r.onresult = (ev) => {
@@ -503,7 +627,7 @@ function dyktuj() {
     wyslijOpis(pole.value);
   };
   r.onerror = () => komunikat('Nie usłyszałem. Spróbuj jeszcze raz.', true);
-  r.onend = () => btn.classList.remove('slucha');
+  r.onend = () => { sluchacz = null; btn.classList.remove('slucha'); };
   r.start();
 }
 
@@ -585,7 +709,11 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy) {
     // od TWOICH wartości, nie od wyjściowych. Wcześniej przeliczanie milkło
     // całkiem i dało się zapisać 30 g z kaloriami wpisanymi dla 100 g.
     if (recznie) {
-      if (poprzednieGramy > 0 && gTeraz > 0 && gTeraz !== poprzednieGramy) {
+      // Pole chwilowo puste (kasowanie przed wpisaniem nowej liczby) nie może
+      // zerwać powiązania — inaczej wpis szedł z gramaturą jedną, a kaloriami
+      // z zupełnie innej.
+      if (gTeraz <= 0) { sprawdzZgodnosc(); return; }
+      if (poprzednieGramy > 0 && gTeraz !== poprzednieGramy) {
         const m = gTeraz / poprzednieGramy;
         const v = wartosci();
         wstaw({ kcal: v.kcal * m, bialko: v.bialko * m, tluszcz: v.tluszcz * m, wegle: v.wegle * m });
@@ -703,9 +831,14 @@ function ekranProduktu(p, skad, niepelne) {
       <div class="op">${p.opak_g ? 'opakowanie ' + zaokr(p.opak_g) + ' g · ' : ''}${zaokr(p.kcal)} kcal / 100 g</div>
       <div class="zrodlo">${e(zrodla[skad] || 'Wasza baza')}</div>
     </div>${ostrzezenie}`;
-  const opak = Number(p.opak_g) || 100;
+  // Domyślnie 100 g. Wcześniej domyślną porcją było CAŁE opakowanie —
+  // zeskanowanie kilograma ryżu i szybkie „Dodaj" zapisywało 3500 kcal.
+  // Całe opakowanie ma sens tylko przy małych (jogurt, batonik).
+  const opak = Number(p.opak_g) || 0;
+  const domyslna = (opak && opak <= 250) ? opak : 100;
   ekranPotwierdzenia(
-    { nazwa: p.nazwa, ilosc_g: opak, kcal: 0, bialko: 0, tluszcz: 0, wegle: 0 },
+    { nazwa: p.nazwa, ilosc_g: domyslna, opis_porcji: p.opis_porcji || null,
+      kcal: 0, bialko: 0, tluszcz: 0, wegle: 0 },
     { kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
       tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
       opak_g: Number(p.opak_g) || 0 },
@@ -719,7 +852,8 @@ function ekranProduktu(p, skad, niepelne) {
 // Lista pozycji z opisu — kazda z wlasna gramatura do poprawienia. Wartosci
 // skaluja sie proporcjonalnie, bo Claude podal je dla oszacowanej ilosci.
 function ekranPozycji(pozycje, opis) {
-  const ark = arkusz.querySelector('.ark');
+  const ark = arkusz && arkusz.querySelector('.ark');
+  if (!ark) return;
   ark.innerHTML = `
     <div class="ark-gl"><button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
       <h2 style="font-size:1rem">Sprawdź i popraw</h2>
@@ -798,10 +932,14 @@ function ekranPozycji(pozycje, opis) {
       .filter(({ i }) => ark.querySelector(`[data-zazn="${i}"]`).checked);
     if (!wybrane.length) { zamknijArkusz(); return; }
     komunikat('Zapisuję…');
-    try {
-      for (const { p, i } of wybrane) {
-        const v = biezaca(i);
-        await authFetch('/api/eat/wpis', {
+    // Wcześniej odpowiedzi były ignorowane: gdy trzecia z pięciu pozycji nie
+    // przeszła, dwie pierwsze wchodziły, a arkusz zamykał się jak po sukcesie.
+    let zapisane = 0;
+    const nieudane = [];
+    for (const { p, i } of wybrane) {
+      const v = biezaca(i);
+      try {
+        const r = await authFetch('/api/eat/wpis', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -810,10 +948,17 @@ function ekranPozycji(pozycje, opis) {
             kcal: v.kcal, bialko: v.bialko, tluszcz: v.tluszcz, wegle: v.wegle,
           }),
         });
-      }
-      zamknijArkusz();
+        if (r.ok) zapisane++; else nieudane.push(p.nazwa);
+      } catch { nieudane.push(p.nazwa); }
+    }
+    if (nieudane.length) {
+      komunikat(`Zapisano ${zapisane} z ${wybrane.length}. Nie weszły: ${nieudane.join(', ')}.`, true);
+      ev.target.disabled = false;
       await wczytajDzien();
-    } catch { komunikat('Błąd połączenia.', true); ev.target.disabled = false; }
+      return;
+    }
+    zamknijArkusz();
+    await wczytajDzien();
   };
 }
 
@@ -935,6 +1080,9 @@ function oknoCeli() {
   }
 
   o.querySelector('#c-kcal').addEventListener('input', () => {
+    // Skasowanie zawartości pola (normalny sposób wpisania nowej liczby) dawało
+    // współczynnik zero i trwale zerowało wszystkie trzy makroskładniki.
+    if (!kcalCelu()) return;
     // przy zmianie kalorii trzymamy ROZKŁAD, nie gramy — inaczej podniesienie
     // celu o 200 kcal cicho psułoby proporcje
     const z = zMakro();

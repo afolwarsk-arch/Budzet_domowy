@@ -24,6 +24,12 @@ def bez_ogonkow(s: str) -> str:
     return (s or "").translate(_OGONKI).lower().strip()
 
 
+def _do_like(fraza: str) -> str:
+    """Znaki wieloznaczne LIKE trzeba unieszkodliwić — bez tego wpisanie
+    samego „%" listowało całą bazę."""
+    return bez_ogonkow(fraza).replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+
+
 def init_eat_db() -> None:
     with get_db() as cur:
         # Własna baza produktów gospodarstwa. Rośnie sama: każdy zeskanowany
@@ -74,6 +80,11 @@ def init_eat_db() -> None:
         )""")
         cur.execute("CREATE INDEX IF NOT EXISTS eat_wpisy_dzien "
                     "ON eat_wpisy (household_id, user_id, data)")
+        # Bez tego liczenie uzyc w przegladzie produktow robi pelny skan raz na
+        # produkt, a sprawdzenie klucza obcego przy kasowaniu nie ma z czego
+        # skorzystac.
+        cur.execute("CREATE INDEX IF NOT EXISTS eat_wpisy_produkt "
+                    "ON eat_wpisy (produkt_id)")
 
         # Produkty podstawowe — WSPÓLNE dla wszystkich gospodarstw, zasiane
         # z listy w kodzie. Open Food Facts nie ma surowców (zapytanie o pomidor
@@ -151,6 +162,11 @@ def cache_off_pobierz(fraza: str, wazne_dni: int = 14) -> list | None:
 
 
 def cache_off_zapisz(fraza: str, wynik: list) -> None:
+    """Pustego wyniku NIE zapamietujemy. Open Food Facts potrafi oddac 200 z
+    pusta lista przy swoim chwilowym problemie — zapisanie tego na dwa tygodnie
+    ukrywaloby produkt, ktory istnieje."""
+    if not wynik:
+        return
     import json as _json
     with get_db() as cur:
         cur.execute("""
@@ -163,12 +179,12 @@ def cache_off_zapisz(fraza: str, wynik: list) -> None:
 def szukaj_bazowych(fraza: str, limit: int = 15) -> list[dict]:
     """Produkty zaczynające się od frazy idą przed tymi, które ją tylko zawierają
     — wpisanie „ser" ma pokazać ser, a nie „deser"."""
-    szukana = bez_ogonkow(fraza)
+    szukana = _do_like(fraza)
     with get_db() as cur:
         cur.execute("""
             SELECT * FROM eat_produkty_bazowe
-            WHERE nazwa_szukaj LIKE %s
-            ORDER BY (nazwa_szukaj LIKE %s) DESC, length(nazwa), nazwa
+            WHERE nazwa_szukaj LIKE %s ESCAPE '\'
+            ORDER BY (nazwa_szukaj LIKE %s ESCAPE '\') DESC, length(nazwa), nazwa
             LIMIT %s
         """, (f"%{szukana}%", f"{szukana}%", limit))
         return [dict(r) for r in cur.fetchall()]
@@ -195,6 +211,15 @@ def get_cele(user_id: int) -> dict:
     return dict(row) if row else dict(_CELE_DOMYSLNE)
 
 
+def ma_wlasny_cel(user_id: int) -> bool:
+    """Czy użytkownik cokolwiek ustawił. Bez tego interfejs nie odróżniał
+    „wybrałem 2000" od „nikt nic nie ustawił", a paski pierwszego dnia udawały
+    realny cel."""
+    with get_db() as cur:
+        cur.execute("SELECT 1 FROM eat_cele WHERE user_id=%s", (user_id,))
+        return cur.fetchone() is not None
+
+
 def set_cele(user_id: int, kcal: int, bialko: int, tluszcz: int, wegle: int) -> None:
     with get_db() as cur:
         cur.execute("""
@@ -218,10 +243,11 @@ def produkt_po_kodzie(household_id: int, kod: str) -> dict | None:
 
 def szukaj_produktow(household_id: int, fraza: str, limit: int = 20) -> list[dict]:
     with get_db() as cur:
-        cur.execute("""SELECT * FROM eat_produkty
-                       WHERE household_id=%s AND nazwa ILIKE %s
+        cur.execute(r"""SELECT * FROM eat_produkty
+                       WHERE household_id=%s
+                         AND COALESCE(nazwa_szukaj, lower(nazwa)) LIKE %s ESCAPE '\'
                        ORDER BY nazwa LIMIT %s""",
-                    (household_id, f"%{fraza}%", limit))
+                    (household_id, f"%{_do_like(fraza)}%", limit))
         return [dict(r) for r in cur.fetchall()]
 
 
@@ -287,9 +313,11 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
         if w["kod"]:
             cur.execute("""
                 INSERT INTO eat_produkty (household_id, kod, nazwa, marka, opak_g, kcal,
-                                          bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo)
+                                          bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo,
+                                          nazwa_szukaj)
                 VALUES (%(h)s,%(kod)s,%(nazwa)s,%(marka)s,%(opak_g)s,%(kcal)s,
-                        %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s)
+                        %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s,
+                        %(nazwa_szukaj)s)
                 -- WHERE kod IS NOT NULL jest KONIECZNE: indeks unikalny jest
                 -- częściowy (ten sam warunek), a Postgres bez powtórzenia
                 -- predykatu nie potrafi go dopasować i przerywa błędem. Przez to
@@ -297,7 +325,7 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
                 -- a skanowanie zwracało „nie udało się sprawdzić kodu".
                 ON CONFLICT (household_id, kod) WHERE kod IS NOT NULL DO UPDATE
                    SET nazwa=EXCLUDED.nazwa, nazwa_szukaj=EXCLUDED.nazwa_szukaj,
-                       marka=EXCLUDED.marka, opak_g=EXCLUDED.opak_g,
+                       zrodlo=EXCLUDED.zrodlo, marka=EXCLUDED.marka, opak_g=EXCLUDED.opak_g,
                        kcal=EXCLUDED.kcal, bialko=EXCLUDED.bialko, tluszcz=EXCLUDED.tluszcz,
                        wegle=EXCLUDED.wegle, blonnik=EXCLUDED.blonnik, cukry=EXCLUDED.cukry,
                        sol=EXCLUDED.sol
@@ -306,9 +334,11 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
         else:
             cur.execute("""
                 INSERT INTO eat_produkty (household_id, nazwa, marka, opak_g, kcal,
-                                          bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo)
+                                          bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo,
+                                          nazwa_szukaj)
                 VALUES (%(h)s,%(nazwa)s,%(marka)s,%(opak_g)s,%(kcal)s,
-                        %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s)
+                        %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s,
+                        %(nazwa_szukaj)s)
                 RETURNING *
             """, {"h": household_id, **w})
         return dict(cur.fetchone())
@@ -355,21 +385,24 @@ def usun_wpis(wpis_id: int, household_id: int, user_id: int) -> bool:
 
 
 def ostatnio_jadl(household_id: int, user_id: int, limit: int = 12) -> list[dict]:
-    """Lista „ostatnio jadłeś" — to ona ma pokrywać większość wpisów, więc
-    liczy się i świeżość, i częstotliwość. Grupujemy po nazwie i porcji, żeby
-    ta sama kanapka nie zajęła całej listy."""
+    """Lista „ostatnio jadłeś" — to ona ma pokrywać większość wpisów.
+
+    Wartości bierzemy z NAJNOWSZEGO wpisu w grupie, a nie z osobnych MAX() po
+    każdej kolumnie. Wcześniej gramatura mogła pochodzić z jednego wpisu, a
+    białko z innego — i jednym stuknięciem zapisywało się coś, czego nigdy nie
+    było w dzienniku."""
     with get_db() as cur:
         cur.execute("""
-            SELECT nazwa, opis_porcji, produkt_id,
-                   MAX(ilosc_g) AS ilosc_g,
-                   MAX(kcal) AS kcal, MAX(bialko) AS bialko,
-                   MAX(tluszcz) AS tluszcz, MAX(wegle) AS wegle,
-                   COUNT(*) AS ile, MAX(data) AS ostatnio
+            SELECT DISTINCT ON (nazwa, opis_porcji, produkt_id)
+                   nazwa, opis_porcji, produkt_id, ilosc_g,
+                   kcal, bialko, tluszcz, wegle, data AS ostatnio,
+                   COUNT(*) OVER (PARTITION BY nazwa, opis_porcji, produkt_id) AS ile
             FROM eat_wpisy
             WHERE household_id=%s AND user_id=%s
               AND data > CURRENT_DATE - INTERVAL '60 days'
-            GROUP BY nazwa, opis_porcji, produkt_id
-            ORDER BY MAX(data) DESC, COUNT(*) DESC
-            LIMIT %s
-        """, (household_id, user_id, limit))
-        return [dict(r) for r in cur.fetchall()]
+            ORDER BY nazwa, opis_porcji, produkt_id, data DESC, id DESC
+        """, (household_id, user_id))
+        wiersze = [dict(r) for r in cur.fetchall()]
+    # najpierw najświeższe, przy remisie częściej powtarzane
+    wiersze.sort(key=lambda w: (w["ostatnio"], w["ile"]), reverse=True)
+    return wiersze[:limit]

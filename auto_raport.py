@@ -36,6 +36,8 @@ def _raport_dla_gospodarstwa(hid: int, miesiac: str) -> str:
     kondycja["wplywy_mies"] = kw["wplywy_mies"]
     kondycja["bilans_mies"] = kw["bilans_mies"]
 
+    # Raport automatyczny leci z harmonogramu, bez zalogowanego użytkownika —
+    # koszt należy do gospodarstwa i ten wiersz świadomie zostaje bez osoby.
     database.log_api_usage(hid, "analiza-raport", usage["input_tokens"], usage["output_tokens"])
     etykieta = f"Raport miesięczny (automatyczny) — {miesiac}"
     database.save_raport_ai(hid, MIESIACE_OKNO, etykieta,

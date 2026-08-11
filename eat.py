@@ -33,6 +33,18 @@ _OFF_POLA = "product_name,product_name_pl,brands,quantity,product_quantity,nutri
 _OFF_UA = "WiemApp/1.0 (budzetdomowy-production.up.railway.app)"
 
 
+def _dzien(wartosc: str | None) -> str:
+    """Data w formacie ISO albo dzisiaj. Bez tego byle tekst leciał wprost do
+    kolumny DATE i kończył się błędem 500 zamiast czytelnym komunikatem."""
+    s = (wartosc or "").strip()
+    if not s:
+        return date.today().isoformat()
+    try:
+        return date.fromisoformat(s).isoformat()
+    except ValueError:
+        raise HTTPException(400, "Nieprawidłowa data")
+
+
 def _hid(current_user: dict) -> int:
     hid = current_user.get("household_id")
     if not hid:
@@ -127,21 +139,24 @@ def _szukaj_w_off_ze_statusem(fraza: str, ile: int = 12) -> tuple[list[dict], bo
         "fields": "code,product_name,product_name_pl,brands,product_quantity,nutriments",
     })
     dane = None
-    for proba in range(3):
+    # Dwie próby zamiast trzech i krótszy limit czasu: OFF odpowiada mniej
+    # więcej dwa razy na osiem, więc uparte ponawianie kupuje niewiele,
+    # a kosztuje sekundy przy każdym wpisaniu.
+    for proba in range(2):
         try:
             req = urllib.request.Request(f"{_OFF_SZUKAJ}?{parametry}",
                                          headers={"User-Agent": _OFF_UA})
-            with urllib.request.urlopen(req, timeout=12) as odp:
+            with urllib.request.urlopen(req, timeout=6) as odp:
                 dane = _json.loads(odp.read().decode("utf-8"))
             break
         except Exception as e:
             kod = getattr(e, "code", None)
             # 503 znaczy „za dużo ruchu, spróbuj później" — warto odczekać.
             # Przy innych błędach ponawianie nic nie da.
-            if kod != 503 or proba == 2:
+            if kod != 503 or proba == 1:
                 print(f"[eat] wyszukiwanie w Open Food Facts padło ({kod}): {e!r}")
                 return [], True
-            time.sleep(0.8 * (proba + 1))
+            time.sleep(0.6)
 
     wynik = []
     for p in (dane.get("products") if dane else None) or []:
@@ -194,33 +209,39 @@ def usun_produkt(produkt_id: int, current_user: dict = Depends(get_current_user)
 
 
 @router.get("/szukaj")
-async def szukaj(fraza: str = Query(""), current_user: dict = Depends(get_current_user)):
-    """Trzy źródła, w kolejności niezawodności:
+def szukaj(fraza: str = Query(""), current_user: dict = Depends(get_current_user)):
+    """WYŁĄCZNIE źródła lokalne — odpowiada w kilka milisekund.
 
-    1. własna baza gospodarstwa,
-    2. produkty podstawowe (wspólne, zaszyte w aplikacji),
-    3. Open Food Facts — TYLKO produkty z opakowań i tylko gdy odpowie.
-
-    Punkt 3 zawodzi często: zmierzone dwa udane zapytania na osiem, reszta 503.
-    Dlatego zwracamy `off_padlo`, żeby interfejs mógł powiedzieć prawdę zamiast
-    udawać, że niczego nie ma."""
+    Open Food Facts wyprowadzone do osobnego `/szukaj/off`, bo potrafiło
+    zatrzymać tę odpowiedź na kilkadziesiąt sekund: trzy próby po dwanaście
+    sekund plus przerwy między nimi. Użytkownik czekał na bazę zewnętrzną,
+    mając gotowe wyniki u siebie."""
     hid = _hid(current_user)
     fraza = fraza.strip()
     if len(fraza) < 3:
-        return {"wlasne": [], "podstawowe": [], "propozycje": [], "off_padlo": False}
+        return {"wlasne": [], "podstawowe": []}
 
     wlasne = eat_db.szukaj_produktow(hid, fraza)
-    podstawowe = eat_db.szukaj_bazowych(fraza)
-    # nie proponujemy podstawowego, który już siedzi w bazie gospodarstwa
     nazwy = {w["nazwa"].lower() for w in wlasne}
-    podstawowe = [p for p in podstawowe if p["nazwa"].lower() not in nazwy]
+    podstawowe = [p for p in eat_db.szukaj_bazowych(fraza)
+                  if p["nazwa"].lower() not in nazwy]
+    return {"wlasne": wlasne, "podstawowe": podstawowe}
 
-    z_off, off_padlo = await run_in_threadpool(_szukaj_w_off_ze_statusem, fraza)
+
+@router.get("/szukaj/off")
+def szukaj_off(fraza: str = Query(""), current_user: dict = Depends(get_current_user)):
+    """Produkty z opakowań. Wołane OSOBNO, więc jego powolność nie blokuje
+    wyników lokalnych — interfejs dokłada tę sekcję, gdy dojdzie."""
+    hid = _hid(current_user)
+    fraza = fraza.strip()
+    if len(fraza) < 3:
+        return {"propozycje": [], "off_padlo": False}
+
+    wlasne = eat_db.szukaj_produktow(hid, fraza)
     znane = {w["kod"] for w in wlasne if w.get("kod")}
-    propozycje = [p for p in z_off if p["kod"] not in znane]
-
-    return {"wlasne": wlasne, "podstawowe": podstawowe,
-            "propozycje": propozycje, "off_padlo": off_padlo}
+    z_off, padlo = _szukaj_w_off_ze_statusem(fraza)
+    return {"propozycje": [p for p in z_off if p["kod"] not in znane],
+            "off_padlo": padlo}
 
 
 @router.post("/produkty/z-bazy/{bazowy_id}", status_code=201)
@@ -259,7 +280,8 @@ async def czytaj_etykiete(file: UploadFile = File(...),
         raise HTTPException(502, "Nie udało się odczytać etykiety. Spróbuj ostrzejszego zdjęcia.")
     # Koszty AI lecą do tego samego dziennika co finansowe, z własną etykietą —
     # dzięki temu panel admina rozbija je per moduł bez żadnych zmian.
-    database.log_api_usage(hid, "eat-etykieta", uzycie["input_tokens"], uzycie["output_tokens"])
+    database.log_api_usage(hid, "eat-etykieta", uzycie["input_tokens"], uzycie["output_tokens"],
+                           current_user["user_id"])
     if dane.get("kcal") is None:
         raise HTTPException(422, "Na tym zdjęciu nie widzę tabeli wartości odżywczych.")
     if kod.strip().isdigit():
@@ -269,7 +291,7 @@ async def czytaj_etykiete(file: UploadFile = File(...),
 
 
 @router.post("/opis")
-async def z_opisu(body: dict, current_user: dict = Depends(get_current_user)):
+def z_opisu(body: dict, current_user: dict = Depends(get_current_user)):
     """„Dwa jajka i kromka chleba" → lista pozycji do zatwierdzenia.
 
     Nie zapisujemy niczego od razu — użytkownik ma zobaczyć, co Claude
@@ -283,11 +305,12 @@ async def z_opisu(body: dict, current_user: dict = Depends(get_current_user)):
     import ai_processor
     import database
     try:
-        pozycje, uzycie = await run_in_threadpool(ai_processor.szacuj_posilek, opis)
+        pozycje, uzycie = ai_processor.szacuj_posilek(opis)
     except Exception as e:
         print(f"[eat] szacowanie posilku nie powiodlo sie: {e!r}")
         raise HTTPException(502, "Nie udało się oszacować. Spróbuj opisać prościej.")
-    database.log_api_usage(hid, "eat-opis", uzycie["input_tokens"], uzycie["output_tokens"])
+    database.log_api_usage(hid, "eat-opis", uzycie["input_tokens"], uzycie["output_tokens"],
+                           current_user["user_id"])
     if not pozycje:
         raise HTTPException(422, "Za mało informacji, żeby cokolwiek policzyć.")
     return {"pozycje": pozycje}
@@ -298,9 +321,13 @@ async def z_opisu(body: dict, current_user: dict = Depends(get_current_user)):
 @router.get("/dzien")
 def dzien(data: str = Query(default=""), current_user: dict = Depends(get_current_user)):
     hid = _hid(current_user)
-    dzien_str = data.strip() or date.today().isoformat()
+    dzien_str = _dzien(data)
     wynik = eat_db.get_dzien(hid, current_user["user_id"], dzien_str)
-    wynik["cele"] = eat_db.get_cele(current_user["user_id"])
+    cele = eat_db.get_cele(current_user["user_id"])
+    # Interfejs musi odróżnić „Adam wybrał 2000" od „nikt nic nie ustawił" —
+    # inaczej pierwszego dnia paski udają realny cel.
+    cele["domyslne"] = not eat_db.ma_wlasny_cel(current_user["user_id"])
+    wynik["cele"] = cele
     return wynik
 
 
@@ -337,7 +364,7 @@ def dodaj_wpis(body: dict, current_user: dict = Depends(get_current_user)):
     if produkt:
         mnoznik = ilosc / 100.0
         wpis = {
-            "data": body.get("data") or date.today().isoformat(),
+            "data": _dzien(body.get("data")),
             "posilek": posilek,
             "produkt_id": produkt["id"],
             # nazwa z ekranu ma pierwszeństwo — pole jest edytowalne, więc
@@ -359,8 +386,17 @@ def dodaj_wpis(body: dict, current_user: dict = Depends(get_current_user)):
         kcal = _liczba(body.get("kcal"))
         if kcal is None:
             raise HTTPException(400, "Brak wartości kalorycznej")
+        # Bez tego dało się wpisać przez formularz wartość ujemną (obniżała sumę
+        # dnia) albo tak dużą, że przekraczała zakres kolumny — a wtedy zamiast
+        # komunikatu wracał błąd 500.
+        if not 0 <= kcal <= 9000:
+            raise HTTPException(400, "Kalorie poza sensownym zakresem (0–9000)")
+        for pole, etykieta in (("bialko", "Białko"), ("tluszcz", "Tłuszcz"), ("wegle", "Węglowodany")):
+            v = _liczba(body.get(pole)) or 0
+            if not 0 <= v <= 900:
+                raise HTTPException(400, f"{etykieta}: wartość poza zakresem (0–900 g)")
         wpis = {
-            "data": body.get("data") or date.today().isoformat(),
+            "data": _dzien(body.get("data")),
             "posilek": posilek,
             "produkt_id": None,
             "nazwa": nazwa[:120],
@@ -391,12 +427,14 @@ def cele(current_user: dict = Depends(get_current_user)):
 @router.put("/cele")
 def zapisz_cele(body: dict, current_user: dict = Depends(get_current_user)):
     biezace = eat_db.get_cele(current_user["user_id"])
-    granice = {"kcal": (800, 6000), "bialko": (20, 400), "tluszcz": (10, 300), "wegle": (20, 800)}
+    granice = {"kcal": (800, 6000, "Kalorie"), "bialko": (20, 400, "Białko"),
+               "tluszcz": (10, 300, "Tłuszcz"), "wegle": (20, 800, "Węglowodany")}
     nowe = {}
-    for pole, (lo, hi) in granice.items():
+    for pole, (lo, hi, etykieta) in granice.items():
         v = _liczba(body.get(pole, biezace[pole]))
         if v is None or not lo <= v <= hi:
-            raise HTTPException(400, f"Wartość {pole} poza sensownym zakresem ({lo}-{hi})")
+            # nazwa pola z kodu nic użytkownikowi nie mówi
+            raise HTTPException(400, f"{etykieta}: wartość poza zakresem ({lo}–{hi})")
         nowe[pole] = int(v)
     eat_db.set_cele(current_user["user_id"], **nowe)
     return nowe

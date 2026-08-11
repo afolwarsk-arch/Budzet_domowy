@@ -844,7 +844,7 @@ const _SAMOUCZEK_SLAJDY = [
   { ikona: 'lista', tytul: 'Listy zakupów na żywo',
     opis: 'W „Lista" tworzysz wiele nazwanych list (np. „Biedronka", „Leroy"). Są wspólne i synchronizują się NA ŻYWO — jak odhaczysz mleko, druga osoba w sklepie od razu to widzi. Tap = kupione, przeciągnij za ⠿ = kolejność (np. wg alejek), a listę wstrzymasz, zamkniesz lub usuniesz.' },
   { ikona: 'osoby', tytul: 'Wspólne gospodarstwo',
-    opis: 'Zaproś drugą osobę do gospodarstwa linkiem (menu „⋯” na dashboardzie, pozycja „Zaproś osobę”) — budżet prowadzicie razem. Kogoś bez konta Google (np. dziecko) dodasz jako „osobę bez konta". Każdy może też usunąć własne konto — jego wydatki zostają, bo należą do gospodarstwa.' },
+    opis: 'Zaproś drugą osobę do gospodarstwa linkiem — kliknij swój pseudonim na górnym pasku, a w oknie profilu wybierz „Zaproś osobę”. Budżet prowadzicie razem. Kogoś bez konta Google (np. dziecko) dodasz tam samo, przyciskiem „Osoba bez konta". Każdy może też usunąć własne konto — jego wydatki zostają, bo należą do gospodarstwa.' },
   { ikona: 'dysk', tytul: 'Twoje dane są bezpieczne',
     opis: 'Cały budżet pobierzesz w każdej chwili z menu „⋯" na dashboardzie — pozycja „Pobierz kopię danych". Statystyki, filtry i pseudonimy dostosujesz pod siebie — kliknij swój pseudonim na górnym pasku, żeby go zmienić.' },
   { ikona: 'telefon', tytul: 'Miej budżet w kieszeni',
@@ -1101,8 +1101,8 @@ const _TIPS_OGOLNE = [
   'Samouczek jest zawsze pod przyciskiem „Samouczek" na górnym pasku — wrócisz do niego kiedy chcesz.',
   'Na telefonie wybierz „Dodaj do ekranu głównego" — apka działa jak natywna, z dolnym paskiem i aparatem.',
   'Kliknij swój pseudonim na górnym pasku, żeby go zmienić.',
-  'Budżet prowadzicie wspólnie — zaproś drugą osobę przez menu „⋯" na dashboardzie, pozycja „Zaproś osobę".',
-  'Osobę bez konta Google (np. dziecko) dodasz jako „członka bez konta".',
+  'Budżet prowadzicie wspólnie — kliknij swój pseudonim na górnym pasku i wybierz „Zaproś osobę".',
+  'Osobę bez konta Google (np. dziecko) dodasz w oknie profilu — przycisk „Osoba bez konta".',
   'Kopię całego budżetu pobierzesz z menu „⋯" na dashboardzie — to plik, który możesz zachować.',
 ];
 const _TIPS_STRONY = {

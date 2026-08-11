@@ -2,7 +2,9 @@
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- interactive-widget: bez tego klawiatura telefonu nakrywa przycisk
+       "Dodaj do dnia" zamiast przewinac arkusz nad nia. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <title>Jedzenie — Wiem</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="manifest" href="/static/manifest.json">
@@ -18,8 +20,11 @@
 
     .dzien-pasek { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
     .dzien-pasek h1 { margin: 0; font-size: 1.25rem; }
+    /* Strzałki dnia to najczęściej klikany element na tej stronie — muszą mieć
+       pełne 44 px, a nie 29 px wynikające z samego paddingu. */
     .dzien-pasek button { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-                          padding: 6px 11px; cursor: pointer; color: var(--text); font: inherit; font-size: 13px; }
+                          min-width: 44px; min-height: 44px; padding: 6px 11px; cursor: pointer;
+                          color: var(--text); font: inherit; font-size: 16px; line-height: 1; }
 
     .posilek { margin-bottom: 14px; }
     .pgl { display: flex; align-items: baseline; justify-content: space-between; padding: 4px 2px 6px; }
@@ -52,12 +57,27 @@
     .bilans-in { max-width: 1100px; margin: 0 auto; display: flex; gap: 14px; }
     .bilans-in > div { flex: 1; min-width: 0; }
     .bl-n { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
-    .bl-w { font-size: 13px; font-weight: 600; margin: 2px 0 4px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .bl-w small { font-weight: 400; color: var(--muted); }
-    .pas { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
-    .pas span { display: block; height: 100%; border-radius: 3px; transition: width .35s; }
+    .bl-w { font-size: 13px; font-weight: 600; margin: 2px 0 3px; font-variant-numeric: tabular-nums; }
+    /* Podpis pod liczbą, nie obok. W jednej linii „+847 ponad cel" nie mieściło
+       się w kolumnie przy 320 px i wchodziło na sąsiednią; przy 360 px starczało
+       co do piksela, więc szersza czcionka systemowa też by to rozwaliła. */
+    .bl-w small { display: block; font-size: 10px; font-weight: 400; color: var(--muted); line-height: 1.2; }
+    .bl-d { font-size: 10px; color: var(--muted); margin-bottom: 4px; font-variant-numeric: tabular-nums;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Flex, nie dwa bloki jeden pod drugim: odcinek „w celu" i odcinek
+       „ponad cel" mają leżeć obok siebie na jednym torze. */
+    .pas { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; display: flex; }
+    .pas span { display: block; height: 100%; flex: none; transition: width .35s; }
+    .pas span:first-child { border-radius: 3px 0 0 3px; }
+    .pas span:last-child { border-radius: 0 3px 3px 0; }
+    .pas span:only-child { border-radius: 3px; }
+    /* Nadwyżka tym samym kolorem, tylko przygaszona — widać, że to ta sama
+       rzecz, i widać gdzie kończył się cel. Bez czerwieni. */
+    .pas-nad { opacity: .4; }
     @media (prefers-reduced-motion: reduce) { .pas span { transition: none; } }
-    @media (max-width: 700px) { .bilans-in { gap: 9px; } .bl-w { font-size: 12px; } }
+    #bilans-uwaga { max-width: 1100px; margin: 6px auto 0; font-size: 11px; color: var(--muted); text-align: center; }
+    #bilans-uwaga:empty { display: none; }
+    @media (max-width: 700px) { .bilans-in { gap: 9px; } .bl-w { font-size: 12px; } .bl-d { font-size: 9px; } }
 
     /* ── arkusz dodawania ── */
     .ark-tlo { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9998;
@@ -105,8 +125,9 @@
     .zrodlo { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--good);
               background: var(--good-bg); border-radius: 20px; padding: 3px 10px; margin-top: 8px; }
     .porcje { display: flex; gap: 7px; flex-wrap: wrap; margin: 4px 0 12px; }
-    .porcja { border: 1px solid var(--border); background: var(--surface); border-radius: 20px; padding: 8px 14px;
-              font: inherit; font-size: 13px; cursor: pointer; color: var(--text); }
+    /* 44 px to najmniejszy cel, w ktory palec trafia bez celowania. */
+    .porcja { border: 1px solid var(--border); background: var(--surface); border-radius: 22px; padding: 8px 14px;
+              min-height: 44px; font: inherit; font-size: 13px; cursor: pointer; color: var(--text); }
     .porcja[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); border-color: var(--primary); font-weight: 600; }
     .wynik { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
     .wynik-kc { font-size: 25px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--heading); }
@@ -114,7 +135,7 @@
     .wynik-mk b { color: var(--text); font-weight: 600; }
     .gdzie { display: flex; gap: 6px; margin-bottom: 12px; }
     .gdzie button { flex: 1; border: 1px solid var(--border); background: var(--surface); border-radius: 9px;
-                    padding: 8px 3px; font: inherit; font-size: 12px; cursor: pointer; color: var(--text); }
+                    padding: 8px 3px; min-height: 44px; font: inherit; font-size: 12px; cursor: pointer; color: var(--text); }
     .gdzie button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary); border-color: var(--primary); font-weight: 600; }
     .cta { width: 100%; padding: 13px; border: none; border-radius: 11px; background: var(--primary);
            color: var(--on-primary); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
@@ -174,6 +195,7 @@
 
 <div class="bilans" id="bilans">
   <div class="bilans-in" id="bilans-in"></div>
+  <div id="bilans-uwaga"></div>
 </div>
 
 <script defer src="/static/eat.js"></script>

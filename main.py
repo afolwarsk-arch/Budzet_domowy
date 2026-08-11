@@ -899,7 +899,8 @@ async def process_image(
         results, usage = await asyncio.to_thread(ai_processor.process_image, content, mime, kontekst or None, hier)
     except Exception as e:
         raise _ai_http_error(e)
-    database.log_api_usage(hid, "process-image", usage["input_tokens"], usage["output_tokens"])
+    database.log_api_usage(hid, "process-image", usage["input_tokens"], usage["output_tokens"],
+                           current_user["user_id"])
     for r in results:
         r["osoba"] = osoba
     return results
@@ -918,7 +919,8 @@ async def process_text(payload: dict, current_user: dict = Depends(get_current_u
         results, usage = await asyncio.to_thread(ai_processor.process_text, text, kontekst, hier)
     except Exception as e:
         raise _ai_http_error(e)
-    database.log_api_usage(current_user["household_id"], "process-text", usage["input_tokens"], usage["output_tokens"])
+    database.log_api_usage(current_user["household_id"], "process-text",
+                           usage["input_tokens"], usage["output_tokens"], current_user["user_id"])
     osoba = payload.get("osoba", "Adam")
     for r in results:
         r["osoba"] = osoba
@@ -1111,7 +1113,7 @@ async def rekategoryzuj(body: dict, admin: dict = Depends(require_admin)):
         wszystkie.extend(wynik)
         total_in += usage["input_tokens"]
         total_out += usage["output_tokens"]
-    database.log_api_usage(hid, "rekategoryzuj", total_in, total_out)
+    database.log_api_usage(hid, "rekategoryzuj", total_in, total_out, current_user["user_id"])
     zaktualizowane = database.update_pozycje_kategorie(wszystkie, household_id=hid)
     return {"zaktualizowane": zaktualizowane, "przetworzone": len(wszystkie)}
 
@@ -1269,7 +1271,8 @@ def generuj_analiza_raport(body: RaportIn, current_user: dict = Depends(get_curr
     kondycja["wydatki_mies"] = kw["wydatki_mies"]
     kondycja["wplywy_mies"] = kw["wplywy_mies"]
     kondycja["bilans_mies"] = kw["bilans_mies"]
-    database.log_api_usage(hid, "analiza-raport", usage["input_tokens"], usage["output_tokens"])
+    database.log_api_usage(hid, "analiza-raport", usage["input_tokens"], usage["output_tokens"],
+                           current_user["user_id"])
     try:
         rid = database.save_raport_ai(hid, miesiace, body.kontekst,
                                       _json.dumps(raport, ensure_ascii=False), "claude-sonnet-4-6")
