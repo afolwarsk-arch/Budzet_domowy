@@ -1191,17 +1191,19 @@ function ekranZPrzodu(d) {
         + 'z tyłu — nazwę i gramaturę już mam, dojdą tylko wartości odżywcze.</div>' : ''}
     <div class="sek-tyt">Albo dokończ ręcznie</div>
     <button class="cta" id="p-tabela" type="button">Zdjęcie tabeli z tyłu</button>
-    <div id="ark-komunikat"></div>`;
+    <div id="ark-komunikat"></div>
+    <!-- WŁASNE pole pliku, nie to z ekranu startowego. Ten ekran podmienia całą
+         zawartość arkusza, więc tamto pole już nie istnieje — sięganie po nie
+         kończyło się tym, że przycisk nie robił nic. -->
+    <input type="file" id="p-plik-tyl" accept="image/*" capture="environment" style="display:none">`;
 
   ark.querySelector('#zamknij2').onclick = () => zamknijArkusz();
   ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
   // Nazwa i liczba sztuk z przodu doklejają się do produktu odczytanego z tyłu —
   // tamta tabela nie zawiera ani jednego, ani drugiego.
   odczytZPrzodu = o;
-  ark.querySelector('#p-tabela').onclick = () => {
-    const wej = arkusz.querySelector('#ark-plik');
-    if (wej) wej.click();
-  };
+  ark.querySelector('#p-tabela').onclick = () => ark.querySelector('#p-plik-tyl').click();
+  ark.querySelector('#p-plik-tyl').onchange = wyslijEtykiete;
 
   ark.querySelectorAll('[data-rodzaj]').forEach((b) => {
     b.onclick = async () => {
