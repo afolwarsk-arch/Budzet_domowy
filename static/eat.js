@@ -454,6 +454,10 @@ function otworzArkusz(posilek) {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9"/></svg>
           <span class="t">Opisz słowami</span><span class="o">Domowy obiad bez kodu</span>
         </button>
+        <button class="droga" id="d-przepisy" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 5.2A2 2 0 0 1 5.6 3.4H11v16.4H5.6a2 2 0 0 1-2-2z"/><path d="M20.4 5.2a2 2 0 0 0-2-1.8H13v16.4h5.4a2 2 0 0 0 2-2z"/></svg>
+          <span class="t">Twoje przepisy</span><span class="o">Dania, które już zapisałeś</span>
+        </button>
       </div>
 
       <div class="sek-tyt">Ostatnio jadłeś</div>
@@ -470,6 +474,7 @@ function otworzArkusz(posilek) {
   arkusz.querySelector('#d-skan').onclick = uruchomSkaner;
   arkusz.querySelector('#d-etykieta').onclick = () => arkusz.querySelector('#ark-plik').click();
   arkusz.querySelector('#d-przod').onclick = () => arkusz.querySelector('#ark-plik-przod').click();
+  arkusz.querySelector('#d-przepisy').onclick = () => ekranListyPrzepisow('');
   arkusz.querySelector('#ark-plik-przod').onchange = (ev) => {
     const plik = ev.target.files && ev.target.files[0];
     if (plik) wyslijPrzod(plik);
@@ -1135,6 +1140,76 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja) {
   };
 }
 
+// ── lista własnych przepisów w arkuszu ──────────────────────────────────────
+
+// Osobna droga obok skanowania i opisu. Wyszukiwarka i tak podpowiada przepisy,
+// ale tylko po wpisaniu frazy — a często chce się po prostu zobaczyć, co się ma.
+let licznikListyPrzepisow = 0;
+
+async function ekranListyPrzepisow(fraza) {
+  const ark = arkusz && arkusz.querySelector('.ark');
+  if (!ark) return;
+  zatrzymajSkaner();
+  const moje = ++licznikListyPrzepisow;
+
+  // Szkielet rysujemy OD RAZU, żeby pole wyszukiwania nie znikało pod palcem
+  // przy każdym wczytaniu — przerysowujemy tylko listę pod spodem.
+  if (!ark.querySelector('#lp-szukaj')) {
+    ark.innerHTML = `
+      <div class="ark-gl">
+        <button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
+        <h2 style="font-size:1rem">Twoje przepisy</h2>
+        <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button>
+      </div>
+      <div class="szukaj"><input type="text" id="lp-szukaj" placeholder="Szukaj wśród przepisów" autocomplete="off"></div>
+      <div id="lp-lista"><div class="komunikat">Wczytuję…</div></div>
+      <div id="ark-komunikat"></div>`;
+    ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+    ark.querySelector('#zamknij2').onclick = () => zamknijArkusz();
+    let cisza = null;
+    ark.querySelector('#lp-szukaj').addEventListener('input', (ev) => {
+      clearTimeout(cisza);
+      const f = ev.target.value;
+      cisza = setTimeout(() => ekranListyPrzepisow(f), 200);
+    });
+  }
+
+  let lista;
+  try {
+    const r = await authFetch('/api/eat/przepisy?fraza=' + encodeURIComponent(fraza || ''));
+    if (!r.ok) throw new Error('brak');
+    lista = (await r.json()).przepisy || [];
+  } catch {
+    const box = ark.querySelector('#lp-lista');
+    if (box) box.innerHTML = '<div class="komunikat blad">Nie udało się wczytać przepisów.</div>';
+    return;
+  }
+  // starsza, wolniejsza odpowiedź nie może nadpisać nowszej
+  if (moje !== licznikListyPrzepisow || !arkusz) return;
+
+  const box = ark.querySelector('#lp-lista');
+  if (!box) return;
+  if (!lista.length) {
+    box.innerHTML = fraza
+      ? '<div class="komunikat">Nic nie pasuje do tej nazwy.</div>'
+      : '<div class="komunikat">Nie masz jeszcze przepisów. '
+        + '<a href="/przepisy">Zapisz pierwszy</a> — potem dodasz go tu dwoma stuknięciami.</div>';
+    return;
+  }
+  box.innerHTML = lista.map((p) => {
+    const porcje = Number(p.porcje) || 1;
+    return `<button class="szybka" data-przepis="${p.id}" type="button">
+      <span class="nz"><b>${e(p.nazwa)}</b><span>${zaokr(Number(p.kcal || 0) / porcje)} kcal / porcję${
+        p.uzyc > 0 ? ' · użyte ' + p.uzyc + '×' : ''}</span></span>
+    </button>`;
+  }).join('');
+  box.querySelectorAll('[data-przepis]').forEach((b) => {
+    // `true` — „wstecz" ma wrócić do listy, z której się przyszło, a nie na
+    // ekran startowy arkusza.
+    b.onclick = () => ekranPrzepisu(b.dataset.przepis, true);
+  });
+}
+
 // ── zdjęcie przodu opakowania ───────────────────────────────────────────────
 
 // Tabela wartości jest z tyłu, ale nazwy produktu tam nie ma — a bez nazwy nie
@@ -1221,7 +1296,7 @@ function ekranZPrzodu(d) {
 
 // Przepis wybrany z wyszukiwarki dziennika. Pełne dane dociągamy osobno, bo
 // lista wyszukiwania nie niesie składników ani wagi odniesienia.
-async function ekranPrzepisu(id) {
+async function ekranPrzepisu(id, zListy) {
   const ark = arkusz && arkusz.querySelector('.ark');
   if (!ark) return;
   zatrzymajSkaner();
@@ -1321,7 +1396,11 @@ async function ekranPrzepisu(id) {
     b.setAttribute('aria-pressed', 'true');
     posilekDocelowy = b.dataset.p;
   };
-  pole('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+  pole('#wroc').onclick = () => {
+    if (zListy) { ekranListyPrzepisow(''); return; }
+    zamknijArkusz();
+    otworzArkusz(posilekDocelowy);
+  };
   pole('#zamknij2').onclick = () => zamknijArkusz();
 
   pole('#dodaj').onclick = async (ev) => {
