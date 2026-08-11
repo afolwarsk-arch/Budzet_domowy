@@ -72,6 +72,63 @@ async function wczytajDzien() {
   rysujBilans();
 }
 
+// Wpisy z tym samym `grupa_id` to jedno danie rozłożone na składniki. Kolejność
+// zachowujemy — grupa siada tam, gdzie stoi jej pierwszy składnik.
+function pogrupuj(wpisy) {
+  const wynik = [];
+  const gdzie = {};
+  wpisy.forEach((w) => {
+    if (!w.grupa_id) { wynik.push({ wpis: w }); return; }
+    if (gdzie[w.grupa_id] === undefined) {
+      gdzie[w.grupa_id] = wynik.length;
+      wynik.push({ grupa: w.grupa_id, nazwa: w.grupa_nazwa || 'Danie', skladniki: [] });
+    }
+    wynik[gdzie[w.grupa_id]].skladniki.push(w);
+  });
+  return wynik;
+}
+
+function wiersz(w, wSrodku) {
+  // Treść wiersza to prawdziwy <button>, a nie div z role="button": krzyżyk
+  // obok jest osobnym przyciskiem, a przycisk w przycisku to nieprawidłowy
+  // HTML i klawiatura gubi się w nim. Kliknięcie w treść otwiera edycję —
+  // najczęstsza poprawka to gramatura („dodałem 100 g, a zjadłem 180").
+  return `<div class="poz${wSrodku ? ' poz-skl' : ''}">
+    <button class="poz-tresc" data-edytuj="${w.id}" type="button" title="Stuknij, żeby poprawić">
+      <span class="nz">${e(w.nazwa)}</span>
+      <span class="il">${e(w.opis_porcji || dziesietne(w.ilosc_g) + ' g')}</span>
+      <span class="kc">${zaokr(w.kcal)}</span>
+    </button>
+    <button class="x" data-usun="${w.id}" title="Usuń">&times;</button>
+  </div>`;
+}
+
+function kartaGrupy(g) {
+  const suma = g.skladniki.reduce((s, w) => s + Number(w.kcal || 0), 0);
+  const otwarta = grupyOtwarte.has(g.grupa);
+  return `<div class="grupa${otwarta ? ' rozwinieta' : ''}">
+    <div class="poz grupa-gl">
+      <button class="poz-tresc" data-grupa="${g.grupa}" type="button"
+              aria-expanded="${otwarta}" title="Pokaż składniki">
+        <span class="strzalka" aria-hidden="true">›</span>
+        <span class="nz">${e(g.nazwa)}</span>
+        <span class="il">${g.skladniki.length} skł.</span>
+        <span class="kc">${zaokr(suma)}</span>
+      </button>
+      <button class="x" data-usun-grupa="${g.grupa}" title="Usuń całe danie">&times;</button>
+    </div>
+    <div class="grupa-srodek"${otwarta ? '' : ' hidden'}>
+      ${g.skladniki.map((w) => wiersz(w, true)).join('')}
+      <button class="mini-btn" data-przepis="${g.grupa}" data-nazwa="${e(g.nazwa)}"
+              type="button" style="margin:4px 0 2px 12px">Zapisz jako przepis</button>
+    </div>
+  </div>`;
+}
+
+// Które grupy są rozwinięte — poza DOM-em, żeby przerysowanie dnia po edycji
+// nie zwijało wszystkiego z powrotem.
+const grupyOtwarte = new Set();
+
 function rysujPosilki() {
   const box = document.getElementById('posilki');
   box.innerHTML = POSILKI.map(([klucz, nazwa]) => {
@@ -82,16 +139,7 @@ function rysujPosilki() {
     // HTML i klawiatura gubi się w nim. Kliknięcie w treść otwiera edycję —
     // najczęstsza poprawka to gramatura („dodałem 100 g, a zjadłem 180"),
     // więc nie chowamy jej pod dodatkową ikonką.
-    const wiersze = wpisy.map((w) => `
-      <div class="poz">
-        <button class="poz-tresc" data-edytuj="${w.id}" type="button"
-                title="Stuknij, żeby poprawić">
-          <span class="nz">${e(w.nazwa)}</span>
-          <span class="il">${e(w.opis_porcji || dziesietne(w.ilosc_g) + ' g')}</span>
-          <span class="kc">${zaokr(w.kcal)}</span>
-        </button>
-        <button class="x" data-usun="${w.id}" title="Usuń">&times;</button>
-      </div>`).join('');
+    const wiersze = pogrupuj(wpisy).map((el) => (el.grupa ? kartaGrupy(el) : wiersz(el.wpis))).join('');
     return `<div class="posilek">
       <div class="pgl"><b>${nazwa}</b><span class="sum">${suma ? zaokr(suma) + ' kcal' : '—'}</span></div>
       ${wiersze}
@@ -119,6 +167,77 @@ function rysujPosilki() {
     const wpis = poId[el.dataset.edytuj];
     if (wpis) el.onclick = () => edytujWpis(wpis);
   });
+
+  box.querySelectorAll('[data-grupa]').forEach((b) => {
+    b.onclick = () => {
+      const id = b.dataset.grupa;
+      if (grupyOtwarte.has(id)) grupyOtwarte.delete(id); else grupyOtwarte.add(id);
+      rysujPosilki();
+    };
+  });
+  box.querySelectorAll('[data-usun-grupa]').forEach((b) => {
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const r = await authFetch('/api/eat/grupa/' + b.dataset.usunGrupa, { method: 'DELETE' });
+        if (r.ok) { grupyOtwarte.delete(b.dataset.usunGrupa); await wczytajDzien(); }
+        else b.disabled = false;
+      } catch { b.disabled = false; }
+    };
+  });
+  box.querySelectorAll('[data-przepis]').forEach((b) => {
+    b.onclick = () => zapiszJakoPrzepis(b.dataset.przepis, b.dataset.nazwa);
+  });
+}
+
+// „Zapisz jako przepis" z tego, co już zjedzone. Najtańsza droga do przepisu:
+// gramatury i wartości są sprawdzone, więc nie ma tu ani zgadywania, ani AI.
+// Pytamy tylko o to, czego z dziennika nie da się wywnioskować — na ile porcji
+// danie wychodziło, skoro zjadłeś jedną.
+function zapiszJakoPrzepis(grupaId, nazwa) {
+  if (arkusz) return;
+  arkusz = document.createElement('div');
+  arkusz.className = 'ark-tlo';
+  arkusz.innerHTML = `<div class="ark">
+    <div class="ark-gl">
+      <h2 style="font-size:1rem">Zapisz jako przepis</h2>
+      <button class="x" id="zamknij3" type="button" aria-label="Zamknij">&times;</button>
+    </div>
+    <div class="sek-tyt">Nazwa dania</div>
+    <input type="text" id="pp-nazwa" maxlength="120" value="${e(nazwa)}" style="width:100%">
+    <div class="sek-tyt">Na ile porcji wychodziło całe danie</div>
+    <input type="text" id="pp-porcje" value="1" inputmode="decimal" autocomplete="off" style="width:100%">
+    <div class="komunikat">Jeśli to, co zjadłeś, było całym daniem — zostaw 1.
+      Jeśli ugotowałeś na cztery osoby, a zjadłeś jedną porcję, wpisz 4:
+      składniki zostaną wtedy przeliczone na cały garnek.</div>
+    <div id="ark-komunikat"></div>
+    <button class="cta" id="pp-zapisz" type="button">Zapisz przepis</button>
+  </div>`;
+  document.body.appendChild(arkusz);
+  try { history.pushState({ ark: 1 }, ''); } catch {}
+  arkusz.addEventListener('click', (ev) => { if (ev.target === arkusz) zamknijArkusz(); });
+  arkusz.querySelector('#zamknij3').onclick = () => zamknijArkusz();
+
+  arkusz.querySelector('#pp-zapisz').onclick = async (ev) => {
+    const nazwaP = arkusz.querySelector('#pp-nazwa').value.trim();
+    const porcje = zPola(arkusz.querySelector('#pp-porcje'));
+    if (!nazwaP) { komunikat('Podaj nazwę dania.', true); return; }
+    if (!porcje || porcje <= 0) { komunikat('Podaj liczbę porcji.', true); return; }
+    ev.target.disabled = true;
+    try {
+      const r = await authFetch('/api/eat/przepisy/z-grupy/' + grupaId, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nazwa: nazwaP, porcje }),
+      });
+      if (!r.ok) {
+        const x = await r.json().catch(() => ({}));
+        komunikat(x.detail || 'Nie udało się zapisać.', true);
+        ev.target.disabled = false; return;
+      }
+      zamknijArkusz();
+      location.href = '/przepisy';
+    } catch { komunikat('Błąd połączenia.', true); ev.target.disabled = false; }
+  };
 }
 
 // Poprawka pozycji już wpisanej do dnia. Podstawę „na 100 g" odtwarzamy z
@@ -1022,29 +1141,33 @@ function ekranPozycji(pozycje, opis) {
       .filter(({ i }) => ark.querySelector(`[data-zazn="${i}"]`).checked);
     if (!wybrane.length) { zamknijArkusz(); return; }
     komunikat('Zapisuję…');
-    // Wcześniej odpowiedzi były ignorowane: gdy trzecia z pięciu pozycji nie
-    // przeszła, dwie pierwsze wchodziły, a arkusz zamykał się jak po sukcesie.
-    let zapisane = 0;
-    const nieudane = [];
-    for (const { p, i } of wybrane) {
-      const v = biezaca(i);
-      try {
-        const r = await authFetch('/api/eat/wpis', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            data: dzienISO, posilek: posilekDocelowy, nazwa: p.nazwa,
-            opis_porcji: p.opis_porcji, ilosc_g: v.g,
-            kcal: v.kcal, bialko: v.bialko, tluszcz: v.tluszcz, wegle: v.wegle,
+    // Jedno wywołanie zamiast pętli po pozycjach. Wcześniej każdy składnik szedł
+    // osobnym żądaniem i przerwanie w połowie zostawiało pół posiłku w dzienniku.
+    // Serwer nadaje wspólny identyfikator grupy, dzięki czemu „kanapka z serem"
+    // pokazuje się jako jedno danie, choć składniki są osobnymi wpisami.
+    const nazwaGrupy = (opis || '').trim().slice(0, 120);
+    try {
+      const r = await authFetch('/api/eat/wpisy/grupa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data: dzienISO, posilek: posilekDocelowy, nazwa_grupy: nazwaGrupy,
+          pozycje: wybrane.map(({ p, i }) => {
+            const v = biezaca(i);
+            return { nazwa: p.nazwa, opis_porcji: p.opis_porcji, ilosc_g: v.g,
+                     kcal: v.kcal, bialko: v.bialko, tluszcz: v.tluszcz, wegle: v.wegle };
           }),
-        });
-        if (r.ok) zapisane++; else nieudane.push(p.nazwa);
-      } catch { nieudane.push(p.nazwa); }
-    }
-    if (nieudane.length) {
-      komunikat(`Zapisano ${zapisane} z ${wybrane.length}. Nie weszły: ${nieudane.join(', ')}.`, true);
+        }),
+      });
+      if (!r.ok) {
+        const x = await r.json().catch(() => ({}));
+        komunikat(x.detail || 'Nie udało się zapisać.', true);
+        ev.target.disabled = false;
+        return;
+      }
+    } catch {
+      komunikat('Błąd połączenia.', true);
       ev.target.disabled = false;
-      await wczytajDzien();
       return;
     }
     zamknijArkusz();

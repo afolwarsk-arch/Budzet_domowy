@@ -992,6 +992,7 @@ const MODULY = [
     ikona: 'lista',
     strony: [
       { href: '/eat', ikona: 'lista', label: 'Dziennik', pelny: 'Dziennik' },
+      { href: '/przepisy', ikona: 'ksiazka', label: 'Przepisy', pelny: 'Przepisy' },
     ],
   },
 ];

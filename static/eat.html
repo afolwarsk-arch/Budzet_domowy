@@ -46,6 +46,18 @@
     .poz .x { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 17px;
               line-height: 1; padding: 0 2px; min-width: 34px; min-height: 44px; flex: none; }
     .poz .x:hover { color: var(--danger); }
+    /* ── danie złożone ze składników ──
+       Wpisy zostają osobne (każdy z własną gramaturą do poprawienia), ale w
+       dzienniku pokazują się pod jedną nazwą. Domyślnie zwinięte — po to jest
+       grupowanie, żeby lista dnia nie puchła od pieczywa i sera osobno. */
+    .grupa { margin-bottom: 5px; }
+    .grupa-gl { margin-bottom: 0; }
+    .grupa .strzalka { flex: none; color: var(--muted); font-size: 15px; line-height: 1;
+                       transition: transform .15s; display: inline-block; width: 10px; }
+    .grupa.rozwinieta .strzalka { transform: rotate(90deg); }
+    @media (prefers-reduced-motion: reduce) { .grupa .strzalka { transition: none; } }
+    .grupa-srodek { border-left: 2px solid var(--border); margin: 4px 0 0 13px; padding-left: 8px; }
+    .poz-skl { background: var(--surface-2); }
     .dodaj-mini { border: 1px dashed var(--border); background: none; color: var(--muted); border-radius: 10px;
                   padding: 9px; width: 100%; font: inherit; font-size: 13px; cursor: pointer; }
     .dodaj-mini:hover { border-color: var(--accent); color: var(--accent); }

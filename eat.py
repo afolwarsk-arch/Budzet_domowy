@@ -12,6 +12,7 @@ Dzięki temu Open Food Facts jest zasiewem, a nie zależnością: po kilku
 tygodniach codzienne zakupy rozpoznają się lokalnie.
 """
 
+import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -58,6 +59,12 @@ def _liczba(v):
     except (TypeError, ValueError):
         return None
     return f if f == f and abs(f) != float("inf") else None
+
+
+def _ladna(v: float) -> str:
+    """Liczba bez zbędnej końcówki: 1,5 zostaje 1,5, ale 2,0 to po prostu 2.
+    Trafia do opisu porcji widocznego w dzienniku."""
+    return (f"{v:.2f}".rstrip("0").rstrip(".") or "0").replace(".", ",")
 
 
 # ── Open Food Facts ─────────────────────────────────────────────────────────
@@ -453,11 +460,325 @@ def zmien_wpis(wpis_id: int, body: dict, current_user: dict = Depends(get_curren
     return wynik
 
 
+@router.post("/wpisy/grupa", status_code=201)
+def dodaj_grupe(body: dict, current_user: dict = Depends(get_current_user)):
+    """Kilka składników zapisanych JAKO JEDNO danie.
+
+    „Kanapka z serem" to pieczywo i ser — osobne wpisy, każdy z własną
+    gramaturą do poprawienia, ale w dzienniku pokazane pod wspólną nazwą.
+
+    Jedno wywołanie zamiast pętli po stronie przeglądarki: wcześniej każda
+    pozycja szła osobnym żądaniem i przerwanie w połowie zostawiało pół
+    posiłku, bez żadnego śladu, że reszta nie doszła."""
+    hid = _hid(current_user)
+    posilek = body.get("posilek")
+    if posilek not in eat_db.POSILKI:
+        raise HTTPException(400, "Nieznany posiłek")
+    pozycje = body.get("pozycje") or []
+    if not pozycje:
+        raise HTTPException(400, "Brak pozycji")
+    if len(pozycje) > 40:
+        raise HTTPException(400, "Za dużo pozycji naraz")
+
+    dzien = _dzien(body.get("data"))
+    nazwa_grupy = (body.get("nazwa_grupy") or "").strip()[:120] or None
+    # Grupę wiąże wspólny identyfikator. Nadaje go SERWER — gdyby dawał go
+    # klient, dwie osoby mogłyby trafić w ten sam i zlepić swoje posiłki.
+    grupa_id = uuid.uuid4().hex if nazwa_grupy and len(pozycje) > 1 else None
+
+    zapisane = []
+    for p in pozycje:
+        nazwa = (p.get("nazwa") or "").strip()
+        if not nazwa:
+            raise HTTPException(400, "Pozycja bez nazwy")
+        zapisane.append(eat_db.dodaj_wpis(hid, current_user["user_id"], {
+            "data": dzien,
+            "posilek": posilek,
+            "produkt_id": None,
+            "nazwa": nazwa[:120],
+            "opis_porcji": (p.get("opis_porcji") or "").strip()[:40] or None,
+            "ilosc_g": _sprawdz_ilosc(p.get("ilosc_g")),
+            "grupa_id": grupa_id,
+            "grupa_nazwa": nazwa_grupy if grupa_id else None,
+            **_sprawdz_wartosci(p),
+        }))
+    return {"grupa_id": grupa_id, "wpisy": zapisane}
+
+
+@router.delete("/grupa/{grupa_id}")
+def usun_grupe(grupa_id: str, current_user: dict = Depends(get_current_user)):
+    """Kasuje całe danie naraz — po rozłożeniu na składniki nikt nie chce
+    usuwać ich pojedynczo."""
+    ile = eat_db.usun_grupe(grupa_id, _hid(current_user), current_user["user_id"])
+    if not ile:
+        raise HTTPException(404, "Nie znaleziono grupy")
+    return {"ok": True, "usunieto": ile}
+
+
 @router.delete("/wpis/{wpis_id}")
 def usun_wpis(wpis_id: int, current_user: dict = Depends(get_current_user)):
     if not eat_db.usun_wpis(wpis_id, _hid(current_user), current_user["user_id"]):
         raise HTTPException(404, "Nie znaleziono wpisu")
     return {"ok": True}
+
+
+# ── przepisy ────────────────────────────────────────────────────────────────
+
+def _skladniki_z_ciala(body: dict) -> list[dict]:
+    surowe = body.get("skladniki") or []
+    if not surowe:
+        raise HTTPException(400, "Przepis bez składników")
+    if len(surowe) > 60:
+        raise HTTPException(400, "Za dużo składników")
+    wynik = []
+    for s in surowe:
+        nazwa = (s.get("nazwa") or "").strip()
+        if not nazwa:
+            raise HTTPException(400, "Składnik bez nazwy")
+        wynik.append({
+            "produkt_id": s.get("produkt_id") or None,
+            "nazwa": nazwa[:120],
+            "ilosc_g": _sprawdz_ilosc(s.get("ilosc_g")),
+            **_sprawdz_wartosci(s),
+        })
+    return wynik
+
+
+def _porcje_z_ciala(body: dict, domyslnie: float = 1) -> float:
+    porcje = _liczba(body.get("porcje", domyslnie))
+    if porcje is None or not 0.25 <= porcje <= 50:
+        raise HTTPException(400, "Liczba porcji poza zakresem (0,25–50)")
+    return round(porcje, 2)
+
+
+def _waga_z_ciala(body: dict) -> float | None:
+    """Waga gotowego dania jest OPCJONALNA.
+
+    Kalorie się nie gotują — woda nie dodaje energii, zmienia się tylko masa.
+    Dlatego „suma składników ÷ liczba porcji" jest dokładne bez ważenia
+    czegokolwiek. Waga przydaje się wyłącznie temu, kto woli odmierzać porcję
+    na wadze zamiast na oko."""
+    if body.get("waga_gotowego_g") in (None, "", 0):
+        return None
+    waga = _liczba(body.get("waga_gotowego_g"))
+    if waga is None or not 1 <= waga <= 20000:
+        raise HTTPException(400, "Waga gotowego dania poza zakresem")
+    return round(waga, 1)
+
+
+@router.get("/przepisy")
+def przepisy(fraza: str = Query(""), current_user: dict = Depends(get_current_user)):
+    return {"przepisy": eat_db.lista_przepisow(_hid(current_user), fraza)}
+
+
+@router.get("/przepisy/{przepis_id}")
+def przepis(przepis_id: int, current_user: dict = Depends(get_current_user)):
+    p = eat_db.get_przepis(przepis_id, _hid(current_user))
+    if not p:
+        raise HTTPException(404, "Nie znaleziono przepisu")
+    return p
+
+
+@router.post("/przepisy", status_code=201)
+def dodaj_przepis(body: dict, current_user: dict = Depends(get_current_user)):
+    nazwa = (body.get("nazwa") or "").strip()
+    if not nazwa:
+        raise HTTPException(400, "Podaj nazwę przepisu")
+    return eat_db.zapisz_przepis(_hid(current_user), current_user["user_id"], {
+        "nazwa": nazwa[:120],
+        "opis": (body.get("opis") or "").strip()[:2000] or None,
+        "porcje": _porcje_z_ciala(body),
+        "waga_gotowego_g": _waga_z_ciala(body),
+        "skladniki": _skladniki_z_ciala(body),
+    })
+
+
+@router.patch("/przepisy/{przepis_id}")
+def zmien_przepis(przepis_id: int, body: dict, current_user: dict = Depends(get_current_user)):
+    """Poprawka przepisu NIE przepisuje historii — wpisy w dzienniku mają
+    własne, zamrożone wartości i zostają takie, jakie były w dniu zjedzenia."""
+    hid = _hid(current_user)
+    biezacy = eat_db.get_przepis(przepis_id, hid)
+    if not biezacy:
+        raise HTTPException(404, "Nie znaleziono przepisu")
+    nazwa = (body.get("nazwa") or "").strip() or biezacy["nazwa"]
+    wynik = eat_db.zapisz_przepis(hid, current_user["user_id"], {
+        "nazwa": nazwa[:120],
+        "opis": (body.get("opis") or "").strip()[:2000] or None,
+        "porcje": _porcje_z_ciala(body, float(biezacy["porcje"])),
+        "waga_gotowego_g": _waga_z_ciala(body),
+        "skladniki": _skladniki_z_ciala(body),
+    }, przepis_id=przepis_id)
+    if not wynik:
+        raise HTTPException(404, "Nie znaleziono przepisu")
+    return wynik
+
+
+@router.delete("/przepisy/{przepis_id}")
+def usun_przepis(przepis_id: int, current_user: dict = Depends(get_current_user)):
+    if not eat_db.usun_przepis(przepis_id, _hid(current_user)):
+        raise HTTPException(404, "Nie znaleziono przepisu")
+    return {"ok": True}
+
+
+@router.post("/przepisy/{przepis_id}/do-dnia", status_code=201)
+def przepis_do_dnia(przepis_id: int, body: dict,
+                    current_user: dict = Depends(get_current_user)):
+    """Danie wchodzi do dziennika jako JEDEN wpis o nazwie przepisu.
+
+    Rozbijanie ćwiartki porcji na „31,3 g mięsa mielonego" byłoby szumem —
+    rozpiska składników mieszka w przepisie. Ilość podajesz w porcjach albo,
+    jeśli przy przepisie zapisana jest waga gotowego dania, w gramach."""
+    hid = _hid(current_user)
+    p = eat_db.get_przepis(przepis_id, hid)
+    if not p:
+        raise HTTPException(404, "Nie znaleziono przepisu")
+
+    posilek = body.get("posilek")
+    if posilek not in eat_db.POSILKI:
+        raise HTTPException(400, "Nieznany posiłek")
+
+    porcje_dania = float(p["porcje"]) or 1
+    waga_calosci = float(p["waga_gotowego_g"]) if p["waga_gotowego_g"] else None
+
+    if body.get("gramy") not in (None, "", 0):
+        if not waga_calosci:
+            raise HTTPException(400, "Ten przepis nie ma zapisanej wagi gotowego dania")
+        gramy = _sprawdz_ilosc(body.get("gramy"))
+        udzial = gramy / waga_calosci
+        porcje_zjedzone = round(udzial * porcje_dania, 2)
+        ilosc_g = gramy
+        opis = f"{_ladna(gramy)} g"
+    else:
+        porcje_zjedzone = _liczba(body.get("porcje"))
+        if porcje_zjedzone is None or not 0.05 <= porcje_zjedzone <= 20:
+            raise HTTPException(400, "Liczba porcji poza zakresem (0,05–20)")
+        porcje_zjedzone = round(porcje_zjedzone, 2)
+        udzial = porcje_zjedzone / porcje_dania
+        # Bez zapisanej wagi gotowego dania gramaturę wpisu wyprowadzamy z masy
+        # SUROWYCH składników. To przybliżenie (makaron nasiąka, sos odparowuje),
+        # ale kolumna jest wymagana, a kalorie i tak liczą się z udziału.
+        suma_surowych = sum(float(s["ilosc_g"] or 0) for s in p["skladniki"]) or 1
+        ilosc_g = round((waga_calosci or suma_surowych) * udzial, 1)
+        opis = f"{_ladna(porcje_zjedzone)} porcji" if porcje_zjedzone != 1 else "1 porcja"
+
+    wpis = eat_db.dodaj_wpis(hid, current_user["user_id"], {
+        "data": _dzien(body.get("data")),
+        "posilek": posilek,
+        "produkt_id": None,
+        "nazwa": p["nazwa"],
+        "opis_porcji": opis,
+        "ilosc_g": max(0.1, ilosc_g),
+        "kcal": round(float(p["kcal"]) * udzial, 1),
+        "bialko": round(float(p["bialko"] or 0) * udzial, 1),
+        "tluszcz": round(float(p["tluszcz"] or 0) * udzial, 1),
+        "wegle": round(float(p["wegle"] or 0) * udzial, 1),
+        "przepis_id": przepis_id,
+        "porcje_zjedzone": porcje_zjedzone,
+    })
+    eat_db.policz_uzycie(przepis_id, hid)
+    return wpis
+
+
+def _przepis_z_ai(dane: dict) -> dict:
+    """Wspólne domknięcie dla obu dróg AI — z opisu i ze zdjęcia.
+
+    Nic nie zapisujemy: użytkownik ma zobaczyć, co Claude wyliczył, i móc to
+    poprawić, zanim przepis powstanie."""
+    skladniki = [s for s in (dane.get("skladniki") or []) if (s.get("nazwa") or "").strip()]
+    if not skladniki:
+        raise HTTPException(422, "Nie widzę tu składników, z których dałoby się złożyć przepis.")
+    porcje = _liczba(dane.get("porcje")) or 0
+    return {
+        "nazwa": (dane.get("nazwa") or "").strip()[:120] or "Nowy przepis",
+        # Model czasem pomija liczbę porcji albo daje 0 — wtedy jedna porcja
+        # jest bezpieczniejsza niż dzielenie przez zero.
+        "porcje": round(porcje, 2) if 0.25 <= porcje <= 50 else 1,
+        "skladniki": skladniki[:60],
+    }
+
+
+@router.post("/przepisy/z-opisu")
+def przepis_z_opisu(body: dict, current_user: dict = Depends(get_current_user)):
+    """Przepis wpisany albo podyktowany słowami → składniki do zatwierdzenia."""
+    if current_user.get("ai_zablokowane"):
+        raise HTTPException(403, "Funkcje AI są wyłączone dla tego konta.")
+    hid = _hid(current_user)
+    opis = (body.get("opis") or "").strip()
+    if len(opis) < 10:
+        raise HTTPException(400, "Opisz przepis dokładniej — składniki i ilości")
+    import ai_processor
+    import database
+    try:
+        dane, uzycie = ai_processor.szacuj_przepis(opis)
+    except Exception as e:
+        print(f"[eat] rozlozenie przepisu nie powiodlo sie: {e!r}")
+        raise HTTPException(502, "Nie udało się rozłożyć przepisu. Spróbuj opisać prościej.")
+    database.log_api_usage(hid, "eat-przepis", uzycie["input_tokens"], uzycie["output_tokens"],
+                           current_user["user_id"])
+    return _przepis_z_ai(dane)
+
+
+@router.post("/przepisy/ze-zdjecia")
+async def przepis_ze_zdjecia(file: UploadFile = File(...),
+                             current_user: dict = Depends(get_current_user)):
+    """Zdjęcie przepisu z książki albo z ekranu."""
+    if current_user.get("ai_zablokowane"):
+        raise HTTPException(403, "Funkcje AI są wyłączone dla tego konta.")
+    hid = _hid(current_user)
+    import ai_processor
+    import database
+    zawartosc = await file.read()
+    try:
+        dane, uzycie = await run_in_threadpool(
+            ai_processor.przepis_ze_zdjecia, zawartosc, file.content_type or "image/jpeg")
+    except Exception as e:
+        print(f"[eat] odczyt przepisu ze zdjecia nie powiodl sie: {e!r}")
+        raise HTTPException(502, "Nie udało się odczytać przepisu. Spróbuj ostrzejszego zdjęcia.")
+    # Wywołanie z obrazem jest kilkukrotnie droższe od tekstowego, więc ma
+    # własną etykietę — inaczej w panelu kosztów zlałoby się z opisem.
+    database.log_api_usage(hid, "eat-przepis-foto", uzycie["input_tokens"],
+                           uzycie["output_tokens"], current_user["user_id"])
+    return _przepis_z_ai(dane)
+
+
+@router.post("/przepisy/z-grupy/{grupa_id}", status_code=201)
+def przepis_z_grupy(grupa_id: str, body: dict,
+                    current_user: dict = Depends(get_current_user)):
+    """„Zapisz jako przepis" z tego, co już zjadłeś.
+
+    Najtańsza droga do przepisu i najpewniejsza: gramatury i wartości są już
+    przez Ciebie sprawdzone, więc nie ma tu ani zgadywania, ani kosztu AI."""
+    hid = _hid(current_user)
+    wpisy = eat_db.get_grupe(grupa_id, hid, current_user["user_id"])
+    if not wpisy:
+        raise HTTPException(404, "Nie znaleziono dania")
+    nazwa = ((body.get("nazwa") or "").strip()
+             or (wpisy[0].get("grupa_nazwa") or "").strip())
+    if not nazwa:
+        raise HTTPException(400, "Podaj nazwę przepisu")
+    porcje = _porcje_z_ciala(body)
+
+    # Wpisy w dzienniku to JEDNA PORCJA — tyle, ile zjadłeś. Przepis opisuje
+    # CAŁE danie, więc przy „ugotowałem na 4, zjadłem jedną" trzeba je pomnożyć
+    # przez liczbę porcji. Bez tego przepis miałby ćwiartkę wartości: kcal na
+    # porcję wyszłoby jako suma÷4, czyli czwarta część tego, co faktycznie
+    # zjadłeś. Przy porcje=1 mnożnik wynosi 1 i nic się nie zmienia.
+    return eat_db.zapisz_przepis(hid, current_user["user_id"], {
+        "nazwa": nazwa[:120],
+        "opis": None,
+        "porcje": porcje,
+        "waga_gotowego_g": _waga_z_ciala(body),
+        "skladniki": [{
+            "produkt_id": w.get("produkt_id"),
+            "nazwa": w["nazwa"],
+            "ilosc_g": round(float(w["ilosc_g"]) * porcje, 1),
+            "kcal": round(float(w["kcal"] or 0) * porcje, 1),
+            "bialko": round(float(w["bialko"] or 0) * porcje, 1),
+            "tluszcz": round(float(w["tluszcz"] or 0) * porcje, 1),
+            "wegle": round(float(w["wegle"] or 0) * porcje, 1),
+        } for w in wpisy],
+    })
 
 
 # ── cele ────────────────────────────────────────────────────────────────────

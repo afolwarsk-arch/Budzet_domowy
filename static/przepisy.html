@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Przepisy — Wiem</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#1a1d20">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script defer src="/static/auth.js"></script>
+  <style>
+    main { padding-bottom: 96px; }
+
+    .gora { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .gora h1 { margin: 0; font-size: 1.25rem; }
+    .btn-nowy { margin-left: auto; background: var(--primary); color: var(--on-primary);
+                border: none; border-radius: 10px; padding: 10px 16px; font: inherit;
+                font-size: 14px; font-weight: 600; cursor: pointer; min-height: 44px; }
+
+    .szukajka { width: 100%; margin-bottom: 16px; }
+
+    /* ── karta przepisu ── */
+    .przepis { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+               background: var(--surface); border: 1px solid var(--border-soft);
+               border-radius: 12px; padding: 13px 14px; margin-bottom: 8px;
+               font: inherit; color: var(--text); cursor: pointer; min-height: 44px; }
+    .przepis:hover { border-color: var(--accent); }
+    .przepis:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    /* Wszystko wewnątrz karty to <span>, bo karta jest <button> i nie wolno w
+       niej zagnieżdżać bloków wg starych reguł — ale bez display:block spany
+       złożyłyby się w jedną linię, a text-overflow: ellipsis w ogóle nie
+       działa na elemencie liniowym. Stąd jawne bloki. */
+    .p-tresc { display: block; flex: 1; min-width: 0; }
+    .p-nazwa { display: block; font-size: 15px; font-weight: 600; color: var(--heading);
+               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .p-pod { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .p-makro { display: block; font-size: 11px; color: var(--muted); margin-top: 3px;
+               font-variant-numeric: tabular-nums; overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; }
+    .p-kcal { display: block; text-align: right; flex: none; }
+    .p-kcal b { display: block; font-size: 17px; font-weight: 700; color: var(--heading);
+                font-variant-numeric: tabular-nums; }
+    .p-kcal span { display: block; font-size: 10px; text-transform: uppercase;
+                   letter-spacing: .05em; color: var(--muted); white-space: nowrap; }
+
+    .pusto { text-align: center; color: var(--muted); padding: 40px 16px; }
+    .pusto b { display: block; color: var(--heading); font-size: 16px; margin-bottom: 6px; }
+
+    /* ── arkusz ── */
+    .ark-tlo { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9998;
+               display: flex; align-items: flex-end; justify-content: center; }
+    .ark { background: var(--surface); width: 100%; max-width: 520px; max-height: 92vh;
+           overflow-y: auto; border-radius: 18px 18px 0 0;
+           padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
+    @media (min-width: 560px) {
+      .ark-tlo { align-items: center; }
+      .ark { border-radius: 18px; }
+    }
+    .ark-gl { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .ark-gl h2 { margin: 0; flex: 1; font-size: 1.05rem; }
+    .ark .x { background: none; border: none; color: var(--muted); font-size: 22px;
+              line-height: 1; cursor: pointer; min-width: 44px; min-height: 44px; }
+
+    .sek-tyt { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
+               color: var(--muted); font-weight: 700; margin: 14px 0 5px; }
+    .ark input[type=text], .ark input[type=number], .ark textarea {
+      width: 100%; font: inherit; font-size: 15px; }
+    .ark textarea { min-height: 96px; resize: vertical; }
+
+    .cta { width: 100%; padding: 13px; border: none; border-radius: 11px;
+           background: var(--primary); color: var(--on-primary); font: inherit;
+           font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 14px; min-height: 44px; }
+    .cta[disabled] { opacity: .55; cursor: not-allowed; }
+    .cta-2 { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .cta-usun { width: 100%; margin-top: 8px; padding: 11px; background: none; border: none;
+                border-radius: 11px; color: var(--danger); font: inherit; font-size: 13.5px;
+                cursor: pointer; min-height: 44px; }
+    .cta-usun:hover { background: var(--danger-bg); }
+
+    /* ── składniki w edytorze ── */
+    .skl { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+           background: var(--surface); border: 1px solid var(--border-soft);
+           border-radius: 9px; margin-bottom: 6px; }
+    .skl-n { flex: 1; min-width: 0; font-size: 13.5px; overflow: hidden;
+             text-overflow: ellipsis; white-space: nowrap; }
+    .skl-g { width: 76px; flex: none; text-align: center; font-size: 13px; }
+    .skl-kc { font-size: 11.5px; color: var(--muted); width: 62px; flex: none;
+              text-align: right; font-variant-numeric: tabular-nums; }
+    .skl .x { min-width: 34px; min-height: 38px; font-size: 17px; }
+
+    .suma { background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: 12px; padding: 13px; margin-top: 12px; }
+    .suma-kc { font-size: 24px; font-weight: 700; color: var(--heading);
+               font-variant-numeric: tabular-nums; }
+    .suma-mk { display: flex; gap: 14px; margin-top: 5px; font-size: 12px;
+               color: var(--muted); flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+    .suma-mk b { color: var(--text); font-weight: 600; }
+    .suma-pod { font-size: 11.5px; color: var(--muted); margin-top: 7px; }
+
+    /* ── ile porcji ── */
+    .porcje-szyb { display: flex; gap: 7px; flex-wrap: wrap; margin: 4px 0 12px; }
+    .porcje-szyb button { border: 1px solid var(--border); background: var(--surface);
+                          border-radius: 20px; padding: 8px 16px; font: inherit; font-size: 14px;
+                          cursor: pointer; color: var(--text); min-height: 44px; }
+    .porcje-szyb button[aria-pressed="true"] { background: var(--primary);
+                          color: var(--on-primary); border-color: var(--primary); font-weight: 600; }
+    .jedn-przel { display: flex; gap: 6px; margin-bottom: 10px; }
+    .jedn-przel button { flex: 1; border: 1px solid var(--border); background: var(--surface);
+                         border-radius: 9px; padding: 9px; font: inherit; font-size: 13px;
+                         cursor: pointer; color: var(--text); min-height: 44px; }
+    .jedn-przel button[aria-pressed="true"] { background: var(--primary);
+                         color: var(--on-primary); border-color: var(--primary); font-weight: 600; }
+
+    .gdzie { display: flex; gap: 6px; margin-bottom: 12px; }
+    .gdzie button { flex: 1; border: 1px solid var(--border); background: var(--surface);
+                    border-radius: 9px; padding: 8px 3px; min-height: 44px; font: inherit;
+                    font-size: 12px; cursor: pointer; color: var(--text); }
+    .gdzie button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary);
+                    border-color: var(--primary); font-weight: 600; }
+
+    .drogi { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+    .droga { border: 1px solid var(--border); background: var(--surface); border-radius: 11px;
+             padding: 14px 10px; font: inherit; font-size: 13px; cursor: pointer;
+             color: var(--text); text-align: center; min-height: 76px; }
+    .droga:hover { border-color: var(--accent); }
+    .droga b { display: block; font-size: 13.5px; color: var(--heading); margin-bottom: 3px; }
+    .droga span { font-size: 11px; color: var(--muted); line-height: 1.3; display: block; }
+
+    .komunikat { font-size: 12.5px; color: var(--muted); margin: 8px 0; }
+    .komunikat.blad { color: var(--danger); }
+    .laduje { text-align: center; color: var(--muted); padding: 24px; font-size: 14px; }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></a>
+</nav>
+
+<main>
+  <div class="gora">
+    <h1>Przepisy</h1>
+    <button class="btn-nowy" id="btn-nowy" type="button">+ Nowy przepis</button>
+  </div>
+
+  <input type="text" id="szukaj" class="szukajka" placeholder="Szukaj przepisu" autocomplete="off">
+
+  <div id="lista"><div class="laduje">Wczytuję…</div></div>
+</main>
+
+<script defer src="/static/przepisy.js"></script>
+</body>
+</html>

@@ -444,6 +444,81 @@ def czytaj_etykiete(image_bytes: bytes, mime_type: str = "image/jpeg") -> tuple[
     return _json.loads(surowy), _usage(message)
 
 
+_PRZEPIS_PROMPT = """Rozkładasz PRZEPIS KULINARNY na składniki wraz z wartościami odżywczymi.
+
+Zwróć WYŁĄCZNIE JSON:
+{"nazwa": "...", "porcje": liczba,
+ "skladniki": [{"nazwa": "...", "ilosc_g": liczba,
+                "kcal": liczba, "bialko": liczba, "tluszcz": liczba, "wegle": liczba}]}
+
+ZASADY:
+- To PRZEPIS na całe danie, nie pojedynczy posiłek. Wartości każdego składnika
+  dotyczą CAŁEJ ilości użytej do gotowania, nie jednej porcji.
+- `porcje` to liczba porcji, na jaką wychodzi danie. Jeśli przepis to podaje
+  („na 4 osoby", „4 porcje") — użyj tej liczby. Jeśli nie podaje, oszacuj po
+  ilości składników i wpisz swoje oszacowanie. Nigdy nie zwracaj 0.
+- `nazwa` to nazwa dania. Jeśli przepis jej nie podaje, nazwij danie po tym,
+  czym jest („Makaron z sosem pomidorowym").
+- Składniki podawaj w postaci SUROWEJ, czyli takiej, w jakiej się je odmierza
+  przed gotowaniem — 500 g makaronu suchego, nie ugotowanego. Kalorie nie
+  zmieniają się przy gotowaniu, zmienia się tylko masa.
+- Przeliczaj miary domowe na gramy: łyżka oleju 10 g, łyżka masła 15 g,
+  szklanka mąki 130 g, szklanka mleka 250 g, ząbek czosnku 5 g, jajko 55 g,
+  średnia cebula 100 g, puszka pomidorów 400 g.
+- Pomijaj sól, pieprz, wodę i przyprawy bez wartości odżywczej.
+- Gdy z tekstu nie da się odczytać żadnych składników, zwróć {"skladniki": []}.
+- Nie dopisuj składników, których nie ma w przepisie.
+"""
+
+
+def szacuj_przepis(opis: str) -> tuple[dict, dict]:
+    """Opis przepisu słowami → (danie ze składnikami, zużycie tokenów).
+
+    Inaczej niż `szacuj_posilek`: tam chodzi o to, co ktoś zjadł, tu o to, co
+    ugotował — z liczbą porcji, na którą danie wychodzi."""
+    import json as _json
+
+    client = anthropic.Anthropic()
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2500,
+        system=_PRZEPIS_PROMPT,
+        messages=[{"role": "user", "content": opis.strip()[:4000]}],
+    )
+    surowy = message.content[0].text.strip()
+    if surowy.startswith("```"):
+        surowy = surowy.split("```")[1].lstrip("json").strip()
+    return _json.loads(surowy), _usage(message)
+
+
+def przepis_ze_zdjecia(image_bytes: bytes, mime_type: str = "image/jpeg") -> tuple[dict, dict]:
+    """Zdjęcie przepisu (z książki, z ekranu) → danie ze składnikami.
+
+    Najdroższa z dróg — wywołanie z obrazem — ale robione RAZ na danie,
+    nie przy każdym jedzeniu."""
+    import json as _json
+
+    client = anthropic.Anthropic()
+    image_bytes, mime_type = prepare_image(image_bytes, mime_type)
+    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2500,
+        system=_PRZEPIS_PROMPT,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": image_b64}},
+                {"type": "text", "text": "Odczytaj przepis ze zdjęcia i zwróć JSON."},
+            ],
+        }],
+    )
+    surowy = message.content[0].text.strip()
+    if surowy.startswith("```"):
+        surowy = surowy.split("```")[1].lstrip("json").strip()
+    return _json.loads(surowy), _usage(message)
+
+
 _POSILEK_PROMPT = """Szacujesz wartości odżywcze posiłku opisanego słowami po polsku.
 
 Zwróć WYŁĄCZNIE JSON:

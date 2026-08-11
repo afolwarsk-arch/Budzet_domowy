@@ -86,6 +86,25 @@ def init_eat_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS eat_wpisy_produkt "
                     "ON eat_wpisy (produkt_id)")
 
+        # Grupowanie: „kanapka z serem" to pieczywo i ser jako OSOBNE wpisy —
+        # każdy z własną gramaturą do poprawienia — ale w dzienniku pokazane
+        # pod jedną nazwą. Wpisy bez grupy (zeskanowany produkt) mają tu NULL
+        # i zachowują się dokładnie jak dotąd.
+        cur.execute("ALTER TABLE eat_wpisy ADD COLUMN IF NOT EXISTS grupa_id TEXT")
+        cur.execute("ALTER TABLE eat_wpisy ADD COLUMN IF NOT EXISTS grupa_nazwa TEXT")
+        cur.execute("CREATE INDEX IF NOT EXISTS eat_wpisy_grupa "
+                    "ON eat_wpisy (household_id, user_id, grupa_id)")
+        # Przepis wchodzi do dnia jako JEDEN wpis o nazwie dania — rozbijanie
+        # ćwiartki porcji na „31,3 g mięsa mielonego" byłoby szumem. Rozpiska
+        # składników mieszka w przepisie, nie w dzienniku.
+        #
+        # Świadomie BEZ klucza obcego: skasowanie przepisu nie ma prawa ruszyć
+        # tego, co już zjedzone. Wpis ma własne, zamrożone wartości i zostaje
+        # nietknięty; `przepis_id` służy tylko do podpowiedzi „pokaż przepis",
+        # a interfejs radzi sobie z tym, że przepisu już nie ma.
+        cur.execute("ALTER TABLE eat_wpisy ADD COLUMN IF NOT EXISTS przepis_id INTEGER")
+        cur.execute("ALTER TABLE eat_wpisy ADD COLUMN IF NOT EXISTS porcje_zjedzone NUMERIC(6,2)")
+
         # Produkty podstawowe — WSPÓLNE dla wszystkich gospodarstw, zasiane
         # z listy w kodzie. Open Food Facts nie ma surowców (zapytanie o pomidor
         # zwraca sok, krakersy i chipsy o smaku pomidora) i do tego odbija
@@ -127,6 +146,52 @@ def init_eat_db() -> None:
             tluszcz  INTEGER NOT NULL DEFAULT 65,
             wegle    INTEGER NOT NULL DEFAULT 250
         )""")
+
+        # Przepisy — WSPÓLNE dla gospodarstwa, tak jak reszta modułu.
+        #
+        # Wartości to sumy CAŁEGO dania z surowych składników. Kalorie się nie
+        # gotują: woda nie dodaje energii, zmienia się tylko masa. Dlatego
+        # „suma ÷ liczba porcji" jest dokładne i nie wymaga ważenia czegokolwiek
+        # po ugotowaniu. `waga_gotowego_g` jest opcjonalna i służy wyłącznie
+        # tym, którzy chcą odmierzać porcję na wadze zamiast na oko.
+        cur.execute("""CREATE TABLE IF NOT EXISTS eat_przepisy (
+            id              SERIAL PRIMARY KEY,
+            household_id    INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            autor_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            nazwa           TEXT NOT NULL,
+            nazwa_szukaj    TEXT,
+            opis            TEXT,
+            porcje          NUMERIC(5,2) NOT NULL DEFAULT 1,
+            waga_gotowego_g NUMERIC(8,1),
+            kcal            NUMERIC(9,1) NOT NULL DEFAULT 0,
+            bialko          NUMERIC(8,1) NOT NULL DEFAULT 0,
+            tluszcz         NUMERIC(8,1) NOT NULL DEFAULT 0,
+            wegle           NUMERIC(8,1) NOT NULL DEFAULT 0,
+            uzyc            INTEGER NOT NULL DEFAULT 0,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS eat_przepisy_dom "
+                    "ON eat_przepisy (household_id, uzyc DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS eat_przepisy_szukaj "
+                    "ON eat_przepisy (household_id, nazwa_szukaj)")
+
+        # Składniki trzymamy osobno, żeby przepis dało się otworzyć i poprawić.
+        # Wartości też są zamrożone — poprawienie produktu w bazie nie ma po
+        # cichu zmieniać kaloryczności dania, które ktoś już zatwierdził.
+        cur.execute("""CREATE TABLE IF NOT EXISTS eat_przepis_skladniki (
+            id         SERIAL PRIMARY KEY,
+            przepis_id INTEGER NOT NULL REFERENCES eat_przepisy(id) ON DELETE CASCADE,
+            produkt_id INTEGER REFERENCES eat_produkty(id) ON DELETE SET NULL,
+            nazwa      TEXT NOT NULL,
+            ilosc_g    NUMERIC(8,1) NOT NULL,
+            kcal       NUMERIC(8,1) NOT NULL DEFAULT 0,
+            bialko     NUMERIC(7,1) NOT NULL DEFAULT 0,
+            tluszcz    NUMERIC(7,1) NOT NULL DEFAULT 0,
+            wegle      NUMERIC(7,1) NOT NULL DEFAULT 0,
+            kolejnosc  INTEGER NOT NULL DEFAULT 0
+        )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS eat_skladniki_przepis "
+                    "ON eat_przepis_skladniki (przepis_id, kolejnosc)")
 
 
 def _zasiej_produkty_bazowe(cur) -> None:
@@ -363,16 +428,43 @@ def get_dzien(household_id: int, user_id: int, data: str) -> dict:
     return {"data": data, "posilki": posilki, "suma": {k: round(v, 1) for k, v in suma.items()}}
 
 
+_POLA_WPISU = ("data", "posilek", "produkt_id", "nazwa", "opis_porcji", "ilosc_g",
+               "kcal", "bialko", "tluszcz", "wegle",
+               "grupa_id", "grupa_nazwa", "przepis_id", "porcje_zjedzone")
+
+
 def dodaj_wpis(household_id: int, user_id: int, dane: dict) -> dict:
+    # Pola nieobowiązkowe (grupa, przepis) uzupełniamy None-ami, żeby wywołania
+    # sprzed grupowania działały bez zmian.
+    d = {k: dane.get(k) for k in _POLA_WPISU}
     with get_db() as cur:
         cur.execute("""
             INSERT INTO eat_wpisy (household_id, user_id, data, posilek, produkt_id,
-                                   nazwa, opis_porcji, ilosc_g, kcal, bialko, tluszcz, wegle)
+                                   nazwa, opis_porcji, ilosc_g, kcal, bialko, tluszcz, wegle,
+                                   grupa_id, grupa_nazwa, przepis_id, porcje_zjedzone)
             VALUES (%(h)s,%(u)s,%(data)s,%(posilek)s,%(produkt_id)s,
-                    %(nazwa)s,%(opis_porcji)s,%(ilosc_g)s,%(kcal)s,%(bialko)s,%(tluszcz)s,%(wegle)s)
+                    %(nazwa)s,%(opis_porcji)s,%(ilosc_g)s,%(kcal)s,%(bialko)s,%(tluszcz)s,%(wegle)s,
+                    %(grupa_id)s,%(grupa_nazwa)s,%(przepis_id)s,%(porcje_zjedzone)s)
             RETURNING *
-        """, {"h": household_id, "u": user_id, **dane})
+        """, {"h": household_id, "u": user_id, **d})
         return dict(cur.fetchone())
+
+
+def usun_grupe(grupa_id: str, household_id: int, user_id: int) -> int:
+    """Kasuje całą grupę naraz — po rozłożeniu „kanapki z serem" na składniki
+    nikt nie chce usuwać ich pojedynczo."""
+    with get_db() as cur:
+        cur.execute("DELETE FROM eat_wpisy WHERE grupa_id=%s AND household_id=%s AND user_id=%s",
+                    (grupa_id, household_id, user_id))
+        return cur.rowcount
+
+
+def get_grupe(grupa_id: str, household_id: int, user_id: int) -> list[dict]:
+    with get_db() as cur:
+        cur.execute("""SELECT * FROM eat_wpisy
+                       WHERE grupa_id=%s AND household_id=%s AND user_id=%s
+                       ORDER BY id""", (grupa_id, household_id, user_id))
+        return [dict(r) for r in cur.fetchall()]
 
 
 def get_wpis(wpis_id: int, household_id: int, user_id: int) -> dict | None:
@@ -427,9 +519,107 @@ def ostatnio_jadl(household_id: int, user_id: int, limit: int = 12) -> list[dict
             FROM eat_wpisy
             WHERE household_id=%s AND user_id=%s
               AND data > CURRENT_DATE - INTERVAL '60 days'
+              -- Dania z przepisu mają własną zakładkę, posortowaną po liczbie
+              -- użyć. Tutaj tylko zaśmiecałyby listę pozycją, która po
+              -- stuknięciu straciłaby powiązanie z porcjami.
+              AND przepis_id IS NULL
             ORDER BY nazwa, opis_porcji, produkt_id, data DESC, id DESC
         """, (household_id, user_id))
         wiersze = [dict(r) for r in cur.fetchall()]
     # najpierw najświeższe, przy remisie częściej powtarzane
     wiersze.sort(key=lambda w: (w["ostatnio"], w["ile"]), reverse=True)
     return wiersze[:limit]
+
+
+# ── przepisy ────────────────────────────────────────────────────────────────
+
+def lista_przepisow(household_id: int, fraza: str = "") -> list[dict]:
+    """Najczęściej używane na górze. Po miesiącu kilka dań robi większość
+    wpisów i mają być pod ręką, a nie w połowie alfabetu."""
+    warunki, params = ["household_id=%s"], [household_id]
+    if fraza and len(fraza.strip()) >= 2:
+        warunki.append(r"nazwa_szukaj LIKE %s ESCAPE '\'")
+        params.append(f"%{_do_like(fraza)}%")
+    with get_db() as cur:
+        cur.execute(f"""SELECT * FROM eat_przepisy WHERE {' AND '.join(warunki)}
+                        ORDER BY uzyc DESC, nazwa LIMIT 200""", params)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_przepis(przepis_id: int, household_id: int) -> dict | None:
+    with get_db() as cur:
+        cur.execute("SELECT * FROM eat_przepisy WHERE id=%s AND household_id=%s",
+                    (przepis_id, household_id))
+        row = cur.fetchone()
+        if not row:
+            return None
+        przepis = dict(row)
+        cur.execute("""SELECT * FROM eat_przepis_skladniki WHERE przepis_id=%s
+                       ORDER BY kolejnosc, id""", (przepis_id,))
+        przepis["skladniki"] = [dict(r) for r in cur.fetchall()]
+        return przepis
+
+
+def _zapisz_skladniki(cur, przepis_id: int, skladniki: list[dict]) -> dict:
+    """Wymienia składniki w całości i zwraca przeliczone sumy dania."""
+    cur.execute("DELETE FROM eat_przepis_skladniki WHERE przepis_id=%s", (przepis_id,))
+    sumy = {"kcal": 0.0, "bialko": 0.0, "tluszcz": 0.0, "wegle": 0.0}
+    for i, s in enumerate(skladniki):
+        cur.execute("""
+            INSERT INTO eat_przepis_skladniki
+                (przepis_id, produkt_id, nazwa, ilosc_g, kcal, bialko, tluszcz, wegle, kolejnosc)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (przepis_id, s.get("produkt_id"), s["nazwa"], s["ilosc_g"],
+              s["kcal"], s["bialko"], s["tluszcz"], s["wegle"], i))
+        for k in sumy:
+            sumy[k] += float(s.get(k) or 0)
+    return {k: round(v, 1) for k, v in sumy.items()}
+
+
+def zapisz_przepis(household_id: int, autor_id: int, dane: dict,
+                   przepis_id: int | None = None) -> dict:
+    """Tworzy albo nadpisuje przepis wraz ze składnikami.
+
+    Sumy liczy SERWER ze składników — przeglądarka nie ma prawa podać własnej
+    kaloryczności dania, tak samo jak przy wpisach do dziennika."""
+    with get_db() as cur:
+        pola = {
+            "nazwa": dane["nazwa"], "nazwa_szukaj": bez_ogonkow(dane["nazwa"]),
+            "opis": dane.get("opis"), "porcje": dane["porcje"],
+            "waga": dane.get("waga_gotowego_g"),
+        }
+        if przepis_id:
+            cur.execute("""UPDATE eat_przepisy SET nazwa=%(nazwa)s, nazwa_szukaj=%(nazwa_szukaj)s,
+                                  opis=%(opis)s, porcje=%(porcje)s, waga_gotowego_g=%(waga)s
+                           WHERE id=%(id)s AND household_id=%(h)s RETURNING id""",
+                        {**pola, "id": przepis_id, "h": household_id})
+            if not cur.fetchone():
+                return None
+        else:
+            cur.execute("""INSERT INTO eat_przepisy
+                               (household_id, autor_id, nazwa, nazwa_szukaj, opis, porcje, waga_gotowego_g)
+                           VALUES (%(h)s,%(a)s,%(nazwa)s,%(nazwa_szukaj)s,%(opis)s,%(porcje)s,%(waga)s)
+                           RETURNING id""",
+                        {**pola, "h": household_id, "a": autor_id})
+            przepis_id = cur.fetchone()["id"]
+
+        sumy = _zapisz_skladniki(cur, przepis_id, dane.get("skladniki") or [])
+        cur.execute("""UPDATE eat_przepisy SET kcal=%s, bialko=%s, tluszcz=%s, wegle=%s
+                       WHERE id=%s""",
+                    (sumy["kcal"], sumy["bialko"], sumy["tluszcz"], sumy["wegle"], przepis_id))
+    return get_przepis(przepis_id, household_id)
+
+
+def usun_przepis(przepis_id: int, household_id: int) -> bool:
+    """Skasowanie przepisu NIE rusza tego, co już zjedzone — wpisy w dzienniku
+    mają własne, zamrożone wartości i nie ma na nich klucza obcego."""
+    with get_db() as cur:
+        cur.execute("DELETE FROM eat_przepisy WHERE id=%s AND household_id=%s",
+                    (przepis_id, household_id))
+        return cur.rowcount > 0
+
+
+def policz_uzycie(przepis_id: int, household_id: int) -> None:
+    with get_db() as cur:
+        cur.execute("UPDATE eat_przepisy SET uzyc = uzyc + 1 WHERE id=%s AND household_id=%s",
+                    (przepis_id, household_id))
