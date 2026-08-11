@@ -442,14 +442,18 @@ function otworzArkusz(posilek) {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5V5a1.5 1.5 0 0 1 1.5-1.5h2.5M16.5 3.5H19A1.5 1.5 0 0 1 20.5 5v2.5M20.5 16.5V19a1.5 1.5 0 0 1-1.5 1.5h-2.5M7.5 20.5H5A1.5 1.5 0 0 1 3.5 19v-2.5"/><path d="M7 8v8M10 8v8M13.5 8v8M17 8v8"/></svg>
           <span><span class="t">Skanuj kod kreskowy</span><span class="o">Najszybsze przy wszystkim z opakowania</span></span>
         </button>
-        <button class="droga" id="d-przod" type="button">
+        <!-- <label for>, a NIE przycisk wołający .click() w skrypcie. Etykieta
+             otwiera aparat natywnie, bez pośrednictwa JS — to znosi całą klasę
+             błędów, w której kliknięcie nic nie robiło i nawet nie zgłaszało
+             błędu. Pola plików leżą poniżej, poza tą siatką. -->
+        <label class="droga" for="ark-plik-przod" tabindex="0" role="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="3.5" width="13" height="17" rx="2"/><path d="M8.5 8h7M8.5 11.5h7M8.5 15h4"/></svg>
           <span class="t">Zdjęcie przodu</span><span class="o">Odczyta nazwę i poszuka w bazie</span>
-        </button>
-        <button class="droga" id="d-etykieta" type="button">
+        </label>
+        <label class="droga" for="ark-plik" tabindex="0" role="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6" width="17" height="13" rx="2.5"/><circle cx="12" cy="12.5" r="3.4"/><path d="M8.5 6l1.4-2.2h4.2L15.5 6"/></svg>
           <span class="t">Zdjęcie tabeli z tyłu</span><span class="o">Gdy trzeba odczytać wartości odżywcze</span>
-        </button>
+        </label>
         <button class="droga" id="d-opis" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9"/></svg>
           <span class="t">Opisz słowami</span><span class="o">Domowy obiad bez kodu</span>
@@ -462,8 +466,12 @@ function otworzArkusz(posilek) {
 
       <div class="sek-tyt">Ostatnio jadłeś</div>
       <div id="ark-ostatnie"><div class="komunikat">Wczytuję…</div></div>
-      <input type="file" id="ark-plik" accept="image/*" capture="environment" style="display:none">
-      <input type="file" id="ark-plik-przod" accept="image/*" capture="environment" style="display:none">
+      <!-- „schowane", a nie display:none. Pole z display:none bywa przez
+           przeglądarki traktowane jak nieistniejące i odmawia otwarcia aparatu
+           — bez błędu, po prostu nic się nie dzieje. Tu pole nadal jest
+           renderowane, tylko niewidoczne. -->
+      <input type="file" id="ark-plik" accept="image/*" capture="environment" class="schowane">
+      <input type="file" id="ark-plik-przod" accept="image/*" capture="environment" class="schowane">
     </div>`;
   document.body.appendChild(arkusz);
   // W trybie aplikacji „wstecz" jest podstawowym gestem zamykania. Bez wpisu w
@@ -472,9 +480,17 @@ function otworzArkusz(posilek) {
   arkusz.addEventListener('click', (ev) => { if (ev.target === arkusz) zamknijArkusz(); });
   arkusz.querySelector('#ark-x').onclick = zamknijArkusz;
   arkusz.querySelector('#d-skan').onclick = uruchomSkaner;
-  arkusz.querySelector('#d-etykieta').onclick = () => arkusz.querySelector('#ark-plik').click();
-  arkusz.querySelector('#d-przod').onclick = () => arkusz.querySelector('#ark-plik-przod').click();
   arkusz.querySelector('#d-przepisy').onclick = () => ekranListyPrzepisow('');
+  // Etykiety otwierają aparat same z siebie; skryptu potrzeba tylko po to, żeby
+  // działały także z klawiatury — na <label> Enter nic nie robi.
+  arkusz.querySelectorAll('label.droga[for]').forEach((l) => {
+    l.onkeydown = (ev) => {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      ev.preventDefault();
+      const cel = document.getElementById(l.getAttribute('for'));
+      if (cel) cel.click();
+    };
+  });
   arkusz.querySelector('#ark-plik-przod').onchange = (ev) => {
     const plik = ev.target.files && ev.target.files[0];
     if (plik) wyslijPrzod(plik);
@@ -821,7 +837,7 @@ async function wyslijEtykiete(ev) {
   zatrzymajSkaner();
   const plik = ev.target.files && ev.target.files[0];
   if (!plik) return;
-  komunikat('Odczytuję etykietę…');
+  ekranCzekania('Czytam tabelę…', 'Przepisuję wartości odżywcze z etykiety.');
   const fd = new FormData();
   fd.append('file', plik);
   // Nazwę, gramaturę i liczbę sztuk odczytane z PRZODU doklejamy do produktu
@@ -838,12 +854,11 @@ async function wyslijEtykiete(ev) {
     const url = '/api/eat/etykieta' + (ostatniKod ? '?kod=' + encodeURIComponent(ostatniKod) : '');
     const r = await authFetch(url, { method: 'POST', body: fd });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) { komunikat(d.detail || 'Nie udało się odczytać.', true); return; }
+    if (!r.ok) { ekranBledu(d.detail || 'Nie udało się odczytać etykiety.'); return; }
     ostatniKod = '';
     odczytZPrzodu = null;
-    komunikat('');
     ekranProduktu(d.produkt, 'etykieta');
-  } catch { komunikat('Błąd połączenia.', true); }
+  } catch { ekranBledu('Błąd połączenia.'); }
   finally { ev.target.value = ''; }
 }
 
@@ -1140,6 +1155,39 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja) {
   };
 }
 
+// ── ekran oczekiwania ───────────────────────────────────────────────────────
+
+// Aparat systemowy zamyka się natychmiast po zdjęciu i użytkownik zostaje przed
+// niezmienionym ekranem — wygląda to tak, jakby zdjęcie nic nie wywołało.
+// Odczyt trwa kilka sekund, więc musi być widać, że coś się dzieje.
+function ekranCzekania(tytul, podpis) {
+  const ark = arkusz && arkusz.querySelector('.ark');
+  if (!ark) return;
+  zatrzymajSkaner();
+  ark.innerHTML = `
+    <div class="czekaj">
+      <div class="czekaj-znak" aria-hidden="true"><i></i><i></i></div>
+      <div class="czekaj-t">${e(tytul)}</div>
+      <div class="czekaj-o">${e(podpis || '')}</div>
+    </div>`;
+}
+
+// Po nieudanym odczycie nie zostawiamy pustego ekranu oczekiwania — musi być
+// wyjście z powrotem, inaczej jedyną drogą jest zamknięcie arkusza.
+function ekranBledu(tekst) {
+  const ark = arkusz && arkusz.querySelector('.ark');
+  if (!ark) return;
+  ark.innerHTML = `
+    <div class="ark-gl">
+      <h2 style="font-size:1rem">Nie udało się</h2>
+      <button class="x" id="zamknij-b" type="button" aria-label="Zamknij">&times;</button>
+    </div>
+    <div class="komunikat blad">${e(tekst)}</div>
+    <button class="cta" id="wroc-b" type="button">Spróbuj inaczej</button>`;
+  ark.querySelector('#zamknij-b').onclick = () => zamknijArkusz();
+  ark.querySelector('#wroc-b').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+}
+
 // ── lista własnych przepisów w arkuszu ──────────────────────────────────────
 
 // Osobna droga obok skanowania i opisu. Wyszukiwarka i tak podpowiada przepisy,
@@ -1215,17 +1263,16 @@ async function ekranListyPrzepisow(fraza) {
 // Tabela wartości jest z tyłu, ale nazwy produktu tam nie ma — a bez nazwy nie
 // da się go wyszukać. To zdjęcie bierze z przodu to, czego tabela nie zawiera.
 async function wyslijPrzod(plik) {
-  komunikat('Odczytuję opakowanie…');
+  ekranCzekania('Czytam opakowanie…', 'Odczytuję nazwę i szukam jej w bazie produktów.');
   const fd = new FormData();
   fd.append('file', plik);
   let d;
   try {
     const r = await authFetch('/api/eat/etykieta-przod', { method: 'POST', body: fd });
     d = await r.json().catch(() => ({}));
-    if (!r.ok) { komunikat(d.detail || 'Nie udało się odczytać.', true); return; }
-  } catch { komunikat('Błąd połączenia.', true); return; }
+    if (!r.ok) { ekranBledu(d.detail || 'Nie udało się odczytać opakowania.'); return; }
+  } catch { ekranBledu('Błąd połączenia.'); return; }
   if (!arkusz) return;
-  komunikat('');
   ekranZPrzodu(d);
 }
 
@@ -1265,20 +1312,25 @@ function ekranZPrzodu(d) {
       ? '<div class="komunikat">Nic nie znalazłem pod tą nazwą. Zrób zdjęcie tabeli '
         + 'z tyłu — nazwę i gramaturę już mam, dojdą tylko wartości odżywcze.</div>' : ''}
     <div class="sek-tyt">Albo dokończ ręcznie</div>
-    <button class="cta" id="p-tabela" type="button">Zdjęcie tabeli z tyłu</button>
-    <div id="ark-komunikat"></div>
-    <!-- WŁASNE pole pliku, nie to z ekranu startowego. Ten ekran podmienia całą
-         zawartość arkusza, więc tamto pole już nie istnieje — sięganie po nie
-         kończyło się tym, że przycisk nie robił nic. -->
-    <input type="file" id="p-plik-tyl" accept="image/*" capture="environment" style="display:none">`;
+    <!-- Etykieta, nie przycisk: aparat otwiera się natywnie, bez .click() ze
+         skryptu. Pole jest WŁASNE — ten ekran podmienia całą zawartość arkusza,
+         więc pole z ekranu startowego już nie istnieje. -->
+    <label class="cta" for="p-plik-tyl" id="p-tabela" tabindex="0" role="button"
+           style="display:block;text-align:center">Zdjęcie tabeli z tyłu</label>
+    <input type="file" id="p-plik-tyl" accept="image/*" capture="environment" class="schowane">
+    <div id="ark-komunikat"></div>`;
 
   ark.querySelector('#zamknij2').onclick = () => zamknijArkusz();
   ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
   // Nazwa i liczba sztuk z przodu doklejają się do produktu odczytanego z tyłu —
   // tamta tabela nie zawiera ani jednego, ani drugiego.
   odczytZPrzodu = o;
-  ark.querySelector('#p-tabela').onclick = () => ark.querySelector('#p-plik-tyl').click();
   ark.querySelector('#p-plik-tyl').onchange = wyslijEtykiete;
+  ark.querySelector('#p-tabela').onkeydown = (ev) => {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    ev.preventDefault();
+    ark.querySelector('#p-plik-tyl').click();
+  };
 
   ark.querySelectorAll('[data-rodzaj]').forEach((b) => {
     b.onclick = async () => {

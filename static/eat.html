@@ -224,6 +224,41 @@
     .mini-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
                 padding: 2px 9px; font: inherit; font-size: 11.5px; cursor: pointer;
                 color: var(--accent); margin-left: 4px; }
+
+    /* ── ekran oczekiwania ──
+       Dwie kropki ze znaku krążące wokół wspólnego środka. Aparat systemowy
+       zamyka się natychmiast po zdjęciu, a odczyt trwa kilka sekund — bez tego
+       ekran wygląda tak, jakby zdjęcie nic nie wywołało. */
+    .czekaj { display: flex; flex-direction: column; align-items: center; justify-content: center;
+              text-align: center; padding: 54px 20px 46px; }
+    .czekaj-znak { position: relative; width: 54px; height: 54px; margin-bottom: 20px; }
+    .czekaj-znak i { position: absolute; top: 50%; left: 50%; width: 11px; height: 11px;
+                     margin: -5.5px 0 0 -5.5px; border-radius: 50%; background: var(--marka);
+                     animation: kropki-orbita 1.15s linear infinite; }
+    /* Druga kropka po przeciwnej stronie okręgu — pół obrotu opóźnienia. */
+    .czekaj-znak i:nth-child(2) { animation-delay: -.575s; opacity: .5; }
+    @keyframes kropki-orbita {
+      from { transform: rotate(0deg) translateX(19px); }
+      to   { transform: rotate(360deg) translateX(19px); }
+    }
+    .czekaj-t { font-size: 15px; font-weight: 600; color: var(--heading); }
+    .czekaj-o { font-size: 12.5px; color: var(--muted); margin-top: 5px; max-width: 30ch; line-height: 1.4; }
+    /* Przy wyłączonych animacjach kropki po prostu pulsują w miejscu. */
+    @media (prefers-reduced-motion: reduce) {
+      .czekaj-znak i { animation: kropki-puls 1.2s ease-in-out infinite; }
+      .czekaj-znak i:nth-child(1) { transform: translateX(-11px); }
+      .czekaj-znak i:nth-child(2) { transform: translateX(11px); animation-delay: -.6s; }
+      @keyframes kropki-puls { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+    }
+
+    /* Pole pliku „schowane", a nie display:none — pole z display:none bywa
+       traktowane jak nieistniejące i odmawia otwarcia aparatu, bez żadnego
+       błędu. Tu jest nadal renderowane, tylko niewidoczne. */
+    .schowane { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+                overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+    /* Etykiety otwierające aparat mają wyglądać i reagować jak przyciski. */
+    label.droga, label.cta { cursor: pointer; }
+    label.droga:focus-visible, label.cta:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   </style>
 </head>
 <body>
