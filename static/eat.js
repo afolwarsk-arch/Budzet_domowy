@@ -581,17 +581,56 @@ async function wczytajOstatnie() {
   }
 }
 
-// Powtórka z „ostatnio jadłeś" też idzie przez ekran potwierdzenia — nic nie
-// wpada do dziennika, zanim zobaczysz i ewentualnie poprawisz wartości.
-function dodajGotowy(p) {
-  ekranPotwierdzenia({
-    nazwa: p.nazwa,
-    opis_porcji: p.opis_porcji,
-    ilosc_g: Number(p.ilosc_g) || 100,
-    kcal: Number(p.kcal) || 0,
-    bialko: Number(p.bialko) || 0,
-    tluszcz: Number(p.tluszcz) || 0,
-    wegle: Number(p.wegle) || 0,
+// Powtórka z „ostatnio jadłeś" dostaje TEN SAM ekran porcji co świeżo wyszukany
+// produkt. Wcześniej trafiała na stary formularz i najczęstsza droga w całej
+// apce wyglądała inaczej niż każda inna.
+//
+// Wpis w dzienniku zna tylko zjedzoną gramaturę i wartości dla NIEJ, więc na 100
+// g przeliczamy sami. Wielkość opakowania i liczba sztuk siedzą przy produkcie,
+// nie przy wpisie — dlatego, gdy wpis ma `produkt_id`, dociągamy produkt, żeby
+// wróciły warianty „całe opak." i „1 szt.".
+async function dodajGotowy(p) {
+  const g = Number(p.ilosc_g) || 0;
+  if (!(g > 0)) {          // wpis bez gramatury: nie ma czego skalować
+    ekranPotwierdzenia({
+      nazwa: p.nazwa, opis_porcji: p.opis_porcji, ilosc_g: 100,
+      kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
+      tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
+    });
+    return;
+  }
+  const na100 = {
+    kcal: Number(p.kcal || 0) / g * 100,
+    bialko: Number(p.bialko || 0) / g * 100,
+    tluszcz: Number(p.tluszcz || 0) / g * 100,
+    wegle: Number(p.wegle || 0) / g * 100,
+    opak_g: 0, sztuk: 0,
+  };
+  const poz = { nazwa: p.nazwa, ilosc_g: g, marka: null, ulubiony: false };
+
+  if (p.produkt_id) {
+    // Dociągnięcie produktu to podróż do serwera. Bez tego stuknięcie w owsiankę
+    // przez ułamek sekundy nie robi nic i wygląda jak niedziałający przycisk.
+    komunikat('Chwila…');
+    try {
+      const r = await authFetch('/api/eat/produkty/' + p.produkt_id);
+      if (r.ok) {
+        const prod = await r.json();
+        na100.opak_g = Number(prod.opak_g) || 0;
+        na100.sztuk = Number(prod.sztuk_w_opak) || 0;
+        poz.marka = prod.marka || null;
+        poz.ulubiony = !!prod.ulubiony;
+      }
+    } catch { /* bez produktu zostają porcje wyliczone z samego wpisu */ }
+  }
+  // Poprzednia porcja idzie pierwsza — po to się tu w ogóle wraca.
+  // `etyk` to napis na przycisku, `opis` to TEKST ZAPISYWANY przy wpisie. Muszą
+  // być rozdzielone: gdyby do dziennika poszło „jak ostatnio", kolejna powtórka
+  // pokazałaby „jak ostatnio · jak ostatnio" i tak w kółko.
+  ekranPorcji(poz, na100, p.produkt_id || null, {
+    g: g,
+    etyk: p.opis_porcji ? p.opis_porcji + ' · jak ostatnio' : 'jak ostatnio',
+    opis: p.opis_porcji || null,
   });
 }
 
@@ -960,7 +999,12 @@ function dyktuj() {
 // edytowalne, bo model mógł się pomylić.
 // `naglowekDodatkowy` z ekranPotwierdzenia jest tu świadomie pominięty: niósł
 // blok z nazwą i marką, a te przeniosły się do paska tytułu.
-function ekranPorcji(poz, na100, produktId) {
+// `produktId` bywa NULL — przy powtórce wpisu oszacowanego z opisu nie ma za
+// czym stać produkt w bazie. Wtedy znika serce (nie ma czego przypiąć), a zapis
+// idzie z wartościami wprost zamiast z `produkt_id`.
+// `poprzednia` (opcjonalna) to porcja, którą już raz zjadłeś — ląduje jako
+// pierwszy wiersz.
+function ekranPorcji(poz, na100, produktId, poprzednia) {
   zatrzymajSkaner();
   const ark = arkusz && arkusz.querySelector('.ark');
   if (!ark) return;
@@ -985,6 +1029,17 @@ function ekranPorcji(poz, na100, produktId) {
   }
   warianty.push({ etyk: '100 g', g: 100 }, { etyk: '50 g', g: 50 });
 
+  // Poprzednia porcja na samą górę, a wygenerowany duplikat o tej samej
+  // gramaturze wypada — dwa wiersze z tą samą liczbą gramów tylko myliłyby.
+  if (poprzednia && poprzednia.g > 0) {
+    const ta = g1(poprzednia.g);
+    for (let i = warianty.length - 1; i >= 0; i--) {
+      if (g1(warianty[i].g) === ta) warianty.splice(i, 1);
+    }
+    warianty.unshift({ etyk: poprzednia.etyk || 'jak ostatnio', g: ta,
+                       opis: poprzednia.opis || null });
+  }
+
   // Etykiety z „×" z przodu, bo czyta się je razem z polem obok: „2 × opak.".
   const jednostki = [{ k: 'g', n: 'g' }];
   if (opak) jednostki.push({ k: 'opak', n: '× opak.' });
@@ -1006,9 +1061,9 @@ function ekranPorcji(poz, na100, produktId) {
       <button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
       <h2 class="ark-nazwa">${e(poz.nazwa)}${poz.marka
         ? `<span class="ark-marka">${e(poz.marka)}</span>` : ''}</h2>
-      <button class="serce" id="p-serce" type="button"
+      ${produktId ? `<button class="serce" id="p-serce" type="button"
               aria-pressed="${poz.ulubiony ? 'true' : 'false'}"
-              aria-label="Ulubiony">&#9829;</button>
+              aria-label="Ulubiony">&#9829;</button>` : ''}
       <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button>
     </div>
     <div class="porcje-lista" id="porcje">
@@ -1075,7 +1130,7 @@ function ekranPorcji(poz, na100, produktId) {
   // to drobiazg, a czekanie na odpowiedź sieci przy stuknięciu w serce wygląda
   // jak zepsuty przycisk.
   const serce = ark.querySelector('#p-serce');
-  serce.onclick = async () => {
+  if (serce) serce.onclick = async () => {
     const bylo = serce.getAttribute('aria-pressed') === 'true';
     serce.setAttribute('aria-pressed', bylo ? 'false' : 'true');
     try {
@@ -1126,7 +1181,9 @@ function ekranPorcji(poz, na100, produktId) {
     const b = ev.target.closest('.porcja-w[data-i]');
     if (!b) return;
     const w = warianty[b.dataset.i];
-    zapiszPorcje(w.g, w.etyk, b);
+    // `opis` bywa jawnie ustawiony na null (powtórka bez opisu porcji) — stąd
+    // sprawdzenie przez `undefined`, a nie zwykłe `||`.
+    zapiszPorcje(w.g, w.opis !== undefined ? w.opis : w.etyk, b);
   };
   ark.querySelector('#p-wlasna-ok').onclick = (ev) => {
     const g = wlasnaG();
@@ -1138,12 +1195,20 @@ function ekranPorcji(poz, na100, produktId) {
     if (przycisk) przycisk.disabled = true;
     komunikat('');
     try {
+      // Z produktem wartości liczy SERWER z jego tabeli — klient nie ma prawa
+      // podać własnych kalorii. Bez produktu (powtórka wpisu z opisu) nie ma
+      // z czego liczyć, więc skalujemy tu i wysyłamy wprost.
+      const m = g / 100;
+      const cialo = produktId
+        ? { data: dzienISO, posilek: posilekDocelowy, produkt_id: produktId,
+            nazwa: poz.nazwa, ilosc_g: g, opis_porcji: opis }
+        : { data: dzienISO, posilek: posilekDocelowy, nazwa: poz.nazwa,
+            ilosc_g: g, opis_porcji: opis,
+            kcal: na100kcal * m, bialko: (na100.bialko || 0) * m,
+            tluszcz: (na100.tluszcz || 0) * m, wegle: (na100.wegle || 0) * m };
       const r = await authFetch('/api/eat/wpis', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          data: dzienISO, posilek: posilekDocelowy, produkt_id: produktId,
-          nazwa: poz.nazwa, ilosc_g: g, opis_porcji: opis,
-        }),
+        body: JSON.stringify(cialo),
       });
       const x = await r.json().catch(() => ({}));
       if (!r.ok) {

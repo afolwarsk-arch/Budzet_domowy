@@ -358,6 +358,17 @@ def usun_produkt(produkt_id: int, household_id: int) -> bool:
         return cur.rowcount > 0
 
 
+def produkt_po_id(produkt_id: int, household_id: int) -> dict | None:
+    """Pojedynczy produkt. Potrzebny przy powtórce z „ostatnio jadłeś": wpis zna
+    tylko zjedzoną gramaturę, a ekran porcji potrzebuje jeszcze wielkości
+    opakowania i liczby sztuk, żeby zaproponować „całe opak." czy „1 szt."."""
+    with get_db() as cur:
+        cur.execute("SELECT * FROM eat_produkty WHERE id=%s AND household_id=%s",
+                    (produkt_id, household_id))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
 def ustaw_ulubiony(produkt_id: int, household_id: int, wartosc: bool) -> dict | None:
     """Przypina albo odpina produkt. Zwraca cały wiersz, żeby ekran nie musiał
     zgadywać stanu po udanej odpowiedzi."""

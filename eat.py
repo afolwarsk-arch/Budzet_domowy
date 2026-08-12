@@ -220,6 +220,14 @@ def usun_produkt(produkt_id: int, current_user: dict = Depends(get_current_user)
     return {"ok": True}
 
 
+@router.get("/produkty/{produkt_id}")
+def produkt_po_id(produkt_id: int, current_user: dict = Depends(get_current_user)):
+    produkt = eat_db.produkt_po_id(produkt_id, _hid(current_user))
+    if not produkt:
+        raise HTTPException(404, "Nie znaleziono produktu")
+    return produkt
+
+
 @router.get("/ulubione")
 def ulubione(current_user: dict = Depends(get_current_user)):
     """Przypięte produkty — pokazywane w arkuszu nad „ostatnio jadłeś"."""
