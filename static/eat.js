@@ -1740,85 +1740,94 @@ async function ekranPrzepisu(id, zListy) {
   // Waga odniesienia: ręcznie wpisana waga gotowego dania albo suma składników,
   // gdy nic nie odparowuje. Dzięki temu gramy działają przy każdym przepisie.
   const waga = Number(p.waga_odniesienia_g) || 0;
-  let jednostka = 'porcje';
+  // Ten sam wzorzec co przy produkcie: wiersz mówi, ile to porcji i ile kalorii,
+  // i sam zapisuje wpis. Gramy przestały być osobnym przełącznikiem — weszły
+  // jako druga jednostka do wiersza z własną ilością.
+  const kcalDania = Number(p.kcal || 0);
+  const gramyZa = (n) => (waga ? Math.round(waga * n / porcjeDania * 10) / 10 : 0);
+
+  // „1 porcja", ale „2 porcje" i „1,5 porcji" — bez tego przyciski mówiłyby
+  // „0,5 porcja".
+  const slowoPorcji = (n) => {
+    if (n === 1) return 'porcja';
+    if (Number.isInteger(n) && n >= 2 && n <= 4) return 'porcje';
+    return 'porcji';
+  };
+  const etykPorcji = (n) => ({ 0.5: '½ porcji', 1.5: '1½ porcji' })[n]
+    || `${dziesietne(n)} ${slowoPorcji(n)}`;
+
+  const warianty = [0.5, 1, 1.5, 2].map((n) => ({ n: n, etyk: etykPorcji(n) }));
+
+  const wiersz = (w, i) => `
+    <button class="porcja-w" data-i="${i}" type="button">
+      <span class="pw-e">${e(w.etyk)}</span>
+      <span class="pw-g">${gramyZa(w.n) ? dziesietne(gramyZa(w.n)) + ' g' : ''}</span>
+      <span class="pw-k">${zaokr(kcalDania * w.n / porcjeDania)} kcal</span>
+      <span class="pw-s" aria-hidden="true">›</span>
+    </button>`;
+
+  const jednostki = [{ k: 'porcje', n: '× porcja' }];
+  if (waga) jednostki.push({ k: 'gramy', n: 'g' });
 
   ark.innerHTML = `
     <div class="ark-gl">
       <button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
-      <h2 style="font-size:1rem">${e(p.nazwa)}</h2>
+      <h2 class="ark-nazwa">${e(p.nazwa)}<span class="ark-marka">Twój przepis</span></h2>
       <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button>
     </div>
-    <div class="wynik">
-      <div class="wynik-kc">${zaokr(Number(p.kcal || 0) / porcjeDania)} kcal<span style="font-size:13px;font-weight:400;color:var(--muted)"> / porcję</span></div>
-      <div class="wynik-mk">
-        <span>B <b>${dziesietne(Number(p.bialko || 0) / porcjeDania)} g</b></span>
-        <span>T <b>${dziesietne(Number(p.tluszcz || 0) / porcjeDania)} g</b></span>
-        <span>W <b>${dziesietne(Number(p.wegle || 0) / porcjeDania)} g</b></span>
+    <div class="porcje-lista" id="porcje">
+      ${warianty.map(wiersz).join('')}
+      <div class="porcja-w porcja-wlasna">
+        <input type="text" id="p-krotnosc" inputmode="decimal" autocomplete="off" value="1"
+               aria-label="Ile">
+        <select id="p-jednostka" aria-label="Jednostka">
+          ${jednostki.map((j) => `<option value="${j.k}">${e(j.n)}</option>`).join('')}
+        </select>
+        <span class="pw-wynik">
+          <span class="pw-g" id="pw-g"></span>
+          <span class="pw-k" id="pw-k"></span>
+        </span>
+        <button class="pw-s" id="p-wlasna-ok" type="button" aria-label="Dodaj tę ilość">›</button>
       </div>
     </div>
-    ${waga ? `<div class="gdzie" id="jedn" style="margin-top:12px">
-      <button data-j="porcje" aria-pressed="true" type="button">W porcjach</button>
-      <button data-j="gramy" aria-pressed="false" type="button">W gramach</button>
-    </div>` : ''}
-    <div class="sek-tyt" id="tyt-ile">Ile porcji</div>
-    <div class="porcje" id="szybkie">
-      ${[['0,5', '½'], ['1', '1'], ['1,5', '1½'], ['2', '2']].map(([v, et], i) =>
-        `<button class="porcja" data-p="${v}" aria-pressed="${i === 1}" type="button">${et}</button>`).join('')}
-    </div>
-    <input type="text" id="ile" value="1" inputmode="decimal" autocomplete="off" style="width:100%;margin-bottom:12px">
-    <div class="wynik" id="wynik-ile"></div>
-    <div class="sek-tyt">Do którego posiłku</div>
-    <div class="gdzie" id="gdzie">
-      ${POSILKI.map(([k, n]) => `<button data-p="${k}" aria-pressed="${k === posilekDocelowy}" type="button">${n}</button>`).join('')}
-    </div>
     <div id="ark-komunikat"></div>
-    <button class="cta" id="dodaj" type="button">Dodaj do dnia</button>`;
+    <button class="zwin" id="p-zwin" type="button" aria-expanded="false" aria-controls="p-szczegoly">
+      <span id="p-zwin-tekst"></span><span class="zwin-strzalka" aria-hidden="true">⌄</span>
+    </button>
+    <div class="zwin-tresc" id="p-szczegoly" hidden>
+      <div class="sek-tyt">Do którego posiłku</div>
+      <div class="gdzie" id="gdzie">
+        ${POSILKI.map(([k, n]) => `<button data-p="${k}" aria-pressed="${k === posilekDocelowy}" type="button">${n}</button>`).join('')}
+      </div>
+    </div>
+    <div class="na100">1 porcja: <b>${zaokr(kcalDania / porcjeDania)}</b> kcal ·
+      B <b>${dziesietne(Number(p.bialko || 0) / porcjeDania)}</b> ·
+      T <b>${dziesietne(Number(p.tluszcz || 0) / porcjeDania)}</b> ·
+      W <b>${dziesietne(Number(p.wegle || 0) / porcjeDania)}</b></div>`;
 
   const pole = (s) => ark.querySelector(s);
 
-  function przelicz() {
-    const ile = zPola(pole('#ile'));
-    const udzial = jednostka === 'gramy' && waga > 0 ? ile / waga : ile / porcjeDania;
-    pole('#wynik-ile').innerHTML = `
-      <div class="wynik-kc">${zaokr(Number(p.kcal || 0) * udzial)} kcal</div>
-      <div class="wynik-mk">
-        <span>B <b>${dziesietne(Number(p.bialko || 0) * udzial)} g</b></span>
-        <span>T <b>${dziesietne(Number(p.tluszcz || 0) * udzial)} g</b></span>
-        <span>W <b>${dziesietne(Number(p.wegle || 0) * udzial)} g</b></span>
-      </div>`;
-  }
-  przelicz();
+  const zwinTekst = () => {
+    const nazwaP = (POSILKI.find((x) => x[0] === posilekDocelowy) || [, 'Posiłek'])[1];
+    pole('#p-zwin-tekst').textContent =
+      `${nazwaP} · ${etykietaDnia(dzienISO).toLowerCase()}`;
+  };
+  zwinTekst();
 
-  pole('#ile').addEventListener('input', () => {
-    ark.querySelectorAll('#szybkie .porcja').forEach((x) => x.setAttribute('aria-pressed', 'false'));
-    przelicz();
-  });
-  pole('#szybkie').onclick = (ev) => {
-    const b = ev.target.closest('[data-p]');
-    if (!b) return;
-    ark.querySelectorAll('#szybkie .porcja').forEach((x) => x.setAttribute('aria-pressed', 'false'));
-    b.setAttribute('aria-pressed', 'true');
-    pole('#ile').value = b.dataset.p;
-    przelicz();
+  const zwin = pole('#p-zwin');
+  zwin.onclick = () => {
+    const otw = zwin.getAttribute('aria-expanded') === 'true';
+    zwin.setAttribute('aria-expanded', otw ? 'false' : 'true');
+    pole('#p-szczegoly').hidden = otw;
   };
-  const przel = pole('#jedn');
-  if (przel) przel.onclick = (ev) => {
-    const b = ev.target.closest('[data-j]');
-    if (!b) return;
-    ark.querySelectorAll('#jedn [data-j]').forEach((x) => x.setAttribute('aria-pressed', 'false'));
-    b.setAttribute('aria-pressed', 'true');
-    jednostka = b.dataset.j;
-    pole('#szybkie').style.display = jednostka === 'gramy' ? 'none' : 'flex';
-    pole('#tyt-ile').textContent = jednostka === 'gramy' ? 'Ile gramów' : 'Ile porcji';
-    pole('#ile').value = jednostka === 'gramy' ? String(Math.round(waga / porcjeDania)) : '1';
-    przelicz();
-  };
+
   pole('#gdzie').onclick = (ev) => {
     const b = ev.target.closest('[data-p]');
     if (!b) return;
     ark.querySelectorAll('#gdzie [data-p]').forEach((x) => x.setAttribute('aria-pressed', 'false'));
     b.setAttribute('aria-pressed', 'true');
     posilekDocelowy = b.dataset.p;
+    zwinTekst();
   };
   pole('#wroc').onclick = () => {
     if (zListy) { ekranListyPrzepisow(''); return; }
@@ -1827,25 +1836,60 @@ async function ekranPrzepisu(id, zListy) {
   };
   pole('#zamknij2').onclick = () => zamknijArkusz();
 
-  pole('#dodaj').onclick = async (ev) => {
-    const ile = zPola(pole('#ile'));
-    if (!ile || ile <= 0) { komunikat('Podaj ilość.', true); return; }
-    ev.target.disabled = true;
-    const cialo = { data: dzienISO, posilek: posilekDocelowy };
-    if (jednostka === 'gramy') cialo.gramy = ile; else cialo.porcje = ile;
+  // ── wiersz z własną ilością ──
+  const poleN = pole('#p-krotnosc');
+  const poleJ = pole('#p-jednostka');
+  const odswiezWlasna = () => {
+    const ile = zPola(poleN);
+    const wGramach = poleJ.value === 'gramy';
+    const udzial = ile > 0 ? (wGramach ? ile / (waga || 1) : ile / porcjeDania) : 0;
+    // Przy jednostce „g" gramatura powtarzałaby to, co właśnie wpisałeś.
+    pole('#pw-g').textContent = (udzial && !wGramach && waga)
+      ? dziesietne(Math.round(waga * udzial * 10) / 10) + ' g' : '';
+    pole('#pw-k').textContent = udzial ? zaokr(kcalDania * udzial) + ' kcal' : '—';
+  };
+  poleN.addEventListener('input', odswiezWlasna);
+  poleJ.addEventListener('change', () => {
+    // Po przełączeniu na gramy „1" znaczyłoby jeden gram — podstawiamy porcję.
+    poleN.value = poleJ.value === 'gramy' ? String(Math.round(waga / porcjeDania)) : '1';
+    odswiezWlasna();
+  });
+  odswiezWlasna();
+
+  pole('#porcje').onclick = (ev) => {
+    const b = ev.target.closest('.porcja-w[data-i]');
+    if (!b) return;
+    zapiszPorcje({ porcje: warianty[b.dataset.i].n }, b);
+  };
+  pole('#p-wlasna-ok').onclick = (ev) => {
+    const ile = zPola(poleN);
+    if (!(ile > 0)) { komunikat('Podaj ilość większą od zera.', true); return; }
+    zapiszPorcje(poleJ.value === 'gramy' ? { gramy: ile } : { porcje: ile }, ev.currentTarget);
+  };
+
+  // Opis porcji („1 porcja", „250 g") układa SERWER — tu wysyłamy samą ilość.
+  async function zapiszPorcje(ilosc, przycisk) {
+    if (przycisk) przycisk.disabled = true;
+    komunikat('');
     try {
       const r = await authFetch('/api/eat/przepisy/' + p.id + '/do-dnia', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cialo),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ data: dzienISO, posilek: posilekDocelowy }, ilosc)),
       });
+      const x = await r.json().catch(() => ({}));
       if (!r.ok) {
-        const x = await r.json().catch(() => ({}));
         komunikat(x.detail || 'Nie udało się dodać.', true);
-        ev.target.disabled = false; return;
+        if (przycisk) przycisk.disabled = false;
+        return;
       }
       zamknijArkusz();
       await wczytajDzien();
-    } catch { komunikat('Błąd połączenia.', true); ev.target.disabled = false; }
-  };
+      pasekCofnij(p.nazwa, x.id);
+    } catch {
+      komunikat('Błąd połączenia.', true);
+      if (przycisk) przycisk.disabled = false;
+    }
+  }
 }
 
 // ── ekran produktu (wybór porcji) ───────────────────────────────────────────
