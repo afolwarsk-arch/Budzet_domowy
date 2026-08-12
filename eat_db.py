@@ -59,8 +59,17 @@ def init_eat_db() -> None:
         # zbiorczym opakowaniu, a pojedyncza czekoladka nie ma żadnego — więc
         # jedyny sposób, żeby zapisać „zjadłem jedną", to podzielić opakowanie.
         cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS sztuk_w_opak INTEGER")
+        # Ulubione przypina się RĘCZNIE, w odróżnieniu od „ostatnio jadłeś", które
+        # zgaduje po dacie. Owsianka jedzona co drugi dzień wypadała z tamtej listy
+        # dokładnie w dni, kiedy była potrzebna — tu decyduje człowiek, nie sort.
+        cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS "
+                    "ulubiony BOOLEAN NOT NULL DEFAULT FALSE")
         cur.execute("CREATE INDEX IF NOT EXISTS eat_produkty_szukaj "
                     "ON eat_produkty (household_id, nazwa_szukaj)")
+        # Indeks częściowy: ulubionych są jednostki, więc nie ma po co trzymać
+        # w indeksie całej bazy produktów gospodarstwa.
+        cur.execute("CREATE INDEX IF NOT EXISTS eat_produkty_ulubione "
+                    "ON eat_produkty (household_id) WHERE ulubiony")
 
         # Wpisy dziennika. Wartości odżywcze są tu PRZELICZONE i zapisane na
         # stałe, a nie liczone w locie z produktu — inaczej poprawienie literówki
@@ -347,6 +356,26 @@ def usun_produkt(produkt_id: int, household_id: int) -> bool:
         cur.execute("DELETE FROM eat_produkty WHERE id=%s AND household_id=%s",
                     (produkt_id, household_id))
         return cur.rowcount > 0
+
+
+def ustaw_ulubiony(produkt_id: int, household_id: int, wartosc: bool) -> dict | None:
+    """Przypina albo odpina produkt. Zwraca cały wiersz, żeby ekran nie musiał
+    zgadywać stanu po udanej odpowiedzi."""
+    with get_db() as cur:
+        cur.execute("UPDATE eat_produkty SET ulubiony=%s WHERE id=%s AND household_id=%s "
+                    "RETURNING *", (bool(wartosc), produkt_id, household_id))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def ulubione(household_id: int, limit: int = 20) -> list[dict]:
+    """Przypięte produkty gospodarstwa — wspólne, nie per użytkownik. Jedna baza
+    produktów obsługuje cały dom, więc i przypięcia są wspólne."""
+    with get_db() as cur:
+        cur.execute("""SELECT * FROM eat_produkty
+                       WHERE household_id=%s AND ulubiony
+                       ORDER BY nazwa LIMIT %s""", (household_id, limit))
+        return [dict(r) for r in cur.fetchall()]
 
 
 def zapisz_produkt(household_id: int, dane: dict) -> dict:

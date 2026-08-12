@@ -464,6 +464,10 @@ function otworzArkusz(posilek) {
         </button>
       </div>
 
+      <div id="ark-ulubione-sek" hidden>
+        <div class="sek-tyt">Ulubione</div>
+        <div id="ark-ulubione"></div>
+      </div>
       <div class="sek-tyt">Ostatnio jadłeś</div>
       <div id="ark-ostatnie"><div class="komunikat">Wczytuję…</div></div>
       <!-- „schowane", a nie display:none. Pole z display:none bywa przez
@@ -524,6 +528,31 @@ function otworzArkusz(posilek) {
     if (ev.key === 'Enter') { clearTimeout(czekaSzukanie); szukajProduktow(poleSzukaj.value.trim()); }
   });
   wczytajOstatnie();
+  wczytajUlubione();
+}
+
+// Ulubione są PRZYPIĘTE ręcznie, więc stoją nad „ostatnio jadłeś", które tylko
+// zgaduje po dacie. Sekcja jest ukryta, dopóki nikt nic nie przypiął — pusty
+// nagłówek „Ulubione" uczyłby, że funkcja nie działa.
+//
+// Kliknięcie prowadzi do ekranu porcji, a nie zapisuje od razu: ulubiony to
+// PRODUKT, a nie zapamiętana porcja — ilość wciąż trzeba wskazać.
+async function wczytajUlubione() {
+  const sek = arkusz && arkusz.querySelector('#ark-ulubione-sek');
+  const box = arkusz && arkusz.querySelector('#ark-ulubione');
+  if (!sek || !box) return;
+  try {
+    const lista = await (await authFetch('/api/eat/ulubione')).json();
+    if (!Array.isArray(lista) || !lista.length) return;
+    box.innerHTML = lista.map((p, i) => `
+      <button class="szybka" data-i="${i}" type="button">
+        <span class="nz"><b>${e(p.nazwa)}</b><span>${p.marka ? e(p.marka) + ' · ' : ''}${zaokr(p.kcal)} kcal/100 g</span></span>
+      </button>`).join('');
+    box.querySelectorAll('[data-i]').forEach((b) => {
+      b.onclick = () => ekranProduktu(lista[b.dataset.i], 'wlasna');
+    });
+    sek.hidden = false;
+  } catch { /* brak ulubionych nie ma prawa zepsuć całego arkusza */ }
 }
 
 function komunikat(tekst, blad) {
@@ -917,7 +946,249 @@ function dyktuj() {
 // `edycja` = { id } zmienia ten sam ekran w poprawianie istniejącej pozycji:
 // inny tytuł, zapis przez PATCH i przycisk usunięcia zamiast drogi powrotnej
 // do wyszukiwarki (przy edycji nie ma dokąd wracać).
-function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja) {
+// ── wybór porcji dla produktu o znanych wartościach ─────────────────────────
+
+// Produkt z bazy ma zdefiniowaną tabelę wartości, więc nie ma tu czego wpisywać
+// — jedyne pytanie brzmi ILE go zjadłeś. Stąd brak pól makro: pokazujemy je
+// tylko do odczytu, na dole. Każdy wiersz od razu mówi, ile to gramów i ile
+// kalorii, i sam jest przyciskiem zapisu — wybór i zatwierdzenie to jedna
+// czynność. Zasada „zobacz, zanim zapiszesz" zostaje spełniona, bo skutek
+// stoi w wierszu, zanim go dotkniesz.
+//
+// Drogi, na których wartości są OSZACOWANIEM (opis, niepełna etykieta) oraz
+// edycja wpisu idą dalej przez ekranPotwierdzenia — tam pola muszą być
+// edytowalne, bo model mógł się pomylić.
+// `naglowekDodatkowy` z ekranPotwierdzenia jest tu świadomie pominięty: niósł
+// blok z nazwą i marką, a te przeniosły się do paska tytułu.
+function ekranPorcji(poz, na100, produktId) {
+  zatrzymajSkaner();
+  const ark = arkusz && arkusz.querySelector('.ark');
+  if (!ark) return;
+
+  const opak = Number(na100.opak_g) || 0;
+  const sztuk = Number(na100.sztuk) || 0;
+  const jednaSzt = (opak && sztuk > 1) ? opak / sztuk : 0;
+  const na100kcal = Number(na100.kcal) || 0;
+  const g1 = (x) => Math.round(x * 10) / 10;
+  const kcalZa = (g) => na100kcal * g / 100;
+
+  // Kolejność jak w starych chipach: sztuka przed opakowaniem, bo przy pudełku
+  // pralinek to jedyna porcja, którą ktokolwiek je.
+  const warianty = [];
+  if (jednaSzt) {
+    warianty.push({ etyk: '1 szt.', g: g1(jednaSzt) });
+    warianty.push({ etyk: '2 szt.', g: g1(jednaSzt * 2) });
+  }
+  if (opak) {
+    warianty.push({ etyk: 'całe opak.', g: g1(opak) });
+    warianty.push({ etyk: '½ opak.', g: g1(opak / 2) });
+  }
+  warianty.push({ etyk: '100 g', g: 100 }, { etyk: '50 g', g: 50 });
+
+  // Etykiety z „×" z przodu, bo czyta się je razem z polem obok: „2 × opak.".
+  const jednostki = [{ k: 'g', n: 'g' }];
+  if (opak) jednostki.push({ k: 'opak', n: '× opak.' });
+  if (jednaSzt) jednostki.push({ k: 'szt', n: '× szt.' });
+
+  const wiersz = (w, i) => `
+    <button class="porcja-w" data-i="${i}" type="button">
+      <span class="pw-e">${e(w.etyk)}</span>
+      <span class="pw-g">${dziesietne(w.g)} g</span>
+      <span class="pw-k">${zaokr(kcalZa(w.g))} kcal</span>
+      <span class="pw-s" aria-hidden="true">›</span>
+    </button>`;
+
+  // Nazwa produktu idzie w pasek tytułu, a nie w osobny nagłówek nad listą —
+  // dzięki temu wiersze zaczynają się od razu pod paskiem i cały ekran mieści
+  // się bez przewijania także przy 320 px.
+  ark.innerHTML = `
+    <div class="ark-gl">
+      <button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
+      <h2 class="ark-nazwa">${e(poz.nazwa)}${poz.marka
+        ? `<span class="ark-marka">${e(poz.marka)}</span>` : ''}</h2>
+      <button class="serce" id="p-serce" type="button"
+              aria-pressed="${poz.ulubiony ? 'true' : 'false'}"
+              aria-label="Ulubiony">&#9829;</button>
+      <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button>
+    </div>
+    <div class="porcje-lista" id="porcje">
+      ${warianty.map(wiersz).join('')}
+      <div class="porcja-w porcja-wlasna">
+        <input type="text" id="p-krotnosc" inputmode="decimal" autocomplete="off" value="1"
+               aria-label="Ile">
+        <select id="p-jednostka" aria-label="Jednostka">
+          ${jednostki.map((j) => `<option value="${j.k}">${e(j.n)}</option>`).join('')}
+        </select>
+        <span class="pw-wynik">
+          <span class="pw-g" id="pw-g"></span>
+          <span class="pw-k" id="pw-k"></span>
+        </span>
+        <button class="pw-s" id="p-wlasna-ok" type="button" aria-label="Dodaj tę ilość">›</button>
+      </div>
+    </div>
+    <div id="ark-komunikat"></div>
+    <button class="zwin" id="p-zwin" type="button" aria-expanded="false" aria-controls="p-szczegoly">
+      <span id="p-zwin-tekst"></span><span class="zwin-strzalka" aria-hidden="true">⌄</span>
+    </button>
+    <div class="zwin-tresc" id="p-szczegoly" hidden>
+      <div class="sek-tyt">Do którego posiłku</div>
+      <div class="gdzie" id="gdzie">
+        ${POSILKI.map(([k, n]) => `<button data-p="${k}" aria-pressed="${k === posilekDocelowy}" type="button">${n}</button>`).join('')}
+      </div>
+    </div>
+    <div class="na100">W 100 g: <b>${zaokr(na100kcal)}</b> kcal ·
+      B <b>${dziesietne(na100.bialko || 0)}</b> ·
+      T <b>${dziesietne(na100.tluszcz || 0)}</b> ·
+      W <b>${dziesietne(na100.wegle || 0)}</b></div>`;
+
+  ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+  ark.querySelector('#zamknij2').onclick = zamknijArkusz;
+
+  // Zwinięta linijka musi mówić, DO CZEGO trafi wpis — inaczej ukrycie wyboru
+  // posiłku znaczyłoby tyle, co jego brak. Wartości odżywcze pod nią NIE są
+  // chowane: to jedyna liczba, którą sprawdza się przed wyborem porcji.
+  const zwinTekst = () => {
+    const nazwaP = (POSILKI.find((p) => p[0] === posilekDocelowy) || [, 'Posiłek'])[1];
+    ark.querySelector('#p-zwin-tekst').textContent =
+      `${nazwaP} · ${etykietaDnia(dzienISO).toLowerCase()}`;
+  };
+  zwinTekst();
+
+  const zwin = ark.querySelector('#p-zwin');
+  zwin.onclick = () => {
+    const otw = zwin.getAttribute('aria-expanded') === 'true';
+    zwin.setAttribute('aria-expanded', otw ? 'false' : 'true');
+    ark.querySelector('#p-szczegoly').hidden = otw;
+  };
+
+  ark.querySelector('#gdzie').onclick = (ev) => {
+    const b = ev.target.closest('[data-p]');
+    if (!b) return;
+    ark.querySelectorAll('#gdzie [data-p]').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    posilekDocelowy = b.dataset.p;
+    zwinTekst();
+  };
+
+  // ── serce ──
+  // Stan przestawiamy OD RAZU, a cofamy dopiero gdy serwer odmówi. Przypięcie
+  // to drobiazg, a czekanie na odpowiedź sieci przy stuknięciu w serce wygląda
+  // jak zepsuty przycisk.
+  const serce = ark.querySelector('#p-serce');
+  serce.onclick = async () => {
+    const bylo = serce.getAttribute('aria-pressed') === 'true';
+    serce.setAttribute('aria-pressed', bylo ? 'false' : 'true');
+    try {
+      const r = await authFetch('/api/eat/produkty/' + produktId + '/ulubiony', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ulubiony: !bylo }),
+      });
+      if (!r.ok) throw new Error('odmowa');
+      poz.ulubiony = !bylo;
+    } catch {
+      serce.setAttribute('aria-pressed', bylo ? 'true' : 'false');
+      komunikat('Nie udało się zapisać ulubionego.', true);
+    }
+  };
+
+  // ── wiersz z własną krotnością ──
+  const poleN = ark.querySelector('#p-krotnosc');
+  const poleJ = ark.querySelector('#p-jednostka');
+  const wlasnaG = () => {
+    const n = zPola(poleN);
+    if (!(n > 0)) return 0;
+    const j = poleJ.value;
+    return g1(n * (j === 'opak' ? opak : j === 'szt' ? jednaSzt : 1));
+  };
+  const wlasnyOpis = () => {
+    const j = poleJ.value;
+    if (j === 'g') return null;
+    const n = dziesietne(zPola(poleN));
+    return n + ' × ' + (j === 'opak' ? 'opak.' : 'szt.');
+  };
+  const odswiezWlasna = () => {
+    const g = wlasnaG();
+    // Przy jednostce „g" gramatura powtarzalaby to, co wlasnie wpisales — wtedy
+    // zostaje sama kaloryczność.
+    const pokazG = g && poleJ.value !== 'g';
+    ark.querySelector('#pw-g').textContent = pokazG ? dziesietne(g) + ' g' : '';
+    ark.querySelector('#pw-k').textContent = g ? zaokr(kcalZa(g)) + ' kcal' : '—';
+  };
+  poleN.addEventListener('input', odswiezWlasna);
+  poleJ.addEventListener('change', odswiezWlasna);
+  // Domyślnie gramy, więc startowa krotność 1 dałaby bezsensowny 1 g. Startujemy
+  // od porcji, którą wyliczył ekranProduktu — tej samej, którą i tak podpowiadał.
+  const startG = Number(poz.ilosc_g) || 100;
+  poleN.value = dziesietne(startG);
+  odswiezWlasna();
+
+  ark.querySelector('#porcje').onclick = (ev) => {
+    const b = ev.target.closest('.porcja-w[data-i]');
+    if (!b) return;
+    const w = warianty[b.dataset.i];
+    zapiszPorcje(w.g, w.etyk, b);
+  };
+  ark.querySelector('#p-wlasna-ok').onclick = (ev) => {
+    const g = wlasnaG();
+    if (!g) { komunikat('Podaj ilość większą od zera.', true); return; }
+    zapiszPorcje(g, wlasnyOpis(), ev.currentTarget);
+  };
+
+  async function zapiszPorcje(g, opis, przycisk) {
+    if (przycisk) przycisk.disabled = true;
+    komunikat('');
+    try {
+      const r = await authFetch('/api/eat/wpis', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data: dzienISO, posilek: posilekDocelowy, produkt_id: produktId,
+          nazwa: poz.nazwa, ilosc_g: g, opis_porcji: opis,
+        }),
+      });
+      const x = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        komunikat(x.detail || 'Nie udało się dodać.', true);
+        if (przycisk) przycisk.disabled = false;
+        return;
+      }
+      zamknijArkusz();
+      await wczytajDzien();
+      pasekCofnij(poz.nazwa, x.id);
+    } catch {
+      komunikat('Błąd połączenia.', true);
+      if (przycisk) przycisk.disabled = false;
+    }
+  }
+}
+
+// Zapis bez pytania jest szybki tylko wtedy, gdy pomyłka też jest tania.
+// Pasek żyje kilka sekund i znika sam — świadomie nie blokuje ekranu.
+function pasekCofnij(nazwa, wpisId) {
+  document.querySelectorAll('.pasek-cofnij').forEach((x) => x.remove());
+  if (!wpisId) return;
+  const pas = document.createElement('div');
+  pas.className = 'pasek-cofnij';
+  pas.innerHTML = `<span>Dodano: ${e(nazwa)}</span><button type="button">Cofnij</button>`;
+  document.body.appendChild(pas);
+  const zdejmij = () => { clearTimeout(zegar); pas.remove(); };
+  const zegar = setTimeout(zdejmij, 6000);
+  pas.querySelector('button').onclick = async () => {
+    zdejmij();
+    try {
+      await authFetch('/api/eat/wpis/' + wpisId, { method: 'DELETE' });
+      await wczytajDzien();
+    } catch { /* dzień odświeży się przy następnej akcji */ }
+  };
+}
+
+function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja, wartosciStale) {
+  // Produkt o znanych wartościach dostaje prostszy ekran — sam wybór ilości.
+  // Edycja wpisu nigdy tam nie trafia: tam poprawianie wartości jest sensem
+  // ekranu, a nie odstępstwem.
+  if (wartosciStale && na100 && produktId && !edycja) {
+    ekranPorcji(poz, na100, produktId);
+    return;
+  }
   // Bez tego strumien zyl dalej po podmianie ekranu i kolejne trafienie skanera
   // nadpisywalo formularz, ktory user wlasnie wypelnial.
   zatrzymajSkaner();
@@ -1547,12 +1818,19 @@ function ekranProduktu(p, skad, niepelne) {
     : (opak && opak <= 250) ? opak : 100;
   ekranPotwierdzenia(
     { nazwa: p.nazwa, ilosc_g: domyslna, opis_porcji: p.opis_porcji || null,
-      kcal: 0, bialko: 0, tluszcz: 0, wegle: 0 },
+      kcal: 0, bialko: 0, tluszcz: 0, wegle: 0,
+      // tylko dla ekranu porcji: marka trafia pod nazwę w pasku tytułu,
+      // a serce musi znać stan przypięcia od pierwszego renderu
+      marka: p.marka || null, ulubiony: !!p.ulubiony },
     { kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
       tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
       opak_g: opak, sztuk: sztuk, produkt_id: p.id },
     p.id,
     naglowek,
+    undefined,
+    // Produkt bez tabeli wartości musi zostać na starym ekranie — ostrzeżenie
+    // wyżej wprost każe wpisać liczby, więc pola nie mogą zniknąć.
+    !niepelne,
   );
 }
 

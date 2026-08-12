@@ -220,6 +220,22 @@ def usun_produkt(produkt_id: int, current_user: dict = Depends(get_current_user)
     return {"ok": True}
 
 
+@router.get("/ulubione")
+def ulubione(current_user: dict = Depends(get_current_user)):
+    """Przypięte produkty — pokazywane w arkuszu nad „ostatnio jadłeś"."""
+    return eat_db.ulubione(_hid(current_user))
+
+
+@router.patch("/produkty/{produkt_id}/ulubiony")
+def ustaw_ulubiony(produkt_id: int, body: dict,
+                   current_user: dict = Depends(get_current_user)):
+    produkt = eat_db.ustaw_ulubiony(produkt_id, _hid(current_user),
+                                    bool(body.get("ulubiony")))
+    if not produkt:
+        raise HTTPException(404, "Nie znaleziono produktu")
+    return produkt
+
+
 @router.get("/szukaj")
 def szukaj(fraza: str = Query(""), current_user: dict = Depends(get_current_user)):
     """WYŁĄCZNIE źródła lokalne — odpowiada w kilka milisekund.
