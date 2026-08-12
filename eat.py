@@ -588,6 +588,49 @@ def zmien_wpis(wpis_id: int, body: dict, current_user: dict = Depends(get_curren
         raise HTTPException(400, "Nieznany posiłek")
     nazwa = (body.get("nazwa") or "").strip() or biezacy["nazwa"]
 
+    # Danie z przepisu poprawia się W PORCJACH, nie w gramach. Skalujemy wszystko
+    # od BIEŻĄCEGO wpisu, a nie od przepisu: przepis mógł się w międzyczasie
+    # zmienić albo zniknąć, a ta pozycja ma dalej opisywać ten talerz. Razem
+    # z wartościami jedzie liczba porcji i rozpiska składników — bez tego
+    # dziennik pokazywałby dwie porcje nad rozpiską opisującą jedną.
+    if body.get("porcje") is not None and biezacy.get("przepis_id"):
+        teraz = _liczba(biezacy.get("porcje_zjedzone")) or 0
+        nowe = _liczba(body.get("porcje"))
+        if nowe is None or not 0.05 <= nowe <= 20:
+            raise HTTPException(400, "Liczba porcji poza zakresem (0,05–20)")
+        if teraz <= 0:
+            raise HTTPException(400, "Ten wpis nie ma zapisanej liczby porcji")
+        wsp = nowe / teraz
+        dane = {
+            "posilek": posilek,
+            "nazwa": nazwa[:120],
+            "opis_porcji": (f"{_ladna(nowe)} porcji" if nowe != 1 else "1 porcja")[:40],
+            "ilosc_g": max(0.1, round(float(biezacy["ilosc_g"] or 0) * wsp, 1)),
+            "kcal": round(float(biezacy["kcal"] or 0) * wsp, 1),
+            "bialko": round(float(biezacy["bialko"] or 0) * wsp, 1),
+            "tluszcz": round(float(biezacy["tluszcz"] or 0) * wsp, 1),
+            "wegle": round(float(biezacy["wegle"] or 0) * wsp, 1),
+            "porcje_zjedzone": round(nowe, 2),
+        }
+        rozpiska = biezacy.get("skladniki_json")
+        if rozpiska:
+            import json as _json
+            try:
+                pozycje = _json.loads(rozpiska) if isinstance(rozpiska, str) else rozpiska
+                dane["skladniki_json"] = _json.dumps([{
+                    "nazwa": s.get("nazwa"),
+                    "ilosc_g": round(float(s.get("ilosc_g") or 0) * wsp, 1),
+                    "kcal": round(float(s.get("kcal") or 0) * wsp, 1),
+                } for s in pozycje], ensure_ascii=False)
+            except (ValueError, TypeError, AttributeError) as e:
+                # Nieczytelna rozpiska nie ma prawa zablokować poprawki ilości —
+                # zostaje wtedy stara, a reszta wpisu i tak się aktualizuje.
+                print(f"[eat] wpis {wpis_id}: nie przeskalowalem rozpiski — {e!r}")
+        wynik = eat_db.aktualizuj_wpis(wpis_id, hid, current_user["user_id"], dane)
+        if not wynik:
+            raise HTTPException(404, "Nie znaleziono wpisu")
+        return wynik
+
     dane = {
         "posilek": posilek,
         "nazwa": nazwa[:120],

@@ -554,15 +554,24 @@ def aktualizuj_wpis(wpis_id: int, household_id: int, user_id: int, dane: dict) -
     `produkt_id` zostaje bez zmian: pozycja ma nadal wskazywać na ten sam
     produkt, nawet jeśli poprawiłeś jej wartości ręcznie. Ta sama zasada co
     przy kasowaniu — ruszać można wyłącznie własne wpisy."""
+    # Wpis z przepisu niesie jeszcze liczbę zjedzonych porcji i ZAMROŻONĄ
+    # rozpiskę składników. Gdy zmienia się ilość, muszą iść razem z resztą —
+    # inaczej dziennik pokazywał dwie porcje, a rozpiska pod nimi dalej opisywała
+    # jedną. Pola są opcjonalne, więc zwykła poprawka gramatury działa jak dotąd.
+    extra, wartosci = "", {"id": wpis_id, "h": household_id, "u": user_id, **dane}
+    if "porcje_zjedzone" in dane:
+        extra += ", porcje_zjedzone=%(porcje_zjedzone)s"
+    if "skladniki_json" in dane:
+        extra += ", skladniki_json=%(skladniki_json)s"
     with get_db() as cur:
-        cur.execute("""
+        cur.execute(f"""
             UPDATE eat_wpisy
                SET posilek=%(posilek)s, nazwa=%(nazwa)s, opis_porcji=%(opis_porcji)s,
                    ilosc_g=%(ilosc_g)s, kcal=%(kcal)s, bialko=%(bialko)s,
-                   tluszcz=%(tluszcz)s, wegle=%(wegle)s
+                   tluszcz=%(tluszcz)s, wegle=%(wegle)s{extra}
              WHERE id=%(id)s AND household_id=%(h)s AND user_id=%(u)s
             RETURNING *
-        """, {"id": wpis_id, "h": household_id, "u": user_id, **dane})
+        """, wartosci)
         row = cur.fetchone()
         return dict(row) if row else None
 

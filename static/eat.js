@@ -40,6 +40,16 @@ const dziesietne = (v) => {
 // wpisanie „4,9" na polskiej klawiaturze daje PUSTĄ wartość — przeglądarka
 // uznaje ją za niepoprawną — a Number('') to zero. Po cichu wyzerowałoby to
 // makro. Tutaj bierzemy przecinek i kropkę tak samo; serwer też oba przyjmuje.
+// „1 porcja", ale „2 porcje" i „1,5 porcji" — bez tego przyciski mówiłyby
+// „0,5 porcja". Wspólne dla ekranu przepisu i dla edycji wpisu z przepisu.
+const slowoPorcji = (n) => {
+  if (n === 1) return 'porcja';
+  if (Number.isInteger(n) && n >= 2 && n <= 4) return 'porcje';
+  return 'porcji';
+};
+const etykPorcji = (n) => ({ 0.5: '½ porcji', 1.5: '1½ porcji' })[n]
+  || `${dziesietne(n)} ${slowoPorcji(n)}`;
+
 const zPola = (el) => {
   if (!el) return 0;
   const x = parseFloat(String(el.value).replace(',', '.'));
@@ -302,6 +312,25 @@ function edytujWpis(w) {
     wegle: Number(w.wegle || 0) / g * 100,
     opak_g: 0,
   } : null;
+  // Poprawianie ILOŚCI to niemal wszystko, po co się tu wchodzi, więc ekran ma
+  // wyglądać tak samo jak przy dodawaniu. Ręczna korekta liczb i usunięcie
+  // czekają pod zwijaną linijką. Bez `na100` (wpis bez gramatury) nie ma czego
+  // skalować — wtedy od razu stary formularz.
+  // Danie z przepisu poprawia się w PORCJACH — „100 g jajecznicy" nic nie znaczy,
+  // a przy okazji trzeba ruszyć liczbę porcji i zamrożoną rozpiskę, czym zajmuje
+  // się serwer.
+  const porcjeTeraz = Number(w.porcje_zjedzone) || 0;
+  if (w.przepis_id && porcjeTeraz > 0) {
+    ekranPorcji(w, na100 || { kcal: 0, opak_g: 0 }, null, null,
+                { id: w.id, wpis: w }, { teraz: porcjeTeraz });
+    return;
+  }
+  if (na100) {
+    ekranPorcji(w, na100, w.produkt_id || null,
+                { g: g, etyk: 'jak teraz', opis: w.opis_porcji || null },
+                { id: w.id, wpis: w });
+    return;
+  }
   ekranPotwierdzenia(w, na100, w.produkt_id || null, '', { id: w.id });
 }
 
@@ -1004,7 +1033,13 @@ function dyktuj() {
 // idzie z wartościami wprost zamiast z `produkt_id`.
 // `poprzednia` (opcjonalna) to porcja, którą już raz zjadłeś — ląduje jako
 // pierwszy wiersz.
-function ekranPorcji(poz, na100, produktId, poprzednia) {
+// `edycja` = { id, wpis } przełącza ekran w tryb poprawki: wiersze wysyłają
+// PATCH zamiast POST, a pod zwijaną linijką dochodzi ręczna korekta wartości
+// i usunięcie z dnia. Przy edycji też najczęściej zmienia się ILOŚĆ, więc
+// szybka droga ma wyglądać tak samo jak przy dodawaniu — ale poprawianie liczb
+// musi zostać dostępne, bo przy pozycjach z AI to jedyny ratunek na złe
+// oszacowanie.
+function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
   zatrzymajSkaner();
   const ark = arkusz && arkusz.querySelector('.ark');
   if (!ark) return;
@@ -1016,40 +1051,61 @@ function ekranPorcji(poz, na100, produktId, poprzednia) {
   const g1 = (x) => Math.round(x * 10) / 10;
   const kcalZa = (g) => na100kcal * g / 100;
 
-  // Kolejność jak w starych chipach: sztuka przed opakowaniem, bo przy pudełku
-  // pralinek to jedyna porcja, którą ktokolwiek je.
-  const warianty = [];
-  if (jednaSzt) {
-    warianty.push({ etyk: '1 szt.', g: g1(jednaSzt) });
-    warianty.push({ etyk: '2 szt.', g: g1(jednaSzt * 2) });
-  }
-  if (opak) {
-    warianty.push({ etyk: 'całe opak.', g: g1(opak) });
-    warianty.push({ etyk: '½ opak.', g: g1(opak / 2) });
-  }
-  warianty.push({ etyk: '100 g', g: 100 }, { etyk: '50 g', g: 50 });
+  // Danie z przepisu poprawia się W PORCJACH — „100 g jajecznicy" nic nie znaczy.
+  // Skalujemy od BIEŻĄCEGO wpisu (`trybPorcji.teraz` = ile porcji tam stoi),
+  // nie od przepisu: przepis mógł się zmienić albo zniknąć, a ta pozycja ma
+  // dalej opisywać ten talerz.
+  const wPorcjach = !!(trybPorcji && trybPorcji.teraz > 0);
+  const teraz = wPorcjach ? Number(trybPorcji.teraz) : 0;
 
-  // Poprzednia porcja na samą górę, a wygenerowany duplikat o tej samej
-  // gramaturze wypada — dwa wiersze z tą samą liczbą gramów tylko myliłyby.
-  if (poprzednia && poprzednia.g > 0) {
-    const ta = g1(poprzednia.g);
-    for (let i = warianty.length - 1; i >= 0; i--) {
-      if (g1(warianty[i].g) === ta) warianty.splice(i, 1);
+  const warianty = [];
+  if (wPorcjach) {
+    [0.5, 1, 1.5, 2].forEach((n) => {
+      if (Math.abs(n - teraz) < 0.001) return;   // „jak teraz" doklei się niżej
+      warianty.push({ etyk: etykPorcji(n), porcje: n,
+                      g: g1(Number(poz.ilosc_g || 0) * n / teraz),
+                      kcal: Number(poz.kcal || 0) * n / teraz });
+    });
+    warianty.unshift({ etyk: 'jak teraz', porcje: teraz,
+                       g: g1(Number(poz.ilosc_g || 0)),
+                       kcal: Number(poz.kcal || 0) });
+  } else {
+    // Kolejność jak w starych chipach: sztuka przed opakowaniem, bo przy pudełku
+    // pralinek to jedyna porcja, którą ktokolwiek je.
+    if (jednaSzt) {
+      warianty.push({ etyk: '1 szt.', g: g1(jednaSzt) });
+      warianty.push({ etyk: '2 szt.', g: g1(jednaSzt * 2) });
     }
-    warianty.unshift({ etyk: poprzednia.etyk || 'jak ostatnio', g: ta,
-                       opis: poprzednia.opis || null });
+    if (opak) {
+      warianty.push({ etyk: 'całe opak.', g: g1(opak) });
+      warianty.push({ etyk: '½ opak.', g: g1(opak / 2) });
+    }
+    warianty.push({ etyk: '100 g', g: 100 }, { etyk: '50 g', g: 50 });
+
+    // Poprzednia porcja na samą górę, a wygenerowany duplikat o tej samej
+    // gramaturze wypada — dwa wiersze z tą samą liczbą gramów tylko myliłyby.
+    if (poprzednia && poprzednia.g > 0) {
+      const ta = g1(poprzednia.g);
+      for (let i = warianty.length - 1; i >= 0; i--) {
+        if (g1(warianty[i].g) === ta) warianty.splice(i, 1);
+      }
+      warianty.unshift({ etyk: poprzednia.etyk || 'jak ostatnio', g: ta,
+                         opis: poprzednia.opis || null });
+    }
   }
 
   // Etykiety z „×" z przodu, bo czyta się je razem z polem obok: „2 × opak.".
-  const jednostki = [{ k: 'g', n: 'g' }];
-  if (opak) jednostki.push({ k: 'opak', n: '× opak.' });
-  if (jednaSzt) jednostki.push({ k: 'szt', n: '× szt.' });
+  const jednostki = wPorcjach ? [{ k: 'porcje', n: '× porcja' }] : [{ k: 'g', n: 'g' }];
+  if (!wPorcjach && opak) jednostki.push({ k: 'opak', n: '× opak.' });
+  if (!wPorcjach && jednaSzt) jednostki.push({ k: 'szt', n: '× szt.' });
 
+  // W trybie porcji kalorie są policzone przy wariancie (skalowane od wpisu),
+  // w trybie gramów wynikają z tabeli na 100 g.
   const wiersz = (w, i) => `
     <button class="porcja-w" data-i="${i}" type="button">
       <span class="pw-e">${e(w.etyk)}</span>
       <span class="pw-g">${dziesietne(w.g)} g</span>
-      <span class="pw-k">${zaokr(kcalZa(w.g))} kcal</span>
+      <span class="pw-k">${zaokr(w.kcal !== undefined ? w.kcal : kcalZa(w.g))} kcal</span>
       <span class="pw-s" aria-hidden="true">›</span>
     </button>`;
 
@@ -1061,7 +1117,7 @@ function ekranPorcji(poz, na100, produktId, poprzednia) {
       <button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
       <h2 class="ark-nazwa">${e(poz.nazwa)}${poz.marka
         ? `<span class="ark-marka">${e(poz.marka)}</span>` : ''}</h2>
-      ${produktId ? `<button class="serce" id="p-serce" type="button"
+      ${(produktId && !edycja) ? `<button class="serce" id="p-serce" type="button"
               aria-pressed="${poz.ulubiony ? 'true' : 'false'}"
               aria-label="Ulubiony">&#9829;</button>` : ''}
       <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button>
@@ -1069,8 +1125,8 @@ function ekranPorcji(poz, na100, produktId, poprzednia) {
     <div class="porcje-lista" id="porcje">
       ${warianty.map(wiersz).join('')}
       <div class="porcja-w porcja-wlasna">
-        <input type="text" id="p-krotnosc" inputmode="decimal" autocomplete="off" value="1"
-               aria-label="Ile">
+        <input type="text" id="p-krotnosc" inputmode="decimal" autocomplete="off"
+               value="${wPorcjach ? dziesietne(teraz) : '1'}" aria-label="Ile">
         <select id="p-jednostka" aria-label="Jednostka">
           ${jednostki.map((j) => `<option value="${j.k}">${e(j.n)}</option>`).join('')}
         </select>
@@ -1090,11 +1146,18 @@ function ekranPorcji(poz, na100, produktId, poprzednia) {
       <div class="gdzie" id="gdzie">
         ${POSILKI.map(([k, n]) => `<button data-p="${k}" aria-pressed="${k === posilekDocelowy}" type="button">${n}</button>`).join('')}
       </div>
+      ${edycja ? `
+      ${wPorcjach ? '' : '<button class="zwin-akcja" id="p-recznie" type="button">Popraw wartości ręcznie</button>'}
+      <button class="cta-usun" id="p-usun" type="button">Usuń z dnia</button>` : ''}
     </div>
+    ${wPorcjach ? `<div class="na100">1 porcja: <b>${zaokr(Number(poz.kcal || 0) / teraz)}</b> kcal ·
+      B <b>${dziesietne(Number(poz.bialko || 0) / teraz)}</b> ·
+      T <b>${dziesietne(Number(poz.tluszcz || 0) / teraz)}</b> ·
+      W <b>${dziesietne(Number(poz.wegle || 0) / teraz)}</b></div>` : `
     <div class="na100">W 100 g: <b>${zaokr(na100kcal)}</b> kcal ·
       B <b>${dziesietne(na100.bialko || 0)}</b> ·
       T <b>${dziesietne(na100.tluszcz || 0)}</b> ·
-      W <b>${dziesietne(na100.wegle || 0)}</b></div>`;
+      W <b>${dziesietne(na100.wegle || 0)}</b></div>`}`;
 
   ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
   ark.querySelector('#zamknij2').onclick = zamknijArkusz;
@@ -1105,7 +1168,8 @@ function ekranPorcji(poz, na100, produktId, poprzednia) {
   const zwinTekst = () => {
     const nazwaP = (POSILKI.find((p) => p[0] === posilekDocelowy) || [, 'Posiłek'])[1];
     ark.querySelector('#p-zwin-tekst').textContent =
-      `${nazwaP} · ${etykietaDnia(dzienISO).toLowerCase()}`;
+      `${nazwaP} · ${etykietaDnia(dzienISO).toLowerCase()}`
+      + (edycja ? ' · popraw albo usuń' : '');
   };
   zwinTekst();
 
@@ -1123,6 +1187,26 @@ function ekranPorcji(poz, na100, produktId, poprzednia) {
     b.setAttribute('aria-pressed', 'true');
     posilekDocelowy = b.dataset.p;
     zwinTekst();
+  };
+
+  // ── tryb edycji: ręczna korekta i usuwanie ──
+  const recznie = ark.querySelector('#p-recznie');
+  // Ucieczka do starego formularza. Wiersze wyżej zmieniają ILOŚĆ, a to jest
+  // droga do poprawienia samych LICZB — rozdzielone, bo jeden ekran robiący
+  // obie rzeczy naraz musiałby zgadywać, którą wartość skalować od której.
+  if (recznie) recznie.onclick = () => {
+    ekranPotwierdzenia(edycja.wpis, na100, produktId, '', { id: edycja.id });
+  };
+
+  const usun = ark.querySelector('#p-usun');
+  if (usun) usun.onclick = async (ev) => {
+    ev.currentTarget.disabled = true;
+    try {
+      const r = await authFetch('/api/eat/wpis/' + edycja.id, { method: 'DELETE' });
+      if (!r.ok) { komunikat('Nie udało się usunąć.', true); ev.currentTarget.disabled = false; return; }
+      zamknijArkusz();
+      await wczytajDzien();
+    } catch { komunikat('Błąd połączenia.', true); ev.currentTarget.disabled = false; }
   };
 
   // ── serce ──
@@ -1152,6 +1236,7 @@ function ekranPorcji(poz, na100, produktId, poprzednia) {
   const wlasnaG = () => {
     const n = zPola(poleN);
     if (!(n > 0)) return 0;
+    if (wPorcjach) return g1(Number(poz.ilosc_g || 0) * n / teraz);
     const j = poleJ.value;
     return g1(n * (j === 'opak' ? opak : j === 'szt' ? jednaSzt : 1));
   };
@@ -1163,11 +1248,14 @@ function ekranPorcji(poz, na100, produktId, poprzednia) {
   };
   const odswiezWlasna = () => {
     const g = wlasnaG();
+    const n = zPola(poleN);
     // Przy jednostce „g" gramatura powtarzalaby to, co wlasnie wpisales — wtedy
     // zostaje sama kaloryczność.
     const pokazG = g && poleJ.value !== 'g';
     ark.querySelector('#pw-g').textContent = pokazG ? dziesietne(g) + ' g' : '';
-    ark.querySelector('#pw-k').textContent = g ? zaokr(kcalZa(g)) + ' kcal' : '—';
+    const kcal = wPorcjach ? Number(poz.kcal || 0) * n / teraz : kcalZa(g);
+    ark.querySelector('#pw-k').textContent = (wPorcjach ? n > 0 : g > 0)
+      ? zaokr(kcal) + ' kcal' : '—';
   };
   poleN.addEventListener('input', odswiezWlasna);
   poleJ.addEventListener('change', odswiezWlasna);
@@ -1183,42 +1271,63 @@ function ekranPorcji(poz, na100, produktId, poprzednia) {
     const w = warianty[b.dataset.i];
     // `opis` bywa jawnie ustawiony na null (powtórka bez opisu porcji) — stąd
     // sprawdzenie przez `undefined`, a nie zwykłe `||`.
-    zapiszPorcje(w.g, w.opis !== undefined ? w.opis : w.etyk, b);
+    zapiszPorcje(w.g, w.opis !== undefined ? w.opis : w.etyk, b, w.porcje);
   };
   ark.querySelector('#p-wlasna-ok').onclick = (ev) => {
+    if (wPorcjach) {
+      const n = zPola(poleN);
+      if (!(n > 0)) { komunikat('Podaj ilość większą od zera.', true); return; }
+      zapiszPorcje(wlasnaG(), null, ev.currentTarget, n);
+      return;
+    }
     const g = wlasnaG();
     if (!g) { komunikat('Podaj ilość większą od zera.', true); return; }
     zapiszPorcje(g, wlasnyOpis(), ev.currentTarget);
   };
 
-  async function zapiszPorcje(g, opis, przycisk) {
+  async function zapiszPorcje(g, opis, przycisk, porcje) {
     if (przycisk) przycisk.disabled = true;
     komunikat('');
     try {
       // Z produktem wartości liczy SERWER z jego tabeli — klient nie ma prawa
-      // podać własnych kalorii. Bez produktu (powtórka wpisu z opisu) nie ma
-      // z czego liczyć, więc skalujemy tu i wysyłamy wprost.
+      // podać własnych kalorii. Bez produktu (powtórka wpisu z opisu) oraz przy
+      // EDYCJI nie ma z czego liczyć — trasa PATCH świadomie nie przelicza
+      // z `produkt_id`, żeby pozycja została taka, jaką zatwierdziłeś — więc
+      // skalujemy tu i wysyłamy wprost.
       const m = g / 100;
-      const cialo = produktId
-        ? { data: dzienISO, posilek: posilekDocelowy, produkt_id: produktId,
-            nazwa: poz.nazwa, ilosc_g: g, opis_porcji: opis }
-        : { data: dzienISO, posilek: posilekDocelowy, nazwa: poz.nazwa,
-            ilosc_g: g, opis_porcji: opis,
-            kcal: na100kcal * m, bialko: (na100.bialko || 0) * m,
-            tluszcz: (na100.tluszcz || 0) * m, wegle: (na100.wegle || 0) * m };
-      const r = await authFetch('/api/eat/wpis', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cialo),
-      });
+      const wprost = {
+        nazwa: poz.nazwa, ilosc_g: g, opis_porcji: opis, posilek: posilekDocelowy,
+        kcal: na100kcal * m, bialko: (na100.bialko || 0) * m,
+        tluszcz: (na100.tluszcz || 0) * m, wegle: (na100.wegle || 0) * m,
+      };
+      // Danie z przepisu: wysyłamy samą liczbę porcji, a serwer skaluje wartości,
+      // liczbę porcji I zamrożoną rozpiskę składników. Klient nie ma czym
+      // przeskalować rozpiski, bo jej nie widzi.
+      const cialo = porcje !== undefined && wPorcjach
+        ? { posilek: posilekDocelowy, nazwa: poz.nazwa, porcje: porcje }
+        : edycja ? wprost
+        : produktId
+          ? { data: dzienISO, posilek: posilekDocelowy, produkt_id: produktId,
+              nazwa: poz.nazwa, ilosc_g: g, opis_porcji: opis }
+          : Object.assign({ data: dzienISO }, wprost);
+      const r = await authFetch(
+        edycja ? '/api/eat/wpis/' + edycja.id : '/api/eat/wpis',
+        { method: edycja ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cialo) },
+      );
       const x = await r.json().catch(() => ({}));
       if (!r.ok) {
-        komunikat(x.detail || 'Nie udało się dodać.', true);
+        komunikat(x.detail || (edycja ? 'Nie udało się zapisać.' : 'Nie udało się dodać.'), true);
         if (przycisk) przycisk.disabled = false;
         return;
       }
       zamknijArkusz();
       await wczytajDzien();
-      pasekCofnij(poz.nazwa, x.id);
+      // Przy edycji nie ma paska „Cofnij": cofnięcie musiałoby przywrócić
+      // poprzednie wartości, a nie skasować wpis — to dwie różne rzeczy i
+      // pomylenie ich kosztowałoby dane.
+      if (!edycja) pasekCofnij(poz.nazwa, x.id);
     } catch {
       komunikat('Błąd połączenia.', true);
       if (przycisk) przycisk.disabled = false;
@@ -1745,16 +1854,6 @@ async function ekranPrzepisu(id, zListy) {
   // jako druga jednostka do wiersza z własną ilością.
   const kcalDania = Number(p.kcal || 0);
   const gramyZa = (n) => (waga ? Math.round(waga * n / porcjeDania * 10) / 10 : 0);
-
-  // „1 porcja", ale „2 porcje" i „1,5 porcji" — bez tego przyciski mówiłyby
-  // „0,5 porcja".
-  const slowoPorcji = (n) => {
-    if (n === 1) return 'porcja';
-    if (Number.isInteger(n) && n >= 2 && n <= 4) return 'porcje';
-    return 'porcji';
-  };
-  const etykPorcji = (n) => ({ 0.5: '½ porcji', 1.5: '1½ porcji' })[n]
-    || `${dziesietne(n)} ${slowoPorcji(n)}`;
 
   const warianty = [0.5, 1, 1.5, 2].map((n) => ({ n: n, etyk: etykPorcji(n) }));
 
