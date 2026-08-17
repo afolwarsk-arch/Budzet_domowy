@@ -1533,7 +1533,10 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
         <div class="paragon-card-body" id="card-body-${ri}">
           ${r._ostrzezenie ? `<div class="alert alert-warning" style="margin-bottom:12px">
             <strong>Uwaga:</strong> ${r._ostrzezenie}
-            ${r.suma_paragon ? `<br><small>Suma z paragonu: <strong>${fmt(r.suma_paragon)}</strong> — użyto sumy widocznych pozycji. Sprawdź czy paragon był kompletny.</small>` : ''}
+            ${r.suma_pozycje ? `<br><small>Suma pozycji: <strong>${fmt(r.suma_pozycje)}</strong> — w polu Suma zostawiono kwotę z paragonu.</small>` : ''}
+          </div>` : ''}
+          ${r._naprawione && r._naprawione.length ? `<div class="alert" style="margin-bottom:12px;background:var(--card);border:1px solid var(--border)">
+            <small>Uzgodniono z sumą paragonu: <strong>${r._naprawione.map(esc).join(', ')}</strong>. Warto zerknąć, czy ceny się zgadzają.</small>
           </div>` : ''}
           <div class="form-row" style="margin-bottom:12px">
             <div class="form-group">

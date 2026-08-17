@@ -4,6 +4,7 @@ import json
 import re
 import urllib.request
 from datetime import date, timedelta
+from itertools import product
 
 import anthropic
 from PIL import Image
@@ -152,6 +153,9 @@ Format — zawsze tablica:
         "nazwa": "nazwa produktu",
         "cena": 0.00,
         "ilosc": 1,
+        "wartosc_przed": 0.00,
+        "opust": 0.00,
+        "wartosc_po": 0.00,
         "kategoria_glowna": "np. Spożywcze",
         "kategoria": "np. Napoje"
       }}
@@ -179,14 +183,27 @@ JAK ODCZYTYWAĆ POZYCJE:
 - Przykład: "2,5 kg x 3,99  9,98" → ilosc=2.5, cena=3.99
 - Przykład: "Mleko  3,49" (bez ilości) → ilosc=1, cena=3.49
 
+PRZEPISUJ KWOTY, NIE LICZ ICH W PAMIĘCI (najważniejsza zasada!):
+Dla KAŻDEJ pozycji podaj trzy kwoty ŁĄCZNE dla całej linii, przepisane dokładnie tak,
+jak są WYDRUKOWANE na paragonie. Nie licz ich samodzielnie — po prostu je skopiuj:
+- "wartosc_przed" — wartość linii PRZED rabatem (kwota na końcu linii produktu)
+- "opust"         — kwota rabatu jako liczba DODATNIA (0, gdy przy pozycji nie ma rabatu)
+- "wartosc_po"    — wartość linii PO rabacie (osobna kwota wydrukowana pod linią OPUST)
+Gdy pozycja nie ma rabatu: wartosc_przed = wartosc_po, opust = 0.
+System sam sprawdzi, czy wartosc_przed - opust = wartosc_po, i sam policzy cenę jednostkową,
+więc NIE zaokrąglaj i NIE "poprawiaj" tych kwot — nawet jeśli wyglądają dziwnie.
+
 RABATY I OPUSTY (ważne!):
-- Rabat PRZYPISANY DO POZYCJI (linia "OPUST -X,XX" zaraz po produkcie) — użyj kwoty PO rabacie
-  jako łącznej wartości i NIE dodawaj opustu jako osobnej pozycji:
-  - Oblicz cenę jednostkową = (wartość_przed - opust) / ilosc
+- Rabat PRZYPISANY DO POZYCJI (linia "OPUST -X,XX" zaraz po produkcie) — NIE dodawaj opustu
+  jako osobnej pozycji. Przepisz trzy kwoty i podaj cenę jednostkową = wartosc_po / ilosc:
   - Przykład: "Arbuz luz  6,415×7,99  51,26" + "OPUST  -32,08" + "19,18"
-    → ilosc=6.415, cena=2.99 (bo 19,18/6,415 ≈ 2,99)
+    → ilosc=6.415, wartosc_przed=51.26, opust=32.08, wartosc_po=19.18, cena=2.99
   - Przykład: "Awokado  2×6,99  13,98" + "OPUST  -7,00" + "6,98"
-    → ilosc=2, cena=3.49 (bo 6,98/2=3,49)
+    → ilosc=2, wartosc_przed=13.98, opust=7.00, wartosc_po=6.98, cena=3.49
+- UWAGA — najczęstszy błąd: kwota z linii "OPUST" to RABAT, nigdy cena produktu.
+  Jeśli produkt kosztuje 39,99, opust wynosi -2,52, a pod spodem widnieje 37,47, to
+  wartosc_po = 37.47 (NIE 2,52!). Nie sugeruj się tym, czy cena wygląda wiarygodnie
+  dla takiego produktu — przepisz to, co jest wydrukowane.
 - Rabat ZBIORCZY na grupę lub cały paragon (np. "Podsuma w grupie 15,77" + "OPUST RABAT KARTA
   5,00% -0,79", "RABAT ŁĄCZNY -X,XX", rabaty za aplikację/kartę lojalnościową) — dodaj OSOBNĄ
   pozycję z UJEMNĄ ceną równą kwocie opustu:
@@ -703,6 +720,99 @@ def analizuj_budzet(dane: dict, kontekst: str | None = None,
     return raport, _usage(msg)
 
 
+# Tolerancje uzgadniania pozycji z paragonem.
+# Linia: 2 gr — tyle potrafi zjeść zaokrąglenie przy pozycjach na wagę.
+# Suma: 5 gr — sklep zaokrągla każdą linię osobno, więc drobny dryf jest normalny.
+_TOL_LINIA = 0.02
+_TOL_SUMA = 0.05
+# Powyżej tylu spornych linii rezygnujemy z przeszukiwania (2^13 = 8192 kombinacji).
+_MAX_SPORNYCH = 13
+
+
+def _warianty_pozycji(p: dict) -> list[float]:
+    """Możliwe wartości łączne linii — pierwsza to odczyt „jak jest".
+
+    Na paragonie rabatowana linia niesie trzy kwoty powiązane równaniem
+    wartosc_przed - opust = wartosc_po. Gdy równanie się nie spina, jedna z tych
+    liczb została źle odczytana — zwracamy wtedy DWA warianty, a rozstrzyga
+    dopiero suma z paragonu (patrz _uzgodnij_pozycje).
+    """
+    ilosc = p.get("ilosc") or 1
+    przed, po = p.get("wartosc_przed"), p.get("wartosc_po")
+    opust = abs(p.get("opust") or 0.0)
+
+    if po is None and przed is None:
+        # model nie podał rozbicia (notatka tekstowa, starszy format) — stara ścieżka
+        return [round((p.get("cena") or 0.0) * ilosc, 2)]
+    if po is None:
+        return [round(przed - opust, 2)]
+    if przed is None:
+        return [round(po, 2)]
+
+    po, odtworzone = round(po, 2), round(przed - opust, 2)
+    if abs(odtworzone - po) <= _TOL_LINIA:
+        return [po]
+    return [po, odtworzone]
+
+
+def _uzgodnij_pozycje(item: dict) -> None:
+    """Uzgadnia wartości pozycji z sumą wydrukowaną na paragonie.
+
+    SUMA PLN to jedna duża liczba, którą model odczytuje pewnie — o wiele pewniej
+    niż kilkadziesiąt kwot drobnym drukiem. Traktujemy ją więc jako kotwicę: gdy
+    któreś linie mają złamane równanie, wybieramy taki zestaw wariantów, który
+    najlepiej trafia w tę sumę. Ustawia p["cena"] i (przy rozjeździe) _ostrzezenie.
+    """
+    poz = item.get("pozycje") or []
+    if not poz:
+        return
+
+    warianty = [_warianty_pozycji(p) for p in poz]
+    odczyt = [w[0] for w in warianty]      # wartości „jak model odczytał"
+    wybor = odczyt[:]
+    sporne = [i for i, w in enumerate(warianty) if len(w) > 1]
+    suma_paragon = item.get("suma") or 0.0
+
+    if suma_paragon and sporne and len(sporne) <= _MAX_SPORNYCH:
+        cel = round(suma_paragon, 2)
+        najlepsza = abs(round(sum(wybor), 2) - cel)
+        if najlepsza > _TOL_SUMA:
+            for maska in product(*(range(len(warianty[i])) for i in sporne)):
+                proba = wybor[:]
+                for i, k in zip(sporne, maska):
+                    proba[i] = warianty[i][k]
+                odchylka = abs(round(sum(proba), 2) - cel)
+                if odchylka < najlepsza - 1e-9:
+                    najlepsza, wybor = odchylka, proba
+
+    naprawione = []
+    for p, wartosc, surowa in zip(poz, wybor, odczyt):
+        ilosc = p.get("ilosc") or 1
+        p["cena"] = round(wartosc / ilosc, 2) if ilosc else round(wartosc, 2)
+        if abs(wartosc - surowa) > _TOL_LINIA:
+            naprawione.append(p.get("nazwa") or "?")
+        for pole in ("wartosc_przed", "opust", "wartosc_po"):
+            p.pop(pole, None)
+
+    suma_pozycji = round(sum(wybor), 2)
+    if not suma_paragon:
+        item["suma"] = suma_pozycji
+        return
+
+    # Suma z paragonu wygrywa z sumą pozycji — nigdy odwrotnie.
+    item["suma"] = round(suma_paragon, 2)
+    roznica = round(suma_paragon - suma_pozycji, 2)
+    if naprawione:
+        item["_naprawione"] = naprawione
+    if abs(roznica) > max(0.50, 0.02 * suma_paragon):
+        item["suma_pozycje"] = suma_pozycji
+        item["_ostrzezenie"] = (
+            f"Suma pozycji ({suma_pozycji:.2f} zł) nie zgadza się z sumą z paragonu "
+            f"({suma_paragon:.2f} zł) o {abs(roznica):.2f} zł. W polu Suma zostawiono kwotę "
+            "z paragonu — sprawdź pozycje, bo któraś ma źle odczytaną cenę."
+        )
+
+
 def process_text(text: str, kontekst: str | None = None, hierarchia: dict | None = None) -> tuple[list[dict], dict]:
     hier = hierarchia or KATEGORIE_HIERARCHIA
     system = _system_prompt_for(hierarchia)
@@ -759,6 +869,10 @@ def _parse_response(raw: str, hierarchia: dict | None = None) -> list[dict]:
         item["waluta"] = waluta
         item["kurs"] = 1.0
 
+        # Uzgodnij PRZED przeliczeniem waluty — kwoty przepisane z paragonu
+        # (wartosc_przed/opust/wartosc_po) są w walucie paragonu, nie w złotówkach.
+        _uzgodnij_pozycje(item)
+
         if waluta != "PLN":
             try:
                 kurs = get_exchange_rate(waluta, item["data"])
@@ -767,6 +881,8 @@ def _parse_response(raw: str, hierarchia: dict | None = None) -> list[dict]:
                     p["cena"] = round(p["cena"] * kurs, 2)
                 if item.get("suma"):
                     item["suma"] = round(item["suma"] * kurs, 2)
+                if item.get("suma_pozycje"):
+                    item["suma_pozycje"] = round(item["suma_pozycje"] * kurs, 2)
             except Exception as e:
                 item["_kurs_blad"] = str(e)
 
@@ -778,22 +894,5 @@ def _parse_response(raw: str, hierarchia: dict | None = None) -> list[dict]:
                 p["kategoria_glowna"] = "Inne"
             elif glowna not in hier:
                 p["kategoria_glowna"] = sub_do_glownej.get(kat, "Inne")
-
-        if item.get("pozycje"):
-            suma_obliczona = round(sum(p["cena"] * p.get("ilosc", 1) for p in item["pozycje"]), 2)
-            suma_z_paragonu = item.get("suma") or 0.0
-            if not suma_z_paragonu:
-                item["suma"] = suma_obliczona
-            else:
-                roznica = abs(suma_obliczona - suma_z_paragonu)
-                prog = max(0.50, 0.02 * suma_z_paragonu)
-                if roznica > prog:
-                    item["suma_paragon"] = suma_z_paragonu
-                    item["suma"] = suma_obliczona
-                    item["_ostrzezenie"] = (
-                        f"Suma z paragonu ({suma_z_paragonu:.2f} PLN) różni się od sumy "
-                        f"wykrytych pozycji ({suma_obliczona:.2f} PLN) o {roznica:.2f} PLN. "
-                        "Paragon może być ucięty lub niektóre pozycje nie zostały odczytane."
-                    )
 
     return data
