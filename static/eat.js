@@ -1971,19 +1971,39 @@ async function ekranHistorii(iso, filtr) {
 
   // Wpisy trzymamy poza HTML-em: przekazanie całego wpisu przez data-* wymagałoby
   // wciskania JSON-a w atrybut, a stąd bierze się połowa błędów z cudzysłowami.
-  const doWziecia = [];
+  const doWziecia = [];   // pojedyncze pozycje
+  const dania = [];       // całe dania (grupy)
+  const pasuje = (t) => !szukane || (t || '').toLowerCase().includes(szukane);
+  const wierszPoj = (w, wcieta) => {
+    const i = doWziecia.push(w) - 1;
+    return `<button class="szybka" data-h="${i}" type="button"
+              ${wcieta ? 'style="margin-left:16px"' : ''}>
+      <span class="nz"><b>${e(w.nazwa)}</b><span>${e(w.opis_porcji || dziesietne(w.ilosc_g) + ' g')} · ${zaokr(w.kcal)} kcal</span></span>
+    </button>`;
+  };
+
   let html = '';
   POSILKI.forEach(([klucz, nazwaP]) => {
-    const wpisy = (d.posilki && d.posilki[klucz] || [])
-      .filter((w) => !szukane || (w.nazwa || '').toLowerCase().includes(szukane));
-    if (!wpisy.length) return;
-    html += `<div class="sek-tyt">${nazwaP}</div>`;
-    wpisy.forEach((w) => {
-      const i = doWziecia.push(w) - 1;
-      html += `<button class="szybka" data-h="${i}" type="button">
-        <span class="nz"><b>${e(w.nazwa)}</b><span>${e(w.opis_porcji || dziesietne(w.ilosc_g) + ' g')} · ${zaokr(w.kcal)} kcal</span></span>
+    const wszystkie = (d.posilki && d.posilki[klucz]) || [];
+    if (!wszystkie.length) return;
+    let tresc = '';
+    // Danie zapisane jako grupa ma być JEDNYM wyborem — po to się je scalało.
+    // Składniki zostają pod spodem, wcięte, gdyby chciało się wziąć tylko jeden.
+    pogrupuj(wszystkie).forEach((el) => {
+      if (!el.grupa) {
+        if (pasuje(el.wpis.nazwa)) tresc += wierszPoj(el.wpis, false);
+        return;
+      }
+      const trafia = pasuje(el.nazwa) || el.skladniki.some((s) => pasuje(s.nazwa));
+      if (!trafia) return;
+      const kcal = el.skladniki.reduce((s, w) => s + Number(w.kcal || 0), 0);
+      const di = dania.push(el) - 1;
+      tresc += `<button class="szybka" data-hd="${di}" type="button">
+        <span class="nz"><b>${e(el.nazwa)}</b><span>całe danie · ${el.skladniki.length} skł. · ${zaokr(kcal)} kcal</span></span>
       </button>`;
+      el.skladniki.forEach((w) => { if (pasuje(w.nazwa)) tresc += wierszPoj(w, true); });
     });
+    if (tresc) html += `<div class="sek-tyt">${nazwaP}</div>` + tresc;
   });
 
   box.innerHTML = html || `<div class="komunikat">${szukane
@@ -1993,6 +2013,45 @@ async function ekranHistorii(iso, filtr) {
   box.querySelectorAll('[data-h]').forEach((b) => {
     b.onclick = () => dodajGotowy(doWziecia[Number(b.dataset.h)]);
   });
+  box.querySelectorAll('[data-hd]').forEach((b) => {
+    b.onclick = () => dodajCaleDanie(dania[Number(b.dataset.hd)]);
+  });
+}
+
+// Całe danie z innego dnia → dzisiejszy posiłek. Wartości bierzemy z TAMTYCH
+// wpisów, a nie z przepisu: w dzienniku stoi to, co faktycznie było na talerzu,
+// nawet jeśli przepis zmienił się od tamtej pory albo nigdy nie istniał.
+async function dodajCaleDanie(g) {
+  if (!g || !g.skladniki || !g.skladniki.length) return;
+  komunikat('Dodaję danie…');
+  try {
+    const r = await authFetch('/api/eat/wpisy/grupa', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        posilek: posilekDocelowy,
+        data: dzienISO,
+        nazwa_grupy: g.nazwa,
+        pozycje: g.skladniki.map((w) => ({
+          nazwa: w.nazwa,
+          opis_porcji: w.opis_porcji || null,
+          ilosc_g: Number(w.ilosc_g) || 0,
+          kcal: Number(w.kcal) || 0,
+          bialko: Number(w.bialko) || 0,
+          tluszcz: Number(w.tluszcz) || 0,
+          wegle: Number(w.wegle) || 0,
+        })),
+      }),
+    });
+    if (!r.ok) {
+      const x = await r.json().catch(() => ({}));
+      komunikat(x.detail || 'Nie udało się dodać dania.', true);
+      return;
+    }
+    const d = await r.json();
+    if (d.grupa_id) grupyOtwarte.add(d.grupa_id);
+    zamknijArkusz();
+    await wczytajDzien();
+  } catch { komunikat('Błąd połączenia.', true); }
 }
 
 // ── lista własnych przepisów w arkuszu ──────────────────────────────────────

@@ -1033,6 +1033,12 @@ function _injectNav() {
 
   const logo = nav.querySelector('.logo');
   if (logo) {
+    // Znak prowadzi do pulpitu WŁASNEGO modułu, a nie na „/". W HTML-u każdej
+    // strony stoi href="/", więc stuknięcie w „wiem.eat" wyrzucało z modułu
+    // prosto do finansów — czyli znak modułu robił dokładnie to, czego po nim
+    // nikt się nie spodziewa. Pierwsza strona modułu jest jego pulpitem.
+    const pulpit = (modul.strony && modul.strony[0] && modul.strony[0].href) || '/';
+    logo.setAttribute('href', pulpit);
     // Dopisek dokładamy z kodu, a nie w każdym pliku HTML z osobna — inaczej
     // jedenaście stron musiałoby wiedzieć, w którym są module.
     if (!logo.querySelector('.dop-modul')) {
