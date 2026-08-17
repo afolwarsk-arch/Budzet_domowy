@@ -248,7 +248,7 @@ function rysujPosilki() {
           <input type="text" id="scal-nazwa" maxlength="120" style="width:100%;margin-bottom:8px"
                  placeholder="Nazwa dania, np. Obiad z kurczakiem"
                  value="${e(trybScalania.nazwa || '')}">
-          <div class="komunikat" style="margin:0 0 8px">
+          <div class="komunikat" id="scal-info" style="margin:0 0 8px">
             ${wybrane.length ? `Wybrano ${wybrane.length} — razem <b>${zaokr(kcalWybranych)} kcal</b>.`
               : 'Zaznacz co najmniej dwie pozycje.'}
           </div>
@@ -287,16 +287,29 @@ function rysujPosilki() {
       rysujPosilki();
     };
   });
+  // Zaznaczenie NIE przerysowuje listy. Przerysowanie gubiło szybkie stuknięcia
+  // (kratka znikała razem ze starym DOM, zanim doszło zdarzenie) i kasowało
+  // wpisywaną nazwę. Odświeżamy tylko podsumowanie i stan przycisku.
+  const odswiezPodsumowanie = () => {
+    if (!trybScalania) return;
+    const wpisy = (stanDnia.posilki && stanDnia.posilki[trybScalania.posilek]) || [];
+    const wybrane = wpisy.filter((w) => trybScalania.zazn.has(String(w.id)));
+    const kcal = wybrane.reduce((s, w) => s + Number(w.kcal || 0), 0);
+    const info = document.getElementById('scal-info');
+    if (info) {
+      info.innerHTML = wybrane.length
+        ? `Wybrano ${wybrane.length} — razem <b>${zaokr(kcal)} kcal</b>.`
+        : 'Zaznacz co najmniej dwie pozycje.';
+    }
+    const ok = document.getElementById('scal-ok');
+    if (ok) ok.disabled = wybrane.length < 2;
+  };
   box.querySelectorAll('[data-scal]').forEach((c) => {
     c.onchange = () => {
       if (!trybScalania) return;
-      // Nazwę czytamy PRZED przerysowaniem, inaczej to, co wpisałeś, znika
-      // przy pierwszym stuknięciu w kratkę.
-      const polaN = document.getElementById('scal-nazwa');
-      if (polaN) trybScalania.nazwa = polaN.value;
       const id = c.dataset.scal;
       if (c.checked) trybScalania.zazn.add(id); else trybScalania.zazn.delete(id);
-      rysujPosilki();
+      odswiezPodsumowanie();
     };
   });
   const anuluj = document.getElementById('scal-anuluj');
