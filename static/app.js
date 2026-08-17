@@ -1292,6 +1292,43 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
   // Tryb ekspresowy obsluguje skrypt w upload.html — dziala tam od razu,
   // bez czekania na ten plik.
 
+  // ── dyktowanie wydatku ──
+  //
+  // Ten sam moduł co w wiem.eat. Podyktowany tekst DOPISUJEMY jako nową linię,
+  // a nie podmieniamy zawartość pola: każda linia to osobny wpis, więc naturalne
+  // jest wyliczanie zakupów jeden po drugim, z przerwami na zastanowienie.
+  const btnDyktuj = document.getElementById('btn-dyktuj');
+  if (btnDyktuj && window.Dyktowanie) {
+    const napis = document.getElementById('dyktuj-napis');
+    const komDyktuj = document.getElementById('dyktuj-komunikat');
+    const powiedz = (tekst) => {
+      komDyktuj.textContent = tekst || '';
+      komDyktuj.classList.toggle('hidden', !tekst);
+    };
+    // Przycisk pokazujemy TYLKO tam, gdzie dyktowanie zadziała — obiecywanie
+    // funkcji, która na tej przeglądarce nie istnieje, jest gorsze niż jej brak.
+    if (window.Dyktowanie.dostepne()) btnDyktuj.classList.remove('hidden');
+
+    btnDyktuj.addEventListener('click', () => {
+      if (window.Dyktowanie.sluchaMy()) { window.Dyktowanie.stop(); return; }
+      window.Dyktowanie.start({
+        onStan: (slucha) => {
+          btnDyktuj.setAttribute('aria-pressed', slucha ? 'true' : 'false');
+          napis.textContent = slucha ? 'Słucham… (stuknij, by zakończyć)' : 'Podyktuj';
+          if (slucha) powiedz('');
+        },
+        onTekst: (tekst) => {
+          if (!tekst) return;
+          const teraz = textInput.value;
+          textInput.value = teraz && !teraz.endsWith('\n') ? teraz + '\n' + tekst : teraz + tekst;
+          textInput.dispatchEvent(new Event('input'));   // odblokowuje „Analizuj"
+          powiedz('Dopisano: „' + tekst + '". Możesz dyktować dalej albo kliknąć Analizuj.');
+        },
+        onBlad: (tekst) => powiedz(tekst),
+      });
+    });
+  }
+
   const cardsContainer = document.getElementById('paragony-cards');
   const saveAllBtn = document.getElementById('btn-save-all');
 
