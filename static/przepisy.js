@@ -599,12 +599,24 @@ function ekranSkladnika(gotowe, stan) {
     </div>
     <input type="text" id="szukaj-skl" placeholder="Szukaj produktu" autocomplete="off">
     <div id="wyniki" style="margin-top:10px"></div>
-    <div class="sek-tyt">Albo weź z opakowania</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-      <button class="mini-btn" id="skl-skan" type="button">Skanuj kod</button>
-      <label class="mini-btn" for="skl-plik-przod" tabindex="0" role="button">Zdjęcie przodu</label>
-      <label class="mini-btn" for="skl-plik-tyl" tabindex="0" role="button">Zdjęcie tabeli</label>
-      <button class="mini-btn" id="skl-przepis" type="button">Inne Twoje danie</button>
+    <div class="sek-tyt">Albo weź gotowe</div>
+    <!-- Te same kafelki co na ekranie „Nowy przepis" — to jest w tej apce wzorzec
+         na „wybierz drogę". Wcześniej stały tu cztery elementy w jednym rzędzie,
+         z czego dwa były <button>, a dwa <label>, więc wyglądały jak z dwóch
+         różnych stron internetu. -->
+    <div class="drogi">
+      <button class="droga" id="skl-skan" type="button">
+        <b>Skanuj kod</b><span>Najszybsze przy wszystkim z opakowania</span>
+      </button>
+      <label class="droga" for="skl-plik-tyl" tabindex="0" role="button">
+        <b>Zdjęcie tabeli</b><span>Wartości odżywcze z tyłu opakowania</span>
+      </label>
+      <label class="droga" for="skl-plik-przod" tabindex="0" role="button">
+        <b>Zdjęcie przodu</b><span>Odczyta nazwę i poszuka w bazie</span>
+      </label>
+      <button class="droga" id="skl-przepis" type="button">
+        <b>Inne Twoje danie</b><span>Złóż danie z dań, które już masz</span>
+      </button>
     </div>
     <div id="skl-przepisy" style="display:none;margin-bottom:8px"></div>
     <div id="skl-skaner" style="display:none;margin-bottom:8px">

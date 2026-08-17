@@ -136,6 +136,13 @@
     .droga b { display: block; font-size: 13.5px; color: var(--heading); margin-bottom: 3px; }
     .droga span { font-size: 11px; color: var(--muted); line-height: 1.3; display: block; }
 
+    /* Ta sama definicja co w eat.html. Bez niej `class="mini-btn"` nic nie robiło
+       i przeglądarka rysowała <button> domyślnym stylem, a <label> zostawiała
+       gołym tekstem — w jednym rzędzie wychodziły z tego dwa różne światy. */
+    .mini-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+                padding: 2px 9px; font: inherit; font-size: 11.5px; cursor: pointer;
+                color: var(--accent); }
+
     .komunikat { font-size: 12.5px; color: var(--muted); margin: 8px 0; }
     .komunikat.blad { color: var(--danger); }
     .laduje { text-align: center; color: var(--muted); padding: 24px; font-size: 14px; }
