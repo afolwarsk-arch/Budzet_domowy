@@ -292,12 +292,15 @@ def z_bazy_podstawowej(bazowy_id: int, current_user: dict = Depends(get_current_
     b = eat_db.bazowy_po_id(bazowy_id)
     if not b:
         raise HTTPException(404, "Nie znam takiego produktu")
+    # `porcja_g` z bazy surowców to waga JEDNEJ SZTUKI (pomidor ~120 g), a nie
+    # opakowania — pomidor żadnego nie ma. Wcześniej szła do `opak_g` i ekran
+    # dopisywał warzywu nieistniejące opakowanie zamiast dać przycisk „1 sztuka".
     produkt = eat_db.zapisz_produkt(hid, {
         "kod": None, "nazwa": b["nazwa"], "marka": None,
-        "opak_g": b.get("porcja_g"), "kcal": b["kcal"], "bialko": b.get("bialko"),
+        "opak_g": None, "kcal": b["kcal"], "bialko": b.get("bialko"),
         "tluszcz": b.get("tluszcz"), "wegle": b.get("wegle"), "zrodlo": "baza",
+        "porcja_g": b.get("porcja_g"), "opis_porcji": b.get("opis_porcji"),
     })
-    produkt["opis_porcji"] = b.get("opis_porcji")
     return {"produkt": produkt, "skad": "baza"}
 
 
@@ -952,11 +955,17 @@ def przepis_z_grupy(grupa_id: str, body: dict,
         raise HTTPException(400, "Podaj nazwę przepisu")
     porcje = _porcje_z_ciala(body)
 
-    # Wpisy w dzienniku to JEDNA PORCJA — tyle, ile zjadłeś. Przepis opisuje
-    # CAŁE danie, więc przy „ugotowałem na 4, zjadłem jedną" trzeba je pomnożyć
-    # przez liczbę porcji. Bez tego przepis miałby ćwiartkę wartości: kcal na
-    # porcję wyszłoby jako suma÷4, czyli czwarta część tego, co faktycznie
-    # zjadłeś. Przy porcje=1 mnożnik wynosi 1 i nic się nie zmienia.
+    # Ile porcji reprezentuje to, co siedzi w dzienniku. Przepis opisuje CAŁE
+    # danie, więc zapisane wpisy trzeba przeskalować do całości: mnożnik to
+    # porcje / zapisane_porcje.
+    #   - zapisałeś cały garnek dzielony na 4  → zapisane_porcje=4 → mnożnik 1
+    #   - zapisałeś jedną porcję z czterech    → zapisane_porcje=1 → mnożnik 4
+    # Domyślne 1 zachowuje zachowanie starszych klientów, które tego nie wysyłały.
+    zapisane = _liczba(body.get("zapisane_porcje", 1)) or 1
+    if not 0.05 <= zapisane <= 50:
+        raise HTTPException(400, "Liczba zapisanych porcji poza zakresem (0,05–50)")
+    mnoznik = porcje / zapisane
+
     return eat_db.zapisz_przepis(hid, current_user["user_id"], {
         "nazwa": nazwa[:120],
         "opis": None,
@@ -965,11 +974,11 @@ def przepis_z_grupy(grupa_id: str, body: dict,
         "skladniki": [{
             "produkt_id": w.get("produkt_id"),
             "nazwa": w["nazwa"],
-            "ilosc_g": round(float(w["ilosc_g"]) * porcje, 1),
-            "kcal": round(float(w["kcal"] or 0) * porcje, 1),
-            "bialko": round(float(w["bialko"] or 0) * porcje, 1),
-            "tluszcz": round(float(w["tluszcz"] or 0) * porcje, 1),
-            "wegle": round(float(w["wegle"] or 0) * porcje, 1),
+            "ilosc_g": round(float(w["ilosc_g"]) * mnoznik, 1),
+            "kcal": round(float(w["kcal"] or 0) * mnoznik, 1),
+            "bialko": round(float(w["bialko"] or 0) * mnoznik, 1),
+            "tluszcz": round(float(w["tluszcz"] or 0) * mnoznik, 1),
+            "wegle": round(float(w["wegle"] or 0) * mnoznik, 1),
         } for w in wpisy],
     })
 

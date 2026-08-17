@@ -59,6 +59,12 @@ def init_eat_db() -> None:
         # zbiorczym opakowaniu, a pojedyncza czekoladka nie ma żadnego — więc
         # jedyny sposób, żeby zapisać „zjadłem jedną", to podzielić opakowanie.
         cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS sztuk_w_opak INTEGER")
+        # Waga JEDNEJ SZTUKI (albo garści, łyżki) i jej nazwa — dla surowców, które
+        # nie mają opakowania. Pomidor waży ~120 g i to jest „sztuka", nie „opakowanie":
+        # wcześniej ta liczba szła do opak_g i ekran dopisywał warzywu opakowanie,
+        # którego nie ma, zamiast dać przycisk „1 sztuka".
+        cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS porcja_g NUMERIC(7,1)")
+        cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS opis_porcji TEXT")
         # Ulubione przypina się RĘCZNIE, w odróżnieniu od „ostatnio jadłeś", które
         # zgaduje po dacie. Owsianka jedzona co drugi dzień wypadała z tamtej listy
         # dokładnie w dni, kiedy była potrzebna — tu decyduje człowiek, nie sort.
@@ -393,7 +399,8 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
     """Dokłada produkt do bazy gospodarstwa. Przy powtórzonym kodzie odświeża
     wartości zamiast tworzyć duplikat."""
     pola = ("kod", "nazwa", "marka", "opak_g", "kcal", "bialko", "tluszcz",
-            "wegle", "blonnik", "cukry", "sol", "zrodlo", "sztuk_w_opak")
+            "wegle", "blonnik", "cukry", "sol", "zrodlo", "sztuk_w_opak",
+            "porcja_g", "opis_porcji")
     w = {p: dane.get(p) for p in pola}
     w["zrodlo"] = w["zrodlo"] if w["zrodlo"] in ZRODLA else "reczne"
 
@@ -415,8 +422,9 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
 
     for p, maks in (("opak_g", 99999), ("kcal", 9999), ("bialko", 999),
                     ("tluszcz", 999), ("wegle", 999), ("blonnik", 999),
-                    ("cukry", 999), ("sol", 999)):
+                    ("cukry", 999), ("sol", 999), ("porcja_g", 5000)):
         w[p] = _liczba(w[p], maks)
+    w["opis_porcji"] = (str(w["opis_porcji"]).strip()[:40] or None) if w["opis_porcji"] else None
 
     w["nazwa"] = (str(w["nazwa"]).strip() if w["nazwa"] else "")[:120] or "Produkt bez nazwy"
     w["marka"] = (str(w["marka"]).strip()[:80] or None) if w["marka"] else None
@@ -437,10 +445,10 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
             cur.execute("""
                 INSERT INTO eat_produkty (household_id, kod, nazwa, marka, opak_g, kcal,
                                           bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo,
-                                          nazwa_szukaj, sztuk_w_opak)
+                                          nazwa_szukaj, sztuk_w_opak, porcja_g, opis_porcji)
                 VALUES (%(h)s,%(kod)s,%(nazwa)s,%(marka)s,%(opak_g)s,%(kcal)s,
                         %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s,
-                        %(nazwa_szukaj)s,%(sztuk_w_opak)s)
+                        %(nazwa_szukaj)s,%(sztuk_w_opak)s,%(porcja_g)s,%(opis_porcji)s)
                 -- WHERE kod IS NOT NULL jest KONIECZNE: indeks unikalny jest
                 -- częściowy (ten sam warunek), a Postgres bez powtórzenia
                 -- predykatu nie potrafi go dopasować i przerywa błędem. Przez to
@@ -454,17 +462,21 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
                        sol=EXCLUDED.sol,
                        -- Liczby sztuk nie kasujemy, gdy nowy odczyt jej nie widzi:
                        -- tabela z tylu opakowania jej nie zawiera, a przod tak.
-                       sztuk_w_opak=COALESCE(EXCLUDED.sztuk_w_opak, eat_produkty.sztuk_w_opak)
+                       sztuk_w_opak=COALESCE(EXCLUDED.sztuk_w_opak, eat_produkty.sztuk_w_opak),
+                       -- Ta sama zasada dla wagi sztuki: raz ustalona („pomidor ~120 g")
+                       -- ma przetrwac ponowne zeskanowanie kodu.
+                       porcja_g=COALESCE(EXCLUDED.porcja_g, eat_produkty.porcja_g),
+                       opis_porcji=COALESCE(EXCLUDED.opis_porcji, eat_produkty.opis_porcji)
                 RETURNING *
             """, {"h": household_id, **w})
         else:
             cur.execute("""
                 INSERT INTO eat_produkty (household_id, nazwa, marka, opak_g, kcal,
                                           bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo,
-                                          nazwa_szukaj, sztuk_w_opak)
+                                          nazwa_szukaj, sztuk_w_opak, porcja_g, opis_porcji)
                 VALUES (%(h)s,%(nazwa)s,%(marka)s,%(opak_g)s,%(kcal)s,
                         %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s,
-                        %(nazwa_szukaj)s,%(sztuk_w_opak)s)
+                        %(nazwa_szukaj)s,%(sztuk_w_opak)s,%(porcja_g)s,%(opis_porcji)s)
                 RETURNING *
             """, {"h": household_id, **w})
         return dict(cur.fetchone())

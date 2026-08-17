@@ -102,6 +102,17 @@ function pogrupuj(wpisy) {
   return wynik;
 }
 
+// Podpis wielkości pod nazwą produktu. Opakowanie wolno wspomnieć TYLKO wtedy,
+// gdy produkt naprawdę je ma — pomidor z bazy surowców żadnego nie ma, a mimo to
+// dostawał dopisek „opakowanie 120 g", bo waga sztuki szła do pola opak_g.
+function podpisWielkosci(p) {
+  const porcja = Number(p.porcja_g) || 0;
+  if (porcja) {
+    return '1 ' + e(p.opis_porcji || 'porcja') + ' ≈ ' + zaokr(porcja) + ' g · ';
+  }
+  return p.opak_g ? 'opakowanie ' + zaokr(p.opak_g) + ' g · ' : '';
+}
+
 // Rozpiska składników zamrożona przy zjedzeniu dania z przepisu. Nie czytamy
 // jej z przepisu na żywo — ten mógł zostać potem poprawiony albo skasowany,
 // a w dzienniku ma stać to, co było w TAMTYM talerzu.
@@ -163,6 +174,7 @@ function kartaGrupy(g) {
     <div class="grupa-srodek"${otwarta ? '' : ' hidden'}>
       ${g.skladniki.map((w) => wiersz(w, true)).join('')}
       <button class="mini-btn" data-przepis="${g.grupa}" data-nazwa="${e(g.nazwa)}"
+              data-kcal="${Math.round(suma)}"
               type="button" style="margin:4px 0 2px 12px">Zapisz jako przepis</button>
     </div>
   </div>`;
@@ -236,7 +248,7 @@ function rysujPosilki() {
     };
   });
   box.querySelectorAll('[data-przepis]').forEach((b) => {
-    b.onclick = () => zapiszJakoPrzepis(b.dataset.przepis, b.dataset.nazwa);
+    b.onclick = () => zapiszJakoPrzepis(b.dataset.przepis, b.dataset.nazwa, b.dataset.kcal);
   });
 }
 
@@ -244,8 +256,9 @@ function rysujPosilki() {
 // gramatury i wartości są sprawdzone, więc nie ma tu ani zgadywania, ani AI.
 // Pytamy tylko o to, czego z dziennika nie da się wywnioskować — na ile porcji
 // danie wychodziło, skoro zjadłeś jedną.
-function zapiszJakoPrzepis(grupaId, nazwa) {
+function zapiszJakoPrzepis(grupaId, nazwa, kcalZapisane) {
   if (arkusz) return;
+  const kcalGrupy = Number(kcalZapisane) || 0;
   arkusz = document.createElement('div');
   arkusz.className = 'ark-tlo';
   arkusz.innerHTML = `<div class="ark">
@@ -255,11 +268,14 @@ function zapiszJakoPrzepis(grupaId, nazwa) {
     </div>
     <div class="sek-tyt">Nazwa dania</div>
     <input type="text" id="pp-nazwa" maxlength="120" value="${e(nazwa)}" style="width:100%">
-    <div class="sek-tyt">Na ile porcji wychodziło całe danie</div>
+    <div class="sek-tyt">Co masz zapisane w dzienniku</div>
+    <div class="gdzie" id="pp-co">
+      <button data-co="calosc" aria-pressed="true" type="button">Całe danie</button>
+      <button data-co="porcja" aria-pressed="false" type="button">Jedną porcję</button>
+    </div>
+    <div class="sek-tyt">Na ile porcji dzieli się całe danie</div>
     <input type="text" id="pp-porcje" value="1" inputmode="decimal" autocomplete="off" style="width:100%">
-    <div class="komunikat">Jeśli to, co zjadłeś, było całym daniem — zostaw 1.
-      Jeśli ugotowałeś na cztery osoby, a zjadłeś jedną porcję, wpisz 4:
-      składniki zostaną wtedy przeliczone na cały garnek.</div>
+    <div class="komunikat" id="pp-podglad"></div>
     <div id="ark-komunikat"></div>
     <button class="cta" id="pp-zapisz" type="button">Zapisz przepis</button>
   </div>`;
@@ -267,6 +283,29 @@ function zapiszJakoPrzepis(grupaId, nazwa) {
   try { history.pushState({ ark: 1 }, ''); } catch {}
   arkusz.addEventListener('click', (ev) => { if (ev.target === arkusz) zamknijArkusz(); });
   arkusz.querySelector('#zamknij3').onclick = () => zamknijArkusz();
+
+  // Czy to, co w dzienniku, to cały garnek czy jeden talerz. Bez tego pytania
+  // „na ile porcji" znaczyło dwie różne rzeczy naraz i przy zapisanym całym
+  // daniu wychodziło, że jedna porcja to całe danie.
+  let co = 'calosc';
+  const podglad = () => {
+    const porcje = zPola(arkusz.querySelector('#pp-porcje')) || 1;
+    const naPorcje = co === 'calosc' ? kcalGrupy / porcje : kcalGrupy;
+    arkusz.querySelector('#pp-podglad').innerHTML = kcalGrupy
+      ? `Jedna porcja wyjdzie <b>${zaokr(naPorcje)} kcal</b>, całe danie
+         <b>${zaokr(co === 'calosc' ? kcalGrupy : kcalGrupy * porcje)} kcal</b>.`
+      : 'Wybierz, czy w dzienniku masz cały garnek, czy jeden talerz.';
+  };
+  arkusz.querySelector('#pp-co').onclick = (ev) => {
+    const b = ev.target.closest('[data-co]');
+    if (!b) return;
+    arkusz.querySelectorAll('#pp-co [data-co]').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    co = b.dataset.co;
+    podglad();
+  };
+  arkusz.querySelector('#pp-porcje').addEventListener('input', podglad);
+  podglad();
 
   arkusz.querySelector('#pp-zapisz').onclick = async (ev) => {
     const nazwaP = arkusz.querySelector('#pp-nazwa').value.trim();
@@ -277,7 +316,8 @@ function zapiszJakoPrzepis(grupaId, nazwa) {
     try {
       const r = await authFetch('/api/eat/przepisy/z-grupy/' + grupaId, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nazwa: nazwaP, porcje }),
+        // całe danie w dzienniku → reprezentuje wszystkie porcje, mnożnik 1
+        body: JSON.stringify({ nazwa: nazwaP, porcje, zapisane_porcje: co === 'calosc' ? porcje : 1 }),
       });
       if (!r.ok) {
         const x = await r.json().catch(() => ({}));
@@ -1382,6 +1422,16 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja, wa
     porcje.push({ etyk: '1 szt.', g: Math.round(jedna * 10) / 10 });
     porcje.push({ etyk: '2 szt.', g: Math.round(jedna * 2 * 10) / 10 });
   }
+  // Surowiec bez opakowania: pomidor, marchewka, cebula. Waga sztuki jest
+  // orientacyjna i po to, żeby nie ważyć pomidora — gramaturę zawsze da się
+  // poprawić w polu niżej.
+  if (na100 && na100.porcja_g) {
+    const j = Number(na100.porcja_g);
+    const nazwaJ = na100.opis_porcji || 'porcja';
+    porcje.push({ etyk: '1 ' + nazwaJ, g: Math.round(j * 10) / 10 });
+    porcje.push({ etyk: '2 ' + nazwaJ, g: Math.round(j * 2 * 10) / 10 });
+    porcje.push({ etyk: '½ ' + nazwaJ, g: Math.round(j / 2 * 10) / 10 });
+  }
   if (na100 && na100.opak_g) {
     porcje.push({ etyk: 'całe opak.', g: Math.round(na100.opak_g) });
     porcje.push({ etyk: '½ opak.', g: Math.round(na100.opak_g / 2) });
@@ -2010,7 +2060,7 @@ function ekranProduktu(p, skad, niepelne) {
     <div class="prod-gora">
       <div class="marka">${e(p.marka || '')}</div>
       <h3>${e(p.nazwa)}</h3>
-      <div class="op">${p.opak_g ? 'opakowanie ' + zaokr(p.opak_g) + ' g · ' : ''}${zaokr(p.kcal)} kcal / 100 g</div>
+      <div class="op">${podpisWielkosci(p)}${zaokr(p.kcal)} kcal / 100 g</div>
       <div class="zrodlo">${e(zrodla[skad] || 'Wasza baza')}</div>
     </div>${ostrzezenie}`;
   // Domyślnie 100 g. Wcześniej domyślną porcją było CAŁE opakowanie —
@@ -2018,11 +2068,14 @@ function ekranProduktu(p, skad, niepelne) {
   // Całe opakowanie ma sens tylko przy małych (jogurt, batonik).
   const opak = Number(p.opak_g) || 0;
   const sztuk = Number(p.sztuk_w_opak) || 0;
+  const porcjaG = Number(p.porcja_g) || 0;
   // Gdy wiadomo, ile sztuk jest w opakowaniu, domyślną porcją jest JEDNA —
-  // przy pudełku pralinek nikt nie zjada całego naraz. W przeciwnym razie
-  // 100 g; całe opakowanie tylko przy małych, bo zeskanowanie kilograma ryżu
-  // i szybkie „Dodaj" zapisywało 3500 kcal.
+  // przy pudełku pralinek nikt nie zjada całego naraz. Przy surowcu bez
+  // opakowania (pomidor, marchewka) domyślna to jedna sztuka. W przeciwnym
+  // razie 100 g; całe opakowanie tylko przy małych, bo zeskanowanie kilograma
+  // ryżu i szybkie „Dodaj" zapisywało 3500 kcal.
   const domyslna = (opak && sztuk > 1) ? Math.round(opak / sztuk * 10) / 10
+    : porcjaG ? porcjaG
     : (opak && opak <= 250) ? opak : 100;
   ekranPotwierdzenia(
     { nazwa: p.nazwa, ilosc_g: domyslna, opis_porcji: p.opis_porcji || null,
@@ -2032,7 +2085,8 @@ function ekranProduktu(p, skad, niepelne) {
       marka: p.marka || null, ulubiony: !!p.ulubiony },
     { kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
       tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
-      opak_g: opak, sztuk: sztuk, produkt_id: p.id },
+      opak_g: opak, sztuk: sztuk, produkt_id: p.id,
+      porcja_g: porcjaG, opis_porcji: p.opis_porcji || null },
     p.id,
     naglowek,
     undefined,
