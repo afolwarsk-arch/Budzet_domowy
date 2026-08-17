@@ -88,7 +88,12 @@
            border-radius: 9px; margin-bottom: 6px; }
     .skl-n { flex: 1; min-width: 0; font-size: 13.5px; overflow: hidden;
              text-overflow: ellipsis; white-space: nowrap; }
-    .skl-g { width: 76px; flex: none; text-align: center; font-size: 13px; }
+    /* Selektor musi być mocniejszy niż `.ark input[type="text"]` wyżej, które
+       daje wszystkim polom w arkuszu width:100%. Przy słabszym selektorze pole
+       gramów rozdymało się na cały rząd (zmierzone: 466 px zamiast 76), a nazwa
+       składnika kurczyła się do ZERA — w edytorze przepisu nie było widać, co
+       się w nim właściwie znajduje. */
+    .ark input.skl-g { width: 76px; flex: none; text-align: center; font-size: 13px; }
     .skl-kc { font-size: 11.5px; color: var(--muted); width: 62px; flex: none;
               text-align: right; font-variant-numeric: tabular-nums; }
     .skl .x { min-width: 34px; min-height: 38px; font-size: 17px; }
