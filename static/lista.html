@@ -43,6 +43,35 @@
     .lz-del { flex:none; width:30px; height:30px; border:none; background:none; color: var(--danger); font-size:19px; cursor:pointer;
               border-radius:8px; line-height:1; }
     .lz-row.pending { opacity:.55; }
+
+    /* Wkładanie do koszyka. Wcześniej stuknięcie natychmiast przerysowywało listę
+       i pozycja teleportowała się do sekcji „W koszyku" — znikała niepostrzeżenie
+       i nie było wiadomo, czy stuknięcie w ogóle zadziałało. Teraz kółko wypełnia
+       się na zielono, wiersz odsuwa się w prawo, a ten, który wylądował w koszyku,
+       na moment podświetla obwódkę, żeby wzrok za nim nadążył. */
+    @keyframes lz-do-koszyka {
+      0%   { transform: none;              opacity: 1; }
+      25%  { transform: translateX(-3px);  opacity: 1; }
+      100% { transform: translateX(26px);  opacity: 0; }
+    }
+    .lz-row.lz-idzie { animation: lz-do-koszyka 260ms cubic-bezier(.4,0,.6,1) forwards;
+                       pointer-events: none; }
+    .lz-row.lz-idzie .lz-check { background: var(--good); border-color: var(--good);
+                       transform: scale(1.12); transition: background 140ms ease,
+                       border-color 140ms ease, transform 140ms ease; }
+
+    /* Obwódka, a nie tło: kolor z alfą wymagałby osobnej zmiennej na każdy motyw,
+       a obwódka wraca do var(--border) i wygląda tak samo w jasnym i ciemnym. */
+    @keyframes lz-wpadl {
+      0%   { border-color: var(--good); }
+      100% { border-color: var(--border); }
+    }
+    .lz-row.lz-wpadl { animation: lz-wpadl 900ms ease-out; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .lz-row.lz-idzie, .lz-row.lz-wpadl { animation: none; }
+      .lz-row.lz-idzie { opacity: 0; }
+    }
     .lz-drag-ghost { opacity:.35; }
     .lz-sekcja { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:18px 2px 8px; }
     .lz-empty { text-align:center; color:var(--muted); padding:28px 12px; font-size:15px; }
@@ -193,11 +222,19 @@ function renderPanel() {
   document.getElementById('uloz-btn')?.addEventListener('click', () => poukladaj(l.id));
 
   // odhaczanie / usuwanie pozycji
+  // Podświetlenie pozycji, która przed chwilą wpadła do koszyka. Musi być PO
+  // zbudowaniu HTML-u, bo dopiero teraz istnieje jej nowy wiersz.
+  if (wlozoneDoKoszyka) {
+    const swiezy = panelEl.querySelector(`.lz-row[data-id="${wlozoneDoKoszyka}"]`);
+    if (swiezy) swiezy.classList.add('lz-wpadl');
+    wlozoneDoKoszyka = null;
+  }
+
   panelEl.querySelectorAll('.lz-row').forEach(row => {
     row.addEventListener('click', e => {
       if (e.target.closest('.lz-del') || e.target.closest('.lz-handle')) return;
       const it = l.pozycje.find(x => String(x.id) === String(row.dataset.id));
-      if (it && !it._pending) toggle(it);
+      if (it && !it._pending) toggle(it, row);
     });
   });
   panelEl.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); del(btn.dataset.del); }));
@@ -307,9 +344,22 @@ async function addItem(listId) {
   }
 }
 
-async function toggle(it) {
+// Id pozycji, która właśnie wpadła do koszyka — po przerysowaniu podświetlamy ją
+// na moment, żeby było widać, GDZIE wylądowała.
+let wlozoneDoKoszyka = null;
+
+async function toggle(it, rowEl) {
   if (String(it.id).startsWith('tmp-')) return;
+  const doKoszyka = !it.kupione;
+  // Animujemy tylko drogę DO koszyka — to ten ruch był niewidoczny. Wyjmowanie
+  // z powrotem zdarza się rzadko i jest poprawką, więc nie ma czego celebrować.
+  const plynnie = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (doKoszyka && rowEl && plynnie) {
+    rowEl.classList.add('lz-idzie');
+    await new Promise((r) => setTimeout(r, 240));
+  }
   it.kupione = !it.kupione;
+  wlozoneDoKoszyka = doKoszyka ? String(it.id) : null;
   renderAll();
   try {
     const res = await authFetch('/api/pozycje/' + it.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kupione: it.kupione }) });
