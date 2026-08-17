@@ -1209,9 +1209,17 @@ function dyktuj() {
   btn.classList.add('slucha');
   komunikat('Słucham…');
   r.onresult = (ev) => {
-    pole.value = ev.results[0][0].transcript;
+    const tekst = (ev.results[0][0].transcript || '').trim();
+    pole.value = tekst;
     komunikat('');
-    wyslijOpis(pole.value);
+    // Krótka fraza to prawie zawsze nazwa produktu („pomidor", „serek wiejski"),
+    // a nie opis posiłku. Wyszukiwarka odpowiada od razu, za darmo i pokazuje
+    // Twoje własne produkty; AI ma sens dopiero przy zdaniu w rodzaju „zjadłem
+    // dwa jajka i kromkę chleba". Gdyby wyszukiwarka nic nie znalazła, jej pusty
+    // wynik i tak proponuje „Oszacuj z opisu", więc droga do AI nie znika.
+    const slowa = tekst.split(/\s+/).filter(Boolean);
+    if (slowa.length <= 2 && tekst.length <= 30) szukajProduktow(tekst);
+    else wyslijOpis(tekst);
   };
   // Jeden komunikat na wszystko znaczył, że „nie działa" mogło być pięcioma
   // różnymi rzeczami naraz: brakiem zgody na mikrofon, ciszą, brakiem sieci

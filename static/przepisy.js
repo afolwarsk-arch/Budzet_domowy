@@ -587,6 +587,24 @@ function ekranSkladnika(gotowe, stan) {
     </div>
     <input type="text" id="szukaj-skl" placeholder="Szukaj produktu" autocomplete="off">
     <div id="wyniki" style="margin-top:10px"></div>
+    <div class="sek-tyt">Albo weź z opakowania</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <button class="mini-btn" id="skl-skan" type="button">Skanuj kod</button>
+      <label class="mini-btn" for="skl-plik-przod" tabindex="0" role="button">Zdjęcie przodu</label>
+      <label class="mini-btn" for="skl-plik-tyl" tabindex="0" role="button">Zdjęcie tabeli</label>
+    </div>
+    <div id="skl-skaner" style="display:none;margin-bottom:8px">
+      <video id="skl-video" playsinline muted style="width:100%;border-radius:10px"></video>
+      <div class="komunikat">Skieruj aparat na kod kreskowy.</div>
+    </div>
+    <!-- Pola plików: <label for>, a nie .click() ze skryptu — etykieta otwiera
+         aparat natywnie i znosi całą klasę błędów, w których stuknięcie nie
+         robiło nic i nawet nie zgłaszało błędu. Nie chowamy ich przez
+         display:none, bo takie pole bywa traktowane jak nieistniejące. -->
+    <input type="file" id="skl-plik-przod" accept="image/*" capture="environment"
+           style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+    <input type="file" id="skl-plik-tyl" accept="image/*" capture="environment"
+           style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
     <div class="sek-tyt">Albo wpisz wprost</div>
     <input type="text" id="r-nazwa" placeholder="Nazwa składnika" autocomplete="off">
     <div style="display:flex;gap:8px;margin-top:8px">
@@ -601,39 +619,133 @@ function ekranSkladnika(gotowe, stan) {
     <div id="ark-komunikat"></div>
     <button class="cta" id="dodaj-r" type="button">Dodaj składnik</button>`;
 
-  ark.querySelector('#zamknij').onclick = () => zamknijArkusz();
-  ark.querySelector('#wroc').onclick = () => otworzEdytorZeStanem(stan);
+  const zatrzymaj = () => { if (window.Skaner) window.Skaner.stop(); };
+  ark.querySelector('#zamknij').onclick = () => { zatrzymaj(); zamknijArkusz(); };
+  ark.querySelector('#wroc').onclick = () => { zatrzymaj(); otworzEdytorZeStanem(stan); };
+
+  // ── produkt z opakowania → składnik ──
+  // Wartości produktów są na 100 g, więc domyślne 100 g czyni przeliczenie
+  // tożsamością. Gramaturę poprawia się w edytorze, w wierszu składnika.
+  const zProduktu = (p) => {
+    zatrzymaj();
+    gotowe({
+      produkt_id: p.id || null,
+      nazwa: [p.nazwa, p.marka].filter(Boolean).join(' · ').slice(0, 120),
+      ilosc_g: 100,
+      kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
+      tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
+    });
+  };
+
+  const poKodzie = async (kod) => {
+    komunikat('Sprawdzam kod…');
+    try {
+      const r = await authFetch('/api/eat/produkt?kod=' + encodeURIComponent(kod));
+      if (!r.ok) {
+        komunikat('Nie znam tego kodu. Zrób zdjęcie tabeli z tyłu opakowania.', true);
+        return;
+      }
+      const d = await r.json();
+      komunikat('');
+      zProduktu(d.produkt || d);
+    } catch { komunikat('Błąd połączenia.', true); }
+  };
+
+  ark.querySelector('#skl-skan').onclick = () => {
+    if (!window.Skaner) { komunikat('Skaner niedostępny — zrób zdjęcie tabeli.', true); return; }
+    window.Skaner.start({
+      video: ark.querySelector('#skl-video'),
+      wrap: ark.querySelector('#skl-skaner'),
+      onPodglad: () => komunikat(''),
+      onKod: poKodzie,
+      onBlad: (t) => komunikat(t, true),
+      onCisza: () => komunikat('Nie widzę kodu. Podejdź bliżej albo zrób zdjęcie tabeli.', false),
+    });
+  };
+
+  const wyslij = async (plik, adres, tekstCzekania) => {
+    zatrzymaj();
+    komunikat(tekstCzekania);
+    const fd = new FormData();
+    fd.append('file', plik);
+    const r = await authFetch(adres, { method: 'POST', body: fd });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || 'Nie udało się odczytać zdjęcia.');
+    return d;
+  };
+
+  // TABELA Z TYŁU zawiera wartości odżywcze, więc od razu daje gotowy produkt.
+  ark.querySelector('#skl-plik-tyl').onchange = async (ev) => {
+    const plik = ev.target.files && ev.target.files[0];
+    if (!plik) return;
+    try {
+      const d = await wyslij(plik, '/api/eat/etykieta', 'Czytam tabelę wartości odżywczych…');
+      komunikat('');
+      zProduktu(d.produkt || d);
+    } catch (err) { komunikat(err.message || 'Błąd połączenia.', true); }
+  };
+
+  // PRZÓD nie ma tabeli — daje nazwę i markę, którymi szukamy w bazach.
+  // Wybór zostawiamy człowiekowi: braniem pierwszego trafienia z brzegu łatwo
+  // wstawić do przepisu zupełnie inny produkt.
+  ark.querySelector('#skl-plik-przod').onchange = async (ev) => {
+    const plik = ev.target.files && ev.target.files[0];
+    if (!plik) return;
+    try {
+      const d = await wyslij(plik, '/api/eat/etykieta-przod', 'Czytam przód opakowania…');
+      const lista = [].concat(d.wlasne || [], d.propozycje || []).slice(0, 20);
+      const nazwaZOdczytu = (d.odczyt && d.odczyt.nazwa) || '';
+      if (!lista.length) {
+        komunikat(`Odczytałem „${nazwaZOdczytu}", ale nie znalazłem wartości odżywczych. `
+          + 'Zrób zdjęcie tabeli z tyłu.', true);
+        if (nazwaZOdczytu) ark.querySelector('#r-nazwa').value = nazwaZOdczytu;
+        return;
+      }
+      komunikat(`Odczytano „${nazwaZOdczytu}" — wybierz właściwy produkt.`);
+      szukajka.value = nazwaZOdczytu;
+      rysujWyniki(lista, false);
+    } catch (err) { komunikat(err.message || 'Błąd połączenia.', true); }
+  };
 
   let licznik = 0;
   const szukajka = ark.querySelector('#szukaj-skl');
+
+  const rysujWyniki = (lista, jeszczeSzuka) => {
+    const box = ark.querySelector('#wyniki');
+    if (!box) return;
+    box.innerHTML = lista.length
+      ? lista.map((p, i) => `<button class="skl" data-w="${i}" type="button" style="width:100%;cursor:pointer">
+          <span class="skl-n">${e(p.nazwa)}${p.marka ? ' · ' + e(p.marka) : ''}</span>
+          <span class="skl-kc">${p.kcal ? zaokr(p.kcal) + ' kcal/100 g' : 'brak wartości'}</span>
+        </button>`).join('') + (jeszczeSzuka
+          ? '<div class="komunikat">Szukam też wśród produktów z opakowań…</div>' : '')
+      : `<div class="komunikat">${jeszczeSzuka ? 'Szukam…' : 'Nic nie znaleziono — wpisz wprost poniżej.'}</div>`;
+    box.querySelectorAll('[data-w]').forEach((b) => {
+      b.onclick = () => zProduktu(lista[Number(b.dataset.w)]);
+    });
+  };
+
   szukajka.addEventListener('input', async () => {
     const fraza = szukajka.value.trim();
     const moje = ++licznik;
     if (fraza.length < 3) { ark.querySelector('#wyniki').innerHTML = ''; return; }
+    let lokalne = [];
     try {
       const r = await authFetch('/api/eat/szukaj?fraza=' + encodeURIComponent(fraza));
       if (moje !== licznik || !r.ok) return;
       const d = await r.json();
-      const lista = [].concat(d.wlasne || [], d.podstawowe || []).slice(0, 12);
-      ark.querySelector('#wyniki').innerHTML = lista.length
-        ? lista.map((p, i) => `<button class="skl" data-w="${i}" type="button" style="width:100%;cursor:pointer">
-            <span class="skl-n">${e(p.nazwa)}</span>
-            <span class="skl-kc">${zaokr(p.kcal)} kcal/100 g</span>
-          </button>`).join('')
-        : '<div class="komunikat">Nic nie znaleziono — wpisz wprost poniżej.</div>';
-      ark.querySelectorAll('[data-w]').forEach((b) => {
-        b.onclick = () => {
-          const p = lista[Number(b.dataset.w)];
-          // Domyślnie 100 g — wartości produktów są właśnie na 100 g, więc
-          // przeliczenie jest wtedy tożsamością i nie ma gdzie się pomylić.
-          gotowe({
-            produkt_id: p.id || null, nazwa: p.nazwa, ilosc_g: 100,
-            kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
-            tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
-          });
-        };
-      });
-    } catch { /* cisza — wpisanie wprost nadal działa */ }
+      lokalne = [].concat(d.wlasne || [], d.podstawowe || []).slice(0, 12);
+      rysujWyniki(lokalne, true);
+    } catch { return; /* cisza — wpisanie wprost nadal działa */ }
+    // Produkty z opakowań OSOBNYM żądaniem: Open Food Facts potrafi odpowiadać
+    // kilkadziesiąt sekund albo odbić błędem, a wyniki lokalne są gotowe od razu
+    // i nie mają na co czekać. Ta sama zasada co w dzienniku.
+    try {
+      const r2 = await authFetch('/api/eat/szukaj/off?fraza=' + encodeURIComponent(fraza));
+      if (moje !== licznik || !r2.ok) { rysujWyniki(lokalne, false); return; }
+      const d2 = await r2.json();
+      rysujWyniki(lokalne.concat(d2.propozycje || []).slice(0, 20), false);
+    } catch { rysujWyniki(lokalne, false); }
   });
 
   ark.querySelector('#dodaj-r').onclick = () => {
