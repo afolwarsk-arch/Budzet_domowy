@@ -592,7 +592,9 @@ function ekranSkladnika(gotowe, stan) {
       <button class="mini-btn" id="skl-skan" type="button">Skanuj kod</button>
       <label class="mini-btn" for="skl-plik-przod" tabindex="0" role="button">Zdjęcie przodu</label>
       <label class="mini-btn" for="skl-plik-tyl" tabindex="0" role="button">Zdjęcie tabeli</label>
+      <button class="mini-btn" id="skl-przepis" type="button">Inne Twoje danie</button>
     </div>
+    <div id="skl-przepisy" style="display:none;margin-bottom:8px"></div>
     <div id="skl-skaner" style="display:none;margin-bottom:8px">
       <video id="skl-video" playsinline muted style="width:100%;border-radius:10px"></video>
       <div class="komunikat">Skieruj aparat na kod kreskowy.</div>
@@ -634,6 +636,99 @@ function ekranSkladnika(gotowe, stan) {
       ilosc_g: 100,
       kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
       tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
+    });
+  };
+
+  // ── danie jako składnik innego dania ──
+  //
+  // Wartości ZAMRAŻAMY w chwili dodania, tak jak resztę historii w tej apce.
+  // Gdyby sos liczył się na żywo z przepisu na sos, poprawienie sosu zmieniłoby
+  // wstecz każde danie, które go używa — a przy daniu z dania z dania trzeba by
+  // jeszcze pilnować zapętleń. Zamrożona liczba nie ma żadnego z tych problemów.
+  const zPrzepisu = async (id, nazwa) => {
+    komunikat('Wczytuję danie…');
+    let p;
+    try {
+      const r = await authFetch('/api/eat/przepisy/' + id);
+      if (!r.ok) throw new Error('brak');
+      p = await r.json();
+    } catch { komunikat('Nie udało się wczytać dania.', true); return; }
+
+    const porcjeDania = Number(p.porcje) || 1;
+    const waga = Number(p.waga_odniesienia_g) || 0;
+    komunikat('');
+
+    // Pole w arkuszu, a nie prompt(): systemowe okienko wygląda na telefonie
+    // obco, nie da się w nim pokazać podglądu kalorii i zatrzymuje całą stronę.
+    const box = ark.querySelector('#skl-przepisy');
+    box.innerHTML = `
+      <div class="komunikat" style="text-align:left">
+        <b>${e(nazwa)}</b> — całe danie to ${ladna(porcjeDania)} ${odmianaPorcji(porcjeDania)}.
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="pp-ile" value="1" inputmode="decimal" style="flex:1"
+               aria-label="Ile porcji">
+        <button class="mini-btn" id="pp-dodaj" type="button">Dodaj</button>
+        <button class="mini-btn" id="pp-wroc" type="button">Wróć</button>
+      </div>
+      <div class="komunikat" id="pp-podglad" style="margin-top:6px"></div>`;
+
+    const polePorcji = box.querySelector('#pp-ile');
+    const podglad = () => {
+      const n = zPola(polePorcji);
+      box.querySelector('#pp-podglad').innerHTML = n > 0
+        ? `Wniesie <b>${zaokr(Number(p.kcal || 0) * n / porcjeDania)} kcal</b>`
+          + (waga ? ` · ${dziesietne(waga * n / porcjeDania)} g` : '')
+        : 'Podaj liczbę porcji większą od zera.';
+    };
+    polePorcji.addEventListener('input', podglad);
+    podglad();
+    box.querySelector('#pp-wroc').onclick = () => { box.style.display = 'none'; };
+    box.querySelector('#pp-dodaj').onclick = () => {
+      const porcje = zPola(polePorcji);
+      if (!(porcje > 0)) { komunikat('Podaj liczbę porcji większą od zera.', true); return; }
+      const udzial = porcje / porcjeDania;
+      gotowe({
+        produkt_id: null,
+        nazwa: `${nazwa} (${ladna(porcje)} ${odmianaPorcji(porcje)})`.slice(0, 120),
+        // Gdy danie nie ma znanej wagi, gramatura nie niesie treści — wstawiamy
+        // liczbę porcji tylko po to, żeby pole nie było puste (serwer wymaga
+        // wartości dodatniej), a kalorie i tak liczą się z pól obok.
+        ilosc_g: Math.max(0.1, Math.round((waga ? waga * udzial : porcje) * 10) / 10),
+        kcal: Math.round(Number(p.kcal || 0) * udzial * 10) / 10,
+        bialko: Math.round(Number(p.bialko || 0) * udzial * 10) / 10,
+        tluszcz: Math.round(Number(p.tluszcz || 0) * udzial * 10) / 10,
+        wegle: Math.round(Number(p.wegle || 0) * udzial * 10) / 10,
+      });
+    };
+  };
+
+  ark.querySelector('#skl-przepis').onclick = async () => {
+    const box = ark.querySelector('#skl-przepisy');
+    if (box.style.display === 'block') { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    box.innerHTML = '<div class="komunikat">Wczytuję…</div>';
+    let lista = [];
+    try {
+      const r = await authFetch('/api/eat/przepisy');
+      lista = (await r.json()).przepisy || [];
+    } catch { box.innerHTML = '<div class="komunikat blad">Nie udało się wczytać.</div>'; return; }
+    // Danie nie może być składnikiem samego siebie — to jedyne zapętlenie,
+    // które da się tu zrobić jednym kliknięciem.
+    lista = lista.filter((x) => String(x.id) !== String(stan.id));
+    if (!lista.length) {
+      box.innerHTML = '<div class="komunikat">Nie masz innych dań do wstawienia.</div>';
+      return;
+    }
+    box.innerHTML = lista.map((x, i) => {
+      const naPorcje = Number(x.kcal || 0) / (Number(x.porcje) || 1);
+      return `<button class="skl" data-p="${i}" type="button" style="width:100%;cursor:pointer">
+        <span class="skl-n">${e(x.nazwa)}</span>
+        <span class="skl-kc">${zaokr(naPorcje)} kcal/porcję</span>
+      </button>`;
+    }).join('');
+    box.querySelectorAll('[data-p]').forEach((b) => {
+      b.onclick = () => { const x = lista[Number(b.dataset.p)]; zPrzepisu(x.id, x.nazwa); };
     });
   };
 
