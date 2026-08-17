@@ -30,7 +30,8 @@ _OFF_URL = "https://world.openfoodfacts.org/api/v2/product/{kod}.json"
 # `search_terms`, ale je ignoruje i oddaje całą bazę kraju (sprawdzone: każde
 # zapytanie zwracało te same 36 tys. produktów). Polska poddomena daje polskie nazwy.
 _OFF_SZUKAJ = "https://pl.openfoodfacts.org/cgi/search.pl"
-_OFF_POLA = "product_name,product_name_pl,brands,quantity,product_quantity,nutriments"
+_OFF_POLA = ("product_name,product_name_pl,brands,quantity,product_quantity,"
+             "serving_size,serving_quantity,nutriments")
 _OFF_UA = "WiemApp/1.0 (budzetdomowy-production.up.railway.app)"
 
 
@@ -103,11 +104,28 @@ def _z_produktu_off(p: dict, kod: str) -> dict:
     n = p.get("nutriments") or {}
     kcal = _liczba(n.get("energy-kcal_100g"))
     nazwa = (p.get("product_name_pl") or p.get("product_name") or "").strip()
+
+    # Wielkość PORCJI (łyżka majonezu ~15 g) i wielkość OPAKOWANIA to dwie różne
+    # rzeczy, a w Open Food Facts wpisują je ludzie i regularnie mylą.
+    # Zmierzone na majonezie Remia 8710448636939: product_quantity=15
+    # i serving_quantity=15, czyli „opakowanie" wielkości jednej łyżki. Apka
+    # pokazywała wtedy „całe opak. 15 g" jako fakt.
+    #
+    # Gdy obie liczby są RÓWNE, to znaczy, że ktoś wpisał porcję w pole
+    # opakowania — wielkości opakowania po prostu nie znamy i lepiej nie
+    # zmyślać. Porcja zostaje: jest prawdziwa i przydatna.
+    porcja = _liczba(p.get("serving_quantity"))
+    opak = _liczba(p.get("product_quantity"))
+    if opak is not None and (opak < 5 or (porcja is not None and abs(opak - porcja) < 0.01)):
+        opak = None
+
     return {
         "kod": kod,
         "nazwa": nazwa or f"Produkt {kod}",
         "marka": (p.get("brands") or "").split(",")[0].strip() or None,
-        "opak_g": _liczba(p.get("product_quantity")),
+        "opak_g": opak,
+        "porcja_g": porcja,
+        "opis_porcji": "porcja" if porcja else None,
         "kcal": kcal if kcal is not None else 0,
         "bialko": _liczba(n.get("proteins_100g")),
         "tluszcz": _liczba(n.get("fat_100g")),
@@ -144,7 +162,8 @@ def _szukaj_w_off_ze_statusem(fraza: str, ile: int = 12,
     parametry = urllib.parse.urlencode({
         "search_terms": fraza, "search_simple": 1, "action": "process",
         "json": 1, "page_size": ile,
-        "fields": "code,product_name,product_name_pl,brands,product_quantity,nutriments",
+        "fields": ("code,product_name,product_name_pl,brands,product_quantity,"
+                   "serving_size,serving_quantity,nutriments"),
     })
     dane = None
     # Liczba prób zależy od tego, KTO czeka. Przy pisaniu w wyszukiwarce dwie —
