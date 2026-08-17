@@ -1100,9 +1100,14 @@ function dyktuj() {
   // różnymi rzeczami naraz: brakiem zgody na mikrofon, ciszą, brakiem sieci
   // albo zablokowaną usługą rozpoznawania. Bez rozróżnienia nie da się tego
   // naprawić po stronie użytkownika.
+  // Bez „kłódki przy adresie": na Androidzie jej nie ma, a z ekranu początkowego
+  // nie ma nawet paska adresu. Podajemy drogę, która działa wszędzie.
   const POWODY = {
-    'not-allowed': 'Przeglądarka nie ma zgody na mikrofon. Kłódka przy adresie → Mikrofon → Zezwalaj.',
-    'service-not-allowed': 'System nie zezwolił na rozpoznawanie mowy. Sprawdź uprawnienia mikrofonu.',
+    'not-allowed': 'Brak zgody na mikrofon. Chrome → ⋮ → Ustawienia → Ustawienia witryn → '
+      + 'Mikrofon → ta strona → Zezwalaj. Sprawdź też, czy sam Chrome ma zgodę na mikrofon '
+      + 'w ustawieniach telefonu.',
+    'service-not-allowed': 'System nie zezwolił na rozpoznawanie mowy. Sprawdź w ustawieniach '
+      + 'telefonu, czy Chrome ma dostęp do mikrofonu.',
     'no-speech': 'Nic nie usłyszałem. Stuknij mikrofon i mów wyraźniej.',
     'audio-capture': 'Nie znalazłem mikrofonu.',
     'network': 'Rozpoznawanie mowy wymaga internetu i właśnie go nie ma.',
