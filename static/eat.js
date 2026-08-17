@@ -105,21 +105,28 @@ function pogrupuj(wpisy) {
 // Formy dla 2–4 sztuk („2 sztuki", nie „2 sztuka"). Lista pokrywa wszystkie
 // jednostki z bazy surowców; dla czegokolwiek spoza niej wypisujemy „2 × …",
 // co jest brzydsze, ale nigdy nie jest błędem językowym.
-const JEDN_MNOGA = {
-  'porcja': 'porcje', 'sztuka': 'sztuki', 'łyżka': 'łyżki', 'garść': 'garście',
-  'szklanka': 'szklanki', 'kromka': 'kromki', 'puszka': 'puszki',
-  'plaster': 'plastry', 'łyżeczka': 'łyżeczki', 'kubek': 'kubki',
-  'talerz': 'talerze', 'kawałek': 'kawałki', 'połówka': 'połówki',
-  'opakowanie': 'opakowania', 'kieliszek': 'kieliszki', 'ząbek': 'ząbki',
-  'trójkącik': 'trójkąciki', 'filiżanka': 'filiżanki', 'butelka': 'butelki',
+// [forma dla 2–4, dopełniacz po „½"] — „2 sztuki" i „½ sztuki", nie „2 sztuka"
+// ani „½ sztuka". Lista pokrywa wszystkie 20 jednostek z bazy surowców.
+const JEDN_ODMIANY = {
+  'porcja': ['porcje', 'porcji'],          'sztuka': ['sztuki', 'sztuki'],
+  'łyżka': ['łyżki', 'łyżki'],             'garść': ['garście', 'garści'],
+  'szklanka': ['szklanki', 'szklanki'],    'kromka': ['kromki', 'kromki'],
+  'puszka': ['puszki', 'puszki'],          'plaster': ['plastry', 'plastra'],
+  'łyżeczka': ['łyżeczki', 'łyżeczki'],    'kubek': ['kubki', 'kubka'],
+  'talerz': ['talerze', 'talerza'],        'kawałek': ['kawałki', 'kawałka'],
+  'połówka': ['połówki', 'połówki'],       'opakowanie': ['opakowania', 'opakowania'],
+  'kieliszek': ['kieliszki', 'kieliszka'], 'ząbek': ['ząbki', 'ząbka'],
+  'trójkącik': ['trójkąciki', 'trójkącika'], 'filiżanka': ['filiżanki', 'filiżanki'],
+  'butelka': ['butelki', 'butelki'],       'plastry': ['plastry', 'plastra'],
 };
 
 function etykJednostki(n, jedn) {
   const nazwa = jedn || 'porcja';
+  const formy = JEDN_ODMIANY[nazwa.toLowerCase()];
   if (n === 1) return '1 ' + nazwa;
-  if (n < 1) return '½ ' + nazwa;
-  const mnoga = JEDN_MNOGA[nazwa.toLowerCase()];
-  return mnoga ? n + ' ' + mnoga : n + ' × ' + nazwa;
+  // Nieznana jednostka: „2 × słoiczek" jest brzydsze, ale nigdy nie jest błędem.
+  if (n < 1) return '½ ' + (formy ? formy[1] : nazwa);
+  return formy ? n + ' ' + formy[0] : n + ' × ' + nazwa;
 }
 
 // Podpis wielkości pod nazwą produktu. Opakowanie wolno wspomnieć TYLKO wtedy,
