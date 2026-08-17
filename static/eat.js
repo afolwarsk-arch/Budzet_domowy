@@ -2441,10 +2441,14 @@ function checklistProduktu(p, skad) {
   const pusteMakro = !Number(p.kcal) && !Number(p.bialko) && !Number(p.tluszcz) && !Number(p.wegle);
   const wielkosc = Number(p.opak_g) || Number(p.porcja_g) || 0;
 
+  // Surowiec z bazy (pomidor, marchewka) kodu kreskowego NIE MA i mieć nie
+  // będzie — pytanie o niego byłoby fałszywym alarmem przy każdym warzywie.
+  const oczekujemyKodu = skad !== 'baza' && p.zrodlo !== 'baza';
+
   const pozycje = [
-    { ok: !!p.kod,
+    ...(oczekujemyKodu ? [{ ok: !!p.kod,
       tak: 'Kod kreskowy przypisany: ' + (p.kod || ''),
-      nie: 'Bez kodu kreskowego — po zeskanowaniu tego opakowania trzeba będzie odczytać je od nowa' },
+      nie: 'Bez kodu kreskowego — po zeskanowaniu tego opakowania trzeba będzie odczytać je od nowa' }] : []),
     { ok: !brak.length && !pusteMakro,
       tak: `Wartości na 100 g: ${zaokr(p.kcal)} kcal · B ${dziesietne(p.bialko)} · T ${dziesietne(p.tluszcz)} · W ${dziesietne(p.wegle)}`,
       nie: pusteMakro ? 'Wszystkie wartości są zerowe — tabela chyba się nie odczytała'
@@ -2452,7 +2456,9 @@ function checklistProduktu(p, skad) {
     { ok: !!wielkosc,
       tak: Number(p.opak_g) ? `Opakowanie: ${zaokr(p.opak_g)} g`
                             : `Porcja: ${zaokr(p.porcja_g)} g${p.opis_porcji ? ' (' + e(p.opis_porcji) + ')' : ''}`,
-      nie: 'Nie znamy wielkości opakowania — porcję trzeba będzie podawać w gramach' },
+      nie: oczekujemyKodu
+        ? 'Nie znamy wielkości opakowania — porcję trzeba będzie podawać w gramach'
+        : 'Nie znamy wagi sztuki — porcję trzeba będzie podawać w gramach' },
   ];
 
   // Przy komplecie i zwykłym skanie nie zaśmiecamy ekranu. Pokazujemy, gdy
