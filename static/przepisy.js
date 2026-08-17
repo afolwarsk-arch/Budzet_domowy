@@ -377,6 +377,10 @@ function otworzEdytor(przepis) {
     nazwa: przepis ? przepis.nazwa : '',
     porcje: przepis ? Number(przepis.porcje) || 1 : 1,
     waga: przepis && przepis.waga_gotowego_g ? Number(przepis.waga_gotowego_g) : '',
+    // Czy wagę wpisał CZŁOWIEK. Bez tej flagi wystarczyło dodać drugi składnik,
+    // żeby wartość policzona automatycznie została wzięta za ręczną i przestała
+    // nadążać — patrz komentarz przy odswiezWage.
+    wagaRecznie: !!(przepis && przepis.waga_gotowego_g),
     skladniki: przepis ? (przepis.skladniki || []).map((s) => ({
       produkt_id: s.produkt_id || null, nazwa: s.nazwa,
       ilosc_g: Number(s.ilosc_g) || 0, kcal: Number(s.kcal) || 0,
@@ -502,13 +506,19 @@ function otworzEdytor(przepis) {
     }
   }
 
-  let wagaRecznie = !!stan.waga;
+  // NIE `!!stan.waga`: pole bywa wypełnione automatycznie sumą składników, więc
+  // sama obecność liczby nic nie mówi o tym, kto ją tam wpisał. Po dodaniu
+  // pierwszego składnika pole miało już wartość, ekran składnika zapisywał ją do
+  // stanu, a po powrocie wyglądała jak ręczna — waga zamarzała na sumie sprzed
+  // dołożenia reszty i apka twierdziła, że brakująca różnica „odparowała".
+  let wagaRecznie = !!stan.wagaRecznie;
 
   rysujSkladniki();
   rysujSume();
   pole('#porcje').addEventListener('input', rysujSume);
   pole('#waga').addEventListener('input', () => {
     wagaRecznie = true;
+    stan.wagaRecznie = true;      // przetrwa przejście na ekran składnika i z powrotem
     odswiezWage(sumy().gramy);
   });
 
@@ -577,7 +587,9 @@ function ekranSkladnika(gotowe, stan) {
   // Zapamiętujemy, co użytkownik zdążył wpisać, zanim podmienimy ekran.
   stan.nazwa = (ark.querySelector('#nazwa') || {}).value || stan.nazwa;
   stan.porcje = zPola(ark.querySelector('#porcje')) || stan.porcje;
-  stan.waga = zPola(ark.querySelector('#waga')) || '';
+  // Wagę przenosimy TYLKO wtedy, gdy wpisał ją człowiek. Wartość policzona
+  // automatycznie ma się przeliczyć po powrocie, razem z nowym składnikiem.
+  stan.waga = stan.wagaRecznie ? (zPola(ark.querySelector('#waga')) || '') : '';
 
   ark.innerHTML = `
     <div class="ark-gl">
