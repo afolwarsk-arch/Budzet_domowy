@@ -1142,6 +1142,15 @@ function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
       warianty.push({ etyk: '1 szt.', g: g1(jednaSzt) });
       warianty.push({ etyk: '2 szt.', g: g1(jednaSzt * 2) });
     }
+    // Surowiec bez opakowania: pomidor, marchewka, cebula. Nikt ich nie waży,
+    // więc bez orientacyjnej wagi sztuki zostaje wpisywanie gramów z palca.
+    const porcjaG = Number(na100.porcja_g) || 0;
+    if (porcjaG) {
+      const nazwaJedn = na100.opis_porcji || 'porcja';
+      warianty.push({ etyk: '1 ' + nazwaJedn, g: g1(porcjaG) });
+      warianty.push({ etyk: '2 ' + nazwaJedn, g: g1(porcjaG * 2) });
+      warianty.push({ etyk: '½ ' + nazwaJedn, g: g1(porcjaG / 2) });
+    }
     if (opak) {
       warianty.push({ etyk: 'całe opak.', g: g1(opak) });
       warianty.push({ etyk: '½ opak.', g: g1(opak / 2) });
