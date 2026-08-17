@@ -531,6 +531,10 @@ function otworzArkusz(posilek) {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 5.2A2 2 0 0 1 5.6 3.4H11v16.4H5.6a2 2 0 0 1-2-2z"/><path d="M20.4 5.2a2 2 0 0 0-2-1.8H13v16.4h5.4a2 2 0 0 0 2-2z"/></svg>
           <span class="t">Twoje przepisy</span><span class="o">Dania, które już zapisałeś</span>
         </button>
+        <button class="droga" id="d-historia" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/><path d="M12 12.5v3l2 1.2"/></svg>
+          <span class="t">Z dziennika</span><span class="o">Przejrzyj, co jadłeś w inne dni</span>
+        </button>
       </div>
 
       <div id="ark-ulubione-sek" hidden>
@@ -554,6 +558,7 @@ function otworzArkusz(posilek) {
   arkusz.querySelector('#ark-x').onclick = zamknijArkusz;
   arkusz.querySelector('#d-skan').onclick = uruchomSkaner;
   arkusz.querySelector('#d-przepisy').onclick = () => ekranListyPrzepisow('');
+  arkusz.querySelector('#d-historia').onclick = () => ekranHistorii(dzienISO, '');
   // Etykiety otwierają aparat same z siebie; skryptu potrzeba tylko po to, żeby
   // działały także z klawiatury — na <label> Enter nic nie robi.
   arkusz.querySelectorAll('label.droga[for]').forEach((l) => {
@@ -687,6 +692,8 @@ async function dodajGotowy(p) {
         const prod = await r.json();
         na100.opak_g = Number(prod.opak_g) || 0;
         na100.sztuk = Number(prod.sztuk_w_opak) || 0;
+        na100.porcja_g = Number(prod.porcja_g) || 0;
+        na100.opis_porcji = prod.opis_porcji || null;
         poz.marka = prod.marka || null;
         poz.ulubiony = !!prod.ulubiony;
       }
@@ -1681,6 +1688,109 @@ function ekranBledu(tekst) {
     <button class="cta" id="wroc-b" type="button">Spróbuj inaczej</button>`;
   ark.querySelector('#zamknij-b').onclick = () => zamknijArkusz();
   ark.querySelector('#wroc-b').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+}
+
+// ── dziennik jako źródło: chodzenie po dniach ───────────────────────────────
+
+// „Ostatnio jadłeś" to płaskie dwanaście pozycji bez dat — nie da się w tym
+// znaleźć obiadu sprzed dwóch tygodni. Tu chodzi się po dniach i bierze wprost
+// z talerza z tamtego dnia. Wybrana pozycja trafia do DZISIEJSZEGO posiłku
+// (dzienISO + posilekDocelowy), a nie z powrotem tam, skąd ją wzięto.
+let licznikHistorii = 0;
+
+async function ekranHistorii(iso, filtr) {
+  const ark = arkusz && arkusz.querySelector('.ark');
+  if (!ark) return;
+  zatrzymajSkaner();
+  const moje = ++licznikHistorii;
+  const dzis = new Date().toLocaleDateString('sv-SE');
+
+  // Szkielet rysujemy raz, żeby pole filtru nie znikało pod palcem przy
+  // przerysowaniu listy — tak samo jak w liście przepisów.
+  if (!ark.querySelector('#h-filtr')) {
+    ark.innerHTML = `
+      <div class="ark-gl">
+        <button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
+        <h2 style="font-size:1rem">Z dziennika</h2>
+        <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button>
+      </div>
+      <div class="gdzie" id="h-nawigacja" style="margin-bottom:8px">
+        <button id="h-poprz" type="button" aria-label="Poprzedni dzień">‹</button>
+        <button id="h-etykieta" type="button" style="flex:1"></button>
+        <button id="h-nast" type="button" aria-label="Następny dzień">›</button>
+      </div>
+      <input type="date" id="h-data" style="width:100%;margin-bottom:8px" max="${dzis}">
+      <div class="szukaj"><input type="text" id="h-filtr" placeholder="Zawęź w tym dniu" autocomplete="off"></div>
+      <div id="h-lista"><div class="komunikat">Wczytuję…</div></div>
+      <div id="ark-komunikat"></div>`;
+    ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+    ark.querySelector('#zamknij2').onclick = () => zamknijArkusz();
+    ark.querySelector('#h-filtr').addEventListener('input', (ev) => {
+      // Filtr działa na już pobranym dniu, więc bez opóźnienia i bez żądania.
+      ekranHistorii(ark.dataset.iso || iso, ev.target.value);
+    });
+    ark.querySelector('#h-data').addEventListener('change', (ev) => {
+      if (ev.target.value) ekranHistorii(ev.target.value, '');
+    });
+    const skok = (o) => {
+      const d = new Date((ark.dataset.iso || iso) + 'T12:00:00');
+      d.setDate(d.getDate() + o);
+      const nowy = d.toLocaleDateString('sv-SE');
+      if (nowy > dzis) return;          // w przyszłość nie ma po co iść
+      ekranHistorii(nowy, '');
+    };
+    ark.querySelector('#h-poprz').onclick = () => skok(-1);
+    ark.querySelector('#h-nast').onclick = () => skok(1);
+  }
+  ark.dataset.iso = iso;
+  ark.querySelector('#h-etykieta').textContent = etykietaDnia(iso);
+  ark.querySelector('#h-data').value = iso;
+  ark.querySelector('#h-nast').disabled = iso >= dzis;
+  if (ark.querySelector('#h-filtr').value !== (filtr || '')) {
+    ark.querySelector('#h-filtr').value = filtr || '';
+  }
+
+  let d;
+  try {
+    const r = await authFetch('/api/eat/dzien?data=' + encodeURIComponent(iso));
+    if (!r.ok) throw new Error('brak');
+    d = await r.json();
+  } catch {
+    const box = ark.querySelector('#h-lista');
+    if (box) box.innerHTML = '<div class="komunikat blad">Nie udało się wczytać tego dnia.</div>';
+    return;
+  }
+  // starsza odpowiedź nie może nadpisać nowszej (szybkie stukanie w strzałki)
+  if (moje !== licznikHistorii || !arkusz) return;
+
+  const szukane = (filtr || '').trim().toLowerCase();
+  const box = ark.querySelector('#h-lista');
+  if (!box) return;
+
+  // Wpisy trzymamy poza HTML-em: przekazanie całego wpisu przez data-* wymagałoby
+  // wciskania JSON-a w atrybut, a stąd bierze się połowa błędów z cudzysłowami.
+  const doWziecia = [];
+  let html = '';
+  POSILKI.forEach(([klucz, nazwaP]) => {
+    const wpisy = (d.posilki && d.posilki[klucz] || [])
+      .filter((w) => !szukane || (w.nazwa || '').toLowerCase().includes(szukane));
+    if (!wpisy.length) return;
+    html += `<div class="sek-tyt">${nazwaP}</div>`;
+    wpisy.forEach((w) => {
+      const i = doWziecia.push(w) - 1;
+      html += `<button class="szybka" data-h="${i}" type="button">
+        <span class="nz"><b>${e(w.nazwa)}</b><span>${e(w.opis_porcji || dziesietne(w.ilosc_g) + ' g')} · ${zaokr(w.kcal)} kcal</span></span>
+      </button>`;
+    });
+  });
+
+  box.innerHTML = html || `<div class="komunikat">${szukane
+    ? 'Nic takiego w tym dniu.'
+    : 'W tym dniu nic nie zapisałeś. Przejdź strzałkami do innego dnia.'}</div>`;
+
+  box.querySelectorAll('[data-h]').forEach((b) => {
+    b.onclick = () => dodajGotowy(doWziecia[Number(b.dataset.h)]);
+  });
 }
 
 // ── lista własnych przepisów w arkuszu ──────────────────────────────────────
