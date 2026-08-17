@@ -1121,7 +1121,11 @@ async function poKodzie(kod) {
   try {
     const r = await authFetch('/api/eat/produkt?kod=' + encodeURIComponent(kod));
     if (r.status === 404) {
-      komunikat('Nie znam tego kodu. Zrób zdjęcie etykiety — zapamiętam produkt na przyszłość.', true);
+      // Kod podajemy WPROST. Inaczej po zrobieniu zdjęć nie da się stwierdzić,
+      // czy produkt zapisał się pod zeskanowanym kodem, czy bez niego — a to
+      // decyduje o tym, czy następny skan tego opakowania w ogóle go znajdzie.
+      komunikat(`Nie znam kodu ${kod}. Zrób zdjęcie tabeli z tyłu — zapiszę produkt `
+        + 'pod tym kodem i następnym razem znajdę go od razu.', true);
       ostatniKod = kod;
       return;
     }
@@ -2423,6 +2427,47 @@ async function ekranPrzepisu(id, zListy) {
 
 // Ekran produktu to teraz tylko nagłówek — resztą zajmuje się wspólny ekran
 // potwierdzenia, żeby każda droga dodawania kończyła się tak samo.
+// Po dodaniu produktu ze zdjęć trzeba WIDZIEĆ, czy komplet się zebrał — a przede
+// wszystkim, czy kod kreskowy przypiął się do tego, co właśnie odczytano. Bez tego
+// następne zeskanowanie tego samego opakowania znowu kończy się „nie znam tego
+// kodu", a człowiek nie ma jak sprawdzić dlaczego.
+function checklistProduktu(p, skad) {
+  const brak = [];
+  if (p.bialko === null || p.bialko === undefined) brak.push('białko');
+  if (p.tluszcz === null || p.tluszcz === undefined) brak.push('tłuszcz');
+  if (p.wegle === null || p.wegle === undefined) brak.push('węgle');
+  // Zero kalorii to poprawna wartość (woda), ale zero WSZĘDZIEJ znaczy zwykle,
+  // że tabela w ogóle się nie odczytała.
+  const pusteMakro = !Number(p.kcal) && !Number(p.bialko) && !Number(p.tluszcz) && !Number(p.wegle);
+  const wielkosc = Number(p.opak_g) || Number(p.porcja_g) || 0;
+
+  const pozycje = [
+    { ok: !!p.kod,
+      tak: 'Kod kreskowy przypisany: ' + (p.kod || ''),
+      nie: 'Bez kodu kreskowego — po zeskanowaniu tego opakowania trzeba będzie odczytać je od nowa' },
+    { ok: !brak.length && !pusteMakro,
+      tak: `Wartości na 100 g: ${zaokr(p.kcal)} kcal · B ${dziesietne(p.bialko)} · T ${dziesietne(p.tluszcz)} · W ${dziesietne(p.wegle)}`,
+      nie: pusteMakro ? 'Wszystkie wartości są zerowe — tabela chyba się nie odczytała'
+                      : 'Brakuje wartości: ' + brak.join(', ') },
+    { ok: !!wielkosc,
+      tak: Number(p.opak_g) ? `Opakowanie: ${zaokr(p.opak_g)} g`
+                            : `Porcja: ${zaokr(p.porcja_g)} g${p.opis_porcji ? ' (' + e(p.opis_porcji) + ')' : ''}`,
+      nie: 'Nie znamy wielkości opakowania — porcję trzeba będzie podawać w gramach' },
+  ];
+
+  // Przy komplecie i zwykłym skanie nie zaśmiecamy ekranu. Pokazujemy, gdy
+  // czegoś brakuje albo gdy produkt właśnie powstał z odczytu etykiety —
+  // czyli dokładnie wtedy, gdy człowiek chce mieć pewność, że się udało.
+  const czegosBrak = pozycje.some((x) => !x.ok);
+  if (!czegosBrak && skad !== 'etykieta') return '';
+
+  return `<div class="komunikat" style="text-align:left;line-height:1.55">
+    <b>${czegosBrak ? 'Sprawdź, czego brakuje' : 'Produkt zapisany — komplet'}</b><br>
+    ${pozycje.map((x) => `<span style="color:${x.ok ? 'var(--muted)' : 'var(--zle, #c0392b)'}">
+      ${x.ok ? '✓' : '✗'} ${x.ok ? x.tak : x.nie}</span>`).join('<br>')}
+  </div>`;
+}
+
 function ekranProduktu(p, skad, niepelne) {
   const zrodla = { off: 'Open Food Facts · zapisano u Was', wlasna: 'Wasza baza',
                    etykieta: 'Odczytane z etykiety', baza: 'Produkt podstawowy' };
@@ -2440,7 +2485,7 @@ function ekranProduktu(p, skad, niepelne) {
       <h3>${e(p.nazwa)}</h3>
       <div class="op">${podpisWielkosci(p)}${zaokr(p.kcal)} kcal / 100 g</div>
       <div class="zrodlo">${e(zrodla[skad] || 'Wasza baza')}</div>
-    </div>${ostrzezenie}`;
+    </div>${ostrzezenie}${checklistProduktu(p, skad)}`;
   // Domyślnie 100 g. Wcześniej domyślną porcją było CAŁE opakowanie —
   // zeskanowanie kilograma ryżu i szybkie „Dodaj" zapisywało 3500 kcal.
   // Całe opakowanie ma sens tylko przy małych (jogurt, batonik).
