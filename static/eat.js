@@ -102,6 +102,26 @@ function pogrupuj(wpisy) {
   return wynik;
 }
 
+// Formy dla 2–4 sztuk („2 sztuki", nie „2 sztuka"). Lista pokrywa wszystkie
+// jednostki z bazy surowców; dla czegokolwiek spoza niej wypisujemy „2 × …",
+// co jest brzydsze, ale nigdy nie jest błędem językowym.
+const JEDN_MNOGA = {
+  'porcja': 'porcje', 'sztuka': 'sztuki', 'łyżka': 'łyżki', 'garść': 'garście',
+  'szklanka': 'szklanki', 'kromka': 'kromki', 'puszka': 'puszki',
+  'plaster': 'plastry', 'łyżeczka': 'łyżeczki', 'kubek': 'kubki',
+  'talerz': 'talerze', 'kawałek': 'kawałki', 'połówka': 'połówki',
+  'opakowanie': 'opakowania', 'kieliszek': 'kieliszki', 'ząbek': 'ząbki',
+  'trójkącik': 'trójkąciki', 'filiżanka': 'filiżanki', 'butelka': 'butelki',
+};
+
+function etykJednostki(n, jedn) {
+  const nazwa = jedn || 'porcja';
+  if (n === 1) return '1 ' + nazwa;
+  if (n < 1) return '½ ' + nazwa;
+  const mnoga = JEDN_MNOGA[nazwa.toLowerCase()];
+  return mnoga ? n + ' ' + mnoga : n + ' × ' + nazwa;
+}
+
 // Podpis wielkości pod nazwą produktu. Opakowanie wolno wspomnieć TYLKO wtedy,
 // gdy produkt naprawdę je ma — pomidor z bazy surowców żadnego nie ma, a mimo to
 // dostawał dopisek „opakowanie 120 g", bo waga sztuki szła do pola opak_g.
@@ -1051,7 +1071,11 @@ function dyktuj() {
   zatrzymajSkaner();
   if (sluchacz) return;   // drugie stuknięcie nie tworzy drugiego nasłuchu
   const Rozpoznawanie = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!Rozpoznawanie) { komunikat('Ta przeglądarka nie obsługuje dyktowania. Wpisz z klawiatury.', true); return; }
+  if (!Rozpoznawanie) {
+    komunikat('Ta przeglądarka nie obsługuje dyktowania. Na iPhonie działa tylko '
+      + 'klawiaturowy mikrofon iOS — stuknij pole i użyj go. Na Androidzie użyj Chrome.', true);
+    return;
+  }
   const btn = arkusz.querySelector('#ark-mik');
   const pole = arkusz.querySelector('#ark-szukaj');
   const r = new Rozpoznawanie();
@@ -1065,9 +1089,31 @@ function dyktuj() {
     komunikat('');
     wyslijOpis(pole.value);
   };
-  r.onerror = () => komunikat('Nie usłyszałem. Spróbuj jeszcze raz.', true);
+  // Jeden komunikat na wszystko znaczył, że „nie działa" mogło być pięcioma
+  // różnymi rzeczami naraz: brakiem zgody na mikrofon, ciszą, brakiem sieci
+  // albo zablokowaną usługą rozpoznawania. Bez rozróżnienia nie da się tego
+  // naprawić po stronie użytkownika.
+  const POWODY = {
+    'not-allowed': 'Przeglądarka nie ma zgody na mikrofon. Kłódka przy adresie → Mikrofon → Zezwalaj.',
+    'service-not-allowed': 'System nie zezwolił na rozpoznawanie mowy. Sprawdź uprawnienia mikrofonu.',
+    'no-speech': 'Nic nie usłyszałem. Stuknij mikrofon i mów wyraźniej.',
+    'audio-capture': 'Nie znalazłem mikrofonu.',
+    'network': 'Rozpoznawanie mowy wymaga internetu i właśnie go nie ma.',
+    'aborted': '',
+  };
+  r.onerror = (ev) => {
+    const kod = (ev && ev.error) || '';
+    if (kod === 'aborted') return;          // sami przerwaliśmy, to nie błąd
+    komunikat(POWODY[kod] || ('Dyktowanie nie zadziałało (' + (kod || 'nieznany błąd') + ').'), true);
+  };
   r.onend = () => { sluchacz = null; btn.classList.remove('slucha'); };
-  r.start();
+  try {
+    r.start();
+  } catch (err) {
+    sluchacz = null;
+    btn.classList.remove('slucha');
+    komunikat('Nie udało się uruchomić dyktowania: ' + (err && err.message || err), true);
+  }
 }
 
 // ── ekran potwierdzenia (wspólny dla wszystkich dróg) ───────────────────────
@@ -1147,9 +1193,9 @@ function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
     const porcjaG = Number(na100.porcja_g) || 0;
     if (porcjaG) {
       const nazwaJedn = na100.opis_porcji || 'porcja';
-      warianty.push({ etyk: '1 ' + nazwaJedn, g: g1(porcjaG) });
-      warianty.push({ etyk: '2 ' + nazwaJedn, g: g1(porcjaG * 2) });
-      warianty.push({ etyk: '½ ' + nazwaJedn, g: g1(porcjaG / 2) });
+      warianty.push({ etyk: etykJednostki(1, nazwaJedn), g: g1(porcjaG) });
+      warianty.push({ etyk: etykJednostki(2, nazwaJedn), g: g1(porcjaG * 2) });
+      warianty.push({ etyk: etykJednostki(0.5, nazwaJedn), g: g1(porcjaG / 2) });
     }
     if (opak) {
       warianty.push({ etyk: 'całe opak.', g: g1(opak) });
@@ -1463,9 +1509,9 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja, wa
   if (na100 && na100.porcja_g) {
     const j = Number(na100.porcja_g);
     const nazwaJ = na100.opis_porcji || 'porcja';
-    porcje.push({ etyk: '1 ' + nazwaJ, g: Math.round(j * 10) / 10 });
-    porcje.push({ etyk: '2 ' + nazwaJ, g: Math.round(j * 2 * 10) / 10 });
-    porcje.push({ etyk: '½ ' + nazwaJ, g: Math.round(j / 2 * 10) / 10 });
+    porcje.push({ etyk: etykJednostki(1, nazwaJ), g: Math.round(j * 10) / 10 });
+    porcje.push({ etyk: etykJednostki(2, nazwaJ), g: Math.round(j * 2 * 10) / 10 });
+    porcje.push({ etyk: etykJednostki(0.5, nazwaJ), g: Math.round(j / 2 * 10) / 10 });
   }
   if (na100 && na100.opak_g) {
     porcje.push({ etyk: 'całe opak.', g: Math.round(na100.opak_g) });
