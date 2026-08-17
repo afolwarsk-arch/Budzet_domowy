@@ -49,13 +49,17 @@
        i nie było wiadomo, czy stuknięcie w ogóle zadziałało. Teraz kółko wypełnia
        się na zielono, wiersz odsuwa się w prawo, a ten, który wylądował w koszyku,
        na moment podświetla obwódkę, żeby wzrok za nim nadążył. */
+    /* Kierunek NIE jest dowolny: sekcja „W koszyku" leży POD listą, więc pozycja
+       ma opaść w dół, a nie odjechać w bok. Najpierw drobne uniesienie — tak jak
+       podnosi się rzecz z półki — potem przyspieszający spadek i zmniejszenie,
+       które czyta się jako „wpadło do środka". */
     @keyframes lz-do-koszyka {
-      0%   { transform: none;              opacity: 1; }
-      25%  { transform: translateX(-3px);  opacity: 1; }
-      100% { transform: translateX(26px);  opacity: 0; }
+      0%   { transform: none;                          opacity: 1; }
+      22%  { transform: translateY(-5px) scale(1.015); opacity: 1; }
+      100% { transform: translateY(30px) scale(.90);   opacity: 0; }
     }
-    .lz-row.lz-idzie { animation: lz-do-koszyka 260ms cubic-bezier(.4,0,.6,1) forwards;
-                       pointer-events: none; }
+    .lz-row.lz-idzie { animation: lz-do-koszyka 300ms cubic-bezier(.36,0,.78,.24) forwards;
+                       pointer-events: none; transform-origin: 50% 100%; }
     .lz-row.lz-idzie .lz-check { background: var(--good); border-color: var(--good);
                        transform: scale(1.12); transition: background 140ms ease,
                        border-color 140ms ease, transform 140ms ease; }
@@ -356,7 +360,7 @@ async function toggle(it, rowEl) {
   const plynnie = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (doKoszyka && rowEl && plynnie) {
     rowEl.classList.add('lz-idzie');
-    await new Promise((r) => setTimeout(r, 240));
+    await new Promise((r) => setTimeout(r, 280));   // ciut krócej niż animacja
   }
   it.kupione = !it.kupione;
   wlozoneDoKoszyka = doKoszyka ? String(it.id) : null;
