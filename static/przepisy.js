@@ -645,7 +645,15 @@ function ekranSkladnika(gotowe, stan) {
     <div id="ark-komunikat"></div>
     <button class="cta" id="dodaj-r" type="button">Dodaj składnik</button>`;
 
-  const zatrzymaj = () => { if (window.Skaner) window.Skaner.stop(); };
+  // Zatrzymanie kamery ORAZ schowanie podglądu. Sam Skaner.stop() gasi tylko
+  // strumień — ramka z obrazem zostawała na ekranie i wisiała nad wszystkim,
+  // nawet gdy przechodziłeś na wyszukiwanie albo na inną drogę. Dlatego woła
+  // to KAŻDA droga, a nie tylko zamknięcie arkusza.
+  const zatrzymaj = () => {
+    if (window.Skaner) window.Skaner.stop();
+    const podglad = ark.querySelector('#skl-skaner');
+    if (podglad) podglad.style.display = 'none';
+  };
   ark.querySelector('#zamknij').onclick = () => { zatrzymaj(); zamknijArkusz(); };
   ark.querySelector('#wroc').onclick = () => { zatrzymaj(); otworzEdytorZeStanem(stan); };
 
@@ -728,6 +736,7 @@ function ekranSkladnika(gotowe, stan) {
   };
 
   ark.querySelector('#skl-przepis').onclick = async () => {
+    zatrzymaj();                       // kamera nie ma wisieć nad listą dań
     const box = ark.querySelector('#skl-przepisy');
     if (box.style.display === 'block') { box.style.display = 'none'; return; }
     box.style.display = 'block';
@@ -845,6 +854,7 @@ function ekranSkladnika(gotowe, stan) {
   };
 
   szukajka.addEventListener('input', async () => {
+    zatrzymaj();                       // zacząłeś pisać — skanowanie przestaje mieć sens
     const fraza = szukajka.value.trim();
     const moje = ++licznik;
     if (fraza.length < 3) { ark.querySelector('#wyniki').innerHTML = ''; return; }
@@ -867,11 +877,16 @@ function ekranSkladnika(gotowe, stan) {
     } catch { rysujWyniki(lokalne, false); }
   });
 
+  // Wpisywanie wprost też kończy skanowanie: bez tego kamera chodziła dalej po
+  // opuszczeniu ekranu, bo `gotowe()` tylko podmienia zawartość arkusza.
+  ark.querySelector('#r-nazwa').addEventListener('focus', zatrzymaj);
+
   ark.querySelector('#dodaj-r').onclick = () => {
     const nazwa = ark.querySelector('#r-nazwa').value.trim();
     const gram = zPola(ark.querySelector('#r-gram'));
     if (!nazwa) { komunikat('Podaj nazwę składnika.', true); return; }
     if (!gram) { komunikat('Podaj gramaturę.', true); return; }
+    zatrzymaj();
     gotowe({
       produkt_id: null, nazwa, ilosc_g: gram,
       kcal: zPola(ark.querySelector('#r-kcal')),
