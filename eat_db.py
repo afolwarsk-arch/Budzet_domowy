@@ -65,6 +65,30 @@ def init_eat_db() -> None:
         # którego nie ma, zamiast dać przycisk „1 sztuka".
         cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS porcja_g NUMERIC(7,1)")
         cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS opis_porcji TEXT")
+        # Jednorazowa naprawa danych z Open Food Facts. Tam wielkość opakowania
+        # i wielkość porcji wpisują ludzie i regularnie je mylą — zmierzone na
+        # majonezie Remia 8710448636939, gdzie product_quantity=15 przy
+        # serving_quantity=15. Apka pokazywała wtedy „całe opak. 15 g" jako fakt.
+        #
+        # Liczby NIE kasujemy: 15 g to prawdziwa wielkość porcji, siedziała tylko
+        # w złym polu. Przenosimy ją do porcja_g i zwalniamy opak_g, bo wielkości
+        # opakowania po prostu nie znamy.
+        #
+        # Próg 20 g: opakowanie lżejsze nie istnieje praktycznie dla niczego poza
+        # saszetką czy gumą, a przy nich „1 porcja" i tak niesie tyle samo co
+        # „całe opakowanie". Warunek porcja_g IS NULL chroni dane już poprawne,
+        # a po wykonaniu żaden wiersz nie spełnia już warunku — więc ponowny
+        # start aplikacji nic nie zmienia.
+        cur.execute("""
+            UPDATE eat_produkty
+               SET porcja_g = opak_g,
+                   opis_porcji = COALESCE(opis_porcji, 'porcja'),
+                   opak_g = NULL
+             WHERE zrodlo = 'off' AND opak_g IS NOT NULL
+               AND opak_g < 20 AND porcja_g IS NULL
+        """)
+        if cur.rowcount:
+            print(f"[eat] naprawiono wielkosc opakowania w {cur.rowcount} produktach z OFF")
         # Ulubione przypina się RĘCZNIE, w odróżnieniu od „ostatnio jadłeś", które
         # zgaduje po dacie. Owsianka jedzona co drugi dzień wypadała z tamtej listy
         # dokładnie w dni, kiedy była potrzebna — tu decyduje człowiek, nie sort.
