@@ -1,4 +1,4 @@
-﻿// wiem.eat — dziennik jedzenia.
+// wiem.eat — dziennik jedzenia.
 //
 // Cała logika strony /eat. Osobny plik, nie doklejamy do app.js (1400 linii
 // finansów) — sekcje mają się nie mieszać.
@@ -470,6 +470,18 @@ function zamknijArkusz(zHistorii) {
   }
 }
 
+// Powrót z podekranu (porcje, przepisy, historia) do listy dróg.
+//
+// NIE wolno tu użyć zamknijArkusz() + otworzArkusz(): zamknijArkusz woła
+// history.back(), które działa ASYNCHRONICZNIE. Nowy arkusz zdążył się otworzyć
+// i zrobić pushState, a spóźniony popstate trafiał w niego i gasił wszystko —
+// strzałka „wróć" zamykała cały ekran zamiast cofać o krok.
+function wrocDoArkusza() {
+  const posilek = posilekDocelowy;
+  zamknijArkusz(true);      // bez ruszania historii
+  otworzArkusz(posilek);    // pushState pominie, bo wpis {ark:1} nadal stoi
+}
+
 window.addEventListener('popstate', () => { if (arkusz) zamknijArkusz(true); });
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && arkusz) zamknijArkusz();
@@ -553,7 +565,14 @@ function otworzArkusz(posilek) {
   document.body.appendChild(arkusz);
   // W trybie aplikacji „wstecz" jest podstawowym gestem zamykania. Bez wpisu w
   // historii wychodziło z modułu i kasowało wypełniony formularz.
-  try { history.pushState({ ark: 1 }, ''); } catch {}
+  //
+  // Wpis dokładamy tylko wtedy, gdy jeszcze go nie ma. Przy powrocie z podekranu
+  // (wrocDoArkusza) arkusz jest przebudowywany, a jego wpis w historii cały czas
+  // stoi — drugi pushState zostawiłby martwy wpis i „wstecz" trzeba by klikać
+  // tyle razy, przez ile podekranów się przeszło.
+  try {
+    if (!(history.state && history.state.ark)) history.pushState({ ark: 1 }, '');
+  } catch {}
   arkusz.addEventListener('click', (ev) => { if (ev.target === arkusz) zamknijArkusz(); });
   arkusz.querySelector('#ark-x').onclick = zamknijArkusz;
   arkusz.querySelector('#d-skan').onclick = uruchomSkaner;
@@ -1206,7 +1225,7 @@ function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
       T <b>${dziesietne(na100.tluszcz || 0)}</b> ·
       W <b>${dziesietne(na100.wegle || 0)}</b></div>`}`;
 
-  ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+  ark.querySelector('#wroc').onclick = () => { wrocDoArkusza(); };
   ark.querySelector('#zamknij2').onclick = zamknijArkusz;
 
   // Zwinięta linijka musi mówić, DO CZEGO trafi wpis — inaczej ukrycie wyboru
@@ -1583,8 +1602,7 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja, wa
         if (!r.ok) { wiersz.classList.add('blad'); return; }
         const p = await r.json();
         // Przerysowujemy ekran, żeby doszły przyciski „1 szt." i „2 szt.".
-        zamknijArkusz();
-        otworzArkusz(posilekDocelowy);
+        wrocDoArkusza();
         ekranProduktu(p, 'wlasna');
       } catch { wiersz.classList.add('blad'); }
     };
@@ -1609,7 +1627,7 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja, wa
     posilekDocelowy = b.dataset.p;
   };
   const wroc = ark.querySelector('#wroc');
-  if (wroc) wroc.onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+  if (wroc) wroc.onclick = () => { wrocDoArkusza(); };
   ark.querySelector('#zamknij2').onclick = zamknijArkusz;
 
   const kasuj = ark.querySelector('#usun-wpis');
@@ -1687,7 +1705,7 @@ function ekranBledu(tekst) {
     <div class="komunikat blad">${e(tekst)}</div>
     <button class="cta" id="wroc-b" type="button">Spróbuj inaczej</button>`;
   ark.querySelector('#zamknij-b').onclick = () => zamknijArkusz();
-  ark.querySelector('#wroc-b').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+  ark.querySelector('#wroc-b').onclick = () => { wrocDoArkusza(); };
 }
 
 // ── dziennik jako źródło: chodzenie po dniach ───────────────────────────────
@@ -1723,7 +1741,7 @@ async function ekranHistorii(iso, filtr) {
       <div class="szukaj"><input type="text" id="h-filtr" placeholder="Zawęź w tym dniu" autocomplete="off"></div>
       <div id="h-lista"><div class="komunikat">Wczytuję…</div></div>
       <div id="ark-komunikat"></div>`;
-    ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+    ark.querySelector('#wroc').onclick = () => { wrocDoArkusza(); };
     ark.querySelector('#zamknij2').onclick = () => zamknijArkusz();
     ark.querySelector('#h-filtr').addEventListener('input', (ev) => {
       // Filtr działa na już pobranym dniu, więc bez opóźnienia i bez żądania.
@@ -1817,7 +1835,7 @@ async function ekranListyPrzepisow(fraza) {
       <div class="szukaj"><input type="text" id="lp-szukaj" placeholder="Szukaj wśród przepisów" autocomplete="off"></div>
       <div id="lp-lista"><div class="komunikat">Wczytuję…</div></div>
       <div id="ark-komunikat"></div>`;
-    ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+    ark.querySelector('#wroc').onclick = () => { wrocDoArkusza(); };
     ark.querySelector('#zamknij2').onclick = () => zamknijArkusz();
     let cisza = null;
     ark.querySelector('#lp-szukaj').addEventListener('input', (ev) => {
@@ -1934,7 +1952,7 @@ function ekranZPrzodu(d) {
     <div id="ark-komunikat"></div>`;
 
   ark.querySelector('#zamknij2').onclick = () => zamknijArkusz();
-  ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+  ark.querySelector('#wroc').onclick = () => { wrocDoArkusza(); };
   // Nazwa i liczba sztuk z przodu doklejają się do produktu odczytanego z tyłu —
   // tamta tabela nie zawiera ani jednego, ani drugiego.
   odczytZPrzodu = o;
@@ -2090,8 +2108,7 @@ async function ekranPrzepisu(id, zListy) {
   };
   pole('#wroc').onclick = () => {
     if (zListy) { ekranListyPrzepisow(''); return; }
-    zamknijArkusz();
-    otworzArkusz(posilekDocelowy);
+    wrocDoArkusza();
   };
   pole('#zamknij2').onclick = () => zamknijArkusz();
 
@@ -2282,7 +2299,7 @@ function ekranPozycji(pozycje, opis) {
     b.setAttribute('aria-pressed', 'true');
     posilekDocelowy = b.dataset.p;
   };
-  ark.querySelector('#wroc').onclick = () => { zamknijArkusz(); otworzArkusz(posilekDocelowy); };
+  ark.querySelector('#wroc').onclick = () => { wrocDoArkusza(); };
   ark.querySelector('#zamknij2').onclick = zamknijArkusz;
 
   ark.querySelector('#dodaj-wsz').onclick = async (ev) => {
