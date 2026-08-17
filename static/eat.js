@@ -203,6 +203,8 @@ function kartaGrupy(g) {
       <button class="mini-btn" data-przepis="${g.grupa}" data-nazwa="${e(g.nazwa)}"
               data-kcal="${Math.round(suma)}"
               type="button" style="margin:4px 0 2px 12px">Zapisz jako przepis</button>
+      <button class="mini-btn" data-rozlacz="${g.grupa}"
+              type="button" style="margin:4px 0 2px 6px">Rozłącz</button>
     </div>
   </div>`;
 }
@@ -211,26 +213,128 @@ function kartaGrupy(g) {
 // nie zwijało wszystkiego z powrotem.
 const grupyOtwarte = new Set();
 
+// Tryb scalania: { posilek, zazn: Set(id) }. Nie zakładamy z góry, że coś jest
+// daniem — wrzucasz składniki tak, jak je skanujesz, a dopiero potem zaznaczasz
+// te, które poszły na jeden talerz.
+let trybScalania = null;
+
+function wierszDoScalenia(w, zaznaczony) {
+  return `<label class="poz" style="cursor:pointer">
+    <input type="checkbox" data-scal="${w.id}" ${zaznaczony ? 'checked' : ''}
+           style="margin-right:10px;width:20px;height:20px;flex:0 0 auto">
+    <span class="nz">${e(w.nazwa)}</span>
+    <span class="il">${e(w.opis_porcji || dziesietne(w.ilosc_g) + ' g')}</span>
+    <span class="kc">${zaokr(w.kcal)}</span>
+  </label>`;
+}
+
 function rysujPosilki() {
   const box = document.getElementById('posilki');
   box.innerHTML = POSILKI.map(([klucz, nazwa]) => {
     const wpisy = (stanDnia.posilki && stanDnia.posilki[klucz]) || [];
     const suma = wpisy.reduce((s, w) => s + Number(w.kcal || 0), 0);
+
+    if (trybScalania && trybScalania.posilek === klucz) {
+      // Scalać da się tylko pozycje luźne — te, które już są w daniu, mają
+      // własną grupę i najpierw trzeba je rozłączyć.
+      const luzne = wpisy.filter((w) => !w.grupa_id);
+      const zazn = trybScalania.zazn;
+      const wybrane = luzne.filter((w) => zazn.has(String(w.id)));
+      const kcalWybranych = wybrane.reduce((s, w) => s + Number(w.kcal || 0), 0);
+      return `<div class="posilek">
+        <div class="pgl"><b>${nazwa}</b><span class="sum">Zaznacz składniki dania</span></div>
+        ${luzne.map((w) => wierszDoScalenia(w, zazn.has(String(w.id)))).join('')}
+        <div style="padding:10px 12px">
+          <input type="text" id="scal-nazwa" maxlength="120" style="width:100%;margin-bottom:8px"
+                 placeholder="Nazwa dania, np. Obiad z kurczakiem"
+                 value="${e(trybScalania.nazwa || '')}">
+          <div class="komunikat" style="margin:0 0 8px">
+            ${wybrane.length ? `Wybrano ${wybrane.length} — razem <b>${zaokr(kcalWybranych)} kcal</b>.`
+              : 'Zaznacz co najmniej dwie pozycje.'}
+          </div>
+          <button class="mini-btn" id="scal-ok" type="button"
+                  ${wybrane.length < 2 ? 'disabled' : ''}>Scal w danie</button>
+          <button class="mini-btn" id="scal-anuluj" type="button">Anuluj</button>
+        </div>
+      </div>`;
+    }
     // Treść wiersza to prawdziwy <button>, a nie div z role="button": krzyżyk
     // obok jest osobnym przyciskiem, a przycisk w przycisku to nieprawidłowy
     // HTML i klawiatura gubi się w nim. Kliknięcie w treść otwiera edycję —
     // najczęstsza poprawka to gramatura („dodałem 100 g, a zjadłem 180"),
     // więc nie chowamy jej pod dodatkową ikonką.
     const wiersze = pogrupuj(wpisy).map((el) => (el.grupa ? kartaGrupy(el) : wiersz(el.wpis))).join('');
+    // „Scal" pokazujemy dopiero, gdy jest co scalać — przy jednej pozycji
+    // przycisk tylko zabierałby miejsce.
+    const luznych = wpisy.filter((w) => !w.grupa_id).length;
     return `<div class="posilek">
       <div class="pgl"><b>${nazwa}</b><span class="sum">${suma ? zaokr(suma) + ' kcal' : '—'}</span></div>
       ${wiersze}
       <button class="dodaj-mini" data-dodaj="${klucz}" type="button">+ Dodaj</button>
+      ${luznych > 1 ? `<button class="mini-btn" data-scalaj="${klucz}" type="button"
+              style="margin:2px 0 8px 12px">Scal w danie</button>` : ''}
     </div>`;
   }).join('');
 
   box.querySelectorAll('[data-dodaj]').forEach((b) => {
     b.onclick = () => otworzArkusz(b.dataset.dodaj);
+  });
+
+  // ── scalanie pozycji w danie ──
+  box.querySelectorAll('[data-scalaj]').forEach((b) => {
+    b.onclick = () => {
+      trybScalania = { posilek: b.dataset.scalaj, zazn: new Set(), nazwa: '' };
+      rysujPosilki();
+    };
+  });
+  box.querySelectorAll('[data-scal]').forEach((c) => {
+    c.onchange = () => {
+      if (!trybScalania) return;
+      // Nazwę czytamy PRZED przerysowaniem, inaczej to, co wpisałeś, znika
+      // przy pierwszym stuknięciu w kratkę.
+      const polaN = document.getElementById('scal-nazwa');
+      if (polaN) trybScalania.nazwa = polaN.value;
+      const id = c.dataset.scal;
+      if (c.checked) trybScalania.zazn.add(id); else trybScalania.zazn.delete(id);
+      rysujPosilki();
+    };
+  });
+  const anuluj = document.getElementById('scal-anuluj');
+  if (anuluj) anuluj.onclick = () => { trybScalania = null; rysujPosilki(); };
+  const nazwaPole = document.getElementById('scal-nazwa');
+  if (nazwaPole) {
+    nazwaPole.oninput = () => { if (trybScalania) trybScalania.nazwa = nazwaPole.value; };
+  }
+  const scalOk = document.getElementById('scal-ok');
+  if (scalOk) {
+    scalOk.onclick = async () => {
+      if (!trybScalania || trybScalania.zazn.size < 2) return;
+      scalOk.disabled = true;
+      const ids = [...trybScalania.zazn].map(Number);
+      const nazwa = (trybScalania.nazwa || '').trim();
+      try {
+        const r = await authFetch('/api/eat/wpisy/scal', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids, nazwa }),
+        });
+        if (!r.ok) { scalOk.disabled = false; return; }
+        const d = await r.json();
+        trybScalania = null;
+        // Świeżo scalone danie otwieramy — widać od razu, co się w nim znalazło.
+        if (d.grupa_id) grupyOtwarte.add(d.grupa_id);
+        await wczytajDzien();
+      } catch { scalOk.disabled = false; }
+    };
+  }
+  box.querySelectorAll('[data-rozlacz]').forEach((b) => {
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const r = await authFetch('/api/eat/grupa/' + b.dataset.rozlacz + '/rozlacz',
+                                  { method: 'POST' });
+        if (r.ok) await wczytajDzien(); else b.disabled = false;
+      } catch { b.disabled = false; }
+    };
   });
   box.querySelectorAll('[data-usun]').forEach((b) => {
     b.onclick = async () => {

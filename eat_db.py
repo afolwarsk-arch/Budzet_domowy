@@ -576,6 +576,35 @@ def get_grupe(grupa_id: str, household_id: int, user_id: int) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def scal_wpisy(household_id: int, user_id: int, ids: list[int],
+               grupa_id: str, grupa_nazwa: str) -> int:
+    """Spina wybrane wpisy w jedno danie. Zwraca liczbę objętych wpisów.
+
+    Nie tworzy przepisu — nadaje tylko `grupa_id`, czyli dokładnie to samo, co
+    zakłada danie rozłożone przez AI. Dzięki temu „Zapisz jako przepis" działa
+    na scalonym daniu od razu, bez osobnej ścieżki.
+
+    Warunek na household i user jest w zapytaniu, więc podanie cudzego id nic
+    nie da — po prostu nie zostanie zaktualizowane."""
+    if not ids:
+        return 0
+    with get_db() as cur:
+        cur.execute("""UPDATE eat_wpisy SET grupa_id=%s, grupa_nazwa=%s
+                       WHERE id = ANY(%s) AND household_id=%s AND user_id=%s""",
+                    (grupa_id, grupa_nazwa, list(ids), household_id, user_id))
+        return cur.rowcount
+
+
+def rozlacz_grupe(grupa_id: str, household_id: int, user_id: int) -> int:
+    """Rozbija danie z powrotem na osobne wpisy. Nic nie kasuje — zdejmuje
+    tylko przynależność do grupy, więc pomyłka przy scalaniu jest odwracalna."""
+    with get_db() as cur:
+        cur.execute("""UPDATE eat_wpisy SET grupa_id=NULL, grupa_nazwa=NULL
+                       WHERE grupa_id=%s AND household_id=%s AND user_id=%s""",
+                    (grupa_id, household_id, user_id))
+        return cur.rowcount
+
+
 def get_wpis(wpis_id: int, household_id: int, user_id: int) -> dict | None:
     with get_db() as cur:
         cur.execute("SELECT * FROM eat_wpisy WHERE id=%s AND household_id=%s AND user_id=%s",

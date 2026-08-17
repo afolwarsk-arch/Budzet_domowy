@@ -711,6 +711,44 @@ def dodaj_grupe(body: dict, current_user: dict = Depends(get_current_user)):
     return {"grupa_id": grupa_id, "wpisy": zapisane}
 
 
+@router.post("/wpisy/scal", status_code=201)
+def scal_wpisy(body: dict, current_user: dict = Depends(get_current_user)):
+    """Kilka pojedynczych pozycji w dzienniku → jedno danie.
+
+    Nie zakładamy z góry, że coś jest daniem: wrzucasz składniki po kolei tak,
+    jak je skanujesz, a dopiero potem zaznaczasz te, które poszły na jeden
+    talerz. Powstaje zwykła grupa — ta sama, którą tworzy AI przy „opisz
+    słowami" — więc „Zapisz jako przepis" działa na tym bez żadnej nowej drogi.
+    """
+    surowe = body.get("ids") or []
+    if not isinstance(surowe, list) or len(surowe) < 2:
+        raise HTTPException(400, "Zaznacz co najmniej dwie pozycje")
+    if len(surowe) > 60:
+        raise HTTPException(400, "Za dużo pozycji naraz")
+    try:
+        ids = [int(x) for x in surowe]
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Nieprawidłowe identyfikatory pozycji")
+
+    nazwa = (body.get("nazwa") or "").strip()[:120] or "Danie"
+    grupa_id = uuid.uuid4().hex
+    ile = eat_db.scal_wpisy(_hid(current_user), current_user["user_id"],
+                            ids, grupa_id, nazwa)
+    if not ile:
+        raise HTTPException(404, "Nie znaleziono tych pozycji")
+    return {"grupa_id": grupa_id, "nazwa": nazwa, "scalono": ile}
+
+
+@router.post("/grupa/{grupa_id}/rozlacz")
+def rozlacz_grupe(grupa_id: str, current_user: dict = Depends(get_current_user)):
+    """Rozbija danie z powrotem na osobne pozycje — nic nie kasuje, więc
+    pomyłka przy scalaniu nie kosztuje wpisów."""
+    ile = eat_db.rozlacz_grupe(grupa_id, _hid(current_user), current_user["user_id"])
+    if not ile:
+        raise HTTPException(404, "Nie znaleziono grupy")
+    return {"ok": True, "rozlaczono": ile}
+
+
 @router.delete("/grupa/{grupa_id}")
 def usun_grupe(grupa_id: str, current_user: dict = Depends(get_current_user)):
     """Kasuje całe danie naraz — po rozłożeniu na składniki nikt nie chce
