@@ -991,107 +991,36 @@ function rysujWyniki(fraza, przepisy, wlasne, podstawowe, propozycje, offPadlo, 
 
 // ── skanowanie kodu ─────────────────────────────────────────────────────────
 
-let strumien = null, skanujeDalej = false;
-// Bez tego druga próba w czasie pytania o zgodę na aparat tworzyła drugi
-// strumień, a pierwszy nigdy nie był zatrzymywany.
-let uruchamiamSkaner = false;
+// Kamerą i odczytem kodu zajmuje się wspólny moduł `eat-skaner.js` — ten sam,
+// z którego korzysta edytor przepisu. Wcześniej dziennik miał własną kopię tego
+// kodu i każda poprawka wymagała dwóch edycji w dwóch plikach.
+//
+// Zostaje tu wyłącznie to, co jest specyficzne dla dziennika: komunikaty,
+// ratunkowe wpisanie cyfr i to, co robimy z odczytanym kodem.
 
 function zatrzymajSkaner() {
-  skanujeDalej = false;
-  if (strumien) { strumien.getTracks().forEach((t) => t.stop()); strumien = null; }
+  if (window.Skaner) window.Skaner.stop();
+  const wrap = arkusz && arkusz.querySelector('#skaner-wrap');
+  if (wrap) wrap.style.display = 'none';
 }
 
 async function uruchomSkaner() {
-  // Straż przed drugim uruchomieniem. Pierwsze stuknięcie nie daje natychmiast
-  // efektu (czeka na zgodę na aparat), więc ludzie klikają drugi raz — a wtedy
-  // poprzedni strumień gubił się bez zatrzymania i kamera zostawała zajęta.
-  if (strumien || skanujeDalej || uruchamiamSkaner) return;
-  uruchamiamSkaner = true;
-  try {
-    await _uruchomSkaner();
-  } finally {
-    uruchamiamSkaner = false;
-  }
-}
-
-async function _uruchomSkaner() {
-
-  if (!('BarcodeDetector' in window)) {
-    komunikat('Ta przeglądarka nie umie czytać kodów. Zrób zdjęcie etykiety albo wpisz cyfry spod kreskówki.', true);
+  if (!window.Skaner) {
+    komunikat('Skaner się nie wczytał. Odśwież stronę albo zrób zdjęcie etykiety.', true);
     pokazReczneWpisanie();
     return;
   }
-
-  // Sam fakt, że BarcodeDetector istnieje, nie znaczy, że działa na tym
-  // telefonie ani że obsłuży wybrane formaty. Konstruktor rzuca — wcześniej
-  // stał poza try i wyjątek przepadał, zostawiając włączoną kamerę.
-  let detektor;
-  try {
-    let obslugiwane = ['ean_13', 'ean_8', 'upc_a', 'upc_e'];
-    if (BarcodeDetector.getSupportedFormats) {
-      const dostepne = await BarcodeDetector.getSupportedFormats();
-      obslugiwane = obslugiwane.filter((f) => dostepne.includes(f));
-    }
-    if (!obslugiwane.length) throw new Error('brak formatów');
-    detektor = new BarcodeDetector({ formats: obslugiwane });
-  } catch {
-    komunikat('Ten telefon nie umie czytać kodów kreskowych w przeglądarce. Zrób zdjęcie etykiety albo wpisz cyfry ręcznie.', true);
-    pokazReczneWpisanie();
-    return;
-  }
-
-  const wrap = arkusz.querySelector('#skaner-wrap');
-  const video = arkusz.querySelector('#skaner');
-  try {
-    strumien = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-  } catch {
-    komunikat('Nie mam dostępu do aparatu. Sprawdź uprawnienia strony.', true);
-    pokazReczneWpisanie();
-    return;
-  }
-  wrap.style.display = 'block';
-  video.srcObject = strumien;
-  await video.play().catch(() => {});
-  komunikat('');
-
-  // Po dziesięciu sekundach bez trafienia proponujemy wpisanie cyfr — bez tego
-  // przy słabym świetle albo pogniecionym opakowaniu zostaje wpatrywanie się
-  // w podgląd bez końca.
-  const ratunek = setTimeout(() => {
-    if (skanujeDalej) { komunikat('Nie widzę kodu. Podejdź bliżej albo wpisz cyfry spod kreskówki.', false); pokazReczneWpisanie(); }
-  }, 10000);
-
-  skanujeDalej = true;
-  (async function petla() {
-    let bledy = 0;
-    while (skanujeDalej) {
-      try {
-        const kody = await detektor.detect(video);
-        // Na opakowaniach obok EAN-13 bywa drugi kod (partia, waga). Bierzemy
-        // pierwszy, który wygląda na kod produktu, a nie pierwszy z brzegu.
-        const trafienie = kody.find((k) => /^\d{6,14}$/.test(String(k.rawValue || '').trim()));
-        if (trafienie) {
-          clearTimeout(ratunek);
-          zatrzymajSkaner();
-          wrap.style.display = 'none';
-          await poKodzie(String(trafienie.rawValue).trim());
-          return;
-        }
-      } catch {
-        // Gdy detect() sypie przy każdej klatce, nie kręcimy się w nieskończoność
-        if (++bledy > 20) {
-          clearTimeout(ratunek);
-          zatrzymajSkaner();
-          wrap.style.display = 'none';
-          komunikat('Odczyt kodu nie działa na tym telefonie. Wpisz cyfry albo zrób zdjęcie etykiety.', true);
-          pokazReczneWpisanie();
-          return;
-        }
-      }
-      await new Promise((r) => setTimeout(r, 250));
-    }
-    clearTimeout(ratunek);
-  })();
+  await window.Skaner.start({
+    video: arkusz.querySelector('#skaner'),
+    wrap: arkusz.querySelector('#skaner-wrap'),
+    onPodglad: () => komunikat(''),
+    onKod: (kod) => poKodzie(kod),
+    onBlad: (tekst) => { komunikat(tekst, true); pokazReczneWpisanie(); },
+    onCisza: () => {
+      komunikat('Nie widzę kodu. Podejdź bliżej albo wpisz cyfry spod kreskówki.', false);
+      pokazReczneWpisanie();
+    },
+  });
 }
 
 // Najtańsza droga ratunkowa: cyfry spod kreskówki da się przepisać zawsze.
