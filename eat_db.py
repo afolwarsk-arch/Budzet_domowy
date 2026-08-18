@@ -603,6 +603,30 @@ def get_grupe(grupa_id: str, household_id: int, user_id: int) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def produkty_bez_ocen(household_id: int, limit: int) -> list[dict]:
+    """Produkty z kodem, które nie mają jeszcze ocen z Open Food Facts.
+
+    Kolumny na oceny doszły później niż produkty, więc wszystko zapisane
+    wcześniej ma tam NULL — bez uzupełnienia wstecz statystyka pokazywałaby
+    100% „bez oceny" i wyglądała na zepsutą."""
+    with get_db() as cur:
+        cur.execute("""SELECT id, kod FROM eat_produkty
+                        WHERE household_id=%s AND kod IS NOT NULL
+                          AND nutriscore IS NULL AND nova IS NULL AND dodatki IS NULL
+                        ORDER BY id LIMIT %s""", (household_id, limit))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def ustaw_oceny(produkt_id: int, household_id: int, nutriscore, nova, dodatki) -> None:
+    with get_db() as cur:
+        cur.execute("""UPDATE eat_produkty
+                          SET nutriscore=COALESCE(%s, nutriscore),
+                              nova=COALESCE(%s, nova),
+                              dodatki=COALESCE(%s, dodatki)
+                        WHERE id=%s AND household_id=%s""",
+                    (nutriscore, nova, dodatki, produkt_id, household_id))
+
+
 def statystyki(household_id: int, user_id: int, dni: int, cel_kcal: float) -> dict:
     """Kalorie i białko dzień po dniu plus rozkład ocen zjedzonego jedzenia.
 

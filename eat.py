@@ -506,6 +506,47 @@ def dzien(data: str = Query(default=""), current_user: dict = Depends(get_curren
     return wynik
 
 
+@router.post("/produkty/uzupelnij-oceny")
+def uzupelnij_oceny(limit: int = Query(default=12),
+                    current_user: dict = Depends(get_current_user)):
+    """Dociąga Nutri-Score, NOVA i liczbę dodatków dla produktów zapisanych,
+    zanim te kolumny istniały.
+
+    Partiami, bo Open Food Facts odbija część zapytań i każde ma swój limit
+    czasu — jedno żądanie na całą bazę potrafiłoby wisieć minutami. Zwracamy,
+    ile zostało, żeby interfejs (albo człowiek) mógł zawołać ponownie."""
+    hid = _hid(current_user)
+    limit = max(1, min(30, limit))
+
+    # Te same reguły co przy zapisie produktu: Open Food Facts wstawia w pole
+    # oceny także „unknown" i „not-applicable", a to NIE jest ocena.
+    def _ns(v):
+        s = str(v or "").strip().lower()
+        return s if s in ("a", "b", "c", "d", "e") else None
+
+    def _int_z_zakresu(v, dozwolone):
+        try:
+            n = int(float(str(v)))
+        except (TypeError, ValueError):
+            return None
+        return n if n in dozwolone else None
+
+    do_zrobienia = eat_db.produkty_bez_ocen(hid, limit)
+    uzupelnione = 0
+    for p in do_zrobienia:
+        dane = _z_open_food_facts(p["kod"])
+        if not dane:
+            continue
+        ns = _ns(dane.get("nutriscore"))
+        nova = _int_z_zakresu(dane.get("nova"), (1, 2, 3, 4))
+        dodatki = _int_z_zakresu(dane.get("dodatki"), range(0, 100))
+        if ns or nova or dodatki is not None:
+            eat_db.ustaw_oceny(p["id"], hid, ns, nova, dodatki)
+            uzupelnione += 1
+    zostalo = len(eat_db.produkty_bez_ocen(hid, 200))
+    return {"sprawdzono": len(do_zrobienia), "uzupelnione": uzupelnione, "zostalo": zostalo}
+
+
 @router.get("/statystyki")
 def statystyki(dni: int = Query(default=7), current_user: dict = Depends(get_current_user)):
     """Kalorie i białko w czasie plus rozkład ocen tego, co zjedzone.
