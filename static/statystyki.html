@@ -53,6 +53,29 @@
                         rgba(128,128,128,.5) 3px 6px); }
     .stat-cel { position: absolute; left: 0; right: 0; height: 0;
                 border-top: 1px dashed var(--muted); opacity: .7; pointer-events: none; }
+    /* Słupek jest przyciskiem — zdejmujemy domyślny wygląd, zostawiamy wskaźnik
+       ogniskowania, bo po wykresie da się chodzić klawiaturą. */
+    button.stat-slupek { border: none; padding: 0; cursor: pointer; font: inherit; }
+    button.stat-slupek:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .stat-slupek.wybrany { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+    /* ── szczegóły wybranego dnia ── */
+    .dzien-karta { border: 1px solid var(--border); border-radius: 12px; padding: 12px 13px;
+                   background: var(--surface); margin: 4px 0 16px; }
+    .dk-gl { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+             margin-bottom: 8px; }
+    .dk-gl b { font-size: 14px; }
+    .dk-gl span { font-size: 15px; font-weight: 700; color: var(--heading);
+                  font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .dk-makro { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px;
+                color: var(--muted); }
+    .dk-makro em { font-style: normal; display: flex; align-items: center; gap: 7px; }
+    .dk-makro s { width: 10px; height: 10px; border-radius: 2px; text-decoration: none; flex: none; }
+    .dk-uwaga { font-size: 11.5px; color: var(--muted); line-height: 1.4; margin-top: 7px; }
+    .dk-przel { display: flex; align-items: flex-start; gap: 9px; margin-top: 11px;
+                padding-top: 10px; border-top: 1px solid var(--border-soft); cursor: pointer;
+                font-size: 12.5px; line-height: 1.4; }
+    .dk-przel input { width: 19px; height: 19px; flex: none; margin-top: 1px; cursor: pointer; }
     .stat-osie { display: flex; justify-content: space-between; font-size: 11px;
                  color: var(--muted); margin-bottom: 20px; }
 

@@ -76,8 +76,13 @@ async function rysuj() {
       // Wpis bez rozbicia na makro (np. danie z opisu) — jeden neutralny słupek,
       // żeby dzień nie zniknął z wykresu tylko dlatego, że nie znamy składu.
       : '<i class="cz-nieznane" style="flex:1"></i>';
-    return `<div class="stat-slupek${s.niepelny ? ' niepelny' : ''}${!s.kcal ? ' pusty' : ''}"
-                 style="height:${wysokosc}%" title="${opis}">${s.kcal ? srodek : ''}</div>`;
+    // Słupek jest PRZYCISKIEM: `title` działa tylko pod kursorem, a na telefonie
+    // kursora nie ma — bez stuknięcia liczby byłyby niedostępne tam, gdzie apka
+    // jest najczęściej używana.
+    return `<button class="stat-slupek${s.niepelny ? ' niepelny' : ''}${!s.kcal ? ' pusty' : ''}"
+                 type="button" data-i="${d.seria.indexOf(s)}"
+                 style="height:${wysokosc}%" title="${opis}"
+                 aria-label="${opis}">${s.kcal ? srodek : ''}</button>`;
   }).join('');
 
   const linia = cel ? `<div class="stat-cel" style="bottom:${cel / maks * 100}%"
@@ -96,6 +101,7 @@ async function rysuj() {
 
     <div class="stat-slupki">${linia}${slupki}</div>
     <div class="stat-osie"><span>${pierwszy}</span><span>dziś</span></div>
+    <div id="szczegoly-dnia"></div>
     <div class="stat-legenda" style="margin-bottom:16px">
       <em><s class="cz-b"></s>białko ${zaokr(d.srednia_bialko)} g${
         d.cel_bialko ? ' / ' + zaokr(d.cel_bialko) : ''}</em>
@@ -123,6 +129,70 @@ async function rysuj() {
       <br><small>Nutri-Score i NOVA pochodzą z Open Food Facts. To cudze, opublikowane skale —
       nie liczymy własnego wskaźnika „zdrowe/niezdrowe".</small>
     </div>`;
+
+  box.querySelectorAll('.stat-slupek[data-i]').forEach((b) => {
+    b.onclick = () => pokazDzien(d.seria[Number(b.dataset.i)], b);
+  });
+}
+
+// Szczegóły jednego dnia pod wykresem: liczby i przełącznik kompletności.
+// Zmiana oznaczenia przerysowuje CAŁY wykres, bo wpływa na średnie, na dni
+// w celu i na rozkład ocen — pokazywanie starych liczb obok nowego znaczka
+// byłoby myleniem samego siebie.
+let wybranyDzien = null;
+
+function pokazDzien(s, przycisk) {
+  const box = document.getElementById('szczegoly-dnia');
+  if (!box) return;
+  document.querySelectorAll('.stat-slupek.wybrany').forEach((x) => x.classList.remove('wybrany'));
+  // Drugie stuknięcie w ten sam słupek zamyka panel.
+  if (wybranyDzien === s.data) { wybranyDzien = null; box.innerHTML = ''; return; }
+  wybranyDzien = s.data;
+  if (przycisk) przycisk.classList.add('wybrany');
+
+  const dzien = new Date(s.data + 'T12:00:00')
+    .toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
+  const zMakro = s.kcal_bialko + s.kcal_tluszcz + s.kcal_wegle;
+
+  box.innerHTML = `
+    <div class="dzien-karta">
+      <div class="dk-gl"><b>${dzien}</b><span>${zaokr(s.kcal)} kcal</span></div>
+      ${s.kcal ? `<div class="dk-makro">
+        <em><s class="cz-b"></s>białko ${zaokr(s.bialko)} g · ${zaokr(s.kcal_bialko)} kcal</em>
+        <em><s class="cz-t"></s>tłuszcz ${zaokr(s.tluszcz)} g · ${zaokr(s.kcal_tluszcz)} kcal</em>
+        <em><s class="cz-w"></s>węglowodany ${zaokr(s.wegle)} g · ${zaokr(s.kcal_wegle)} kcal</em>
+      </div>
+      ${Math.abs(zMakro - s.kcal) > Math.max(40, s.kcal * 0.08) ? `<div class="dk-uwaga">
+        Z makroskładników wychodzi ${zaokr(zMakro)} kcal — część pozycji nie ma kompletu wartości.
+      </div>` : ''}` : '<div class="dk-uwaga">Nic nie zapisano tego dnia.</div>'}
+      <label class="dk-przel">
+        <input type="checkbox" id="dk-niepelny" ${s.niepelny ? 'checked' : ''}>
+        <span>Dzień niekompletny — nie licz go do średnich ani do dni w celu</span>
+      </label>
+    </div>`;
+
+  box.querySelector('#dk-niepelny').onchange = async (ev) => {
+    const chce = ev.target.checked;
+    ev.target.disabled = true;
+    try {
+      const r = await authFetch('/api/eat/dzien/niepelny', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: s.data, niepelny: chce }),
+      });
+      if (!r.ok) throw new Error();
+      wybranyDzien = null;      // rysuj() zbuduje panel od nowa, już z aktualnych danych
+      await rysuj();
+      const znowu = document.querySelector(`.stat-slupek[data-i]`);
+      if (znowu) {
+        const nowy = [...document.querySelectorAll('.stat-slupek[data-i]')]
+          .find((b) => b.title.startsWith(s.data));
+        if (nowy) nowy.click();
+      }
+    } catch {
+      ev.target.checked = !chce;
+      ev.target.disabled = false;
+    }
+  };
 }
 
 authRequireHousehold().then(() => {
