@@ -993,6 +993,7 @@ const MODULY = [
     strony: [
       { href: '/eat', ikona: 'lista', label: 'Dziennik', pelny: 'Dziennik' },
       { href: '/przepisy', ikona: 'ksiazka', label: 'Przepisy', pelny: 'Przepisy' },
+      { href: '/skaner', ikona: 'dodaj', label: 'Sprawdź', pelny: 'Sprawdź produkt' },
       { href: '/statystyki', ikona: 'analiza', label: 'Statystyki', pelny: 'Statystyki i oceny' },
     ],
   },
