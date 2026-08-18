@@ -136,7 +136,7 @@ _MOTYW_BOOT = (
 # Które strony należą do którego modułu — potrzebne, żeby ustawić kolor akcentu
 # JUŻ W ODPOWIEDZI SERWERA. Robienie tego w JS dałoby mignięcie koralem przed
 # przemalowaniem na zielono.
-_STRONY_MODULU = {"eat.html": "eat", "przepisy.html": "eat"}
+_STRONY_MODULU = {"eat.html": "eat", "przepisy.html": "eat", "statystyki.html": "eat"}
 
 
 def _html(filename: str) -> HTMLResponse:
@@ -217,6 +217,11 @@ def eat_page():
 @app.get("/przepisy")
 def przepisy_page():
     return _html("przepisy.html")
+
+
+@app.get("/statystyki")
+def statystyki_page():
+    return _html("statystyki.html")
 
 
 @app.get("/kategorie")
