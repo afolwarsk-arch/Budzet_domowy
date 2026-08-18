@@ -321,6 +321,17 @@
     .cel-jedn { font-size: 12.5px; color: var(--muted); width: 12px; }
     .cel-obok { font-size: 12.5px; color: var(--muted); width: 58px; text-align: right;
                 font-variant-numeric: tabular-nums; }
+    .dzien-niepelny { display: flex; align-items: flex-start; gap: 10px; margin-top: 16px;
+                      padding: 11px 12px; border: 1px dashed var(--border); border-radius: 10px;
+                      cursor: pointer; }
+    .dzien-niepelny input { width: 20px; height: 20px; flex: none; margin-top: 1px; cursor: pointer; }
+    .dzien-niepelny b { display: block; font-size: 13px; font-weight: 600; }
+    .dzien-niepelny small { display: block; font-size: 11.5px; color: var(--muted);
+                            line-height: 1.35; margin-top: 2px; }
+    /* Zaznaczony dzień ma być widoczny od razu po wejściu — inaczej łatwo
+       zapomnieć, że statystyka go pomija. */
+    .dzien-niepelny:has(input:checked) { border-style: solid; border-color: var(--accent); }
+
     .mini-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
                 padding: 2px 9px; font: inherit; font-size: 11.5px; cursor: pointer;
                 color: var(--accent); margin-left: 4px; }
@@ -376,6 +387,15 @@
 
   <div id="posilki"></div>
 
+  <!-- Dzień, w którym nie było czasu rzetelnie zapisać jedzenia. Wpisy zostają
+       nietknięte — znika tylko wpływ tego dnia na statystyki. -->
+  <label class="dzien-niepelny">
+    <input type="checkbox" id="niepelny">
+    <span>
+      <b>Ten dzień nie jest kompletny</b>
+      <small>Nie zdążyłem zapisać wszystkiego — nie licz go do średnich ani do dni w celu.</small>
+    </span>
+  </label>
 </main>
 
 <div class="bilans" id="bilans">

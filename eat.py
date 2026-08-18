@@ -540,7 +540,22 @@ def dzien(data: str = Query(default=""), current_user: dict = Depends(get_curren
     # inaczej pierwszego dnia paski udają realny cel.
     cele["domyslne"] = not eat_db.ma_wlasny_cel(current_user["user_id"])
     wynik["cele"] = cele
+    wynik["niepelny"] = eat_db.dzien_niepelny(hid, current_user["user_id"], dzien_str)
     return wynik
+
+
+@router.post("/dzien/niepelny")
+def oznacz_dzien(body: dict, current_user: dict = Depends(get_current_user)):
+    """Oznacza dzień jako niekompletny — albo zdejmuje to oznaczenie.
+
+    Wpisów NIE rusza: w dzienniku mają zostać takie, jakie są. Znika tylko ich
+    wpływ na statystykę, bo dzień, w którym nie było czasu nic zapisać, nie
+    opisuje tego, co się naprawdę jadło."""
+    hid = _hid(current_user)
+    dzien_str = _dzien(body.get("data"))
+    niepelny = bool(body.get("niepelny"))
+    eat_db.ustaw_dzien_niepelny(hid, current_user["user_id"], dzien_str, niepelny)
+    return {"data": dzien_str, "niepelny": niepelny}
 
 
 @router.post("/produkty/uzupelnij-oceny")
@@ -608,6 +623,8 @@ def statystyki(dni: int = Query(default=7), current_user: dict = Depends(get_cur
                               dni, float(cele.get("kcal") or 0))
     wynik["cel_kcal"] = cele.get("kcal")
     wynik["cel_bialko"] = cele.get("bialko")
+    wynik["cel_tluszcz"] = cele.get("tluszcz")
+    wynik["cel_wegle"] = cele.get("wegle")
     return wynik
 
 

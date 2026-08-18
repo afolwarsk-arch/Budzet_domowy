@@ -80,6 +80,7 @@ def init_eat_db() -> None:
         # Facts po prostu nie ocenia, wracały w każdej partii uzupełniania
         # i blokowały kolejkę - reszta bazy nigdy nie doszłaby do sprawdzenia.
         cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS oceny_sprawdzone TIMESTAMP")
+        _zapewnij_tabele_dni_niepelnych(cur)
         # Jednorazowa naprawa danych z Open Food Facts. Tam wielkość opakowania
         # i wielkość porcji wpisują ludzie i regularnie je mylą — zmierzone na
         # majonezie Remia 8710448636939, gdzie product_quantity=15 przy
@@ -607,6 +608,44 @@ def get_grupe(grupa_id: str, household_id: int, user_id: int) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def _zapewnij_tabele_dni_niepelnych(cur) -> None:
+    """Dni oznaczone jako NIEKOMPLETNE — takie, w których nie było czasu albo
+    możliwości rzetelnie zapisać jedzenia.
+
+    Bez tego dzień z jednym śniadaniem liczył się jak każdy inny: zaniżał
+    średnią i — co gorsza — wpadał do „dni w celu", bo 500 kcal jest przecież
+    poniżej 1500. Dzień, w którym nic nie zapisałeś, wyglądał więc w statystyce
+    jak dzień wzorowy. Wpisów NIE ruszamy: w dzienniku mają zostać takie, jakie
+    są, znika tylko ich wpływ na statystykę."""
+    cur.execute("""CREATE TABLE IF NOT EXISTS eat_dni_niepelne (
+        household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+        user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        data         DATE NOT NULL,
+        PRIMARY KEY (household_id, user_id, data)
+    )""")
+
+
+def dzien_niepelny(household_id: int, user_id: int, data: str) -> bool:
+    with get_db() as cur:
+        cur.execute("""SELECT 1 FROM eat_dni_niepelne
+                        WHERE household_id=%s AND user_id=%s AND data=%s""",
+                    (household_id, user_id, data))
+        return cur.fetchone() is not None
+
+
+def ustaw_dzien_niepelny(household_id: int, user_id: int, data: str, niepelny: bool) -> bool:
+    with get_db() as cur:
+        if niepelny:
+            cur.execute("""INSERT INTO eat_dni_niepelne (household_id, user_id, data)
+                           VALUES (%s,%s,%s) ON CONFLICT DO NOTHING""",
+                        (household_id, user_id, data))
+        else:
+            cur.execute("""DELETE FROM eat_dni_niepelne
+                            WHERE household_id=%s AND user_id=%s AND data=%s""",
+                        (household_id, user_id, data))
+    return niepelny
+
+
 def produkty_bez_ocen(household_id: int, limit: int) -> list[dict]:
     """Produkty z kodem, które nie mają jeszcze ocen z Open Food Facts.
 
@@ -651,8 +690,10 @@ def statystyki(household_id: int, user_id: int, dni: int, cel_kcal: float) -> di
     with get_db() as cur:
         cur.execute("""
             SELECT data,
-                   SUM(kcal)   AS kcal,
-                   SUM(bialko) AS bialko
+                   SUM(kcal)    AS kcal,
+                   SUM(bialko)  AS bialko,
+                   SUM(tluszcz) AS tluszcz,
+                   SUM(wegle)   AS wegle
               FROM eat_wpisy
              WHERE household_id=%s AND user_id=%s
                AND data > CURRENT_DATE - %s::int AND data <= CURRENT_DATE
@@ -662,14 +703,25 @@ def statystyki(household_id: int, user_id: int, dni: int, cel_kcal: float) -> di
 
         # Udział liczymy w KALORIACH, nie w liczbie pozycji: łyżka oliwy i obiad
         # to jedna pozycja każde, ale nie ważą tyle samo w tym, co zjadłeś.
+        # Dni oznaczone jako niekompletne wypadają także z rozkładu ocen —
+        # inaczej byłyby liczone przy jednej statystyce, a pomijane przy drugiej.
         cur.execute("""
             SELECT p.nutriscore, p.nova, p.dodatki, SUM(w.kcal) AS kcal
               FROM eat_wpisy w LEFT JOIN eat_produkty p ON p.id = w.produkt_id
              WHERE w.household_id=%s AND w.user_id=%s
                AND w.data > CURRENT_DATE - %s::int AND w.data <= CURRENT_DATE
+               AND NOT EXISTS (SELECT 1 FROM eat_dni_niepelne n
+                                WHERE n.household_id = w.household_id
+                                  AND n.user_id = w.user_id AND n.data = w.data)
              GROUP BY p.nutriscore, p.nova, p.dodatki
         """, (household_id, user_id, dni))
         surowe = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("""SELECT data FROM eat_dni_niepelne
+                        WHERE household_id=%s AND user_id=%s
+                          AND data > CURRENT_DATE - %s::int AND data <= CURRENT_DATE""",
+                    (household_id, user_id, dni))
+        niepelne = {str(r["data"]) for r in cur.fetchall()}
 
     from datetime import date as _date, timedelta as _td
     dzis = _date.today()
@@ -677,11 +729,26 @@ def statystyki(household_id: int, user_id: int, dni: int, cel_kcal: float) -> di
     for i in range(dni - 1, -1, -1):
         d = str(dzis - _td(days=i))
         w = po_dniu.get(d)
+        # Kalorie Z MAKROSKŁADNIKÓW liczymy współczynnikami Atwatera (białko
+        # i węglowodany po 4 kcal/g, tłuszcz 9). Ich suma nie musi się równać
+        # zapisanej kaloryczności: część produktów ma w bazie kcal, ale nie ma
+        # kompletu makro, a błonnik i alkohol mają własne przeliczniki. Dlatego
+        # słupek rysujemy z makro, a `kcal` zostaje osobno jako liczba prawdziwa.
+        b = round(float(w["bialko"] or 0), 1) if w else 0.0
+        t = round(float(w["tluszcz"] or 0), 1) if w else 0.0
+        we = round(float(w["wegle"] or 0), 1) if w else 0.0
         seria.append({"data": d,
                       "kcal": round(float(w["kcal"] or 0), 1) if w else 0.0,
-                      "bialko": round(float(w["bialko"] or 0), 1) if w else 0.0})
+                      "bialko": b, "tluszcz": t, "wegle": we,
+                      "kcal_bialko": round(b * 4, 1),
+                      "kcal_tluszcz": round(t * 9, 1),
+                      "kcal_wegle": round(we * 4, 1),
+                      "niepelny": d in niepelne})
 
-    z_wpisami = [s for s in seria if s["kcal"] > 0]
+    # Do średnich i do „dni w celu" biorą się TYLKO dni kompletne. Dzień z jednym
+    # śniadaniem, oznaczony ręcznie jako niekompletny, nie ma prawa zaniżać
+    # średniej ani wpadać do dni w celu tylko dlatego, że 500 kcal < 1500.
+    z_wpisami = [s for s in seria if s["kcal"] > 0 and not s["niepelny"]]
     ile = len(z_wpisami) or 1
     ocena_kcal, nova_kcal, bez_oceny = {}, {}, 0.0
     dodatki_kcal = kcal_z_dodatkami = 0.0
@@ -701,8 +768,11 @@ def statystyki(household_id: int, user_id: int, dni: int, cel_kcal: float) -> di
         "dni": dni,
         "seria": seria,
         "dni_z_wpisami": len(z_wpisami),
+        "dni_niepelnych": sum(1 for s in seria if s["niepelny"]),
         "srednia_kcal": round(sum(s["kcal"] for s in z_wpisami) / ile, 1),
         "srednia_bialko": round(sum(s["bialko"] for s in z_wpisami) / ile, 1),
+        "srednia_tluszcz": round(sum(s["tluszcz"] for s in z_wpisami) / ile, 1),
+        "srednia_wegle": round(sum(s["wegle"] for s in z_wpisami) / ile, 1),
         "dni_w_celu": sum(1 for s in z_wpisami if cel_kcal and s["kcal"] <= cel_kcal),
         "nutriscore_kcal": ocena_kcal,
         "nova_kcal": nova_kcal,

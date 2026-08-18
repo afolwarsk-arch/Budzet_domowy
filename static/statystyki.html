@@ -35,11 +35,24 @@
 
     /* Słupki rysujemy elementami, nie biblioteką — przy 7 albo 30 wartościach
        wykres to po prostu kilka div-ów o różnej wysokości. */
-    .stat-slupki { display: flex; align-items: flex-end; gap: 3px; height: 90px; margin-bottom: 5px; }
-    .stat-slupek { flex: 1; background: var(--good); border-radius: 3px 3px 0 0; min-height: 2px;
-                   opacity: .8; }
-    .stat-slupek.pusty { background: var(--border); opacity: 1; }
-    .stat-slupek.ponad { background: var(--danger); }
+    /* Słupek skumulowany: białko / tłuszcz / węglowodany, każde przeliczone na
+       kalorie. Układ pionowy od dołu, bo tak czyta się wykres słupkowy. */
+    .stat-slupki { display: flex; align-items: flex-end; gap: 3px; height: 120px;
+                   margin-bottom: 5px; position: relative; }
+    .stat-slupek { flex: 1; display: flex; flex-direction: column-reverse; min-height: 2px;
+                   border-radius: 3px 3px 0 0; overflow: hidden; background: var(--border); }
+    .stat-slupek i { display: block; width: 100%; }
+    .cz-b { background: #4f7a52; }        /* białko */
+    .cz-t { background: #d9a441; }        /* tłuszcz */
+    .cz-w { background: #7b6fb0; }        /* węglowodany */
+    .cz-nieznane { background: var(--border); }
+    .stat-slupek.pusty { background: var(--border); }
+    /* Dzień oznaczony jako niekompletny: widoczny, ale wyraźnie „nie liczy się". */
+    .stat-slupek.niepelny { opacity: .35;
+      background-image: repeating-linear-gradient(45deg, transparent 0 3px,
+                        rgba(128,128,128,.5) 3px 6px); }
+    .stat-cel { position: absolute; left: 0; right: 0; height: 0;
+                border-top: 1px dashed var(--muted); opacity: .7; pointer-events: none; }
     .stat-osie { display: flex; justify-content: space-between; font-size: 11px;
                  color: var(--muted); margin-bottom: 20px; }
 
@@ -49,7 +62,11 @@
     .stat-ocena i { height: 12px; border-radius: 3px; font-style: normal; }
     .stat-legenda { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); }
     .stat-legenda em { font-style: normal; display: inline-flex; align-items: center; gap: 5px; }
-    .stat-legenda em s { width: 10px; height: 10px; border-radius: 2px; text-decoration: none; }
+    .stat-legenda em s { width: 10px; height: 10px; border-radius: 2px; text-decoration: none;
+                         flex: none; }
+    .stat-legenda em s.cz-niepelny { background: var(--border);
+      background-image: repeating-linear-gradient(45deg, transparent 0 2px,
+                        rgba(128,128,128,.6) 2px 4px); }
 
     .stat-stopka { font-size: 12.5px; color: var(--muted); line-height: 1.55; margin-top: 20px;
                    border-top: 1px solid var(--border-soft); padding-top: 14px; }

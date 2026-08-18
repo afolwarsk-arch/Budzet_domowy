@@ -54,12 +54,34 @@ async function rysuj() {
   }
 
   const cel = Number(d.cel_kcal) || 0;
-  const maks = Math.max(cel, ...d.seria.map((s) => s.kcal)) || 1;
+  // Skala wspólna dla kalorii zapisanych i policzonych z makro — inaczej słupki
+  // i linia celu opisywałyby dwie różne osie.
+  const maks = Math.max(cel, ...d.seria.map(
+    (s) => Math.max(s.kcal, s.kcal_bialko + s.kcal_tluszcz + s.kcal_wegle))) || 1;
+
+  // Słupek dzielimy na białko / tłuszcz / węglowodany. Dzień oznaczony jako
+  // niekompletny rysujemy w paski i wyszarzony — jest widoczny, ale od razu
+  // widać, że nie liczy się do średnich.
   const slupki = d.seria.map((s) => {
-    const klasa = !s.kcal ? 'pusty' : (cel && s.kcal > cel ? 'ponad' : '');
-    return `<div class="stat-slupek ${klasa}" style="height:${Math.max(2, s.kcal / maks * 100)}%"
-                 title="${s.data}: ${zaokr(s.kcal)} kcal"></div>`;
+    const czesci = [
+      { kl: 'b', v: s.kcal_bialko }, { kl: 't', v: s.kcal_tluszcz }, { kl: 'w', v: s.kcal_wegle },
+    ].filter((x) => x.v > 0);
+    const suma = czesci.reduce((a, x) => a + x.v, 0);
+    const wysokosc = Math.max(2, (suma || s.kcal) / maks * 100);
+    const opis = `${s.data}: ${zaokr(s.kcal)} kcal`
+      + (suma ? ` — B ${zaokr(s.kcal_bialko)} · T ${zaokr(s.kcal_tluszcz)} · W ${zaokr(s.kcal_wegle)}` : '')
+      + (s.niepelny ? ' (dzień niekompletny — pominięty w średnich)' : '');
+    const srodek = czesci.length
+      ? czesci.map((x) => `<i class="cz-${x.kl}" style="flex:${x.v}"></i>`).join('')
+      // Wpis bez rozbicia na makro (np. danie z opisu) — jeden neutralny słupek,
+      // żeby dzień nie zniknął z wykresu tylko dlatego, że nie znamy składu.
+      : '<i class="cz-nieznane" style="flex:1"></i>';
+    return `<div class="stat-slupek${s.niepelny ? ' niepelny' : ''}${!s.kcal ? ' pusty' : ''}"
+                 style="height:${wysokosc}%" title="${opis}">${s.kcal ? srodek : ''}</div>`;
   }).join('');
+
+  const linia = cel ? `<div class="stat-cel" style="bottom:${cel / maks * 100}%"
+        title="Cel ${zaokr(cel)} kcal"></div>` : '';
 
   const pierwszy = d.seria[0] ? d.seria[0].data.slice(8) + '.' + d.seria[0].data.slice(5, 7) : '';
   const suma = Object.values(d.nutriscore_kcal).reduce((s, v) => s + v, 0) + d.bez_oceny_kcal;
@@ -69,14 +91,21 @@ async function rysuj() {
     <div class="stat-kafle">
       <div class="stat-kafel"><b>${zaokr(d.srednia_kcal)}</b><span>kcal średnio na dzień</span></div>
       <div class="stat-kafel"><b>${zaokr(d.srednia_bialko)}</b><span>g białka średnio</span></div>
-      <div class="stat-kafel"><b>${d.dni_w_celu}/${d.dni_z_wpisami}</b><span>dni w celu (z zapisanych)</span></div>
+      <div class="stat-kafel"><b>${d.dni_w_celu}/${d.dni_z_wpisami}</b><span>dni w celu (z kompletnych)</span></div>
     </div>
 
-    <div class="stat-slupki">${slupki}</div>
-    <div class="stat-osie">
-      <span>${pierwszy}</span>
-      <span>${cel ? 'czerwony = ponad ' + zaokr(cel) + ' kcal' : ''}</span>
-      <span>dziś</span>
+    <div class="stat-slupki">${linia}${slupki}</div>
+    <div class="stat-osie"><span>${pierwszy}</span><span>dziś</span></div>
+    <div class="stat-legenda" style="margin-bottom:16px">
+      <em><s class="cz-b"></s>białko ${zaokr(d.srednia_bialko)} g${
+        d.cel_bialko ? ' / ' + zaokr(d.cel_bialko) : ''}</em>
+      <em><s class="cz-t"></s>tłuszcz ${zaokr(d.srednia_tluszcz)} g${
+        d.cel_tluszcz ? ' / ' + zaokr(d.cel_tluszcz) : ''}</em>
+      <em><s class="cz-w"></s>węglowodany ${zaokr(d.srednia_wegle)} g${
+        d.cel_wegle ? ' / ' + zaokr(d.cel_wegle) : ''}</em>
+      ${cel ? `<em><s style="background:var(--muted)"></s>kreska = cel ${zaokr(cel)} kcal</em>` : ''}
+      ${d.dni_niepelnych ? `<em><s class="cz-niepelny"></s>${d.dni_niepelnych} dni
+        oznaczonych jako niekompletne — pominięte w średnich</em>` : ''}
     </div>
 
     <div class="sek-tyt">Jakość odżywcza (Nutri-Score)</div>

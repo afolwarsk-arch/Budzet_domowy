@@ -84,6 +84,33 @@ async function wczytajDzien() {
   }
   rysujPosilki();
   rysujBilans();
+  rysujNiepelny();
+}
+
+// Dzień, w którym nie było czasu rzetelnie zapisać jedzenia. Wpisów nie ruszamy
+// — znika tylko wpływ tego dnia na statystyki, bo dzień z samym śniadaniem
+// zaniżał średnią i wpadał do „dni w celu" tylko dlatego, że 500 kcal < 1500.
+function rysujNiepelny() {
+  const pole = document.getElementById('niepelny');
+  if (!pole) return;
+  pole.checked = !!(stanDnia && stanDnia.niepelny);
+  pole.onchange = async () => {
+    const chce = pole.checked;
+    pole.disabled = true;
+    try {
+      const r = await authFetch('/api/eat/dzien/niepelny', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: dzienISO, niepelny: chce }),
+      });
+      if (!r.ok) throw new Error();
+      if (stanDnia) stanDnia.niepelny = chce;
+    } catch {
+      pole.checked = !chce;      // nie udawajmy, że zapisane
+      komunikat('Nie udało się zapisać. Sprawdź połączenie.', true);
+    } finally {
+      pole.disabled = false;
+    }
+  };
 }
 
 // Wpisy z tym samym `grupa_id` to jedno danie rozłożone na składniki. Kolejność
