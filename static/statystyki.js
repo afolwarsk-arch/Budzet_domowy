@@ -34,22 +34,27 @@ const MAKRA = {
 // wszystko, co jesz". Naprawdę znaczyło „97% z tych 17%" — a ocenione są głównie
 // produkty paczkowane, czyli próbka z założenia przechylona w stronę
 // przetworzonych, bo warzywa i dania domowe ocen nie mają.
-function pasekOceny(mapa, kolory, opisy, bezOceny) {
+function pasekOceny(mapa, kolory, opisy, domowe, nieznane) {
   const ocenione = Object.values(mapa).reduce((s, v) => s + Number(v || 0), 0);
-  const calosc = ocenione + Number(bezOceny || 0);
+  const dom = Number(domowe || 0), niez = Number(nieznane || 0);
+  const calosc = ocenione + dom + niez;
   if (!ocenione) return '<div class="stat-legenda">Nic jeszcze nie zostało ocenione.</div>';
   const klucze = Object.keys(mapa).sort();
-  const kawalek = (kolor, wartosc) => `<i style="flex:${wartosc};background:${kolor}"></i>`;
+  const kawalek = (kolor, wartosc, klasa) =>
+    `<i class="${klasa || ''}" style="flex:${wartosc};background:${kolor}"></i>`;
   const proc = (v) => Math.round(v / calosc * 100);
   return `<div class="stat-ocena">
       ${klucze.map((k) => kawalek(kolory[k] || 'var(--border)', mapa[k])).join('')}
-      ${bezOceny ? kawalek('var(--border)', bezOceny) : ''}
+      ${dom ? kawalek('', dom, 'cz-domowe') : ''}
+      ${niez ? kawalek('var(--border)', niez) : ''}
     </div>
     <div class="stat-legenda">${klucze.map((k) =>
       `<em><s style="background:${kolory[k] || 'var(--border)'}"></s>${
         opisy ? (opisy[k] || k) : String(k).toUpperCase()} · ${proc(mapa[k])}%</em>`
-    ).join('')}${bezOceny
-      ? `<em><s style="background:var(--border)"></s>bez oceny · ${proc(bezOceny)}%</em>` : ''}</div>`;
+    ).join('')}
+    ${dom ? `<em><s class="cz-domowe"></s>domowe i surowce · ${proc(dom)}%</em>` : ''}
+    ${niez ? `<em><s style="background:var(--border)"></s>bez oceny · ${proc(niez)}%</em>` : ''}
+    </div>`;
 }
 
 async function rysuj() {
@@ -130,17 +135,19 @@ async function rysuj() {
     </div>
 
     <div class="sek-tyt">Jakość odżywcza (Nutri-Score)</div>
-    ${pasekOceny(d.nutriscore_kcal, NS_KOLOR, null, d.bez_oceny_kcal)}
+    ${pasekOceny(d.nutriscore_kcal, NS_KOLOR, null, d.domowe_ns_kcal, d.nieznane_ns_kcal)}
 
     <div class="sek-tyt">Stopień przetworzenia (NOVA)</div>
-    ${pasekOceny(d.nova_kcal, NOVA_KOLOR, NOVA_OPIS, d.bez_oceny_kcal)}
+    ${pasekOceny(d.nova_kcal, NOVA_KOLOR, NOVA_OPIS, d.domowe_nova_kcal, d.nieznane_nova_kcal)}
 
     <div class="stat-stopka">
       ${d.srednio_dodatkow !== null && d.srednio_dodatkow !== undefined
         ? `Średnio <b>${d.srednio_dodatkow}</b> dodatków (numerów E) na to, co jesz —
            liczba z opakowań, bez oceniania czy to źle.<br>` : ''}
-      Oceniono <b>${pokrycie}%</b> kalorii. Reszta to dania z przepisu, pozycje z opisu
-      i produkty z etykiety — te ocen nie mają i ich nie zgadujemy.
+      Oceniono <b>${pokrycie}%</b> kalorii. NOVA i Nutri-Score dostają wyłącznie produkty
+      z kodem kreskowym, a kody mają rzeczy paczkowane — pomidor, Twój przepis i obiad
+      opisany słowami kodu nie mają, więc trafiają do „domowe i surowce". To nie znaczy,
+      że są gorsze; znaczy, że ta skala ich nie obejmuje.
       <br><small>Nutri-Score i NOVA pochodzą z Open Food Facts. To cudze, opublikowane skale —
       nie liczymy własnego wskaźnika „zdrowe/niezdrowe".</small>
     </div>`;

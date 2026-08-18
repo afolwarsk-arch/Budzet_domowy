@@ -50,6 +50,11 @@
        Nadwyżka ponad MINIMUM (białko) zostaje w kolorze makra, tylko jaśniejsza:
        zjedzenie więcej białka niż w celu nie jest błędem. */
     .cz-ponad { background: var(--danger); }
+    /* Domowe jedzenie i surowce — nie mają oceny, bo ta skala ich nie obejmuje.
+       Kreskowanie, a nie kolor: to nie jest ocena, tylko brak zastosowania. */
+    .cz-domowe { background: var(--surface-2);
+      background-image: repeating-linear-gradient(45deg, transparent 0 3px,
+                        rgba(79,122,82,.45) 3px 6px); }
     .nadwyzka { opacity: .5; }
 
     .widoki { margin-top: -6px; }

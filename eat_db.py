@@ -705,15 +705,28 @@ def statystyki(household_id: int, user_id: int, dni: int, cel_kcal: float) -> di
         # to jedna pozycja każde, ale nie ważą tyle samo w tym, co zjadłeś.
         # Dni oznaczone jako niekompletne wypadają także z rozkładu ocen —
         # inaczej byłyby liczone przy jednej statystyce, a pomijane przy drugiej.
+        # Pochodzenie jest tu równie ważne jak ocena. NOVA i Nutri-Score dostają
+        # WYŁĄCZNIE produkty z kodem kreskowym, a kody mają rzeczy paczkowane —
+        # pomidor, domowy bigos i obiad opisany słowami kodu nie mają. Bez tego
+        # rozbicia cały ten blok lądował w jednym worku „bez oceny" i wyglądał
+        # jak jedzenie niewiadomego pochodzenia, choć to najczęściej surowce
+        # i gotowanie w domu.
         cur.execute("""
-            SELECT p.nutriscore, p.nova, p.dodatki, SUM(w.kcal) AS kcal
+            SELECT p.nutriscore, p.nova, p.dodatki,
+                   CASE WHEN w.przepis_id IS NOT NULL THEN 'przepis'
+                        WHEN w.produkt_id IS NULL     THEN 'opis'
+                        ELSE COALESCE(p.zrodlo, 'nieznane') END AS pochodzenie,
+                   SUM(w.kcal) AS kcal
               FROM eat_wpisy w LEFT JOIN eat_produkty p ON p.id = w.produkt_id
              WHERE w.household_id=%s AND w.user_id=%s
                AND w.data > CURRENT_DATE - %s::int AND w.data <= CURRENT_DATE
                AND NOT EXISTS (SELECT 1 FROM eat_dni_niepelne n
                                 WHERE n.household_id = w.household_id
                                   AND n.user_id = w.user_id AND n.data = w.data)
-             GROUP BY p.nutriscore, p.nova, p.dodatki
+             GROUP BY p.nutriscore, p.nova, p.dodatki,
+                      CASE WHEN w.przepis_id IS NOT NULL THEN 'przepis'
+                           WHEN w.produkt_id IS NULL     THEN 'opis'
+                           ELSE COALESCE(p.zrodlo, 'nieznane') END
         """, (household_id, user_id, dni))
         surowe = [dict(r) for r in cur.fetchall()]
 
@@ -750,19 +763,31 @@ def statystyki(household_id: int, user_id: int, dni: int, cel_kcal: float) -> di
     # średniej ani wpadać do dni w celu tylko dlatego, że 500 kcal < 1500.
     z_wpisami = [s for s in seria if s["kcal"] > 0 and not s["niepelny"]]
     ile = len(z_wpisami) or 1
-    ocena_kcal, nova_kcal, bez_oceny = {}, {}, 0.0
+    ocena_kcal, nova_kcal = {}, {}
+    # Rozdzielamy to, co oceny NIE MA, na dwie różne rzeczy: jedzenie domowe
+    # i surowce (których ta skala po prostu nie obejmuje) oraz produkty
+    # paczkowane, dla których oceny naprawdę brakuje.
+    DOMOWE = {"przepis", "opis", "baza"}
+    domowe_ns = nieznane_ns = domowe_nova = nieznane_nova = 0.0
     dodatki_kcal = kcal_z_dodatkami = 0.0
     for r in surowe:
         k = float(r["kcal"] or 0)
+        domowe = (r.get("pochodzenie") or "") in DOMOWE
         if r["nutriscore"]:
             ocena_kcal[r["nutriscore"]] = round(ocena_kcal.get(r["nutriscore"], 0) + k, 1)
+        elif domowe:
+            domowe_ns += k
         else:
-            bez_oceny += k
+            nieznane_ns += k
         if r["dodatki"] is not None:
             dodatki_kcal += k * int(r["dodatki"])
             kcal_z_dodatkami += k
         if r["nova"]:
             nova_kcal[str(r["nova"])] = round(nova_kcal.get(str(r["nova"]), 0) + k, 1)
+        elif domowe:
+            domowe_nova += k
+        else:
+            nieznane_nova += k
 
     return {
         "dni": dni,
@@ -776,7 +801,13 @@ def statystyki(household_id: int, user_id: int, dni: int, cel_kcal: float) -> di
         "dni_w_celu": sum(1 for s in z_wpisami if cel_kcal and s["kcal"] <= cel_kcal),
         "nutriscore_kcal": ocena_kcal,
         "nova_kcal": nova_kcal,
-        "bez_oceny_kcal": round(bez_oceny, 1),
+        # Rozbite osobno dla każdej skali, bo produkt bywa oceniony przez jedną,
+        # a przez drugą nie.
+        "domowe_ns_kcal": round(domowe_ns, 1),
+        "nieznane_ns_kcal": round(nieznane_ns, 1),
+        "domowe_nova_kcal": round(domowe_nova, 1),
+        "nieznane_nova_kcal": round(nieznane_nova, 1),
+        "bez_oceny_kcal": round(domowe_ns + nieznane_ns, 1),
         # Średnia liczba dodatków WAŻONA kaloriami — inaczej łyżka musztardy
         # z pięcioma dodatkami ważyłaby tyle samo co cały obiad.
         "srednio_dodatkow": round(dodatki_kcal / kcal_z_dodatkami, 1) if kcal_z_dodatkami else None,
