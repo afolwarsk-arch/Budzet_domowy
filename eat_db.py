@@ -1,4 +1,4 @@
-﻿"""Warstwa bazy dla sekcji wiem.eat — dziennik jedzenia.
+"""Warstwa bazy dla sekcji wiem.eat — dziennik jedzenia.
 
 CELOWO osobny plik. `database.py` ma już 3000 linii i 30 tabel; dokładanie do
 niego drugiej dziedziny zabetonowałoby jedno i drugie. Korzystamy tylko z
@@ -65,6 +65,17 @@ def init_eat_db() -> None:
         # którego nie ma, zamiast dać przycisk „1 sztuka".
         cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS porcja_g NUMERIC(7,1)")
         cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS opis_porcji TEXT")
+        # Oceny NIE NASZE, tylko opublikowane skale — Nutri-Score (a–e, jakość
+        # odżywcza) i NOVA (1–4, stopień przetworzenia). Własnego wskaźnika
+        # „zdrowe/niezdrowe" świadomie nie liczymy: bez definicji i bez recenzji
+        # byłaby to liczba, której nikt nie umie obronić, a wygląda poważnie.
+        cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS nutriscore TEXT")
+        cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS nova INTEGER")
+        # Liczba dodatków (numery E) prosto z Open Food Facts. To FAKT, nie ocena —
+        # świadomie nie przypisujemy im ryzyka, bo klasyfikacje szkodliwości
+        # pojedynczych dodatków są autorskie i sporne. Liczbę da się sprawdzić,
+        # „szkodliwości" trzeba by komuś wierzyć.
+        cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS dodatki INTEGER")
         # Jednorazowa naprawa danych z Open Food Facts. Tam wielkość opakowania
         # i wielkość porcji wpisują ludzie i regularnie je mylą — zmierzone na
         # majonezie Remia 8710448636939, gdzie product_quantity=15 przy
@@ -424,7 +435,7 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
     wartości zamiast tworzyć duplikat."""
     pola = ("kod", "nazwa", "marka", "opak_g", "kcal", "bialko", "tluszcz",
             "wegle", "blonnik", "cukry", "sol", "zrodlo", "sztuk_w_opak",
-            "porcja_g", "opis_porcji")
+            "porcja_g", "opis_porcji", "nutriscore", "nova", "dodatki")
     w = {p: dane.get(p) for p in pola}
     w["zrodlo"] = w["zrodlo"] if w["zrodlo"] in ZRODLA else "reczne"
 
@@ -449,6 +460,19 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
                     ("cukry", 999), ("sol", 999), ("porcja_g", 5000)):
         w[p] = _liczba(w[p], maks)
     w["opis_porcji"] = (str(w["opis_porcji"]).strip()[:40] or None) if w["opis_porcji"] else None
+    # Nutri-Score to jedna litera a–e. Open Food Facts wstawia tam też
+    # „unknown" i „not-applicable" — to NIE jest ocena, więc traktujemy jak brak.
+    ns = str(w.get("nutriscore") or "").strip().lower()
+    w["nutriscore"] = ns if ns in ("a", "b", "c", "d", "e") else None
+    try:
+        nova = int(float(str(w.get("nova"))))
+    except (TypeError, ValueError):
+        nova = None
+    w["nova"] = nova if nova in (1, 2, 3, 4) else None
+    try:
+        w["dodatki"] = max(0, min(99, int(float(str(w.get("dodatki"))))))
+    except (TypeError, ValueError):
+        w["dodatki"] = None
 
     w["nazwa"] = (str(w["nazwa"]).strip() if w["nazwa"] else "")[:120] or "Produkt bez nazwy"
     w["marka"] = (str(w["marka"]).strip()[:80] or None) if w["marka"] else None
@@ -469,10 +493,10 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
             cur.execute("""
                 INSERT INTO eat_produkty (household_id, kod, nazwa, marka, opak_g, kcal,
                                           bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo,
-                                          nazwa_szukaj, sztuk_w_opak, porcja_g, opis_porcji)
+                                          nazwa_szukaj, sztuk_w_opak, porcja_g, opis_porcji, nutriscore, nova, dodatki)
                 VALUES (%(h)s,%(kod)s,%(nazwa)s,%(marka)s,%(opak_g)s,%(kcal)s,
                         %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s,
-                        %(nazwa_szukaj)s,%(sztuk_w_opak)s,%(porcja_g)s,%(opis_porcji)s)
+                        %(nazwa_szukaj)s,%(sztuk_w_opak)s,%(porcja_g)s,%(opis_porcji)s,%(nutriscore)s,%(nova)s,%(dodatki)s)
                 -- WHERE kod IS NOT NULL jest KONIECZNE: indeks unikalny jest
                 -- częściowy (ten sam warunek), a Postgres bez powtórzenia
                 -- predykatu nie potrafi go dopasować i przerywa błędem. Przez to
@@ -490,17 +514,20 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
                        -- Ta sama zasada dla wagi sztuki: raz ustalona („pomidor ~120 g")
                        -- ma przetrwac ponowne zeskanowanie kodu.
                        porcja_g=COALESCE(EXCLUDED.porcja_g, eat_produkty.porcja_g),
-                       opis_porcji=COALESCE(EXCLUDED.opis_porcji, eat_produkty.opis_porcji)
+                       opis_porcji=COALESCE(EXCLUDED.opis_porcji, eat_produkty.opis_porcji),
+                       nutriscore=COALESCE(EXCLUDED.nutriscore, eat_produkty.nutriscore),
+                       nova=COALESCE(EXCLUDED.nova, eat_produkty.nova),
+                       dodatki=COALESCE(EXCLUDED.dodatki, eat_produkty.dodatki)
                 RETURNING *
             """, {"h": household_id, **w})
         else:
             cur.execute("""
                 INSERT INTO eat_produkty (household_id, nazwa, marka, opak_g, kcal,
                                           bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo,
-                                          nazwa_szukaj, sztuk_w_opak, porcja_g, opis_porcji)
+                                          nazwa_szukaj, sztuk_w_opak, porcja_g, opis_porcji, nutriscore, nova, dodatki)
                 VALUES (%(h)s,%(nazwa)s,%(marka)s,%(opak_g)s,%(kcal)s,
                         %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s,
-                        %(nazwa_szukaj)s,%(sztuk_w_opak)s,%(porcja_g)s,%(opis_porcji)s)
+                        %(nazwa_szukaj)s,%(sztuk_w_opak)s,%(porcja_g)s,%(opis_porcji)s,%(nutriscore)s,%(nova)s,%(dodatki)s)
                 RETURNING *
             """, {"h": household_id, **w})
         return dict(cur.fetchone())
@@ -574,6 +601,82 @@ def get_grupe(grupa_id: str, household_id: int, user_id: int) -> list[dict]:
                        WHERE grupa_id=%s AND household_id=%s AND user_id=%s
                        ORDER BY id""", (grupa_id, household_id, user_id))
         return [dict(r) for r in cur.fetchall()]
+
+
+def statystyki(household_id: int, user_id: int, dni: int, cel_kcal: float) -> dict:
+    """Kalorie i białko dzień po dniu plus rozkład ocen zjedzonego jedzenia.
+
+    Dni BEZ WPISÓW zwracamy jako zera, a nie pomijamy: średnia liczona po samych
+    dniach z wpisami kłamałaby w górę i tydzień z trzema zapisanymi dniami
+    wyglądałby lepiej niż tydzień pilnie prowadzony.
+
+    Oceny (Nutri-Score, NOVA) mają TYLKO produkty z Open Food Facts. Wpisy
+    z przepisu, z opisu słownego albo z odczytu etykiety oceny nie mają i lądują
+    w „bez oceny" — nie zgadujemy jej, bo to cudza skala, nie nasza.
+    """
+    with get_db() as cur:
+        cur.execute("""
+            SELECT data,
+                   SUM(kcal)   AS kcal,
+                   SUM(bialko) AS bialko
+              FROM eat_wpisy
+             WHERE household_id=%s AND user_id=%s
+               AND data > CURRENT_DATE - %s::int AND data <= CURRENT_DATE
+             GROUP BY data ORDER BY data
+        """, (household_id, user_id, dni))
+        po_dniu = {str(r["data"]): r for r in cur.fetchall()}
+
+        # Udział liczymy w KALORIACH, nie w liczbie pozycji: łyżka oliwy i obiad
+        # to jedna pozycja każde, ale nie ważą tyle samo w tym, co zjadłeś.
+        cur.execute("""
+            SELECT p.nutriscore, p.nova, p.dodatki, SUM(w.kcal) AS kcal
+              FROM eat_wpisy w LEFT JOIN eat_produkty p ON p.id = w.produkt_id
+             WHERE w.household_id=%s AND w.user_id=%s
+               AND w.data > CURRENT_DATE - %s::int AND w.data <= CURRENT_DATE
+             GROUP BY p.nutriscore, p.nova, p.dodatki
+        """, (household_id, user_id, dni))
+        surowe = [dict(r) for r in cur.fetchall()]
+
+    from datetime import date as _date, timedelta as _td
+    dzis = _date.today()
+    seria = []
+    for i in range(dni - 1, -1, -1):
+        d = str(dzis - _td(days=i))
+        w = po_dniu.get(d)
+        seria.append({"data": d,
+                      "kcal": round(float(w["kcal"] or 0), 1) if w else 0.0,
+                      "bialko": round(float(w["bialko"] or 0), 1) if w else 0.0})
+
+    z_wpisami = [s for s in seria if s["kcal"] > 0]
+    ile = len(z_wpisami) or 1
+    ocena_kcal, nova_kcal, bez_oceny = {}, {}, 0.0
+    dodatki_kcal = kcal_z_dodatkami = 0.0
+    for r in surowe:
+        k = float(r["kcal"] or 0)
+        if r["nutriscore"]:
+            ocena_kcal[r["nutriscore"]] = round(ocena_kcal.get(r["nutriscore"], 0) + k, 1)
+        else:
+            bez_oceny += k
+        if r["dodatki"] is not None:
+            dodatki_kcal += k * int(r["dodatki"])
+            kcal_z_dodatkami += k
+        if r["nova"]:
+            nova_kcal[str(r["nova"])] = round(nova_kcal.get(str(r["nova"]), 0) + k, 1)
+
+    return {
+        "dni": dni,
+        "seria": seria,
+        "dni_z_wpisami": len(z_wpisami),
+        "srednia_kcal": round(sum(s["kcal"] for s in z_wpisami) / ile, 1),
+        "srednia_bialko": round(sum(s["bialko"] for s in z_wpisami) / ile, 1),
+        "dni_w_celu": sum(1 for s in z_wpisami if cel_kcal and s["kcal"] <= cel_kcal),
+        "nutriscore_kcal": ocena_kcal,
+        "nova_kcal": nova_kcal,
+        "bez_oceny_kcal": round(bez_oceny, 1),
+        # Średnia liczba dodatków WAŻONA kaloriami — inaczej łyżka musztardy
+        # z pięcioma dodatkami ważyłaby tyle samo co cały obiad.
+        "srednio_dodatkow": round(dodatki_kcal / kcal_z_dodatkami, 1) if kcal_z_dodatkami else None,
+    }
 
 
 def scal_wpisy(household_id: int, user_id: int, ids: list[int],

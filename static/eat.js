@@ -989,6 +989,103 @@ function rysujWyniki(fraza, przepisy, wlasne, podstawowe, propozycje, offPadlo, 
   });
 }
 
+// ── statystyki i oceny ──────────────────────────────────────────────────────
+//
+// Oceny są CUDZE i opublikowane: Nutri-Score (a–e, jakość odżywcza) i NOVA
+// (1–4, stopień przetworzenia). Własnego wskaźnika „zdrowe/niezdrowe" świadomie
+// nie liczymy — bez definicji byłaby to liczba, której nikt nie umie obronić,
+// a wyglądająca poważnie. Liczbę dodatków pokazujemy jako fakt, bez oceniania
+// ich szkodliwości, bo takie klasyfikacje są autorskie i sporne.
+
+const NS_KOLOR = { a: '#038141', b: '#85bb2f', c: '#fecb02', d: '#ee8100', e: '#e63e11' };
+const NOVA_KOLOR = { 1: '#038141', 2: '#85bb2f', 3: '#ee8100', 4: '#e63e11' };
+const NOVA_OPIS = { 1: 'nieprzetworzone', 2: 'składniki kulinarne',
+                    3: 'przetworzone', 4: 'wysoko przetworzone' };
+let statOkres = 7;
+
+function pasekOceny(mapa, kolory, opisy) {
+  const suma = Object.values(mapa).reduce((s, v) => s + Number(v || 0), 0);
+  if (!suma) return '';
+  const klucze = Object.keys(mapa).sort();
+  return `<div class="stat-ocena">${klucze.map((k) =>
+    `<i style="flex:${mapa[k]};background:${kolory[k] || 'var(--border)'}"></i>`).join('')}</div>
+    <div class="stat-legenda">${klucze.map((k) =>
+      `<em><s style="background:${kolory[k] || 'var(--border)'}"></s>${
+        opisy ? (opisy[k] || k) : String(k).toUpperCase()} · ${Math.round(mapa[k] / suma * 100)}%</em>`
+    ).join('')}</div>`;
+}
+
+async function rysujStatystyki() {
+  const box = document.getElementById('stat-body');
+  if (!box) return;
+  let d;
+  try {
+    const r = await authFetch('/api/eat/statystyki?dni=' + statOkres);
+    if (!r.ok) throw new Error('brak');
+    d = await r.json();
+  } catch {
+    box.innerHTML = '<div class="komunikat blad">Nie udało się wczytać statystyk.</div>';
+    return;
+  }
+
+  const cel = Number(d.cel_kcal) || 0;
+  const maks = Math.max(cel, ...d.seria.map((s) => s.kcal)) || 1;
+  const slupki = d.seria.map((s) => {
+    const klasa = !s.kcal ? 'pusty' : (cel && s.kcal > cel ? 'ponad' : '');
+    return `<div class="stat-slupek ${klasa}" style="height:${Math.max(2, s.kcal / maks * 100)}%"
+                 title="${s.data}: ${zaokr(s.kcal)} kcal"></div>`;
+  }).join('');
+
+  const pierwszy = d.seria[0] && d.seria[0].data.slice(8) + '.' + d.seria[0].data.slice(5, 7);
+  const suma = Object.values(d.nutriscore_kcal).reduce((s, v) => s + v, 0) + d.bez_oceny_kcal;
+  const pokrycie = suma ? Math.round((suma - d.bez_oceny_kcal) / suma * 100) : 0;
+
+  box.innerHTML = `
+    <div class="stat-kafle">
+      <div class="stat-kafel"><b>${zaokr(d.srednia_kcal)}</b><span>kcal średnio<br>na dzień</span></div>
+      <div class="stat-kafel"><b>${zaokr(d.srednia_bialko)}</b><span>g białka<br>średnio</span></div>
+      <div class="stat-kafel"><b>${d.dni_w_celu}/${d.dni_z_wpisami}</b><span>dni w celu<br>(z zapisanych)</span></div>
+    </div>
+    <div class="stat-slupki">${slupki}</div>
+    <div class="stat-osie"><span>${pierwszy || ''}</span>
+      <span>${cel ? 'czerwony = ponad cel ' + zaokr(cel) + ' kcal' : ''}</span><span>dziś</span></div>
+
+    <div class="sek-tyt">Jakość odżywcza (Nutri-Score)</div>
+    ${pasekOceny(d.nutriscore_kcal, NS_KOLOR) || '<div class="komunikat">Brak ocenionych pozycji.</div>'}
+
+    <div class="sek-tyt" style="margin-top:14px">Stopień przetworzenia (NOVA)</div>
+    ${pasekOceny(d.nova_kcal, NOVA_KOLOR, NOVA_OPIS) || '<div class="komunikat">Brak ocenionych pozycji.</div>'}
+
+    <div class="komunikat" style="margin-top:12px;line-height:1.5">
+      ${d.srednio_dodatkow !== null && d.srednio_dodatkow !== undefined
+        ? `Średnio <b>${d.srednio_dodatkow}</b> dodatków (numerów E) na to, co jesz — liczba z opakowań, bez oceny czy to źle.<br>` : ''}
+      Oceniono <b>${pokrycie}%</b> kalorii. Reszta to dania z przepisu, pozycje z opisu
+      i produkty z etykiety — te ocen nie mają i ich nie zgadujemy.
+      <br><small>Nutri-Score i NOVA pochodzą z Open Food Facts. To cudze, opublikowane skale —
+      nie liczymy własnego wskaźnika „zdrowe/niezdrowe".</small>
+    </div>`;
+}
+
+function podepnijStatystyki() {
+  const zwin = document.getElementById('stat-zwin');
+  if (!zwin) return;
+  zwin.onclick = () => {
+    const otw = zwin.getAttribute('aria-expanded') === 'true';
+    zwin.setAttribute('aria-expanded', otw ? 'false' : 'true');
+    document.getElementById('stat-tresc').hidden = otw;
+    if (!otw) rysujStatystyki();          // liczymy dopiero, gdy ktoś chce zobaczyć
+  };
+  document.getElementById('stat-okres').onclick = (ev) => {
+    const b = ev.target.closest('[data-dni]');
+    if (!b) return;
+    document.querySelectorAll('#stat-okres [data-dni]')
+      .forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    statOkres = Number(b.dataset.dni);
+    rysujStatystyki();
+  };
+}
+
 // ── skanowanie kodu ─────────────────────────────────────────────────────────
 
 // Kamerą i odczytem kodu zajmuje się wspólny moduł `eat-skaner.js` — ten sam,
@@ -2761,5 +2858,6 @@ authRequireHousehold().then(() => {
   document.getElementById('poprz').onclick = () => przesunDzien(-1);
   document.getElementById('nast').onclick = () => przesunDzien(1);
   document.getElementById('btn-cele').onclick = oknoCeli;
+  podepnijStatystyki();
   wczytajDzien();
 });

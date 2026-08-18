@@ -31,7 +31,7 @@ _OFF_URL = "https://world.openfoodfacts.org/api/v2/product/{kod}.json"
 # zapytanie zwracało te same 36 tys. produktów). Polska poddomena daje polskie nazwy.
 _OFF_SZUKAJ = "https://pl.openfoodfacts.org/cgi/search.pl"
 _OFF_POLA = ("product_name,product_name_pl,brands,quantity,product_quantity,"
-             "serving_size,serving_quantity,nutriments")
+             "serving_size,serving_quantity,nutriscore_grade,nova_group,additives_n,nutriments")
 _OFF_UA = "WiemApp/1.0 (budzetdomowy-production.up.railway.app)"
 
 
@@ -126,6 +126,11 @@ def _z_produktu_off(p: dict, kod: str) -> dict:
         "opak_g": opak,
         "porcja_g": porcja,
         "opis_porcji": "porcja" if porcja else None,
+        # Cudze, opublikowane oceny — nie liczymy własnych. `zapisz_produkt`
+        # odsiewa „unknown" i „not-applicable", którymi OFF wypełnia braki.
+        "nutriscore": p.get("nutriscore_grade"),
+        "nova": p.get("nova_group"),
+        "dodatki": p.get("additives_n"),
         "kcal": kcal if kcal is not None else 0,
         "bialko": _liczba(n.get("proteins_100g")),
         "tluszcz": _liczba(n.get("fat_100g")),
@@ -163,7 +168,7 @@ def _szukaj_w_off_ze_statusem(fraza: str, ile: int = 12,
         "search_terms": fraza, "search_simple": 1, "action": "process",
         "json": 1, "page_size": ile,
         "fields": ("code,product_name,product_name_pl,brands,product_quantity,"
-                   "serving_size,serving_quantity,nutriments"),
+                   "serving_size,serving_quantity,nutriscore_grade,nova_group,additives_n,nutriments"),
     })
     dane = None
     # Liczba prób zależy od tego, KTO czeka. Przy pisaniu w wyszukiwarce dwie —
@@ -498,6 +503,22 @@ def dzien(data: str = Query(default=""), current_user: dict = Depends(get_curren
     # inaczej pierwszego dnia paski udają realny cel.
     cele["domyslne"] = not eat_db.ma_wlasny_cel(current_user["user_id"])
     wynik["cele"] = cele
+    return wynik
+
+
+@router.get("/statystyki")
+def statystyki(dni: int = Query(default=7), current_user: dict = Depends(get_current_user)):
+    """Kalorie i białko w czasie plus rozkład ocen tego, co zjedzone.
+
+    Tydzień albo miesiąc — jeden dzień nic nie mówi, a dopiero seria pokazuje,
+    czy coś się sypie."""
+    if dni not in (7, 30):
+        raise HTTPException(400, "Obsługiwane okresy to 7 albo 30 dni")
+    cele = eat_db.get_cele(current_user["user_id"])
+    wynik = eat_db.statystyki(_hid(current_user), current_user["user_id"],
+                              dni, float(cele.get("kcal") or 0))
+    wynik["cel_kcal"] = cele.get("kcal")
+    wynik["cel_bialko"] = cele.get("bialko")
     return wynik
 
 

@@ -321,6 +321,28 @@
     .cel-jedn { font-size: 12.5px; color: var(--muted); width: 12px; }
     .cel-obok { font-size: 12.5px; color: var(--muted); width: 58px; text-align: right;
                 font-variant-numeric: tabular-nums; }
+    /* ── statystyki ── */
+    .stat-kafle { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:12px; }
+    .stat-kafel { border:1px solid var(--border); border-radius:11px; padding:10px 8px;
+                  background:var(--surface); text-align:center; }
+    .stat-kafel b { display:block; font-size:19px; color:var(--heading);
+                    font-variant-numeric:tabular-nums; }
+    .stat-kafel span { font-size:10.5px; color:var(--muted); line-height:1.25; display:block; }
+    /* Słupki rysujemy elementami, nie biblioteką — przy 7 albo 30 wartościach
+       wykres to po prostu kilka div-ów o różnej wysokości. */
+    .stat-slupki { display:flex; align-items:flex-end; gap:2px; height:64px; margin-bottom:4px; }
+    .stat-slupek { flex:1; background:var(--good); border-radius:2px 2px 0 0; min-height:2px;
+                   opacity:.75; }
+    .stat-slupek.pusty { background:var(--border); opacity:1; }
+    .stat-slupek.ponad { background:var(--danger); }
+    .stat-osie { display:flex; justify-content:space-between; font-size:10.5px;
+                 color:var(--muted); margin-bottom:14px; }
+    .stat-ocena { display:flex; gap:3px; margin:4px 0 2px; }
+    .stat-ocena i { height:9px; border-radius:2px; font-style:normal; }
+    .stat-legenda { display:flex; flex-wrap:wrap; gap:9px; font-size:11px; color:var(--muted); }
+    .stat-legenda em { font-style:normal; display:inline-flex; align-items:center; gap:4px; }
+    .stat-legenda em s { width:9px; height:9px; border-radius:2px; text-decoration:none; }
+
     .mini-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
                 padding: 2px 9px; font: inherit; font-size: 11.5px; cursor: pointer;
                 color: var(--accent); margin-left: 4px; }
@@ -375,6 +397,20 @@
   </div>
 
   <div id="posilki"></div>
+
+  <!-- Statystyki: jeden dzień nic nie mówi, dopiero seria pokazuje, czy coś się
+       sypie. Domyślnie zwinięte — dziennik ma być o dzisiaj, a nie o wykresach. -->
+  <button class="zwin" id="stat-zwin" type="button" aria-expanded="false" aria-controls="stat-tresc"
+          style="margin-top:14px">
+    <span>Statystyki i oceny</span><span class="zwin-strzalka" aria-hidden="true">⌄</span>
+  </button>
+  <div class="zwin-tresc" id="stat-tresc" hidden>
+    <div class="gdzie" id="stat-okres" style="margin-bottom:10px">
+      <button data-dni="7" aria-pressed="true" type="button">Tydzień</button>
+      <button data-dni="30" aria-pressed="false" type="button">Miesiąc</button>
+    </div>
+    <div id="stat-body"><div class="komunikat">Wczytuję…</div></div>
+  </div>
 </main>
 
 <div class="bilans" id="bilans">
