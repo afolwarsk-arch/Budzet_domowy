@@ -787,6 +787,24 @@ def zmien_wpis(wpis_id: int, body: dict, current_user: dict = Depends(get_curren
         "ilosc_g": _sprawdz_ilosc(body.get("ilosc_g")),
         **_sprawdz_wartosci(body),
     }
+
+    # Podpięcie prawdziwego produktu pod pozycję oszacowaną z opisu („doprecyzuj").
+    # Bierzemy WYŁĄCZNIE id istniejącego produktu z tego gospodarstwa — dzięki
+    # temu klient nie podepnie cudzego ani wymyślonego. Wartości zostają te
+    # z ekranu, bo tam użytkownik je widział i mógł poprawić gramaturę.
+    if "produkt_id" in body:
+        nowy = body.get("produkt_id")
+        if nowy in (None, "", 0):
+            dane["produkt_id"] = None
+        else:
+            try:
+                nowy = int(nowy)
+            except (TypeError, ValueError):
+                raise HTTPException(400, "Nieprawidłowy produkt")
+            if not eat_db.produkt_po_id(nowy, hid):
+                raise HTTPException(404, "Nie znaleziono produktu")
+            dane["produkt_id"] = nowy
+
     wynik = eat_db.aktualizuj_wpis(wpis_id, hid, current_user["user_id"], dane)
     if not wynik:
         raise HTTPException(404, "Nie znaleziono wpisu")

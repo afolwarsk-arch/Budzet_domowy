@@ -854,9 +854,13 @@ def get_wpis(wpis_id: int, household_id: int, user_id: int) -> dict | None:
 def aktualizuj_wpis(wpis_id: int, household_id: int, user_id: int, dane: dict) -> dict | None:
     """Poprawka istniejącego wpisu — najczęściej gramatury.
 
-    `produkt_id` zostaje bez zmian: pozycja ma nadal wskazywać na ten sam
-    produkt, nawet jeśli poprawiłeś jej wartości ręcznie. Ta sama zasada co
-    przy kasowaniu — ruszać można wyłącznie własne wpisy."""
+    `produkt_id` domyślnie zostaje bez zmian: pozycja ma nadal wskazywać na ten
+    sam produkt, nawet jeśli poprawiłeś jej wartości ręcznie. Zmieniamy je TYLKO
+    wtedy, gdy przyjdzie jawnie w danych — to droga „doprecyzuj produkt", gdzie
+    pozycja oszacowana z opisu dostaje prawdziwy produkt z kodem. Bez tego
+    doprecyzowanie podmieniałoby liczby, ale wpis dalej nie miałby produktu,
+    więc nie dostałby ani Nutri-Score, ani NOVA — czyli straciłby cały sens.
+    Ta sama zasada co przy kasowaniu — ruszać można wyłącznie własne wpisy."""
     # Wpis z przepisu niesie jeszcze liczbę zjedzonych porcji i ZAMROŻONĄ
     # rozpiskę składników. Gdy zmienia się ilość, muszą iść razem z resztą —
     # inaczej dziennik pokazywał dwie porcje, a rozpiska pod nimi dalej opisywała
@@ -866,6 +870,8 @@ def aktualizuj_wpis(wpis_id: int, household_id: int, user_id: int, dane: dict) -
         extra += ", porcje_zjedzone=%(porcje_zjedzone)s"
     if "skladniki_json" in dane:
         extra += ", skladniki_json=%(skladniki_json)s"
+    if "produkt_id" in dane:
+        extra += ", produkt_id=%(produkt_id)s"
     with get_db() as cur:
         cur.execute(f"""
             UPDATE eat_wpisy

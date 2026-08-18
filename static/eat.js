@@ -1016,6 +1016,150 @@ function rysujWyniki(fraza, przepisy, wlasne, podstawowe, propozycje, offPadlo, 
   });
 }
 
+// ── doprecyzowanie pozycji prawdziwym produktem ─────────────────────────────
+//
+// Podmieniamy WYŁĄCZNIE wartości odżywcze i podpięcie produktu. Gramatura
+// zostaje ta, którą podałeś — to Ty wiesz, ile zjadłeś, a produkt wie tylko,
+// ile ma w stu gramach.
+async function ekranDoprecyzowania(edycja, poz) {
+  const ark = arkusz && arkusz.querySelector('.ark');
+  if (!ark) return;
+  zatrzymajSkaner();
+  const gramy = Number(poz.ilosc_g) || 100;
+  const nazwaTeraz = poz.nazwa || '';
+
+  ark.innerHTML = `
+    <div class="ark-gl">
+      <button class="x" id="wroc" type="button" style="margin:0" aria-label="Wróć">‹</button>
+      <h2 style="font-size:1rem">Doprecyzuj produkt</h2>
+      <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button>
+    </div>
+    <div class="komunikat">Teraz: <b>${e(nazwaTeraz)}</b> — ${dziesietne(gramy)} g,
+      wartości oszacowane. Znajdź prawdziwy produkt, a przeliczę je z jego etykiety.
+      Gramatura zostanie Twoja.</div>
+    <div class="drogi" style="margin-bottom:10px">
+      <button class="droga" id="dp-skan" type="button">
+        <b>Skanuj kod</b><span>Z opakowania, które masz w ręce</span>
+      </button>
+      <button class="droga" id="dp-szukaj-tryb" type="button">
+        <b>Szukaj po nazwie</b><span>W Waszej bazie i wśród opakowań</span>
+      </button>
+    </div>
+    <div id="dp-skaner" style="display:none;margin-bottom:8px">
+      <video id="dp-video" playsinline muted style="width:100%;border-radius:10px"></video>
+      <div class="komunikat">Skieruj aparat na kod kreskowy.</div>
+    </div>
+    <div class="szukaj" style="margin-bottom:8px">
+      <input type="text" id="dp-szukaj" placeholder="Szukaj produktu" autocomplete="off"
+             value="${e(nazwaTeraz)}">
+    </div>
+    <div id="dp-wyniki"></div>
+    <div id="ark-komunikat"></div>`;
+
+  const schowajSkaner = () => {
+    if (window.Skaner) window.Skaner.stop();
+    const p = ark.querySelector('#dp-skaner');
+    if (p) p.style.display = 'none';
+  };
+  ark.querySelector('#zamknij2').onclick = () => { schowajSkaner(); zamknijArkusz(); };
+  ark.querySelector('#wroc').onclick = () => { schowajSkaner(); edytujPonownie(edycja); };
+
+  // NIE zapisujemy od razu. Kierunek przeliczenia jest tu niejednoznaczny:
+  // czy kalorie mają się dopasować do oszacowanej gramatury, czy odwrotnie?
+  // Trzymamy gramaturę (to Ty wiesz, ile zjadłeś — produkt wie tylko, ile ma
+  // w stu gramach), ale pokazujemy WYNIK na zwykłym ekranie porcji, żebyś
+  // zobaczył nowe kalorie i mógł poprawić gramy, zanim to wejdzie do dziennika.
+  const uzyj = (p) => {
+    schowajSkaner();
+    const na100 = {
+      kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
+      tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
+      opak_g: Number(p.opak_g) || 0, sztuk: Number(p.sztuk_w_opak) || 0,
+      porcja_g: Number(p.porcja_g) || 0, opis_porcji: p.opis_porcji || null,
+      produkt_id: p.id || null,
+    };
+    const mn = gramy / 100;
+    ekranPorcji(
+      { ...poz,
+        nazwa: [p.nazwa, p.marka].filter(Boolean).join(' · ').slice(0, 120),
+        ilosc_g: gramy,
+        kcal: Math.round(na100.kcal * mn * 10) / 10,
+        bialko: Math.round(na100.bialko * mn * 10) / 10,
+        tluszcz: Math.round(na100.tluszcz * mn * 10) / 10,
+        wegle: Math.round(na100.wegle * mn * 10) / 10 },
+      na100, p.id || null,
+      { g: gramy, etyk: `${dziesietne(gramy)} g · jak było`, opis: poz.opis_porcji || null },
+      edycja);
+  };
+
+  const rysuj = (lista, jeszcze) => {
+    const box = ark.querySelector('#dp-wyniki');
+    box.innerHTML = lista.length
+      ? lista.map((p, i) => `<button class="szybka" data-dp="${i}" type="button">
+          <span class="nz"><b>${e(p.nazwa)}</b><span>${p.marka ? e(p.marka) + ' · ' : ''}${
+            p.kcal ? zaokr(p.kcal) + ' kcal/100 g' : 'brak wartości'}</span></span>
+        </button>`).join('') + (jeszcze ? '<div class="komunikat">Szukam wśród opakowań…</div>' : '')
+      : `<div class="komunikat">${jeszcze ? 'Szukam…' : 'Nic nie znalazłem.'}</div>`;
+    box.querySelectorAll('[data-dp]').forEach((b) => {
+      b.onclick = () => uzyj(lista[Number(b.dataset.dp)]);
+    });
+  };
+
+  let licznik = 0;
+  const pole = ark.querySelector('#dp-szukaj');
+  const szukaj = async () => {
+    schowajSkaner();
+    const fraza = pole.value.trim();
+    const moje = ++licznik;
+    if (fraza.length < 3) { ark.querySelector('#dp-wyniki').innerHTML = ''; return; }
+    let lokalne = [];
+    try {
+      const d = await (await authFetch('/api/eat/szukaj?fraza=' + encodeURIComponent(fraza))).json();
+      if (moje !== licznik) return;
+      lokalne = [].concat(d.wlasne || [], d.podstawowe || []).slice(0, 12);
+      rysuj(lokalne, true);
+    } catch { return; }
+    try {
+      const d2 = await (await authFetch('/api/eat/szukaj/off?fraza=' + encodeURIComponent(fraza))).json();
+      if (moje !== licznik) return;
+      rysuj(lokalne.concat(d2.propozycje || []).slice(0, 20), false);
+    } catch { rysuj(lokalne, false); }
+  };
+  pole.addEventListener('input', szukaj);
+  ark.querySelector('#dp-szukaj-tryb').onclick = () => { pole.focus(); szukaj(); };
+
+  ark.querySelector('#dp-skan').onclick = () => {
+    if (!window.Skaner) { komunikat('Skaner niedostępny — poszukaj po nazwie.', true); return; }
+    window.Skaner.start({
+      video: ark.querySelector('#dp-video'),
+      wrap: ark.querySelector('#dp-skaner'),
+      onPodglad: () => komunikat(''),
+      onBlad: (t) => komunikat(t, true),
+      onCisza: () => komunikat('Nie widzę kodu. Poszukaj po nazwie.'),
+      onKod: async (kod) => {
+        komunikat('Sprawdzam kod…');
+        try {
+          const r = await authFetch('/api/eat/produkt?kod=' + encodeURIComponent(kod));
+          if (!r.ok) { komunikat('Nie znam tego kodu. Poszukaj po nazwie.', true); return; }
+          const d = await r.json();
+          komunikat('');
+          uzyj(d.produkt || d);
+        } catch { komunikat('Błąd połączenia.', true); }
+      },
+    });
+  };
+
+  szukaj();   // od razu szukamy po obecnej nazwie — najczęściej to wystarczy
+}
+
+// Powrót z doprecyzowania do edycji tej samej pozycji.
+function edytujPonownie(edycja) {
+  const w = edycja && edycja.wpis;
+  if (!w) { zamknijArkusz(); return; }
+  zamknijArkusz(true);
+  edytujWpis(w);
+}
+
 // ── skanowanie kodu ─────────────────────────────────────────────────────────
 
 // Kamerą i odczytem kodu zajmuje się wspólny moduł `eat-skaner.js` — ten sam,
@@ -1366,6 +1510,8 @@ function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
       </div>
       ${edycja ? `
       ${wPorcjach ? '' : '<button class="zwin-akcja" id="p-recznie" type="button">Popraw wartości ręcznie</button>'}
+      ${(!wPorcjach && !produktId) ? `<button class="zwin-akcja" id="p-doprecyzuj" type="button">
+        Doprecyzuj — podepnij prawdziwy produkt</button>` : ''}
       <button class="cta-usun" id="p-usun" type="button">Usuń z dnia</button>` : ''}
     </div>
     ${wPorcjach ? `<div class="na100">1 porcja: <b>${zaokr(Number(poz.kcal || 0) / teraz)}</b> kcal ·
@@ -1415,6 +1561,16 @@ function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
   if (recznie) recznie.onclick = () => {
     ekranPotwierdzenia(edycja.wpis, na100, produktId, '', { id: edycja.id });
   };
+
+  // ── doprecyzowanie pozycji prawdziwym produktem ──
+  //
+  // Pozycja oszacowana z opisu („makaron spaghetti Lubella") ma liczby z głowy
+  // modelu, nie z etykiety: nie ma ani kodu, ani Nutri-Score, ani NOVA, a przy
+  // następnym opisie tego samego produktu wszystko liczy się od nowa. Tutaj
+  // podpinasz prawdziwy produkt — gramatura zostaje Twoja, wartości przeliczamy
+  // z jego tabeli na 100 g.
+  const dopr = ark.querySelector('#p-doprecyzuj');
+  if (dopr) dopr.onclick = () => ekranDoprecyzowania(edycja, poz);
 
   const usun = ark.querySelector('#p-usun');
   if (usun) usun.onclick = async (ev) => {
