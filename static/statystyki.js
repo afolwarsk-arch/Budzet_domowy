@@ -13,6 +13,18 @@ const NOVA_OPIS = { 1: 'nieprzetworzone', 2: 'składniki kulinarne',
 
 const zaokr = (v) => Math.round(Number(v) || 0);
 let okres = 7;
+let widok = 'wszystko';   // wszystko | bialko | tluszcz | wegle
+
+// Białko to cel DO OSIĄGNIĘCIA (dobrze być powyżej), a tłuszcz i węglowodany to
+// LIMIT (dobrze być poniżej). Bez tego rozróżnienia „dzień w celu" znaczyłoby
+// dwie różne rzeczy zależnie od zakładki, a wykres kolorowałby na czerwono
+// dzień z dobrym białkiem. Kierunek piszemy na ekranie, żeby nie był ukrytym
+// założeniem.
+const MAKRA = {
+  bialko:  { nazwa: 'Białko',       pole: 'bialko',  cel: 'cel_bialko',  klasa: 'cz-b', minimum: true },
+  tluszcz: { nazwa: 'Tłuszcz',      pole: 'tluszcz', cel: 'cel_tluszcz', klasa: 'cz-t', minimum: false },
+  wegle:   { nazwa: 'Węglowodany',  pole: 'wegle',   cel: 'cel_wegle',   klasa: 'cz-w', minimum: false },
+};
 
 // Procenty liczymy od CAŁOŚCI zjedzonych kalorii, a nie od samych ocenionych,
 // i „bez oceny" pokazujemy jako osobny, szary kawałek paska.
@@ -52,6 +64,9 @@ async function rysuj() {
     box.innerHTML = '<div class="laduje">Nie udało się wczytać statystyk.</div>';
     return;
   }
+
+  const m = MAKRA[widok];   // null przy widoku „wszystko"
+  if (m) { box.innerHTML = kartaMakro(d, m); podepnijSlupki(box, d); return; }
 
   const cel = Number(d.cel_kcal) || 0;
   // Skala wspólna dla kalorii zapisanych i policzonych z makro — inaczej słupki
@@ -130,9 +145,75 @@ async function rysuj() {
       nie liczymy własnego wskaźnika „zdrowe/niezdrowe".</small>
     </div>`;
 
+  podepnijSlupki(box, d);
+}
+
+function podepnijSlupki(box, d) {
   box.querySelectorAll('.stat-slupek[data-i]').forEach((b) => {
-    b.onclick = () => pokazDzien(d.seria[Number(b.dataset.i)], b);
+    b.onclick = () => pokazDzien(d.seria[Number(b.dataset.i)], b, d);
   });
+}
+
+// Widok jednego makroskładnika: ile było, ile brakło albo o ile przekroczone.
+function kartaMakro(d, m) {
+  const cel = Number(d[m.cel]) || 0;
+  const dni = d.seria.filter((s) => s.kcal > 0 && !s.niepelny);
+  const maks = Math.max(cel, ...d.seria.map((s) => s[m.pole])) || 1;
+  const srednia = dni.length
+    ? dni.reduce((a, s) => a + s[m.pole], 0) / dni.length : 0;
+  const wCelu = cel
+    ? dni.filter((s) => (m.minimum ? s[m.pole] >= cel : s[m.pole] <= cel)).length : 0;
+
+  // Część słupka PONAD cel rysujemy osobno — przy limicie na czerwono (przekroczony),
+  // przy minimum w kolorze makra (nadwyżka jest w porządku).
+  const slupki = d.seria.map((s, i) => {
+    const v = s[m.pole];
+    const doCelu = cel ? Math.min(v, cel) : v;
+    const ponad = cel ? Math.max(0, v - cel) : 0;
+    const roznica = cel ? v - cel : 0;
+    const opis = `${s.data}: ${zaokr(v)} g`
+      + (cel ? (roznica >= 0 ? ` (+${zaokr(roznica)} ponad cel)` : ` (brakuje ${zaokr(-roznica)})`) : '')
+      + (s.niepelny ? ' — dzień niekompletny' : '');
+    const srodek = v > 0
+      ? `<i class="${m.klasa}" style="flex:${doCelu || 0.001}"></i>`
+        + (ponad ? `<i class="${m.minimum ? m.klasa + ' nadwyzka' : 'cz-ponad'}" style="flex:${ponad}"></i>` : '')
+      : '';
+    return `<button class="stat-slupek${s.niepelny ? ' niepelny' : ''}${!v ? ' pusty' : ''}"
+              type="button" data-i="${i}" title="${opis}" aria-label="${opis}"
+              style="height:${Math.max(2, v / maks * 100)}%">${srodek}</button>`;
+  }).join('');
+
+  const pierwszy = d.seria[0] ? d.seria[0].data.slice(8) + '.' + d.seria[0].data.slice(5, 7) : '';
+  const kierunek = m.minimum ? 'co najmniej' : 'najwyżej';
+
+  return `
+    <div class="stat-kafle">
+      <div class="stat-kafel"><b>${zaokr(srednia)}</b><span>g średnio na dzień</span></div>
+      <div class="stat-kafel"><b>${cel ? zaokr(cel) : '—'}</b><span>cel: ${kierunek} tyle</span></div>
+      <div class="stat-kafel"><b>${wCelu}/${dni.length}</b><span>dni w celu (z kompletnych)</span></div>
+    </div>
+    <div class="stat-slupki">
+      ${cel ? `<div class="stat-cel" style="bottom:${cel / maks * 100}%"></div>` : ''}
+      ${slupki}
+    </div>
+    <div class="stat-osie"><span>${pierwszy}</span><span>dziś</span></div>
+    <div id="szczegoly-dnia"></div>
+    <div class="stat-legenda" style="margin-bottom:16px">
+      <em><s class="${m.klasa}"></s>${m.nazwa.toLowerCase()} do celu</em>
+      <em><s class="${m.minimum ? m.klasa + ' nadwyzka' : 'cz-ponad'}"></s>${
+        m.minimum ? 'ponad cel (w porządku)' : 'ponad limit'}</em>
+      ${cel ? `<em><s style="background:var(--muted)"></s>kreska = ${zaokr(cel)} g</em>` : ''}
+      ${d.dni_niepelnych ? `<em><s class="cz-niepelny"></s>${d.dni_niepelnych} dni
+        niekompletnych — pominięte</em>` : ''}
+    </div>
+    <div class="stat-stopka">
+      ${m.minimum
+        ? `Białko traktujemy jako cel <b>do osiągnięcia</b> — dzień liczy się jako udany,
+           gdy zjadłeś co najmniej ${zaokr(cel)} g.`
+        : `${m.nazwa} traktujemy jako <b>limit</b> — dzień liczy się jako udany, gdy zmieściłeś
+           się w ${zaokr(cel)} g.`}
+      Stuknij słupek, żeby zobaczyć konkretny dzień.
+    </div>`;
 }
 
 // Szczegóły jednego dnia pod wykresem: liczby i przełącznik kompletności.
@@ -141,7 +222,7 @@ async function rysuj() {
 // byłoby myleniem samego siebie.
 let wybranyDzien = null;
 
-function pokazDzien(s, przycisk) {
+function pokazDzien(s, przycisk, d) {
   const box = document.getElementById('szczegoly-dnia');
   if (!box) return;
   document.querySelectorAll('.stat-slupek.wybrany').forEach((x) => x.classList.remove('wybrany'));
@@ -154,13 +235,26 @@ function pokazDzien(s, przycisk) {
     .toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
   const zMakro = s.kcal_bialko + s.kcal_tluszcz + s.kcal_wegle;
 
+  // Różnica względem celu — to po nią się tu zagląda. Dla białka „brakuje",
+  // dla limitów „ponad".
+  const roznica = (klucz) => {
+    const mm = MAKRA[klucz];
+    const cel = Number((d || {})[mm.cel]) || 0;
+    if (!cel) return '';
+    const r = s[mm.pole] - cel;
+    if (Math.abs(r) < 0.5) return ' <b>= cel</b>';
+    return mm.minimum
+      ? (r > 0 ? ` <b>+${zaokr(r)} ponad cel</b>` : ` <b>brakuje ${zaokr(-r)}</b>`)
+      : (r > 0 ? ` <b>+${zaokr(r)} ponad limit</b>` : ` <b>${zaokr(-r)} zapasu</b>`);
+  };
+
   box.innerHTML = `
     <div class="dzien-karta">
       <div class="dk-gl"><b>${dzien}</b><span>${zaokr(s.kcal)} kcal</span></div>
       ${s.kcal ? `<div class="dk-makro">
-        <em><s class="cz-b"></s>białko ${zaokr(s.bialko)} g · ${zaokr(s.kcal_bialko)} kcal</em>
-        <em><s class="cz-t"></s>tłuszcz ${zaokr(s.tluszcz)} g · ${zaokr(s.kcal_tluszcz)} kcal</em>
-        <em><s class="cz-w"></s>węglowodany ${zaokr(s.wegle)} g · ${zaokr(s.kcal_wegle)} kcal</em>
+        <em><s class="cz-b"></s>białko ${zaokr(s.bialko)} g${roznica('bialko')}</em>
+        <em><s class="cz-t"></s>tłuszcz ${zaokr(s.tluszcz)} g${roznica('tluszcz')}</em>
+        <em><s class="cz-w"></s>węglowodany ${zaokr(s.wegle)} g${roznica('wegle')}</em>
       </div>
       ${Math.abs(zMakro - s.kcal) > Math.max(40, s.kcal * 0.08) ? `<div class="dk-uwaga">
         Z makroskładników wychodzi ${zaokr(zMakro)} kcal — część pozycji nie ma kompletu wartości.
@@ -182,12 +276,9 @@ function pokazDzien(s, przycisk) {
       if (!r.ok) throw new Error();
       wybranyDzien = null;      // rysuj() zbuduje panel od nowa, już z aktualnych danych
       await rysuj();
-      const znowu = document.querySelector(`.stat-slupek[data-i]`);
-      if (znowu) {
-        const nowy = [...document.querySelectorAll('.stat-slupek[data-i]')]
-          .find((b) => b.title.startsWith(s.data));
-        if (nowy) nowy.click();
-      }
+      const nowy = [...document.querySelectorAll('.stat-slupek[data-i]')]
+        .find((b) => b.title.startsWith(s.data));
+      if (nowy) nowy.click();   // wracamy na ten sam dzień, żeby nie gubić kontekstu
     } catch {
       ev.target.checked = !chce;
       ev.target.disabled = false;
@@ -203,6 +294,17 @@ authRequireHousehold().then(() => {
       .forEach((x) => x.setAttribute('aria-pressed', 'false'));
     b.setAttribute('aria-pressed', 'true');
     okres = Number(b.dataset.dni);
+    wybranyDzien = null;
+    rysuj();
+  };
+  document.getElementById('widok').onclick = (ev) => {
+    const b = ev.target.closest('[data-widok]');
+    if (!b) return;
+    document.querySelectorAll('#widok [data-widok]')
+      .forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    widok = b.dataset.widok;
+    wybranyDzien = null;      // panel dnia dotyczy poprzedniego widoku
     rysuj();
   };
   rysuj();

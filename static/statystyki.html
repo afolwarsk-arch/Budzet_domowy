@@ -46,6 +46,14 @@
     .cz-t { background: #d9a441; }        /* tłuszcz */
     .cz-w { background: #7b6fb0; }        /* węglowodany */
     .cz-nieznane { background: var(--border); }
+    /* Nadwyżka ponad LIMIT (tłuszcz, węgle) — czerwona, bo to przekroczenie.
+       Nadwyżka ponad MINIMUM (białko) zostaje w kolorze makra, tylko jaśniejsza:
+       zjedzenie więcej białka niż w celu nie jest błędem. */
+    .cz-ponad { background: var(--danger); }
+    .nadwyzka { opacity: .5; }
+
+    .widoki { margin-top: -6px; }
+    .widoki button { font-size: 12.5px; padding: 8px 4px; min-height: 40px; }
     .stat-slupek.pusty { background: var(--border); }
     /* Dzień oznaczony jako niekompletny: widoczny, ale wyraźnie „nie liczy się". */
     .stat-slupek.niepelny { opacity: .35;
@@ -107,6 +115,13 @@
   <div class="okres" id="okres">
     <button data-dni="7" aria-pressed="true" type="button">Tydzień</button>
     <button data-dni="30" aria-pressed="false" type="button">Miesiąc</button>
+  </div>
+
+  <div class="okres widoki" id="widok">
+    <button data-widok="wszystko" aria-pressed="true" type="button">Wszystko</button>
+    <button data-widok="bialko" aria-pressed="false" type="button">Białko</button>
+    <button data-widok="tluszcz" aria-pressed="false" type="button">Tłuszcz</button>
+    <button data-widok="wegle" aria-pressed="false" type="button">Węgle</button>
   </div>
 
   <div id="tresc"><div class="laduje">Wczytuję…</div></div>
