@@ -76,6 +76,10 @@ def init_eat_db() -> None:
         # pojedynczych dodatków są autorskie i sporne. Liczbę da się sprawdzić,
         # „szkodliwości" trzeba by komuś wierzyć.
         cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS dodatki INTEGER")
+        # Kiedy ostatnio PYTALIŚMY o oceny. Bez tego produkty, których Open Food
+        # Facts po prostu nie ocenia, wracały w każdej partii uzupełniania
+        # i blokowały kolejkę - reszta bazy nigdy nie doszłaby do sprawdzenia.
+        cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS oceny_sprawdzone TIMESTAMP")
         # Jednorazowa naprawa danych z Open Food Facts. Tam wielkość opakowania
         # i wielkość porcji wpisują ludzie i regularnie je mylą — zmierzone na
         # majonezie Remia 8710448636939, gdzie product_quantity=15 przy
@@ -613,16 +617,22 @@ def produkty_bez_ocen(household_id: int, limit: int) -> list[dict]:
         cur.execute("""SELECT id, kod FROM eat_produkty
                         WHERE household_id=%s AND kod IS NOT NULL
                           AND nutriscore IS NULL AND nova IS NULL AND dodatki IS NULL
+                          AND oceny_sprawdzone IS NULL
                         ORDER BY id LIMIT %s""", (household_id, limit))
         return [dict(r) for r in cur.fetchall()]
 
 
 def ustaw_oceny(produkt_id: int, household_id: int, nutriscore, nova, dodatki) -> None:
+    """Zapisuje oceny i ZNACZY produkt jako sprawdzony — także wtedy, gdy nic nie
+    przyszło. Inaczej produkt, którego Open Food Facts nie ocenia, wracał w każdej
+    kolejnej partii i nie przepuszczał reszty bazy: zmierzone, kolejka stała na
+    tych samych dwunastu pozycjach, a `zostalo` nie drgnęło."""
     with get_db() as cur:
         cur.execute("""UPDATE eat_produkty
                           SET nutriscore=COALESCE(%s, nutriscore),
                               nova=COALESCE(%s, nova),
-                              dodatki=COALESCE(%s, dodatki)
+                              dodatki=COALESCE(%s, dodatki),
+                              oceny_sprawdzone=CURRENT_TIMESTAMP
                         WHERE id=%s AND household_id=%s""",
                     (nutriscore, nova, dodatki, produkt_id, household_id))
 

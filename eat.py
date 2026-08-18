@@ -535,13 +535,16 @@ def uzupelnij_oceny(limit: int = Query(default=12),
     uzupelnione = 0
     for p in do_zrobienia:
         dane = _z_open_food_facts(p["kod"])
-        if not dane:
-            continue
+        if dane is None:
+            continue          # awaria sieci — spróbujemy jeszcze raz następnym razem
         ns = _ns(dane.get("nutriscore"))
         nova = _int_z_zakresu(dane.get("nova"), (1, 2, 3, 4))
         dodatki = _int_z_zakresu(dane.get("dodatki"), range(0, 100))
+        # Znaczymy jako sprawdzony ZAWSZE, gdy odpowiedź przyszła — także pustą.
+        # Bez tego produkt bez ocen w Open Food Facts wracał w każdej partii
+        # i kolejka nigdy nie docierała do reszty bazy.
+        eat_db.ustaw_oceny(p["id"], hid, ns, nova, dodatki)
         if ns or nova or dodatki is not None:
-            eat_db.ustaw_oceny(p["id"], hid, ns, nova, dodatki)
             uzupelnione += 1
     zostalo = len(eat_db.produkty_bez_ocen(hid, 200))
     return {"sprawdzono": len(do_zrobienia), "uzupelnione": uzupelnione, "zostalo": zostalo}
