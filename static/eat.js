@@ -1003,16 +1003,31 @@ const NOVA_OPIS = { 1: 'nieprzetworzone', 2: 'składniki kulinarne',
                     3: 'przetworzone', 4: 'wysoko przetworzone' };
 let statOkres = 7;
 
-function pasekOceny(mapa, kolory, opisy) {
-  const suma = Object.values(mapa).reduce((s, v) => s + Number(v || 0), 0);
-  if (!suma) return '';
+// Procenty liczymy od CAŁOŚCI zjedzonych kalorii, a nie od samych ocenionych,
+// i „bez oceny" pokazujemy jako osobny, szary kawałek paska.
+//
+// Inaczej powstaje liczba alarmująca i nieprawdziwa: przy 17% ocenionych kalorii
+// pasek NOVA pokazywał „wysoko przetworzone 97%", co czyta się jako „prawie
+// wszystko, co jesz". Naprawdę znaczyło „97% z tych 17%" — a ocenione są głównie
+// produkty paczkowane, czyli próbka z założenia przechylona w stronę
+// przetworzonych. Warzywa i domowe dania, które ocen nie mają, wypadały z mianownika.
+function pasekOceny(mapa, kolory, opisy, bezOceny) {
+  const ocenione = Object.values(mapa).reduce((s, v) => s + Number(v || 0), 0);
+  const calosc = ocenione + Number(bezOceny || 0);
+  if (!ocenione) return '';
   const klucze = Object.keys(mapa).sort();
-  return `<div class="stat-ocena">${klucze.map((k) =>
-    `<i style="flex:${mapa[k]};background:${kolory[k] || 'var(--border)'}"></i>`).join('')}</div>
+  const kawalek = (kolor, wartosc) =>
+    `<i style="flex:${wartosc};background:${kolor}"></i>`;
+  const proc = (v) => Math.round(v / calosc * 100);
+  return `<div class="stat-ocena">
+      ${klucze.map((k) => kawalek(kolory[k] || 'var(--border)', mapa[k])).join('')}
+      ${bezOceny ? kawalek('var(--border)', bezOceny) : ''}
+    </div>
     <div class="stat-legenda">${klucze.map((k) =>
       `<em><s style="background:${kolory[k] || 'var(--border)'}"></s>${
-        opisy ? (opisy[k] || k) : String(k).toUpperCase()} · ${Math.round(mapa[k] / suma * 100)}%</em>`
-    ).join('')}</div>`;
+        opisy ? (opisy[k] || k) : String(k).toUpperCase()} · ${proc(mapa[k])}%</em>`
+    ).join('')}${bezOceny
+      ? `<em><s style="background:var(--border)"></s>bez oceny · ${proc(bezOceny)}%</em>` : ''}</div>`;
 }
 
 async function rysujStatystyki() {
@@ -1051,10 +1066,12 @@ async function rysujStatystyki() {
       <span>${cel ? 'czerwony = ponad cel ' + zaokr(cel) + ' kcal' : ''}</span><span>dziś</span></div>
 
     <div class="sek-tyt">Jakość odżywcza (Nutri-Score)</div>
-    ${pasekOceny(d.nutriscore_kcal, NS_KOLOR) || '<div class="komunikat">Brak ocenionych pozycji.</div>'}
+    ${pasekOceny(d.nutriscore_kcal, NS_KOLOR, null, d.bez_oceny_kcal)
+      || '<div class="komunikat">Brak ocenionych pozycji.</div>'}
 
     <div class="sek-tyt" style="margin-top:14px">Stopień przetworzenia (NOVA)</div>
-    ${pasekOceny(d.nova_kcal, NOVA_KOLOR, NOVA_OPIS) || '<div class="komunikat">Brak ocenionych pozycji.</div>'}
+    ${pasekOceny(d.nova_kcal, NOVA_KOLOR, NOVA_OPIS, d.bez_oceny_kcal)
+      || '<div class="komunikat">Brak ocenionych pozycji.</div>'}
 
     <div class="komunikat" style="margin-top:12px;line-height:1.5">
       ${d.srednio_dodatkow !== null && d.srednio_dodatkow !== undefined
