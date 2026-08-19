@@ -901,6 +901,9 @@ const IKONY_SVG = {
   analiza: '<path d="M3.4 3.6v17h17"/><path d="M6.6 16.4l4.4-5 3.9 3.3 4.3-5.9"/><circle class="kropka" cx="18.6" cy="8.4" r="1.9"/>',
   alerty: '<path d="M6.2 10.4a5.8 5.8 0 0111.6 0c0 4.2 1.6 5.6 1.6 5.6H4.6s1.6-1.4 1.6-5.6z"/><circle class="kropka" cx="12" cy="19.2" r="1.9"/>',
   admin: '<path d="M4 7.5h16M4 12h16M4 16.5h16"/><circle class="kropka" cx="9" cy="7.5" r="2"/><circle class="kropka" cx="15.6" cy="16.5" r="2"/>',
+  // Krzyż w karcie, a nie serce ani puls: moduł jest o dokumentacji i wynikach,
+  // nie o kondycji. Karta obrysowana, żeby nie mylił się z „dodaj" (kółko z plusem).
+  zdrowie: '<rect x="3.4" y="5" width="17.2" height="14" rx="2.4"/><path class="akc" d="M12 9.2v5.6M9.2 12h5.6"/>',
   osoby: '<circle cx="9.2" cy="8.4" r="3.4"/><path d="M3.4 19.4c0-3.2 2.6-5.4 5.8-5.4s5.8 2.2 5.8 5.4"/><path d="M16.6 6.2a3.2 3.2 0 010 6.2M17.6 14.6c2.1.6 3.4 2.4 3.4 4.8"/>',
   osoba_plus: '<circle cx="10" cy="8.4" r="3.4"/><path d="M4.2 19.4c0-3.2 2.6-5.4 5.8-5.4 1 0 2 .2 2.8.6"/><path class="akc" d="M17.6 13.4v6.2M14.5 16.5h6.2"/>',
   pobierz: '<path class="akc" d="M12 3.6v10.2M8.4 10.6l3.6 3.6 3.6-3.6"/><path d="M4.2 16.4v2.2a1.8 1.8 0 001.8 1.8h12a1.8 1.8 0 001.8-1.8v-2.2"/>',
@@ -949,6 +952,7 @@ const IKONY_PELNE = {
   analiza: '<path d="M3 19h18v2H3zM3 3h2v18H3z"/><path d="M6.6 15.4l4.4-5 3.9 3.3 4.3-5.7 1.6 1.2-5.6 7.4-4-3.4-3 3.4z"/><circle class="kropka" cx="18.6" cy="8" r="2.3"/>',
   alerty: '<path d="M12 3.2a6 6 0 016 6c0 4.4 1.7 5.9 1.7 5.9H4.3s1.7-1.5 1.7-5.9a6 6 0 016-6z"/><circle class="kropka" cx="12" cy="19" r="2.2"/>',
   admin: '<rect x="3.6" y="6.2" width="16.8" height="2.4" rx="1.2"/><rect x="3.6" y="15.4" width="16.8" height="2.4" rx="1.2"/><circle class="kropka" cx="9" cy="7.4" r="2.4"/><circle class="kropka" cx="15.6" cy="16.6" r="2.4"/>',
+  zdrowie: '<rect x="3.4" y="5" width="17.2" height="14" rx="2.6"/><path class="pusto" d="M10.9 8.6h2.2v2.3h2.3v2.2h-2.3v2.3h-2.2v-2.3H8.6v-2.2h2.3z"/>',
 };
 
 function ikonaPelna(nazwa) {
@@ -995,6 +999,16 @@ const MODULY = [
       { href: '/przepisy', ikona: 'ksiazka', label: 'Przepisy', pelny: 'Przepisy' },
       { href: '/skaner', ikona: 'dodaj', label: 'Sprawdź', pelny: 'Sprawdź produkt' },
       { href: '/statystyki', ikona: 'analiza', label: 'Statystyki', pelny: 'Statystyki i oceny' },
+    ],
+  },
+  {
+    id: 'health',
+    nazwa: 'health',
+    kolor: '#00c4ba',
+    opis: 'Badania i dokumentacja',
+    ikona: 'zdrowie',
+    strony: [
+      { href: '/health', ikona: 'zdrowie', label: 'Badania', pelny: 'Badania i dokumentacja' },
     ],
   },
 ];

@@ -17,6 +17,8 @@ import ai_processor
 import database
 import eat
 import eat_db
+import health
+import health_db
 import push
 from auth import get_current_user, require_admin, user_from_token, delete_firebase_user
 
@@ -32,12 +34,22 @@ except Exception as _e:
     print(f"[eat] NIE zalozono tabel, sekcja jedzenia bedzie niedostepna: {_e!r}")
     _EAT_OK = False
 
+try:
+    health_db.init_health_db()
+    _HEALTH_OK = True
+except Exception as _e:
+    print(f"[health] NIE zalozono tabel, sekcja zdrowia bedzie niedostepna: {_e!r}")
+    _HEALTH_OK = False
+
 app = FastAPI(title="Budżet domowy")
 
 # Sekcja wiem.eat mieszka we własnym routerze — nowe dziedziny NIE dokładają
 # się już do tego pliku.
 if _EAT_OK:
     app.include_router(eat.router)
+
+if _HEALTH_OK:
+    app.include_router(health.router)
 
 try:
     _BUILD = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
@@ -228,6 +240,11 @@ def statystyki_page():
 @app.get("/skaner")
 def skaner_page():
     return _html("skaner.html")
+
+
+@app.get("/health")
+def health_page():
+    return _html("health.html")
 
 
 @app.get("/kategorie")

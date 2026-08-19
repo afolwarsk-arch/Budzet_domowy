@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Badania — Wiem</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#1a1d20">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script defer src="/static/auth.js"></script>
+  <style>
+    main { padding-bottom: 96px; }
+    .gora { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .gora h1 { margin: 0; font-size: 1.25rem; }
+
+    /* Wybór osoby — ten sam wzorzec co przełącznik okresu w statystykach. */
+    .osoby { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .osoby button { border: 1px solid var(--border); background: var(--surface);
+                    border-radius: 10px; padding: 9px 14px; min-height: 44px; font: inherit;
+                    font-size: 13.5px; cursor: pointer; color: var(--text); }
+    .osoby button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary);
+                    border-color: var(--primary); font-weight: 600; }
+    .osoby button.dodaj-os { border-style: dashed; color: var(--muted); }
+
+    /* Wejście na dokument. Dwa przyciski, bo to dwie różne czynności:
+       zrobienie zdjęcia teraz i wybranie pliku PDF z poczty. */
+    .wejscia { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+    .wejscie { border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+               padding: 16px 12px; text-align: center; cursor: pointer; font: inherit;
+               color: var(--text); display: flex; flex-direction: column; align-items: center;
+               gap: 7px; min-height: 88px; justify-content: center; }
+    .wejscie:hover { border-color: var(--accent); }
+    .wejscie b { font-size: 14px; font-weight: 600; color: var(--heading); }
+    .wejscie span { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+    .wejscie svg { width: 24px; height: 24px; stroke: var(--muted); fill: none;
+                   stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    /* Pole pliku NIE MOŻE być w display:none — na iPhonie ukryty w ten sposób
+       input nie reaguje na programowe kliknięcie. Chowamy je rozmiarem. */
+    .wejscia input[type=file] { position: absolute; width: 1px; height: 1px;
+                                opacity: 0; pointer-events: none; }
+
+    /* Ekran oczekiwania — bez niego po wybraniu pliku przez kilkanaście sekund
+       nic się nie dzieje i wygląda to, jakby przycisk nie zadziałał. */
+    .czekaj { display: flex; flex-direction: column; align-items: center; justify-content: center;
+              text-align: center; padding: 54px 20px 46px; }
+    .czekaj-znak { position: relative; width: 54px; height: 54px; margin-bottom: 20px; }
+    .czekaj-znak i { position: absolute; top: 50%; left: 50%; width: 11px; height: 11px;
+                     margin: -5.5px 0 0 -5.5px; border-radius: 50%; background: var(--marka);
+                     animation: kropki-orbita 1.15s linear infinite; }
+    .czekaj-znak i:nth-child(2) { animation-delay: -.575s; opacity: .5; }
+    @keyframes kropki-orbita {
+      from { transform: rotate(0deg) translateX(19px); }
+      to   { transform: rotate(360deg) translateX(19px); }
+    }
+    @media (prefers-reduced-motion: reduce) { .czekaj-znak i { animation: none; } }
+    .czekaj b { font-size: 15px; color: var(--heading); }
+    .czekaj span { font-size: 13px; color: var(--muted); margin-top: 6px; max-width: 30ch; }
+
+    /* ── lista dokumentów ── */
+    .dok { border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+           padding: 13px 14px; margin-bottom: 9px; cursor: pointer; display: block;
+           width: 100%; text-align: left; font: inherit; color: var(--text); }
+    .dok:hover { border-color: var(--accent); }
+    .dok-gl { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .dok-nazwa { font-weight: 600; font-size: 14.5px; color: var(--heading); }
+    .dok-data { font-size: 12px; color: var(--muted); white-space: nowrap;
+                font-variant-numeric: tabular-nums; }
+    .dok-pod { font-size: 12.5px; color: var(--muted); margin-top: 4px;
+               display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .znacznik { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em;
+                font-weight: 700; padding: 2px 6px; border-radius: 4px;
+                background: var(--surface-3); color: var(--muted); }
+    .znacznik.pdf { background: var(--accent-soft); color: var(--accent-strong);
+                    border: 1px solid var(--accent-border); }
+
+    /* ── tabela wyników ── */
+    .wyniki { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    .wyniki th { text-align: left; font-size: 10.5px; text-transform: uppercase;
+                 letter-spacing: .06em; color: var(--muted); font-weight: 700;
+                 padding: 7px 8px; border-bottom: 1px solid var(--border); }
+    .wyniki td { padding: 8px; border-bottom: 1px solid var(--border-soft);
+                 vertical-align: baseline; }
+    .wyniki tr:last-child td { border-bottom: none; }
+    .w-wart { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--heading);
+              white-space: nowrap; }
+    .w-norma { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;
+               white-space: nowrap; }
+    /* Flaga jest PRZEPISANA z wyniku, nie policzona — dlatego pokazujemy dokładnie
+       ten znak, który był na papierze, a kolorem tylko go uwypuklamy. */
+    .flaga { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 5px;
+             border-radius: 4px; background: var(--danger-bg); color: var(--danger);
+             border: 1px solid var(--danger-border); margin-left: 6px; }
+    .w-grupa td { background: var(--surface-2); font-size: 11px; text-transform: uppercase;
+                  letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+
+    .karta { border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+             padding: 14px 15px; margin-bottom: 14px; }
+    .karta h2 { font-size: 15px; margin-bottom: 10px; }
+    .karta .przewin { overflow-x: auto; }
+    .proza { white-space: pre-wrap; font-size: 13.5px; line-height: 1.55; }
+    .pole { display: flex; flex-direction: column; gap: 4px; margin-bottom: 11px; }
+    .pole label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
+                  color: var(--muted); font-weight: 700; }
+    .pole input, .pole select, .pole textarea {
+      border: 1px solid var(--border); border-radius: 9px; padding: 10px 11px;
+      font: inherit; font-size: 14px; background: var(--surface); color: var(--text);
+      min-height: 44px; width: 100%; }
+    .pole textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
+    .pola-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+
+    /* Przyciski biorą wygląd z systemu (.btn + .btn-primary/-outline/-danger)
+       — tutaj tylko rozciągamy je na szerokość, bo na telefonie mają być
+       łatwe do trafienia kciukiem. */
+    .akcje { display: flex; gap: 9px; margin-top: 4px; }
+    .akcje .btn { flex: 1; min-height: 46px; justify-content: center; font-size: 14.5px; }
+
+    .pusto { text-align: center; color: var(--muted); padding: 34px 18px; font-size: 14px;
+             line-height: 1.55; }
+    .laduje { text-align: center; color: var(--muted); padding: 30px; font-size: 15px; }
+    .blad { background: var(--danger-bg); border: 1px solid var(--danger-border);
+            color: var(--danger); border-radius: 10px; padding: 11px 13px; font-size: 13.5px;
+            margin-bottom: 14px; }
+    .uwaga { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 10px; }
+
+    .wroc { background: none; border: none; color: var(--muted); font: inherit; font-size: 13.5px;
+            cursor: pointer; padding: 6px 0; margin-bottom: 8px; }
+    .wroc:hover { color: var(--accent); }
+
+    @media (max-width: 560px) { .pola-2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/health" class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></a>
+</nav>
+
+<main>
+  <div id="tresc"><div class="laduje">Wczytuję…</div></div>
+</main>
+
+<script defer src="/static/health.js"></script>
+</body>
+</html>
