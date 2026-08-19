@@ -810,7 +810,10 @@ function _injectProfileButton(me) {
   btn.innerHTML = awatarHtml(me, 'aw-maly')
     + `<span id="nav-profile-name">${_esc(me.display_name || (me.name || '').split(' ')[0])}</span>`;
   btn.title = 'Twój profil i gospodarstwo';
-  btn.style.cssText = 'display:flex;align-items:center;gap:7px;padding:4px 12px 4px 5px;cursor:pointer;border:1px solid var(--accent);border-radius:20px;background:var(--surface);color:var(--accent);font-size:0.85rem;font-weight:500;';
+  // --marka, a nie --accent: plakietka siedzi w pasku obok znaku, więc ma
+  // trzymać kolor modułu. Przy turkusowym wiem.health koralowa obwódka była
+  // jedynym elementem paska w kolorze innego modułu.
+  btn.style.cssText = 'display:flex;align-items:center;gap:7px;padding:4px 12px 4px 5px;cursor:pointer;border:1px solid var(--marka);border-radius:20px;background:var(--surface);color:var(--marka);font-size:0.85rem;font-weight:500;';
   btn.onclick = _showProfileModal;
   grupa.appendChild(btn);
 

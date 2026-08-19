@@ -110,6 +110,16 @@ body {
   line-height: 1.5;
 }
 
+/* Formanty NIE dziedziczą kroju — przeglądarka narzuca im własny (na Windows
+   Arial). Widać to było na plakietce użytkownika w pasku: cały pasek
+   system-ui, a jedno imię Arialem, bo przycisk jest budowany inline w JS
+   i nie ma klasy z `font: inherit`.
+   Reguła łapie u źródła wszystkie takie przypadki — także przyciski okna
+   profilu, zaproszenia i przełącznika motywu — więc nowy formant nie musi
+   już pamiętać o kroju. Strony, które ustawiają `font: inherit` u siebie,
+   nadpisują to bez zmiany wyglądu. */
+button, input, select, textarea { font-family: inherit; }
+
 /* Pasek jest atramentowy w OBU motywach. Logo wyglada najlepiej na czerni,
    a pasek statusu telefonu i tak jest ciemny — dzieki temu gora ekranu to
    jedna plaszczyzna, nie dwie. Przedefiniowanie tokenow wewnatrz paska
