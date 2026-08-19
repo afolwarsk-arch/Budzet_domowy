@@ -1007,6 +1007,19 @@ function _modulBiezacy() {
   return MODULY[0];   // strony spoza modułów (np. /admin) trzymamy przy finansach
 }
 
+// Znak bierze kolor bieżącego modułu. `--marka` maluje obie kropki w znaku i
+// dopisek („wiem.eat"), więc wystarczy ustawić ją raz na <html> — żaden inny
+// kawałek CSS nie musi wiedzieć, w którym module jesteśmy. Wartość jest jedna
+// dla obu motywów, bo pasek jest atramentowy niezależnie od motywu.
+// Wołane od razu przy wczytaniu pliku, a nie w _injectNav: strony bez <nav>
+// też mają kropki (np. ekran oczekiwania w eat), a styl wpisany na <html>
+// obowiązuje przed pierwszym rysowaniem, więc znak nie mruga kolorem.
+function _ustawKolorModulu() {
+  const kolor = _modulBiezacy().kolor;
+  if (kolor) document.documentElement.style.setProperty('--marka', kolor);
+}
+_ustawKolorModulu();
+
 function _pozycjaPaska(i) {
   return `<a href="${i.href}" class="${location.pathname === i.href ? 'active' : ''}">
       ${ikonaPelna(i.ikona)}${i.label}

@@ -22,7 +22,8 @@
   --accent-strong: #9c3a30;  /* na tekst przy jasnym tle */
   --accent-soft: #fbeae7;
   --accent-border: #f2c9c2;
-  --marka: #ff6b6b;          /* koral — kropki w logo */
+  --marka: #ff6b6b;          /* koral — wartość zapasowa; auth.js nadpisuje ją
+                                kolorem bieżącego modułu na <html> */
 
   --good: #4f7a52;      --good-bg: #e9f2e9;   --good-border: #c3ddc5;
   --danger: #b4453a;    --danger-bg: #fbeae8; --danger-border: #f0cac5;
