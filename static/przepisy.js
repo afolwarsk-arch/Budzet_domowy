@@ -170,6 +170,22 @@ async function otworzPorcje(id) {
       <button data-j="gramy" aria-pressed="false" type="button">W gramach</button>
     </div>` : ''}
 
+    <!-- Skład dania. Wcześniej ten ekran pokazywał wyłącznie sumy, więc nie dało
+         się sprawdzić, z czego danie się składa, bez wchodzenia w edycję —
+         a edycja była zepsuta, więc praktycznie nie dało się wcale.
+         Gramatury dotyczą CAŁEGO dania, nie porcji: tak są zapisane i tak
+         się je poprawia. -->
+    ${(p.skladniki && p.skladniki.length) ? `
+      <div class="sek-tyt">Składniki całego dania — ${p.skladniki.length}</div>
+      <div class="skl-lista">
+        ${p.skladniki.map((s) => `
+          <div class="skl-poz">
+            <span class="skl-poz-n" title="${e(s.nazwa)}">${e(s.nazwa)}</span>
+            <span class="skl-poz-g">${dziesietne(s.ilosc_g)} g</span>
+            <span class="skl-poz-k">${zaokr(s.kcal)} kcal</span>
+          </div>`).join('')}
+      </div>` : ''}
+
     <div class="sek-tyt" id="tyt-ile">Ile porcji</div>
     <div class="porcje-szyb" id="szybkie">
       <button data-p="0.5" type="button">½</button>
@@ -242,7 +258,14 @@ async function otworzPorcje(id) {
   };
 
   pole('#zamknij').onclick = () => zamknijArkusz();
-  pole('#edytuj').onclick = () => { zamknijArkusz(); otworzEdytor(p); };
+  // NIE zamykamy arkusza przed otwarciem edytora. zamknijArkusz() woła
+  // history.back(), które działa ASYNCHRONICZNIE: edytor zdążył się otworzyć
+  // i zrobić pushState, a spóźniony popstate trafiał w niego i gasił wszystko.
+  // Efekt: „Edytuj przepis" wyglądał na martwy — arkusz znikał, edytor się nie
+  // pojawiał. Ten sam błąd był już raz znaleziony w dzienniku (patrz komentarz
+  // przy wrocDoArkusza w eat.js). otworzEdytor sam podmienia treść otwartego
+  // arkusza, więc wystarczy go zawołać.
+  pole('#edytuj').onclick = () => otworzEdytor(p);
 
   pole('#dodaj').onclick = async (ev) => {
     const ile = zPola(pole('#ile'));
