@@ -520,11 +520,19 @@ function otworzEdytor(przepis) {
         + `Surowe składniki ważyły <b>${dziesietne(sumaG)} g</b>.`;
     } else if (wpisana > 0) {
       const ubytek = sumaG - wpisana;
-      info.innerHTML = ubytek > 0
-        ? `Odparowuje ${dziesietne(ubytek)} g (${Math.round(ubytek / sumaG * 100)}%). `
-          + 'Kalorie zostają te same — ubywa tylko wody.'
-        : `Danie waży więcej niż składniki o ${dziesietne(-ubytek)} g — `
-          + 'to normalne, gdy coś nasiąka wodą (kasza, makaron, ryż).';
+      const proc = Math.round(ubytek / sumaG * 100);
+      if (proc > 60) {
+        // Ponad 60% ubytku to prawie zawsze waga JEDNEJ PORCJI wpisana zamiast
+        // wagi całego garnka. Apka ma to zauważyć, a nie liczyć dalej.
+        info.innerHTML = `To ubytek <b>${proc}%</b> — bardzo dużo jak na gotowanie. `
+          + 'Sprawdź, czy wpisałeś wagę <b>całego dania</b>, a nie jednej porcji.';
+      } else {
+        info.innerHTML = ubytek > 0
+          ? `Odparowuje ${dziesietne(ubytek)} g (${proc}%). `
+            + 'Kalorie zostają te same — ubywa tylko wody.'
+          : `Danie waży więcej niż składniki o ${dziesietne(-ubytek)} g — `
+            + 'to normalne, gdy coś nasiąka wodą (kasza, makaron, ryż).';
+      }
     }
   }
 

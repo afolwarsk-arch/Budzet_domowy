@@ -517,11 +517,21 @@ function zapiszJakoPrzepis(grupaId, nazwa, kcalZapisane, gramZapisane) {
       box.innerHTML = 'Zważ danie po ugotowaniu, bez garnka.' + skladniki;
     } else if (surowa) {
       const ubytek = surowa - wpisana;
-      box.innerHTML = ubytek > 0
-        ? `Odparowało ${zaokr(ubytek)} g (${Math.round(ubytek / surowa * 100)}%).`
-          + ` Jedna porcja waży <b>${zaokr(wpisana / porcje)} g</b>.`
-        : `Danie waży więcej niż składniki o ${zaokr(-ubytek)} g — normalne przy kaszy,`
-          + ` makaronie i ryżu. Jedna porcja waży <b>${zaokr(wpisana / porcje)} g</b>.`;
+      const proc = Math.round(ubytek / surowa * 100);
+      const porcjaG = ` Jedna porcja waży <b>${zaokr(wpisana / porcje)} g</b>.`;
+      if (proc > 60) {
+        // Gotowanie rzadko zabiera ponad połowę masy. Taki wynik prawie zawsze
+        // znaczy, że wpisano wagę JEDNEJ PORCJI zamiast całego dania — apka ma
+        // to zauważyć, a nie rzetelnie raportować bzdury.
+        box.innerHTML = `To ubytek <b>${proc}%</b> — bardzo dużo jak na gotowanie.`
+          + ' Sprawdź, czy wpisałeś wagę <b>całego dania</b>, a nie jednej porcji.'
+          + porcjaG;
+      } else {
+        box.innerHTML = ubytek > 0
+          ? `Odparowało ${zaokr(ubytek)} g (${proc}%).` + porcjaG
+          : `Danie waży więcej niż składniki o ${zaokr(-ubytek)} g — normalne przy kaszy,`
+            + ` makaronie i ryżu.` + porcjaG;
+      }
     } else {
       box.innerHTML = `Jedna porcja waży <b>${zaokr(wpisana / porcje)} g</b>.`;
     }
