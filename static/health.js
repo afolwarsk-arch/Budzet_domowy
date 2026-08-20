@@ -23,8 +23,9 @@ const RODZAJE = {
 let osoby = [];
 let osobaId = null;
 let widok = 'lista';      // lista | podglad | szczegoly
-let odczyt = null;        // { dokument, pdf, plik_nazwa } — czeka na zapis
-let plikDoZapisu = null;  // File — tylko PDF; zdjęcia kasujemy po odczycie
+let odczyt = null;        // { dokument } — czeka na zapis
+// Pliku NIE przetrzymujemy między odczytem a zapisem: oryginały nie trafiają
+// do bazy (patrz `zapisz` w health.py), więc nie ma czego wysyłać drugi raz.
 let szczegoly = null;
 
 const box = () => document.getElementById('tresc');
@@ -211,8 +212,6 @@ async function odczytaj(plik) {
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'Nie udało się odczytać.');
     odczyt = d;
-    // PDF zostaje jako oryginał, zdjęcie po odczycie jest już niepotrzebne.
-    plikDoZapisu = d.pdf ? plik : null;
     widok = 'podglad';
     rysuj();
   } catch (e) {
@@ -266,8 +265,8 @@ function rysujPodglad() {
         <input id="p-placowka" value="${esc(d.placowka || '')}">
       </div>
       <div class="uwaga">Zapisuję to przy osobie: <b>${esc(osoba ? osoba.imie : '—')}</b>.
-        ${odczyt.pdf ? 'Oryginalny PDF zostanie dołączony.'
-                     : 'Zdjęcie służy tylko do odczytu i nie zostanie zapisane.'}</div>
+        Zapisuję <b>tylko odczytane dane</b> — plik służył do odczytu i nie zostanie
+        zachowany. Zatrzymaj oryginał u siebie, jeśli będzie potrzebny u lekarza.</div>
     </div>
 
     ${w.length ? `<div class="karta">
@@ -290,7 +289,7 @@ function rysujPodglad() {
     </div>`;
 
   document.getElementById('anuluj').onclick = () => {
-    odczyt = null; plikDoZapisu = null; widok = 'lista'; rysuj();
+    odczyt = null; widok = 'lista'; rysuj();
   };
   document.getElementById('zapisz').onclick = zapiszDokument;
 }
@@ -310,12 +309,11 @@ async function zapiszDokument() {
   const fd = new FormData();
   fd.append('osoba_id', String(osobaId));
   fd.append('dane', JSON.stringify(d));
-  if (plikDoZapisu) fd.append('plik', plikDoZapisu);
 
   try {
     const r = await authFetch('/api/health/dokumenty', { method: 'POST', body: fd });
     if (!r.ok) throw new Error();
-    odczyt = null; plikDoZapisu = null; widok = 'lista';
+    odczyt = null; widok = 'lista';
     rysuj();
   } catch {
     btn.disabled = false;

@@ -67,9 +67,8 @@ async def odczytaj(
 ):
     """Zdjęcie albo PDF → struktura do sprawdzenia. NIC nie zapisuje.
 
-    PDF wraca do przeglądarki bez zmian, żeby zapis mógł go odłożyć do bazy
-    bez ponownego wysyłania pliku — zdjęcia natomiast po odczycie znikają,
-    bo są kopią dokumentu, a nie dokumentem.
+    Plik ginie razem z żądaniem — i zdjęcie, i PDF. Zostają wyłącznie
+    przepisane dane, które użytkownik za chwilę zatwierdzi. Patrz `zapisz`.
     """
     _hid(current_user)
     dane = await plik.read()
@@ -87,8 +86,7 @@ async def odczytaj(
     except Exception as e:
         raise HTTPException(502, f"Nie udało się odczytać dokumentu: {e}")
 
-    return {"dokument": odczyt, "usage": usage, "pdf": mime == "application/pdf",
-            "plik_nazwa": plik.filename or None}
+    return {"dokument": odczyt, "usage": usage}
 
 
 # ── dokumenty ───────────────────────────────────────────────────────────────
@@ -111,13 +109,20 @@ def jeden_dokument(dokument_id: int, current_user: dict = Depends(get_current_us
 async def zapisz(
     osoba_id: int = Form(...),
     dane: str = Form(...),
-    plik: UploadFile | None = File(None),
     current_user: dict = Depends(get_current_user),
 ):
     """Zapisuje sprawdzony przez człowieka dokument wraz z wynikami.
 
-    `dane` to JSON, bo formularz idzie multipart — inaczej nie dałoby się
-    dołożyć pliku PDF w tym samym żądaniu.
+    ORYGINAŁÓW NIE PRZECHOWUJEMY — ani zdjęć, ani skanów, ani PDF-ów. Plik
+    służy wyłącznie do odczytu w `/odczytaj` i po nim znika. Powód jest
+    pojemnościowy: Postgres na Railway stoi na tym samym wolumenie, z którego
+    żyje cały budżet domowy, więc kilkadziesiąt skanów po kilka megabajtów
+    podgryzałoby apkę, z której korzystamy codziennie. Docelowe miejsce na
+    oryginały to dysk Google użytkownika — jego miejsce, nie nasze.
+
+    `dane` zostaje JSON-em w polu formularza, mimo że nie ma już drugiego
+    pola: zmiana na zwykłe JSON-owe ciało żądania wymagałaby przepisania
+    strony po stronie przeglądarki, a nic by nie dała.
     """
     import json
 
@@ -133,23 +138,9 @@ async def zapisz(
     for pole in ("data_badania", "data_do", "data_pobrania", "data_nastepnego"):
         tresc[pole] = _data(tresc.get(pole))
 
-    bajty, nazwa = None, None
-    if plik is not None:
-        surowe = await plik.read()
-        mime = (plik.content_type or "").lower().split(";")[0].strip()
-        if mime in ("", "application/octet-stream") and (plik.filename or "").lower().endswith(".pdf"):
-            mime = "application/pdf"
-        # Trzymamy WYŁĄCZNIE PDF-y. Zdjęcie po odczycie jest kopią dokumentu,
-        # waży kilka megabajtów i nie ma po co zajmować bazy.
-        if mime == "application/pdf" and surowe:
-            if len(surowe) > health_ai.MAX_PLIK:
-                raise HTTPException(400, "Plik za duży")
-            bajty, nazwa = surowe, (plik.filename or "wynik.pdf")
-
     dok_id = health_db.zapisz_dokument(
         hid, osoba_id, tresc, tresc.get("wyniki") or [],
         dodane_przez=current_user.get("pseudonim") or current_user.get("email"),
-        plik=bajty, plik_nazwa=nazwa,
     )
     return {"id": dok_id}
 

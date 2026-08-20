@@ -100,12 +100,19 @@ def init_health_db() -> None:
         # wg WHO 1999 — bez zapisania wersji porównanie po latach jest fałszywe.
         cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS norma_wg TEXT")
 
-        # Oryginał dokumentu. Trzymamy WYŁĄCZNIE pliki PDF: wynik z laboratorium
-        # albo potwierdzenie wizyty ma 50–300 kB i sam w sobie jest dokumentem,
-        # który może być potrzebny u innego lekarza. Zdjęcia (2–5 MB) kasujemy
-        # po odczycie — są kopią, nie dokumentem, i sto sztuk nie zmieściłoby
-        # się rozsądnie w bazie. Railway nie ma trwałego dysku, więc pliki na
-        # dysku znikałyby przy każdym wdrożeniu; kolumna w bazie to omija.
+        # Kolumny po nieaktualnej decyzji: przez jeden dzień oryginały PDF
+        # trafiały do bazy. NIC ICH JUŻ NIE ZAPISUJE — żadne zdjęcie, skan ani
+        # PDF nie zostaje na serwerze (patrz `zapisz` w health.py). Zostają
+        # puste, żeby nie kasować danych migracją; usuniemy je świadomie.
+        #
+        # Powód, dla którego to się zmieniło — wart zapamiętania, bo poprzedni
+        # komentarz mylił w tym miejscu przez cały czas swojego istnienia:
+        # Railway MA trwałe wolumeny, ale Postgres sam na takim stoi, więc plik
+        # w bazie i plik na dysku zjadają tę samą pulę (Hobby: 5 GB na wszystko,
+        # razem z budżetem domowym). Skany bywają grube — wypis szpitalny to
+        # 1–2 MB na stronę — więc dokumentacja medyczna potrafiłaby wypchnąć
+        # apkę, z której korzystamy codziennie. Docelowe miejsce na oryginały
+        # to dysk Google użytkownika: jego miejsce i jego dane.
         cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS plik BYTEA")
         cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS plik_nazwa TEXT")
 
@@ -245,8 +252,7 @@ def dokument(household_id: int, dokument_id: int) -> dict | None:
 
 
 def zapisz_dokument(household_id: int, osoba_id: int, dane: dict,
-                    wyniki: list[dict], dodane_przez: str | None = None,
-                    plik: bytes | None = None, plik_nazwa: str | None = None) -> int:
+                    wyniki: list[dict], dodane_przez: str | None = None) -> int:
     """Zapisuje dokument wraz z wynikami w JEDNEJ transakcji.
 
     Dokument bez wyników jest poprawny (opis tomografii), ale wynik bez
@@ -257,9 +263,8 @@ def zapisz_dokument(household_id: int, osoba_id: int, dane: dict,
             """INSERT INTO health_dokumenty
                (household_id, osoba_id, rodzaj, nazwa, data_badania, data_do,
                 data_pobrania, placowka, opis, rozpoznanie, kod_icd10, zalecenia,
-                numer_badania, data_nastepnego, kontekst, norma_wg, dodane_przez,
-                plik, plik_nazwa)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                numer_badania, data_nastepnego, kontekst, norma_wg, dodane_przez)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING id""",
             (household_id, osoba_id,
              dane.get("rodzaj") or "lab",
@@ -268,7 +273,7 @@ def zapisz_dokument(household_id: int, osoba_id: int, dane: dict,
              dane.get("placowka"), dane.get("opis"), dane.get("rozpoznanie"),
              dane.get("kod_icd10"), dane.get("zalecenia"), dane.get("numer_badania"),
              dane.get("data_nastepnego"), dane.get("kontekst"), dane.get("norma_wg"),
-             dodane_przez, plik, plik_nazwa),
+             dodane_przez),
         )
         dok_id = cur.fetchone()["id"]
         for i, w in enumerate(wyniki or []):
