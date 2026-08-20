@@ -406,9 +406,23 @@ function otworzEdytor(przepis) {
     <div class="sek-tyt">Na ile porcji wychodzi</div>
     <input type="text" id="porcje" value="${ladna(stan.porcje)}" inputmode="decimal" autocomplete="off">
 
+    <!-- Jawny wybór zamiast cichego założenia. Wcześniej stało tu samo pole
+         wypełnione z góry sumą SUROWYCH składników pod etykietą „ile waży
+         gotowe danie" — czyli apka sama z siebie twierdziła, że gulasz po
+         dwóch godzinach duszenia waży tyle, ile ważył przed. Pole miało już
+         liczbę, więc wyglądało na wypełnione i nikt go nie poprawiał:
+         nie poprawia się odpowiedzi, której nie widać jako pytania. -->
     <div class="sek-tyt">Ile waży gotowe danie</div>
+    <div class="gdzie" id="waga-tryb">
+      <button data-tryb="tyle" type="button"
+              aria-pressed="${stan.wagaRecznie ? 'false' : 'true'}">Tyle co składniki</button>
+      <button data-tryb="gotowane" type="button"
+              aria-pressed="${stan.wagaRecznie ? 'true' : 'false'}">Gotowało się</button>
+    </div>
     <input type="text" id="waga" value="${stan.waga ? dziesietne(stan.waga) : ''}"
-           inputmode="decimal" autocomplete="off">
+           inputmode="decimal" autocomplete="off"
+           placeholder="waga garnka po ugotowaniu"
+           aria-label="Waga gotowego dania w gramach"${stan.wagaRecznie ? '' : ' hidden'}>
     <div class="komunikat" id="waga-info"></div>
 
     <div id="ark-komunikat"></div>
@@ -480,20 +494,23 @@ function otworzEdytor(przepis) {
     odswiezWage(s.gramy);
   }
 
-  // Waga gotowego dania domyślnie RÓWNA SIĘ sumie składników — przy sałatce,
-  // kanapce czy koktajlu nic nie odparowuje, więc to jest poprawna odpowiedź
-  // i nie ma powodu o nią pytać. Pole nadąża za składnikami dopóty, dopóki
-  // sam go nie nadpiszesz; wtedy przestajemy je ruszać, bo znaczy to, że danie
-  // się gotuje i traci wodę.
+  // Tryb „tyle co składniki" jest domyślny i przy sałatce, kanapce czy koktajlu
+  // poprawny — nic tam nie odparowuje. Pole wagi pojawia się dopiero po
+  // przełączeniu na „gotowało się" i wchodzi PUSTE, bo tylko wtedy jest
+  // pytaniem. Wypełnione sumą surowych składników udawało odpowiedź.
   function odswiezWage(sumaG) {
     const inp = pole('#waga');
     if (!wagaRecznie) inp.value = sumaG ? dziesietne(sumaG) : '';
     const wpisana = zPola(inp);
     const info = pole('#waga-info');
     if (!sumaG) { info.textContent = 'Dodaj składniki, żeby policzyć wagę.'; return; }
-    if (!wagaRecznie || Math.abs(wpisana - sumaG) < 0.05) {
-      info.innerHTML = 'Tyle, ile ważą składniki — tak jest przy sałatce, kanapce czy '
-        + 'koktajlu. <b>Jeśli danie się gotuje i odparowuje, wpisz wagę garnka po ugotowaniu.</b>';
+    if (!wagaRecznie) {
+      info.innerHTML = `Liczymy <b>${dziesietne(sumaG)} g</b> — tyle, ile ważą składniki. `
+        + 'Tak jest przy sałatce, kanapce i koktajlu, bo nic nie odparowuje.';
+    } else if (!(wpisana > 0)) {
+      // Pole celowo puste: to jest PYTANIE, a nie wartość do poprawienia.
+      info.innerHTML = 'Zważ garnek po ugotowaniu (bez garnka) i wpisz wynik. '
+        + `Surowe składniki ważyły <b>${dziesietne(sumaG)} g</b>.`;
     } else if (wpisana > 0) {
       const ubytek = sumaG - wpisana;
       info.innerHTML = ubytek > 0
@@ -501,8 +518,6 @@ function otworzEdytor(przepis) {
           + 'Kalorie zostają te same — ubywa tylko wody.'
         : `Danie waży więcej niż składniki o ${dziesietne(-ubytek)} g — `
           + 'to normalne, gdy coś nasiąka wodą (kasza, makaron, ryż).';
-    } else {
-      info.textContent = 'Bez wagi liczymy w porcjach.';
     }
   }
 
@@ -516,11 +531,28 @@ function otworzEdytor(przepis) {
   rysujSkladniki();
   rysujSume();
   pole('#porcje').addEventListener('input', rysujSume);
-  pole('#waga').addEventListener('input', () => {
-    wagaRecznie = true;
-    stan.wagaRecznie = true;      // przetrwa przejście na ekran składnika i z powrotem
+
+  // O tym, czy danie odparowuje, decyduje teraz przełącznik, a nie to, czy
+  // ktoś przypadkiem dotknął pola. Samo pole tylko odświeża rachunek.
+  pole('#waga-tryb').onclick = (ev) => {
+    const b = ev.target.closest('[data-tryb]');
+    if (!b) return;
+    pole('#waga-tryb').querySelectorAll('[data-tryb]')
+      .forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+
+    const gotowane = b.dataset.tryb === 'gotowane';
+    wagaRecznie = gotowane;
+    stan.wagaRecznie = gotowane;   // przetrwa przejście na ekran składnika i z powrotem
+    const inp = pole('#waga');
+    inp.hidden = !gotowane;
+    // Czyścimy pole przy wejściu w tryb gotowania. Zostawiona suma składników
+    // wyglądałaby na gotową odpowiedź i cały ten przełącznik nic by nie zmienił.
+    if (gotowane) { inp.value = ''; stan.waga = ''; inp.focus(); }
     odswiezWage(sumy().gramy);
-  });
+  };
+
+  pole('#waga').addEventListener('input', () => odswiezWage(sumy().gramy));
 
   pole('#zamknij').onclick = () => zamknijArkusz();
   pole('#dodaj-skl').onclick = () => ekranSkladnika((s) => {
