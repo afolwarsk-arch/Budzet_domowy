@@ -213,6 +213,9 @@ function wiersz(w, wSrodku) {
 
 function kartaGrupy(g) {
   const suma = g.skladniki.reduce((s, w) => s + Number(w.kcal || 0), 0);
+  // Gramatura całej grupy jedzie do „Zapisz jako przepis": bez niej pytanie
+  // o wagę po ugotowaniu jest ślepe, bo nie ma z czym porównać odpowiedzi.
+  const sumaG = g.skladniki.reduce((s, w) => s + Number(w.ilosc_g || 0), 0);
   const otwarta = grupyOtwarte.has(g.grupa);
   return `<div class="grupa${otwarta ? ' rozwinieta' : ''}">
     <div class="poz grupa-gl">
@@ -228,7 +231,7 @@ function kartaGrupy(g) {
     <div class="grupa-srodek"${otwarta ? '' : ' hidden'}>
       ${g.skladniki.map((w) => wiersz(w, true)).join('')}
       <button class="mini-btn" data-przepis="${g.grupa}" data-nazwa="${e(g.nazwa)}"
-              data-kcal="${Math.round(suma)}"
+              data-kcal="${Math.round(suma)}" data-gram="${Math.round(sumaG)}"
               type="button" style="margin:4px 0 2px 12px">Zapisz jako przepis</button>
       <button class="mini-btn" data-rozlacz="${g.grupa}"
               type="button" style="margin:4px 0 2px 6px">Rozłącz</button>
@@ -419,7 +422,8 @@ function rysujPosilki() {
     };
   });
   box.querySelectorAll('[data-przepis]').forEach((b) => {
-    b.onclick = () => zapiszJakoPrzepis(b.dataset.przepis, b.dataset.nazwa, b.dataset.kcal);
+    b.onclick = () => zapiszJakoPrzepis(b.dataset.przepis, b.dataset.nazwa,
+                                        b.dataset.kcal, b.dataset.gram);
   });
 }
 
@@ -427,9 +431,10 @@ function rysujPosilki() {
 // gramatury i wartości są sprawdzone, więc nie ma tu ani zgadywania, ani AI.
 // Pytamy tylko o to, czego z dziennika nie da się wywnioskować — na ile porcji
 // danie wychodziło, skoro zjadłeś jedną.
-function zapiszJakoPrzepis(grupaId, nazwa, kcalZapisane) {
+function zapiszJakoPrzepis(grupaId, nazwa, kcalZapisane, gramZapisane) {
   if (arkusz) return;
   const kcalGrupy = Number(kcalZapisane) || 0;
+  const gramGrupy = Number(gramZapisane) || 0;
   arkusz = document.createElement('div');
   arkusz.className = 'ark-tlo';
   arkusz.innerHTML = `<div class="ark">
@@ -447,6 +452,19 @@ function zapiszJakoPrzepis(grupaId, nazwa, kcalZapisane) {
     <div class="sek-tyt">Na ile porcji dzieli się całe danie</div>
     <input type="text" id="pp-porcje" value="1" inputmode="decimal" autocomplete="off" style="width:100%">
     <div class="komunikat" id="pp-podglad"></div>
+
+    <!-- Bez tego przepis rodził się bez wagi gotowego dania i nie dało się
+         odmierzyć porcji na wadze. Pytamy o CAŁE danie, nie o to, co masz
+         w dzienniku — przepis opisuje garnek, nie talerz. -->
+    <div class="sek-tyt">Ile waży całe danie po ugotowaniu</div>
+    <div class="gdzie" id="pp-waga-tryb">
+      <button data-tryb="nie" aria-pressed="true" type="button">Nie ważyłem</button>
+      <button data-tryb="tak" aria-pressed="false" type="button">Zważyłem</button>
+    </div>
+    <input type="text" id="pp-waga" inputmode="decimal" autocomplete="off"
+           placeholder="gramy całego dania" aria-label="Waga całego dania w gramach"
+           style="width:100%" hidden>
+    <div class="komunikat" id="pp-waga-info"></div>
     <div id="ark-komunikat"></div>
     <button class="cta" id="pp-zapisz" type="button">Zapisz przepis</button>
   </div>`;
@@ -474,9 +492,58 @@ function zapiszJakoPrzepis(grupaId, nazwa, kcalZapisane) {
     b.setAttribute('aria-pressed', 'true');
     co = b.dataset.co;
     podglad();
+    // Waga też zależy od tego wyboru: przy jednym talerzu w dzienniku całe
+    // danie waży tyle razy więcej, ile jest porcji.
+    wagaInfo();
   };
-  arkusz.querySelector('#pp-porcje').addEventListener('input', podglad);
+  // ── waga gotowego dania ──
+  // Opcjonalna: kalorie się nie gotują, więc „suma ÷ porcje" jest dokładne bez
+  // ważenia czegokolwiek. Waga przydaje się temu, kto woli odmierzać porcję na
+  // wadze — i dopiero ona pozwala policzyć, ile wody odparowało.
+  let wazone = false;
+  const wagaInfo = () => {
+    const box = arkusz.querySelector('#pp-waga-info');
+    const porcje = zPola(arkusz.querySelector('#pp-porcje')) || 1;
+    // To, co w dzienniku, może być całym garnkiem albo jednym talerzem —
+    // do porównania potrzebujemy wagi CAŁEGO dania, tak jak przy kaloriach.
+    const surowa = co === 'calosc' ? gramGrupy : gramGrupy * porcje;
+    const wpisana = zPola(arkusz.querySelector('#pp-waga'));
+    const skladniki = surowa ? ` Składniki ważą <b>${zaokr(surowa)} g</b>.` : '';
+
+    if (!wazone) {
+      box.innerHTML = 'Bez wagi porcję liczymy z podziału na porcje —'
+        + ' to wystarcza, dopóki nie odmierzasz na wadze.' + skladniki;
+    } else if (!(wpisana > 0)) {
+      box.innerHTML = 'Zważ danie po ugotowaniu, bez garnka.' + skladniki;
+    } else if (surowa) {
+      const ubytek = surowa - wpisana;
+      box.innerHTML = ubytek > 0
+        ? `Odparowało ${zaokr(ubytek)} g (${Math.round(ubytek / surowa * 100)}%).`
+          + ` Jedna porcja waży <b>${zaokr(wpisana / porcje)} g</b>.`
+        : `Danie waży więcej niż składniki o ${zaokr(-ubytek)} g — normalne przy kaszy,`
+          + ` makaronie i ryżu. Jedna porcja waży <b>${zaokr(wpisana / porcje)} g</b>.`;
+    } else {
+      box.innerHTML = `Jedna porcja waży <b>${zaokr(wpisana / porcje)} g</b>.`;
+    }
+  };
+
+  arkusz.querySelector('#pp-waga-tryb').onclick = (ev) => {
+    const b = ev.target.closest('[data-tryb]');
+    if (!b) return;
+    arkusz.querySelectorAll('#pp-waga-tryb [data-tryb]')
+      .forEach((x) => x.setAttribute('aria-pressed', 'false'));
+    b.setAttribute('aria-pressed', 'true');
+    wazone = b.dataset.tryb === 'tak';
+    const inp = arkusz.querySelector('#pp-waga');
+    inp.hidden = !wazone;
+    if (wazone) inp.focus();
+    wagaInfo();
+  };
+  arkusz.querySelector('#pp-waga').addEventListener('input', wagaInfo);
+
+  arkusz.querySelector('#pp-porcje').addEventListener('input', () => { podglad(); wagaInfo(); });
   podglad();
+  wagaInfo();
 
   arkusz.querySelector('#pp-zapisz').onclick = async (ev) => {
     const nazwaP = arkusz.querySelector('#pp-nazwa').value.trim();
@@ -488,7 +555,13 @@ function zapiszJakoPrzepis(grupaId, nazwa, kcalZapisane) {
       const r = await authFetch('/api/eat/przepisy/z-grupy/' + grupaId, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         // całe danie w dzienniku → reprezentuje wszystkie porcje, mnożnik 1
-        body: JSON.stringify({ nazwa: nazwaP, porcje, zapisane_porcje: co === 'calosc' ? porcje : 1 }),
+        body: JSON.stringify({
+          nazwa: nazwaP, porcje,
+          zapisane_porcje: co === 'calosc' ? porcje : 1,
+          // Endpoint przyjmuje ją od dawna (_waga_z_ciala) — brakowało tylko
+          // pola w tym formularzu, więc przepis z dziennika rodził się bez wagi.
+          waga_gotowego_g: wazone ? (zPola(arkusz.querySelector('#pp-waga')) || null) : null,
+        }),
       });
       if (!r.ok) {
         const x = await r.json().catch(() => ({}));

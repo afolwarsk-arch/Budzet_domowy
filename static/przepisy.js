@@ -293,7 +293,7 @@ function otworzNowy() {
       <button class="droga" data-d="recznie" type="button">
         <b>Wpisz ręcznie</b><span>Składnik po składniku, bez AI</span></button>
       <button class="droga" data-d="dzien" type="button">
-        <b>Z dziennika</b><span>Zapisz jako przepis to, co już zjadłeś</span></button>
+        <b>Z dziennika</b><span>Przejdź do dziennika i użyj „Zapisz jako przepis"</span></button>
     </div>
     <input type="file" id="plik" accept="image/*" hidden>
     <div id="ark-komunikat"></div>`;
@@ -305,7 +305,14 @@ function otworzNowy() {
     if (b.dataset.d === 'opis') ekranOpisu();
     else if (b.dataset.d === 'foto') ark.querySelector('#plik').click();
     else if (b.dataset.d === 'recznie') otworzEdytor(null);
-    else { zamknijArkusz(); location.href = '/eat'; }
+    else {
+      // Ta droga NIE buduje przepisu tutaj — dzieje się to w dzienniku, przy
+      // konkretnej grupie, bo dopiero tam wiadomo, które wpisy są tym daniem.
+      // Wcześniej kafelek po prostu wyrzucał na /eat bez słowa wyjaśnienia
+      // i wyglądał na zepsuty; teraz mówi, po co tam idziesz.
+      komunikat('Otwieram dziennik — rozwiń danie i stuknij „Zapisz jako przepis".');
+      setTimeout(() => { zamknijArkusz(); location.href = '/eat'; }, 1200);
+    }
   };
   ark.querySelector('#plik').onchange = async (ev) => {
     const plik = ev.target.files && ev.target.files[0];
