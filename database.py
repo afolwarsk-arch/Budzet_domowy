@@ -1884,7 +1884,12 @@ def delete_konto(konto_id: int, household_id: int) -> bool:
         cur.execute("UPDATE wplywy SET konto_id=NULL WHERE konto_id=%s", (konto_id,))
         cur.execute("UPDATE przelewy SET konto_z_id=NULL WHERE konto_z_id=%s", (konto_id,))
         cur.execute("UPDATE przelewy SET konto_na_id=NULL WHERE konto_na_id=%s", (konto_id,))
-        cur.execute("DELETE FROM przelewy WHERE konto_z_id IS NULL AND konto_na_id IS NULL")
+        # Przelew, któremu zniknęły OBIE nogi, nie znaczy już nic — kasujemy.
+        # Warunek `household_id` jest tu konieczny, a nie kosmetyczny: bez niego
+        # usunięcie jednego konta czyściło osierocone przelewy WSZYSTKICH
+        # gospodarstw, nie tylko swojego.
+        cur.execute("DELETE FROM przelewy WHERE household_id=%s "
+                    "AND konto_z_id IS NULL AND konto_na_id IS NULL", (household_id,))
         cur.execute("UPDATE wydatki_cykliczne SET konto_id=NULL WHERE konto_id=%s", (konto_id,))
         cur.execute("DELETE FROM konta WHERE id=%s", (konto_id,))
         return True

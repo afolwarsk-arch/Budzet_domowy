@@ -896,9 +896,6 @@ function rysujSzczegoly() {
       </div>
       ${d.kontekst ? `<div class="uwaga">Kontekst badania: ${esc(d.kontekst)}</div>` : ''}
       ${d.norma_wg ? `<div class="uwaga">Normy wg: ${esc(d.norma_wg)}</div>` : ''}
-      ${d.ma_plik ? `<div class="akcje" style="margin-top:12px">
-        <a class="btn btn-outline" href="/api/health/dokumenty/${d.id}/plik" target="_blank"
-           rel="noopener">Otwórz oryginał PDF</a></div>` : ''}
     </div>
 
     ${w.length ? `<div class="karta">

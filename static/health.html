@@ -17,15 +17,6 @@
     .gora { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
     .gora h1 { margin: 0; font-size: 1.25rem; }
 
-    /* Wybór osoby — ten sam wzorzec co przełącznik okresu w statystykach. */
-    .osoby { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-    .osoby button { border: 1px solid var(--border); background: var(--surface);
-                    border-radius: 10px; padding: 9px 14px; min-height: 44px; font: inherit;
-                    font-size: 13.5px; cursor: pointer; color: var(--text); }
-    .osoby button[aria-pressed="true"] { background: var(--primary); color: var(--on-primary);
-                    border-color: var(--primary); font-weight: 600; }
-    .osoby button.dodaj-os { border-style: dashed; color: var(--muted); }
-
     /* Wejście na dokument. Dwa przyciski, bo to dwie różne czynności:
        zrobienie zdjęcia teraz i wybranie pliku PDF z poczty. */
     .wejscia { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
@@ -60,22 +51,12 @@
     .czekaj b { font-size: 15px; color: var(--heading); }
     .czekaj span { font-size: 13px; color: var(--muted); margin-top: 6px; max-width: 30ch; }
 
-    /* ── lista dokumentów ── */
-    .dok { border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
-           padding: 13px 14px; margin-bottom: 9px; cursor: pointer; display: block;
-           width: 100%; text-align: left; font: inherit; color: var(--text); }
-    .dok:hover { border-color: var(--accent); }
-    .dok-gl { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-    .dok-nazwa { font-weight: 600; font-size: 14.5px; color: var(--heading); }
-    .dok-data { font-size: 12px; color: var(--muted); white-space: nowrap;
-                font-variant-numeric: tabular-nums; }
+    /* Podpis pod nagłówkiem dokumentu (rodzaj, data, placówka, numer). */
     .dok-pod { font-size: 12.5px; color: var(--muted); margin-top: 4px;
                display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .znacznik { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em;
                 font-weight: 700; padding: 2px 6px; border-radius: 4px;
                 background: var(--surface-3); color: var(--muted); }
-    .znacznik.pdf { background: var(--accent-soft); color: var(--accent-strong);
-                    border: 1px solid var(--accent-border); }
 
     /* ── tabela wyników ── */
     .wyniki { width: 100%; border-collapse: collapse; font-size: 13.5px; }

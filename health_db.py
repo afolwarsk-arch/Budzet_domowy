@@ -243,11 +243,13 @@ def osoba_po_id(household_id: int, osoba_id: int) -> dict | None:
 # ani w JSON-ie odpowiedzi. Wyciągamy je wyłącznie przy pobieraniu pliku.
 # Prefiks `d.` jest obowiązkowy: lista dołącza tabelę osób, a `id` i `created_at`
 # są w obu tabelach — bez niego zapytanie jest niejednoznaczne.
+#
+# Kolumn `plik` i `plik_nazwa` tu NIE MA i nie będzie: oryginały nie są nigdzie
+# przechowywane (patrz `zapisz` w health.py), więc zawsze byłyby puste.
 _POLA_DOK = """d.id, d.osoba_id, d.rodzaj, d.nazwa, d.data_badania, d.data_do,
                d.data_pobrania, d.placowka, d.opis, d.rozpoznanie, d.kod_icd10,
                d.zalecenia, d.numer_badania, d.data_nastepnego, d.kontekst,
-               d.norma_wg, d.ukryty, d.dodane_przez, d.created_at, d.plik_nazwa,
-               (d.plik IS NOT NULL) AS ma_plik"""
+               d.norma_wg, d.ukryty, d.dodane_przez, d.created_at"""
 
 
 # Problemy przypięte do dokumentu, jednym podzapytaniem zamiast pytania na
@@ -371,15 +373,6 @@ def usun_dokument(household_id: int, dokument_id: int) -> bool:
         cur.execute("DELETE FROM health_dokumenty WHERE id = %s AND household_id = %s",
                     (dokument_id, household_id))
         return cur.rowcount > 0
-
-
-def plik_dokumentu(household_id: int, dokument_id: int) -> tuple[bytes, str] | None:
-    with get_db() as cur:
-        cur.execute("SELECT plik, plik_nazwa FROM health_dokumenty "
-                    "WHERE id = %s AND household_id = %s AND plik IS NOT NULL",
-                    (dokument_id, household_id))
-        r = cur.fetchone()
-        return (bytes(r["plik"]), r["plik_nazwa"] or "wynik.pdf") if r else None
 
 
 # ── problemy zdrowotne ──────────────────────────────────────────────────────

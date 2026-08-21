@@ -13,7 +13,6 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import Response
 
 import health_ai
 import health_db
@@ -152,17 +151,6 @@ def usun(dokument_id: int, current_user: dict = Depends(get_current_user)):
     if not health_db.usun_dokument(_hid(current_user), dokument_id):
         raise HTTPException(404, "Nie ma takiego dokumentu")
     return {"ok": True}
-
-
-@router.get("/dokumenty/{dokument_id}/plik")
-def pobierz_plik(dokument_id: int, current_user: dict = Depends(get_current_user)):
-    got = health_db.plik_dokumentu(_hid(current_user), dokument_id)
-    if not got:
-        raise HTTPException(404, "Ten dokument nie ma załączonego pliku")
-    bajty, nazwa = got
-    # `inline` — telefon otworzy PDF w przeglądarce zamiast go pobierać.
-    return Response(bajty, media_type="application/pdf",
-                    headers={"Content-Disposition": f'inline; filename="{nazwa}"'})
 
 
 # ── problemy zdrowotne ──────────────────────────────────────────────────────
