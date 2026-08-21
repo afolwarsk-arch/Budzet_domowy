@@ -154,9 +154,13 @@ function wpisOsi(d, poprzedni) {
       odstep = Math.round(odstep / 2);
     }
   }
+  // Każdy element osobnym <span>, żeby rozdzielił je `gap` kontenera. Wpisane
+  // obok siebie w jednym tekście sklejają się w „8 wyników Diagnostyka".
   const flagi = Number(d.ile_flag) > 0
     ? `<span class="poza-norma">${d.ile_flag} poza normą</span>` : '';
-  const wynikow = Number(d.ile_wynikow) > 0 ? `${d.ile_wynikow} wyników` : '';
+  const ile = Number(d.ile_wynikow);
+  const wynikow = ile > 0
+    ? `<span>${ile} ${odmien(ile, 'wynik', 'wyniki', 'wyników')}</span>` : '';
 
   return cisza + `
     <button class="os-wpis${kolor ? ' ma-problem' : ''}" type="button" data-dok="${d.id}"
@@ -169,8 +173,8 @@ function wpisOsi(d, poprzedni) {
         ${osobaId === null ? `<span class="os-osoba">${esc(d.osoba_imie || '')}</span>` : ''}
         <span class="znacznik">${esc(RODZAJE[d.rodzaj] || d.rodzaj)}</span>
         ${etykietyProblemow(d)}
-        ${flagi}${flagi && wynikow ? ' · ' : ''}${wynikow}
-        ${d.placowka ? esc(d.placowka) : ''}
+        ${flagi}${wynikow}
+        ${d.placowka ? `<span>${esc(d.placowka)}</span>` : ''}
       </div>
     </button>`;
 }
