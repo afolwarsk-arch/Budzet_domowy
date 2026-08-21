@@ -928,8 +928,15 @@ async function saveInwent() {
   if (roznica === 0) {
     alert('<span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 12.4l4.6 4.6 9.8-10.4"/></svg></span> Saldo się zgadza!');
   } else {
-    alert(`⚠ Różnica: ${roznica > 0 ? '+' : ''}${fmt(roznica)}\n\nWyliczone przez system: ${fmt(wynik.saldo_obliczone)}\nWpisane rzeczywiste: ${fmt(wynik.saldo_rzeczywiste)}`);
+    alert(`Saldo skorygowane o ${roznica > 0 ? '+' : ''}${fmt(roznica)}\n\n`
+      + `Wyliczone z zapisów: ${fmt(wynik.saldo_obliczone)}\n`
+      + `Stan rzeczywisty: ${fmt(wynik.saldo_rzeczywiste)}\n\n`
+      + `Konto pokazuje teraz stan rzeczywisty. Różnica to transakcje, których`
+      + ` nie ma w apce — jeśli wiesz, czego brakuje, dopisz je normalnie.`);
   }
+  // Saldo właśnie się zmieniło — bez tego karty pokazywałyby starą wartość
+  // aż do ręcznego odświeżenia strony.
+  await loadKonta();
   await showPanelInwent(activeKontoId);
 }
 
@@ -952,7 +959,7 @@ async function showPanelInwent(kontoId) {
       <div style="text-align:right;font-size:0.85rem">
         <div>Rzeczywiste: <strong>${fmt(i.saldo_rzeczywiste)}</strong></div>
         <div style="color: var(--muted);font-size:12px">Wyliczone: ${fmt(i.saldo_obliczone)}</div>
-        <div class="inv-diff ${cls}">Różnica: ${diffStr}</div>
+        <div class="inv-diff ${cls}">${diff === 0 ? 'Zgadzało się' : `Skorygowano: ${diffStr}`}</div>
       </div>
     </div>`;
   }).join('');

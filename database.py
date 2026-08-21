@@ -3020,7 +3020,27 @@ def create_inwentaryzacja(konto_id: int, household_id: int, data: str,
             "INSERT INTO inwentaryzacje (konto_id, data, saldo_rzeczywiste, saldo_obliczone, roznica, notatki) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *",
             (konto_id, data, saldo_rzeczywiste, saldo_obl, roznica, notatki or None),
         )
-        return dict(cur.fetchone())
+        wynik = dict(cur.fetchone())
+        # Spis rzeczywistego stanu MUSI domknąć saldo, inaczej jest tylko notatką:
+        # wcześniej zapisywał różnicę i zostawiał konto rozjechane, więc jedyne
+        # narzędzie do uzgodnienia z bankiem niczego nie uzgadniało.
+        #
+        # Korygujemy `saldo_poczatkowe`, a nie dopisujemy sztuczny wydatek czy
+        # wpływ: transakcja-widmo zafałszowałaby statystyki i bilans okresu, a
+        # przesunięcie punktu startowego jest dla nich niewidoczne. Ślad zostaje
+        # w tabeli `inwentaryzacje` (saldo obliczone, rzeczywiste i różnica), więc
+        # korekta jest udokumentowana i odwracalna.
+        #
+        # Różnica bierze się z transakcji, których w apce nie ma — niewpisany
+        # przelew, zapomniany zakup, opłata banku. Domknięcie na dziś nie cofa
+        # historii: dawne salda pozostają takie, jakie wynikały z zapisów.
+        if roznica:
+            cur.execute(
+                "UPDATE konta SET saldo_poczatkowe = saldo_poczatkowe + %s "
+                "WHERE id=%s AND household_id=%s",
+                (roznica, konto_id, household_id),
+            )
+        return wynik
 
 
 # ── Listy zakupów (wiele nazwanych list per gospodarstwo, sync na żywo) ──
