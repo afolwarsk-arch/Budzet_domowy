@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
-  <title>Badania — Wiem</title>
+  <title>Historia zdrowia — Wiem</title>
   <link rel="stylesheet" href="/static/style.css">
   <link rel="manifest" href="/static/manifest.json">
   <meta name="theme-color" content="#1a1d20">
@@ -208,6 +208,31 @@
     .os-osoba { font-size: 11px; font-weight: 700; text-transform: uppercase;
                 letter-spacing: .05em; color: var(--muted); }
     .poza-norma { color: var(--danger); font-weight: 600; }
+
+    /* ── wykres przebiegu parametru ──
+       Jedna seria, więc bez legendy — tytuł nad wykresem nazywa parametr.
+       Marki cienkie, siatka recesywna: linia ma być najciemniejszą rzeczą
+       w kadrze, a nie konkurować z ramką i opisami. */
+    .wykres { width: 100%; display: block; }
+    .wykres .siatka { stroke: var(--border); stroke-width: 1; }
+    .wykres .pasmo { fill: var(--surface-2); }
+    .wykres .pasmo-ramka { stroke: var(--border); stroke-width: 1; fill: none;
+                           stroke-dasharray: 3 3; }
+    .wykres .linia { fill: none; stroke: var(--marka); stroke-width: 2;
+                     stroke-linejoin: round; stroke-linecap: round; }
+    /* Obwódka w kolorze tła odcina punkt od linii, gdy pomiary leżą gęsto. */
+    .wykres .punkt { fill: var(--marka); stroke: var(--surface); stroke-width: 2; }
+    .wykres .punkt.flaga { fill: var(--danger); }
+    .wykres .opis { fill: var(--muted); font-size: 11px; }
+    .wykres .wartosc { fill: var(--heading); font-size: 11.5px; font-weight: 600; }
+    .wykres .dotyk { fill: transparent; cursor: pointer; }
+
+    .wyk-karta { border: 1px solid var(--border); border-radius: 12px;
+                 background: var(--surface); padding: 14px 15px; margin-bottom: 14px; }
+    .wyk-gl { display: flex; align-items: baseline; justify-content: space-between;
+              gap: 10px; margin-bottom: 10px; }
+    .wyk-gl h2 { margin: 0; font-size: 15px; }
+    .wyk-podpis { font-size: 12.5px; color: var(--muted); min-height: 18px; margin-top: 8px; }
 
     @media (max-width: 560px) { .pola-2 { grid-template-columns: 1fr; } }
   </style>

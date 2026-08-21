@@ -101,6 +101,7 @@ async function rysuj() {
   if (widok === 'podglad') return rysujPodglad();
   if (widok === 'szczegoly') return rysujSzczegoly();
   if (widok === 'problemy') return rysujProblemy();
+  if (widok === 'przebieg') return rysujPrzebieg();
   return rysujOs();
 }
 
@@ -236,6 +237,7 @@ async function rysujOs() {
             <span class="kropka-pr" style="background: var(--pr-${p.kolor % 8})"></span>${esc(p.nazwa)}
             <span class="os-data">${p.ile}</span></button>`).join('')}
         <button class="chip dodaj" type="button" data-pr="zarzadzaj">Problemy…</button>
+        <button class="chip dodaj" type="button" id="do-przebiegu">Przebieg…</button>
       </div>
       <div class="skala">
         <span>gęstość</span>
@@ -268,6 +270,7 @@ async function rysujOs() {
     problemId = null;
     rysuj();
   };
+  document.getElementById('do-przebiegu').onclick = () => { widok = 'przebieg'; rysuj(); };
   document.getElementById('f-problemy').onclick = (ev) => {
     const b = ev.target.closest('[data-pr]');
     if (!b) return;
@@ -492,6 +495,227 @@ async function zapiszDokument() {
     alert('Nie udało się zapisać badania.');
   }
 }
+
+// ── widok: przebieg parametru ───────────────────────────────────────────────
+//
+// Rysujemy własnym SVG, a nie biblioteką wykresów. Powód: dwie rzeczy, które
+// tu decydują o poprawności, są w bibliotekach walką pod prąd — PASMO NORMY
+// MUSI BYĆ SCHODKOWE (norma bywa inna w każdym laboratorium, więc jedno pasmo
+// na cały wykres pokazałoby stary wynik jako „poza normą", której wtedy nie
+// było) oraz wyniki z operatorem („<0,005") muszą wyglądać inaczej niż zwykły
+// pomiar, bo to nie jest zmierzona wartość, tylko granica czułości metody.
+
+let parametry = [];
+let parametr = null;
+let przebieg = [];
+
+const OS_L = 46, OS_P = 14, OS_G = 16, OS_D = 28;   // marginesy pola rysunku
+
+function skalujY(punkty) {
+  const wart = [];
+  for (const p of punkty) {
+    wart.push(Number(p.wartosc_liczba));
+    if (p.norma_min != null) wart.push(Number(p.norma_min));
+    if (p.norma_max != null) wart.push(Number(p.norma_max));
+  }
+  let min = Math.min(...wart), max = Math.max(...wart);
+  if (min === max) { min -= 1; max += 1; }          // jedna wartość, płaski zakres
+  const luz = (max - min) * 0.12;
+  return { min: min - luz, max: max + luz };
+}
+
+const liczba = (v) => String(Number(v)).replace(/\.?0+$/, '').replace('.', ',');
+
+function rysujWykres(punkty, szer) {
+  const wys = 250;
+  const zakres = skalujY(punkty);
+  const t0 = new Date(punkty[0].data_badania).getTime();
+  const t1 = new Date(punkty[punkty.length - 1].data_badania).getTime();
+  const rozpietosc = t1 - t0 || 1;
+
+  const X = (p) => OS_L + ((new Date(p.data_badania).getTime() - t0) / rozpietosc) * (szer - OS_L - OS_P);
+  const Y = (v) => OS_G + (1 - (Number(v) - zakres.min) / (zakres.max - zakres.min)) * (wys - OS_G - OS_D);
+
+  const xs = punkty.map(X);
+
+  // Pasmo normy — osobny prostokąt na każdy pomiar, rozciągnięty do połowy
+  // odległości do sąsiadów. Stąd schodki: zmiana normy między badaniami jest
+  // widoczna jako uskok, a nie wygładzona w nieistniejącą ciągłość.
+  const pasma = punkty.map((p, i) => {
+    if (p.norma_min == null && p.norma_max == null) return '';
+    const lewo = i === 0 ? OS_L : (xs[i - 1] + xs[i]) / 2;
+    const prawo = i === punkty.length - 1 ? szer - OS_P : (xs[i] + xs[i + 1]) / 2;
+    const gora = Y(p.norma_max != null ? p.norma_max : zakres.max);
+    const dol = Y(p.norma_min != null ? p.norma_min : zakres.min);
+    return `<rect class="pasmo" x="${lewo.toFixed(1)}" y="${gora.toFixed(1)}"
+             width="${Math.max(0, prawo - lewo).toFixed(1)}" height="${Math.max(0, dol - gora).toFixed(1)}"/>
+            <line class="pasmo-ramka" x1="${lewo.toFixed(1)}" y1="${gora.toFixed(1)}"
+             x2="${prawo.toFixed(1)}" y2="${gora.toFixed(1)}"/>
+            <line class="pasmo-ramka" x1="${lewo.toFixed(1)}" y1="${dol.toFixed(1)}"
+             x2="${prawo.toFixed(1)}" y2="${dol.toFixed(1)}"/>`;
+  }).join('');
+
+  const linia = punkty.map((p, i) => `${xs[i].toFixed(1)},${Y(p.wartosc_liczba).toFixed(1)}`).join(' ');
+
+  const marki = punkty.map((p, i) => {
+    const x = xs[i], y = Y(p.wartosc_liczba);
+    const flaga = p.flaga ? ' flaga' : '';
+    // Operator: trójkąt zwrócony w stronę, w którą wartość „ucieka" poza skalę
+    // pomiaru. Kółko znaczy „zmierzono tyle", trójkąt „wiadomo tylko tyle".
+    const znak = p.operator
+      ? `<path class="punkt${flaga}" d="${p.operator.startsWith('<')
+          ? `M${x - 5},${y - 4} L${x + 5},${y - 4} L${x},${y + 5} Z`
+          : `M${x - 5},${y + 4} L${x + 5},${y + 4} L${x},${y - 5} Z`}"/>`
+      : `<circle class="punkt${flaga}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5"/>`;
+    // Przezroczysta łatka 30×30 — punkt ma 9 px, a palec potrzebuje więcej.
+    return znak + `<rect class="dotyk" data-i="${i}" x="${(x - 15).toFixed(1)}"
+                     y="${(y - 15).toFixed(1)}" width="30" height="30"><title>${
+                     esc(dataPl(p.data_badania))}: ${esc((p.operator || '') + liczba(p.wartosc_liczba))}${
+                     p.jednostka ? ' ' + esc(p.jednostka) : ''}</title></rect>`;
+  }).join('');
+
+  // Podpisujemy tylko pierwszy i ostatni pomiar — liczba nad każdym punktem
+  // zamienia wykres w tabelę i przestaje się go czytać jako kształt.
+  const skrajne = [0, punkty.length - 1].filter((v, i, a) => a.indexOf(v) === i);
+  const etykiety = skrajne.map((i) => {
+    const p = punkty[i], x = xs[i], y = Y(p.wartosc_liczba);
+    return `<text class="wartosc" x="${Math.min(szer - OS_P, Math.max(OS_L, x)).toFixed(1)}"
+              y="${(y - 11).toFixed(1)}" text-anchor="${i === 0 ? 'start' : 'end'}">${
+              esc((p.operator || '') + liczba(p.wartosc_liczba))}</text>`;
+  }).join('');
+
+  const dolPola = wys - OS_D;
+  return `<svg class="wykres" viewBox="0 0 ${szer} ${wys}" width="${szer}" height="${wys}"
+            role="img" aria-label="Przebieg parametru ${esc(parametr || '')} w czasie">
+      ${pasma}
+      <line class="siatka" x1="${OS_L}" y1="${dolPola}" x2="${szer - OS_P}" y2="${dolPola}"/>
+      <text class="opis" x="${OS_L - 6}" y="${OS_G + 4}" text-anchor="end">${liczba(zakres.max.toFixed(1))}</text>
+      <text class="opis" x="${OS_L - 6}" y="${dolPola}" text-anchor="end">${liczba(zakres.min.toFixed(1))}</text>
+      <text class="opis" x="${OS_L}" y="${wys - 8}">${esc(dataPl(punkty[0].data_badania))}</text>
+      <text class="opis" x="${szer - OS_P}" y="${wys - 8}" text-anchor="end">${
+        esc(dataPl(punkty[punkty.length - 1].data_badania))}</text>
+      <polyline class="linia" points="${linia}"/>
+      ${marki}${etykiety}
+    </svg>`;
+}
+
+function tabelaPrzebiegu(punkty) {
+  return `<div class="przewin"><table class="wyniki">
+      <thead><tr><th>Data</th><th>Wynik</th><th>Norma</th><th>Placówka</th></tr></thead>
+      <tbody>${punkty.slice().reverse().map((p) => `<tr>
+        <td>${dataPl(p.data_badania)}${p.metoda ? `<div class="w-norma">${esc(p.metoda)}</div>` : ''}</td>
+        <td class="w-wart">${esc((p.operator || '') + liczba(p.wartosc_liczba))}${
+          p.jednostka ? ' ' + esc(p.jednostka) : ''}${
+          p.flaga ? `<span class="flaga">${esc(p.flaga)}</span>` : ''}</td>
+        <td class="w-norma">${norma(p)}</td>
+        <td class="w-norma">${esc(p.placowka || '')}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+async function rysujPrzebieg() {
+  if (osobaId === null) {          // przebieg jest z natury jednej osoby
+    box().innerHTML = `<button class="wroc" id="wroc">← Oś czasu</button>
+      <div class="gora"><h1>Przebieg parametru</h1></div>
+      <div class="pusto">Wybierz najpierw osobę — przebieg pokazuje jedną historię,
+      a nie kilka naraz.</div>`;
+    document.getElementById('wroc').onclick = () => { widok = 'os'; rysuj(); };
+    return;
+  }
+
+  box().innerHTML = '<div class="laduje">Wczytuję…</div>';
+  try {
+    const r = await authFetch('/api/health/parametry?osoba_id=' + osobaId);
+    parametry = r.ok ? ((await r.json()).parametry || []) : [];
+  } catch { parametry = []; }
+
+  if (!parametry.length) {
+    box().innerHTML = `<button class="wroc" id="wroc">← Oś czasu</button>
+      <div class="gora"><h1>Przebieg parametru</h1></div>
+      <div class="pusto">Nie ma jeszcze czego rysować.<br>Przebieg powstaje, gdy ten sam
+      parametr zostanie zmierzony <b>co najmniej dwa razy</b>.</div>`;
+    document.getElementById('wroc').onclick = () => { widok = 'os'; rysuj(); };
+    return;
+  }
+
+  if (!parametry.some((p) => p.nazwa === parametr)) parametr = parametry[0].nazwa;
+  try {
+    const r = await authFetch(`/api/health/przebieg?osoba_id=${osobaId}&nazwa=${encodeURIComponent(parametr)}`);
+    przebieg = r.ok ? ((await r.json()).punkty || []) : [];
+  } catch { przebieg = []; }
+
+  if (!przebieg.length) {
+    // Parametr trafił na listę (ma ≥2 pomiary), ale wszystkie okazały się
+    // nieliczbowe — na wykres nie pójdą. Lepiej powiedzieć to wprost niż
+    // pokazać puste płótno.
+    box().innerHTML = `<button class="wroc" id="wroc">← Oś czasu</button>
+      <div class="gora"><h1>${esc(parametr)}</h1></div>
+      <div class="pusto">Ten parametr nie ma wyników liczbowych — nie da się go
+      narysować w czasie.</div>`;
+    document.getElementById('wroc').onclick = () => { widok = 'os'; rysuj(); };
+    return;
+  }
+
+  const jednostka = (przebieg.find((p) => p.jednostka) || {}).jednostka || '';
+  box().innerHTML = `
+    <button class="wroc" id="wroc">← Oś czasu</button>
+    <div class="gora"><h1>Przebieg parametru</h1></div>
+    <div class="filtry" id="lista-param" style="margin-bottom:14px">
+      ${parametry.map((p) => `<button class="chip" type="button" data-p="${esc(p.nazwa)}"
+          aria-pressed="${p.nazwa === parametr}">${esc(p.nazwa)}
+          <span class="os-data">${p.ile}</span></button>`).join('')}
+    </div>
+    <div class="wyk-karta">
+      <div class="wyk-gl">
+        <h2>${esc(parametr)}${jednostka ? ` <span class="w-norma">${esc(jednostka)}</span>` : ''}</h2>
+        <span class="os-data">${przebieg.length} pomiarów</span>
+      </div>
+      <div id="plotno"></div>
+      <div class="wyk-podpis" id="podpis">Szare pasmo to norma z danego badania —
+        potrafi się zmieniać między laboratoriami.</div>
+    </div>
+    <div class="karta">
+      <h2>Wszystkie pomiary</h2>
+      ${tabelaPrzebiegu(przebieg)}
+      <div class="uwaga">Wyniki podane jako „mniej niż" albo „więcej niż" rysujemy
+      trójkątem — to granica czułości metody, nie zmierzona wartość.</div>
+    </div>`;
+
+  przerysujPlotno();
+  document.getElementById('lista-param').onclick = (ev) => {
+    const b = ev.target.closest('[data-p]');
+    if (!b) return;
+    parametr = b.dataset.p;
+    rysujPrzebieg();
+  };
+  document.getElementById('wroc').onclick = () => { widok = 'os'; rysuj(); };
+}
+
+function przerysujPlotno() {
+  const plotno = document.getElementById('plotno');
+  if (!plotno || !przebieg.length) return;
+  // Rysujemy w RZECZYWISTYCH pikselach kontenera, a nie w stałym viewBox ze
+  // skalowaniem: przy skalowaniu opisy osi kurczyłyby się razem z wykresem i na
+  // telefonie zrobiłyby się nieczytelne.
+  plotno.innerHTML = rysujWykres(przebieg, Math.max(280, plotno.clientWidth));
+  plotno.querySelector('svg').onclick = (ev) => {
+    const t = ev.target.closest('[data-i]');
+    if (!t) return;
+    const p = przebieg[Number(t.dataset.i)];
+    document.getElementById('podpis').innerHTML =
+      `<b>${dataPl(p.data_badania)}</b> — ${esc((p.operator || '') + liczba(p.wartosc_liczba))}`
+      + `${p.jednostka ? ' ' + esc(p.jednostka) : ''}`
+      + `${norma(p) ? ` · norma ${norma(p)}` : ''}`
+      + `${p.placowka ? ` · ${esc(p.placowka)}` : ''}`;
+  };
+}
+
+let czasomierzRozmiaru = null;
+addEventListener('resize', () => {
+  if (widok !== 'przebieg') return;
+  clearTimeout(czasomierzRozmiaru);
+  czasomierzRozmiaru = setTimeout(przerysujPlotno, 150);
+});
 
 // ── widok: problemy zdrowotne ───────────────────────────────────────────────
 

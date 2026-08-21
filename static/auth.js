@@ -1008,10 +1008,10 @@ const MODULY = [
     id: 'health',
     nazwa: 'health',
     kolor: '#00c4ba',
-    opis: 'Badania i dokumentacja',
+    opis: 'Historia zdrowia',
     ikona: 'zdrowie',
     strony: [
-      { href: '/health', ikona: 'zdrowie', label: 'Badania', pelny: 'Badania i dokumentacja' },
+      { href: '/health', ikona: 'zdrowie', label: 'Historia', pelny: 'Historia zdrowia' },
     ],
   },
 ];
