@@ -861,23 +861,28 @@ if (document.getElementById('chart-kategorie')) { authRequireHousehold().then(as
       tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Brak wydatków w tym okresie</td></tr>';
       return;
     }
+    // Klasy `kol-*` nie są ozdobą: na wąskim ekranie wiersz przestaje być
+    // wierszem i układa się w kartę (patrz style.css), a kolejność pól jest tam
+    // inna niż w tabeli. Zaczepianie tego o nth-child pękłoby przy pierwszej
+    // przestawionej kolumnie.
+    //
+    // Komórka „okazja" musi być PUSTA, gdy nie ma okazji — stąd brak wcięć
+    // wewnątrz: białe znaki sprawiłyby, że `:empty` przestaje działać i karta
+    // dostawałaby pustą linię.
     tbody.innerHTML = data.map(w => `
       <tr class="wydatek-row" data-id="${w.id}">
-        <td>
+        <td class="kol-rozwin">
           <button class="expand-btn" onclick="togglePozycje(${w.id}, this)" title="Rozwiń pozycje">▶</button>
         </td>
-        <td>${w.data}</td>
-        <td>
+        <td class="kol-data">${w.data}</td>
+        <td class="kol-sklep">
           <span class="sklep-name">${w.sklep || '—'}</span>
           ${w.notatki ? `<div class="notatka-hint">${w.notatki}</div>` : ''}
         </td>
-        <td style="font-size:13px">
-          ${w.okazja ? `<span style="font-weight:500;color:#7c3aed">${esc(w.okazja)}</span>` : ''}
-          ${w.kontekst_kategoria ? `<div style="font-size:11px;color:var(--accent)">→ ${esc(w.kontekst_kategoria)}</div>` : ''}
-        </td>
-        <td style="font-weight:600">${fmt(w.suma)}</td>
-        <td><span class="badge ${w.osoba === 'Ola' ? 'ola' : ''}">${w.osoba}</span></td>
-        <td>
+        <td class="kol-okazja" style="font-size:13px">${w.okazja ? `<span style="font-weight:500;color:#7c3aed">${esc(w.okazja)}</span>` : ''}${w.kontekst_kategoria ? `<div style="font-size:11px;color:var(--accent)">→ ${esc(w.kontekst_kategoria)}</div>` : ''}</td>
+        <td class="kol-suma" style="font-weight:600">${fmt(w.suma)}</td>
+        <td class="kol-osoba"><span class="badge ${w.osoba === 'Ola' ? 'ola' : ''}">${w.osoba}</span></td>
+        <td class="kol-akcje">
           <button class="btn btn-outline btn-sm" onclick="editWydatek(${w.id})">Edytuj</button>
           <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteWydatek(${w.id})">Usuń</button>
         </td>
