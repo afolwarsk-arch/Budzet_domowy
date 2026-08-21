@@ -521,7 +521,12 @@ function skalujY(punkty) {
   let min = Math.min(...wart), max = Math.max(...wart);
   if (min === max) { min -= 1; max += 1; }          // jedna wartość, płaski zakres
   const luz = (max - min) * 0.12;
-  return { min: min - luz, max: max + luz };
+  // Luz na dole nie może zejść pod zero, jeśli żadna wartość ani norma nie jest
+  // ujemna: oś sięgająca −0,7 przy TSH sugeruje zakres, który nie istnieje.
+  // Twardego obcięcia do zera NIE robimy — są parametry naturalnie ujemne
+  // (niedobór zasad BE, temperatura), a im zero odcięłoby połowę wykresu.
+  const dol = min - luz;
+  return { min: (min >= 0 && dol < 0) ? 0 : dol, max: max + luz };
 }
 
 const liczba = (v) => String(Number(v)).replace(/\.?0+$/, '').replace('.', ',');
