@@ -1,4 +1,4 @@
-/* ── paleta ──────────────────────────────────────────────────────────────
+﻿/* ── paleta ──────────────────────────────────────────────────────────────
    Dwa motywy: papier (jasny) i atrament (ciemny). Bez niebieskiego.
    Kolorem marki jest lawenda — na jasnym tle przyciemniona, żeby przechodziła
    kontrast na tekst; na ciemnym rozjaśniona i pełni rolę koloru akcji.
@@ -349,8 +349,11 @@ tr:hover td { background: var(--hover); }
    dostać własne reguły — bez tego `colspan` przestaje działać i szczegóły
    paragonu rozjeżdżają się poza kartę. */
 @media (max-width: 700px) {
-  #wydatki-table, #wydatki-table tbody { display: block; width: 100%; }
-  #wydatki-table thead { display: none; }
+  /* WSZĘDZIE `>`: wewnątrz rozwiniętego wydatku siedzi druga tabela (pozycje
+     paragonu), a selektory potomka rozłożyłyby i ją — każda komórka lądowała
+     w osobnej linii. Kartą ma się stać tylko wiersz najwyższego poziomu. */
+  #wydatki-table, #wydatki-table > tbody { display: block; width: 100%; }
+  #wydatki-table > thead { display: none; }
   /* Poziomy scroll nie ma już czego przewijać, a zostawiony potrafi łapać
      gest przewijania strony. */
   .table-wrap:has(#wydatki-table) { overflow-x: visible; }
@@ -360,32 +363,32 @@ tr:hover td { background: var(--hover); }
     position: relative; padding: 12px 12px 12px 40px; margin-bottom: 10px;
     border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
   }
-  .wydatek-row td { display: block; border: none; padding: 0; }
-  .wydatek-row:hover td { background: none; }
+  .wydatek-row > td { display: block; border: none; padding: 0; }
+  .wydatek-row:hover > td { background: none; }
 
   /* Rozwijanie i kwota kotwiczone do rogów — reszta pól płynie między nimi. */
-  .wydatek-row .kol-rozwin { position: absolute; left: 8px; top: 12px; }
-  .wydatek-row .kol-suma {
+  .wydatek-row > .kol-rozwin { position: absolute; left: 8px; top: 12px; }
+  .wydatek-row > .kol-suma {
     position: absolute; right: 12px; top: 11px;
     font-size: 16px; font-variant-numeric: tabular-nums;
   }
   /* Sklep ustępuje miejsca kwocie, zamiast wchodzić pod nią. */
-  .wydatek-row .kol-sklep { order: 1; flex: 1 0 100%; padding-right: 92px; }
-  .wydatek-row .kol-data { order: 2; font-size: 12px; color: var(--muted);
+  .wydatek-row > .kol-sklep { order: 1; flex: 1 0 100%; padding-right: 92px; }
+  .wydatek-row > .kol-data { order: 2; font-size: 12px; color: var(--muted);
                            font-variant-numeric: tabular-nums; }
-  .wydatek-row .kol-osoba { order: 3; }
-  .wydatek-row .kol-okazja { order: 4; flex: 1 0 100%; }
-  .wydatek-row .kol-okazja:empty { display: none; }   /* patrz komentarz w renderTable */
-  .wydatek-row .kol-akcje { order: 5; flex: 1 0 100%; display: flex; gap: 8px; margin-top: 6px; }
+  .wydatek-row > .kol-osoba { order: 3; }
+  .wydatek-row > .kol-okazja { order: 4; flex: 1 0 100%; }
+  .wydatek-row > .kol-okazja:empty { display: none; }   /* patrz komentarz w renderTable */
+  .wydatek-row > .kol-akcje { order: 5; flex: 1 0 100%; display: flex; gap: 8px; margin-top: 6px; }
   /* Cel dotyku ma mieć 44 px, a nie tyle, ile wyjdzie z paddingu tekstu. */
-  .wydatek-row .kol-akcje .btn { flex: 1; min-height: 44px; justify-content: center; margin-left: 0; }
+  .wydatek-row > .kol-akcje .btn { flex: 1; min-height: 44px; justify-content: center; margin-left: 0; }
 
   /* Wiersz szczegółów: własna karta pod swoim wydatkiem, bez ramki z góry.
      `:not(.hidden)` chroni zwijanie: ten selektor bije specyficznością
      `.pozycje-row.hidden` z linii niżej. Dziś ratuje nas `!important` przy
      `.hidden`, ale opieranie zwijania na tym byłoby liczeniem na cudzy wykrzyknik. */
-  #wydatki-table .pozycje-row:not(.hidden) { display: block; margin: -6px 0 10px; }
-  #wydatki-table .pozycje-row td { display: block; padding: 0; border: none; }
+  #wydatki-table > tbody > .pozycje-row:not(.hidden) { display: block; margin: -6px 0 10px; }
+  #wydatki-table > tbody > .pozycje-row > td { display: block; padding: 0; border: none; }
 }
 
 .badge {
