@@ -1,7 +1,13 @@
-// Ekran badań i dokumentacji — wiem.health.
+﻿// Ekran badań i dokumentacji — wiem.health.
 //
-// Trzy widoki w jednym pliku, przełączane stanem: lista dokumentów, podgląd
-// świeżo odczytanego dokumentu przed zapisem, szczegóły zapisanego.
+// Cztery widoki w jednym pliku, przełączane stanem: OŚ CZASU (ekran główny),
+// podgląd świeżo odczytanego dokumentu przed zapisem, szczegóły zapisanego
+// i zarządzanie problemami zdrowotnymi.
+//
+// Oś zastąpiła zwykłą listę, bo dokumentacja medyczna czyta się w czasie:
+// pytanie brzmi „co się ze mną działo", a nie „co mam w kartotece". Odstępy są
+// proporcjonalne do upływu czasu, więc widać rytm — zagęszczenie przy chorobie
+// i ciszę przy zdrowiu.
 //
 // PODGLĄD PRZED ZAPISEM NIE JEST WYGODĄ, TYLKO WARUNKIEM. Model przepisuje
 // wynik z papieru i robi to dobrze, ale wynik zapisany błędnie i niezauważony
@@ -21,12 +27,34 @@ const RODZAJE = {
 };
 
 let osoby = [];
-let osobaId = null;
-let widok = 'lista';      // lista | podglad | szczegoly
+// Trzy stany, nie dwa: `undefined` = jeszcze nie wybrano (bierzemy pierwszą
+// osobę), `null` = świadomie wybrano „Wszyscy", liczba = konkretna osoba. Bez
+// tego rozróżnienia wybór „Wszyscy" byłby nadpisywany przy każdym wczytaniu.
+let osobaId;
+let problemy = [];
+let problemId = null;     // null = bez filtrowania po problemie
+let widok = 'os';         // os | podglad | szczegoly | problemy
 let odczyt = null;        // { dokument } — czeka na zapis
 // Pliku NIE przetrzymujemy między odczytem a zapisem: oryginały nie trafiają
 // do bazy (patrz `zapisz` w health.py), więc nie ma czego wysyłać drugi raz.
 let szczegoly = null;
+
+// Ile pikseli dostaje jeden dzień. Suwak zmienia GĘSTOŚĆ osi, nigdy zakres —
+// oś zawsze pokazuje całą historię, bo jej sensem jest widzieć całość naraz.
+const SKALE = [
+  { px: 0.22, opis: 'cała historia' },
+  { px: 1.1,  opis: 'rok' },
+  { px: 4.5,  opis: 'kwartał' },
+];
+let skala = 1;
+
+// Odstęp nigdy nie spada poniżej MIN (karty by na siebie nachodziły) ani nie
+// przekracza MAX (czteroletnia przerwa dałaby ekran pustki, przez który trzeba
+// przewijać). Proporcjonalność działa więc w środku zakresu — a że skrajności
+// są przycięte, przerwę nazywamy słowami, żeby informacja nie ginęła.
+const ODSTEP_MIN = 10;
+const ODSTEP_MAX = 210;
+const CISZA_OD = 64;      // od tylu pikseli podpisujemy przerwę
 
 const box = () => document.getElementById('tresc');
 
@@ -62,27 +90,98 @@ async function wczytajOsoby() {
   const r = await authFetch('/api/health/osoby');
   if (!r.ok) throw new Error('osoby');
   osoby = (await r.json()).osoby || [];
-  if (osoby.length && !osoby.some((o) => o.id === osobaId)) osobaId = osoby[0].id;
+  if (osobaId === undefined) {
+    osobaId = osoby.length ? osoby[0].id : null;     // pierwsze wejście
+  } else if (osobaId !== null && !osoby.some((o) => o.id === osobaId)) {
+    osobaId = osoby.length ? osoby[0].id : null;     // wskazana osoba zniknęła
+  }
 }
 
 async function rysuj() {
   if (widok === 'podglad') return rysujPodglad();
   if (widok === 'szczegoly') return rysujSzczegoly();
-  return rysujListe();
+  if (widok === 'problemy') return rysujProblemy();
+  return rysujOs();
 }
 
-// ── widok: lista ────────────────────────────────────────────────────────────
+// ── oś czasu ────────────────────────────────────────────────────────────────
 
-function paskiOsob() {
-  const chipy = osoby.map((o) =>
-    `<button type="button" data-os="${o.id}" aria-pressed="${o.id === osobaId}">${esc(o.imie)}</button>`
-  ).join('');
-  return `<div class="osoby" id="osoby">${chipy}
-      <button type="button" class="dodaj-os" id="dodaj-os">+ Osoba</button>
-    </div>`;
+const dni = (a, b) => Math.abs((new Date(a) - new Date(b)) / 86400000);
+
+function opiszPrzerwe(d) {
+  if (d >= 365) { const l = Math.round(d / 365); return l === 1 ? 'rok przerwy' : `${l} lata przerwy`; }
+  if (d >= 60) return `${Math.round(d / 30)} miesiące przerwy`;
+  return `${Math.round(d)} dni przerwy`;
 }
 
-async function rysujListe() {
+// Kolor bierzemy z PIERWSZEGO problemu dokumentu. Dokument bywa przypięty do
+// kilku spraw naraz, ale kropka jest jedna — pozostałe problemy i tak są
+// wypisane etykietami pod spodem, więc nic nie ginie.
+const kolorWpisu = (d) => (d.problemy && d.problemy.length)
+  ? `var(--pr-${d.problemy[0].kolor % 8})` : null;
+
+function etykietyProblemow(d) {
+  return (d.problemy || []).map((p) => `<span class="etykieta-pr">
+      <span class="kropka-pr" style="background: var(--pr-${p.kolor % 8})"></span>${esc(p.nazwa)}
+    </span>`).join('');
+}
+
+function wpisOsi(d, poprzedni) {
+  const kolor = kolorWpisu(d);
+  let odstep = ODSTEP_MIN;
+  let cisza = '';
+  if (poprzedni && d.data_badania && poprzedni.data_badania) {
+    const roznica = dni(poprzedni.data_badania, d.data_badania);
+    odstep = Math.min(ODSTEP_MAX, Math.max(ODSTEP_MIN, roznica * SKALE[skala].px));
+    if (odstep >= CISZA_OD) {
+      cisza = `<div class="os-cisza" style="margin-top:${Math.round(odstep / 2 - 8)}px">
+                 ${opiszPrzerwe(roznica)}</div>`;
+      odstep = Math.round(odstep / 2);
+    }
+  }
+  const flagi = Number(d.ile_flag) > 0
+    ? `<span class="poza-norma">${d.ile_flag} poza normą</span>` : '';
+  const wynikow = Number(d.ile_wynikow) > 0 ? `${d.ile_wynikow} wyników` : '';
+
+  return cisza + `
+    <button class="os-wpis${kolor ? ' ma-problem' : ''}" type="button" data-dok="${d.id}"
+            style="margin-top:${Math.round(odstep)}px${kolor ? `; --pr-akt:${kolor}` : ''}">
+      <div class="os-gl">
+        <span class="os-nazwa">${esc(d.nazwa)}</span>
+        <span class="os-data">${dataPl(d.data_badania)}</span>
+      </div>
+      <div class="os-pod">
+        ${osobaId === null ? `<span class="os-osoba">${esc(d.osoba_imie || '')}</span>` : ''}
+        <span class="znacznik">${esc(RODZAJE[d.rodzaj] || d.rodzaj)}</span>
+        ${etykietyProblemow(d)}
+        ${flagi}${flagi && wynikow ? ' · ' : ''}${wynikow}
+        ${d.placowka ? esc(d.placowka) : ''}
+      </div>
+    </button>`;
+}
+
+function budujOs(dokumenty) {
+  if (!dokumenty.length) {
+    return `<div class="pusto">Nic tu jeszcze nie ma.<br>
+      Zrób zdjęcie wyniku albo wgraj PDF — pojawi się na osi.</div>`;
+  }
+  let rok = null;
+  let poprzedni = null;
+  const czesci = [];
+  for (const d of dokumenty) {
+    const r = (d.data_badania || '').slice(0, 4);
+    if (r && r !== rok) {
+      rok = r;
+      czesci.push(`<div class="os-rok" style="margin-top:${poprzedni ? 22 : 0}px">${r}</div>`);
+      poprzedni = null;   // po nagłówku roku odstęp liczymy od zera
+    }
+    czesci.push(wpisOsi(d, poprzedni));
+    poprzedni = d;
+  }
+  return `<div class="os">${czesci.join('')}</div>`;
+}
+
+async function rysujOs() {
   box().innerHTML = '<div class="laduje">Wczytuję…</div>';
   try {
     await wczytajOsoby();
@@ -90,52 +189,42 @@ async function rysujListe() {
     box().innerHTML = '<div class="blad">Nie udało się wczytać listy osób.</div>';
     return;
   }
+  if (!osoby.length) return rysujPierwszaOsoba();
 
-  if (!osoby.length) {
-    box().innerHTML = `<div class="gora"><h1>Badania i dokumentacja</h1></div>
-      <div class="karta">
-        <h2>Zacznij od osoby</h2>
-        <p class="uwaga">Wyniki zapisujemy przy konkretnej osobie — także takiej, która
-        nie ma konta w aplikacji. Data urodzenia jest nieobowiązkowa, ale przy wynikach
-        dziecka pozwala odczytać normę właściwą dla wieku w dniu badania.</p>
-        <div class="pole" style="margin-top:12px">
-          <label for="n-imie">Imię</label>
-          <input id="n-imie" autocomplete="off" placeholder="np. Zosia">
-        </div>
-        <div class="pole">
-          <label for="n-ur">Data urodzenia</label>
-          <input id="n-ur" type="date">
-        </div>
-        <div class="akcje"><button class="btn btn-primary" id="n-zapisz">Dodaj osobę</button></div>
-      </div>`;
-    document.getElementById('n-zapisz').onclick = zapiszOsobe;
-    return;
-  }
-
+  await wczytajProblemy();
   let dokumenty = [];
   try {
-    const r = await authFetch('/api/health/dokumenty?osoba_id=' + osobaId);
+    const q = new URLSearchParams();
+    if (osobaId !== null) q.set('osoba_id', osobaId);
+    if (problemId !== null) q.set('problem_id', problemId);
+    const r = await authFetch('/api/health/dokumenty?' + q);
     if (r.ok) dokumenty = (await r.json()).dokumenty || [];
-  } catch { /* pusta lista jest poprawnym stanem */ }
-
-  const lista = dokumenty.length ? dokumenty.map((d) => `
-    <button class="dok" data-dok="${d.id}" type="button">
-      <div class="dok-gl">
-        <span class="dok-nazwa">${esc(d.nazwa)}</span>
-        <span class="dok-data">${dataPl(d.data_badania)}</span>
-      </div>
-      <div class="dok-pod">
-        <span class="znacznik">${esc(RODZAJE[d.rodzaj] || d.rodzaj)}</span>
-        ${d.ma_plik ? '<span class="znacznik pdf">PDF</span>' : ''}
-        ${d.placowka ? esc(d.placowka) : ''}
-      </div>
-    </button>`).join('')
-    : `<div class="pusto">Brak zapisanych badań.<br>Zrób zdjęcie wyniku albo wgraj PDF
-       z laboratorium.</div>`;
+  } catch { /* pusta oś jest poprawnym stanem */ }
 
   box().innerHTML = `
-    <div class="gora"><h1>Badania i dokumentacja</h1></div>
-    ${paskiOsob()}
+    <div class="gora"><h1>Historia zdrowia</h1></div>
+    <div class="narzedzia">
+      <div class="filtry" id="f-osoby">
+        <button class="chip" type="button" data-os="wszyscy" aria-pressed="${osobaId === null}">Wszyscy</button>
+        ${osoby.map((o) => `<button class="chip" type="button" data-os="${o.id}"
+            aria-pressed="${o.id === osobaId}">${esc(o.imie)}</button>`).join('')}
+        <button class="chip dodaj" type="button" data-os="nowa">+ Osoba</button>
+      </div>
+      <div class="filtry" id="f-problemy">
+        <button class="chip" type="button" data-pr="wszystkie" aria-pressed="${problemId === null}">Wszystko</button>
+        ${problemy.map((p) => `<button class="chip" type="button" data-pr="${p.id}"
+            aria-pressed="${p.id === problemId}">
+            <span class="kropka-pr" style="background: var(--pr-${p.kolor % 8})"></span>${esc(p.nazwa)}
+            <span class="os-data">${p.ile}</span></button>`).join('')}
+        <button class="chip dodaj" type="button" data-pr="zarzadzaj">Problemy…</button>
+      </div>
+      <div class="skala">
+        <span>gęstość</span>
+        <input type="range" id="suwak" min="0" max="2" step="1" value="${skala}"
+               aria-label="Gęstość osi czasu">
+        <span id="skala-opis">${SKALE[skala].opis}</span>
+      </div>
+    </div>
     <div class="wejscia">
       <button class="wejscie" type="button" id="w-zdjecie">
         <svg viewBox="0 0 24 24"><path d="M3.5 8.5h3.2l1.5-2.4h7.6l1.5 2.4h3.2v10.5H3.5z"/><circle cx="12" cy="13.4" r="3.4"/></svg>
@@ -148,33 +237,96 @@ async function rysujListe() {
       <input type="file" id="plik-zdjecie" accept="image/*" capture="environment">
       <input type="file" id="plik-pdf" accept="application/pdf,image/*">
     </div>
-    <div id="lista">${lista}</div>`;
+    ${budujOs(dokumenty)}`;
 
-  document.getElementById('osoby').onclick = (ev) => {
+  document.getElementById('f-osoby').onclick = (ev) => {
     const b = ev.target.closest('[data-os]');
     if (!b) return;
-    osobaId = Number(b.dataset.os);
+    const v = b.dataset.os;
+    if (v === 'nowa') return rysujPierwszaOsoba();
+    osobaId = v === 'wszyscy' ? null : Number(v);
+    // Problem należy do osoby — po zmianie osoby stary filtr nie ma sensu.
+    problemId = null;
     rysuj();
   };
-  document.getElementById('dodaj-os').onclick = () => { osoby = []; rysujListe(); };
+  document.getElementById('f-problemy').onclick = (ev) => {
+    const b = ev.target.closest('[data-pr]');
+    if (!b) return;
+    const v = b.dataset.pr;
+    if (v === 'zarzadzaj') { widok = 'problemy'; return rysuj(); }
+    problemId = v === 'wszystkie' ? null : Number(v);
+    rysuj();
+  };
+  // Przerysowujemy tylko oś — pobieranie danych przy każdym drgnięciu suwaka
+  // byłoby żądaniem na każdy krok, a dane się przecież nie zmieniają.
+  document.getElementById('suwak').oninput = (ev) => {
+    skala = Number(ev.target.value);
+    document.getElementById('skala-opis').textContent = SKALE[skala].opis;
+    const stara = document.querySelector('.os');
+    if (stara) stara.outerHTML = budujOs(dokumenty);
+    podepnijOtwieranie();
+  };
 
-  // Gest MUSI trafić w to samo pole, które otwieramy — inaczej przeglądarka
-  // telefonu uznaje otwarcie aparatu za niewywołane przez użytkownika.
   document.getElementById('w-zdjecie').onclick = () => document.getElementById('plik-zdjecie').click();
   document.getElementById('w-pdf').onclick = () => document.getElementById('plik-pdf').click();
   ['plik-zdjecie', 'plik-pdf'].forEach((id) => {
     document.getElementById(id).onchange = (ev) => {
       const f = ev.target.files && ev.target.files[0];
       if (f) odczytaj(f);
-      ev.target.value = '';     // ten sam plik da się wybrać drugi raz
+      ev.target.value = '';
     };
   });
+  podepnijOtwieranie();
+}
 
-  document.getElementById('lista').onclick = (ev) => {
+function podepnijOtwieranie() {
+  const os = document.querySelector('.os');
+  if (os) os.onclick = (ev) => {
     const b = ev.target.closest('[data-dok]');
     if (b) otworzDokument(Number(b.dataset.dok));
   };
 }
+
+async function wczytajProblemy() {
+  try {
+    const q = osobaId !== null ? '?osoba_id=' + osobaId : '';
+    const r = await authFetch('/api/health/problemy' + q);
+    problemy = r.ok ? ((await r.json()).problemy || []) : [];
+  } catch { problemy = []; }
+  if (problemId !== null && !problemy.some((p) => p.id === problemId)) problemId = null;
+}
+
+// ── widok: lista ────────────────────────────────────────────────────────────
+
+function rysujPierwszaOsoba() {
+  box().innerHTML = `<div class="gora"><h1>Historia zdrowia</h1></div>
+    <div class="karta">
+      <h2>Zacznij od osoby</h2>
+      <p class="uwaga">Wyniki zapisujemy przy konkretnej osobie — także takiej, która
+      nie ma konta w aplikacji. Data urodzenia jest nieobowiązkowa, ale przy wynikach
+      dziecka pozwala odczytać normę właściwą dla wieku w dniu badania.</p>
+      <div class="pole" style="margin-top:12px">
+        <label for="n-imie">Imię</label>
+        <input id="n-imie" autocomplete="off" placeholder="np. Zosia">
+      </div>
+      <div class="pole">
+        <label for="n-ur">Data urodzenia</label>
+        <input id="n-ur" type="date">
+      </div>
+      <div class="akcje">
+        ${osoby.length ? '<button class="btn btn-outline" id="n-anuluj">Wróć</button>' : ''}
+        <button class="btn btn-primary" id="n-zapisz">Dodaj osobę</button>
+      </div>
+    </div>`;
+  document.getElementById('n-zapisz').onclick = zapiszOsobe;
+  const anuluj = document.getElementById('n-anuluj');
+  if (anuluj) anuluj.onclick = () => rysuj();
+}
+
+// Gest MUSI trafić w to samo pole, które otwieramy — inaczej przeglądarka
+// telefonu uznaje otwarcie aparatu za niewywołane przez użytkownika. Dlatego
+// przyciski „Zdjęcie"/„PDF" klikają input, zamiast otwierać go po asynchronicznym
+// pobraniu czegokolwiek.
 
 async function zapiszOsobe() {
   const imie = document.getElementById('n-imie').value.trim();
@@ -188,7 +340,7 @@ async function zapiszOsobe() {
     });
     if (!r.ok) throw new Error();
     osobaId = (await r.json()).id;
-    rysujListe();
+    rysuj();
   } catch {
     btn.disabled = false;
     alert('Nie udało się dodać osoby.');
@@ -219,7 +371,7 @@ async function odczytaj(plik) {
     const wroc = document.createElement('button');
     wroc.className = 'wroc';
     wroc.textContent = '← Wróć';
-    wroc.onclick = () => { widok = 'lista'; rysuj(); };
+    wroc.onclick = () => { widok = 'os'; rysuj(); };
     box().prepend(wroc);
   }
 }
@@ -289,7 +441,7 @@ function rysujPodglad() {
     </div>`;
 
   document.getElementById('anuluj').onclick = () => {
-    odczyt = null; widok = 'lista'; rysuj();
+    odczyt = null; widok = 'os'; rysuj();
   };
   document.getElementById('zapisz').onclick = zapiszDokument;
 }
@@ -313,7 +465,7 @@ async function zapiszDokument() {
   try {
     const r = await authFetch('/api/health/dokumenty', { method: 'POST', body: fd });
     if (!r.ok) throw new Error();
-    odczyt = null; widok = 'lista';
+    odczyt = null; widok = 'os';
     rysuj();
   } catch {
     btn.disabled = false;
@@ -322,7 +474,115 @@ async function zapiszDokument() {
   }
 }
 
+// ── widok: problemy zdrowotne ───────────────────────────────────────────────
+
+// Problem zakłada człowiek, nie model. Świadomie: „tarczyca" i „kręgosłup" to
+// sposób, w jaki TY dzielisz swoją historię, a podpowiedź z rozpoznania w
+// dokumencie tworzyłaby osobny problem na każdą wariację nazwy z papieru.
+
+function rysujProblemy() {
+  const osoba = osoby.find((o) => o.id === osobaId);
+  const doOsoby = osobaId === null ? problemy : problemy.filter((p) => p.osoba_id === osobaId);
+
+  const wiersze = doOsoby.length ? doOsoby.map((p) => `
+    <div class="os-wpis" style="margin-top:8px; cursor:default">
+      <div class="os-gl">
+        <span class="os-nazwa">
+          <span class="kropka-pr" style="background: var(--pr-${p.kolor % 8}); display:inline-block; margin-right:7px"></span>
+          ${esc(p.nazwa)}${p.zamkniety ? ' <span class="znacznik">zamknięty</span>' : ''}
+        </span>
+        <span class="os-data">${p.ile} ${p.ile === 1 ? 'wpis' : 'wpisów'}</span>
+      </div>
+      <div class="os-pod">
+        ${osobaId === null ? `<span class="os-osoba">${esc(p.osoba_imie || '')}</span>` : ''}
+        ${p.opis ? esc(p.opis) : ''}
+        <button class="chip" type="button" data-usun="${p.id}"
+                style="margin-left:auto; min-height:32px; padding:4px 10px">Usuń</button>
+      </div>
+    </div>`).join('')
+    : '<div class="pusto">Nie ma jeszcze żadnego problemu.</div>';
+
+  box().innerHTML = `
+    <button class="wroc" id="wroc">← Oś czasu</button>
+    <div class="gora"><h1>Problemy zdrowotne</h1></div>
+    <div class="karta">
+      <p class="uwaga" style="margin-top:0">Problem to wątek ciągnący się przez wiele
+      dokumentów — „tarczyca", „kręgosłup", „ciąża". Jeden dokument może należeć do
+      kilku naraz, bo lipidogram bywa potrzebny i diabetologowi, i kardiologowi.
+      Problem zakładasz przy konkretnej osobie.</p>
+      <div class="pola-2" style="margin-top:12px">
+        <div class="pole">
+          <label for="pr-nazwa">Nazwa</label>
+          <input id="pr-nazwa" autocomplete="off" placeholder="np. tarczyca">
+        </div>
+        <div class="pole">
+          <label for="pr-osoba">Osoba</label>
+          <select id="pr-osoba">
+            ${osoby.map((o) => `<option value="${o.id}"${o.id === osobaId ? ' selected' : ''}>${esc(o.imie)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="pole">
+        <label>Kolor na osi</label>
+        <div class="filtry" id="pr-kolory">
+          ${[0, 1, 2, 3, 4, 5, 6, 7].map((i) => `
+            <button class="chip" type="button" data-kolor="${i}" aria-pressed="${i === 0}"
+                    aria-label="Kolor ${i + 1}">
+              <span class="kropka-pr" style="background: var(--pr-${i}); width:14px; height:14px"></span>
+            </button>`).join('')}
+        </div>
+      </div>
+      <div class="akcje"><button class="btn btn-primary" id="pr-dodaj">Dodaj problem</button></div>
+    </div>
+    <div id="pr-lista">${wiersze}</div>`;
+
+  let wybranyKolor = 0;
+  document.getElementById('pr-kolory').onclick = (ev) => {
+    const b = ev.target.closest('[data-kolor]');
+    if (!b) return;
+    wybranyKolor = Number(b.dataset.kolor);
+    [...b.parentElement.children].forEach((x) =>
+      x.setAttribute('aria-pressed', String(x === b)));
+  };
+
+  document.getElementById('pr-dodaj').onclick = async () => {
+    const nazwa = document.getElementById('pr-nazwa').value.trim();
+    if (!nazwa) { document.getElementById('pr-nazwa').focus(); return; }
+    const btn = document.getElementById('pr-dodaj');
+    btn.disabled = true;
+    try {
+      const r = await authFetch('/api/health/problemy', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nazwa, kolor: wybranyKolor,
+          osoba_id: Number(document.getElementById('pr-osoba').value) }),
+      });
+      if (!r.ok) throw new Error();
+      await wczytajProblemy();
+      rysujProblemy();
+    } catch {
+      btn.disabled = false;
+      alert('Nie udało się dodać problemu.');
+    }
+  };
+
+  document.getElementById('pr-lista').onclick = async (ev) => {
+    const b = ev.target.closest('[data-usun]');
+    if (!b) return;
+    // Kasujemy etykietę, nie badania — warto to powiedzieć wprost, bo przy
+    // dokumentacji medycznej „usuń" brzmi groźniej niż jest.
+    if (!confirm('Usunąć ten problem? Badania zostaną — zniknie tylko przypisanie.')) return;
+    await authFetch('/api/health/problemy/' + b.dataset.usun, { method: 'DELETE' });
+    await wczytajProblemy();
+    rysujProblemy();
+  };
+
+  document.getElementById('wroc').onclick = () => { widok = 'os'; rysuj(); };
+  if (osoba) document.getElementById('pr-osoba').value = String(osoba.id);
+}
+
 // ── widok: szczegóły ────────────────────────────────────────────────────────
+
+let problemyOsoby = [];   // problemy osoby, do której należy otwarty dokument
 
 async function otworzDokument(id) {
   box().innerHTML = '<div class="laduje">Wczytuję…</div>';
@@ -330,6 +590,12 @@ async function otworzDokument(id) {
     const r = await authFetch('/api/health/dokumenty/' + id);
     if (!r.ok) throw new Error();
     szczegoly = await r.json();
+    // Pobieramy problemy WŁAŚCICIELA dokumentu, a nie te z filtra osi: na osi
+    // zbiorczej filtr jest pusty, a przypiąć wolno tylko problem tej osoby.
+    try {
+      const rp = await authFetch('/api/health/problemy?osoba_id=' + szczegoly.osoba_id);
+      problemyOsoby = rp.ok ? ((await rp.json()).problemy || []) : [];
+    } catch { problemyOsoby = []; }
     widok = 'szczegoly';
     rysuj();
   } catch {
@@ -337,9 +603,19 @@ async function otworzDokument(id) {
   }
 }
 
+async function zapiszProblemyDokumentu(dokumentId, ids) {
+  await authFetch(`/api/health/dokumenty/${dokumentId}/problemy`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ problem_ids: ids }),
+  });
+}
+
 function rysujSzczegoly() {
   const d = szczegoly;
   const w = d.wyniki || [];
+  // Zbiór, nie tablica: przypinanie i odpinanie to sprawdzanie obecności przy
+  // każdym stuknięciu, a zestaw wysyłamy i tak w całości.
+  const przypiete = new Set((d.problemy || []).map((p) => p.id));
 
   // Wyniki bywają pogrupowane (szczep w antybiogramie, panel alergenów) —
   // nagłówek grupy wstawiamy tylko wtedy, gdy się zmienia.
@@ -392,13 +668,39 @@ function rysujSzczegoly() {
     ${d.data_nastepnego ? `<div class="karta"><h2>Kontrola</h2>
       <div class="proza">${dataPl(d.data_nastepnego)}</div></div>` : ''}
 
+    <div class="karta">
+      <h2>Problemy</h2>
+      ${problemyOsoby.length ? `<div class="filtry" id="d-problemy">
+        ${problemyOsoby.map((p) => `<button class="chip" type="button" data-pr="${p.id}"
+            aria-pressed="${przypiete.has(p.id)}">
+            <span class="kropka-pr" style="background: var(--pr-${p.kolor % 8})"></span>${esc(p.nazwa)}
+          </button>`).join('')}
+        </div>
+        <div class="uwaga">Stuknij, żeby przypiąć albo odpiąć. Jedno badanie może
+        należeć do kilku problemów naraz — zapisuje się od razu.</div>`
+      : `<div class="uwaga" style="margin-top:0">Nie ma jeszcze żadnego problemu dla tej
+         osoby. Załóż go w „Problemy…" nad osią czasu, a potem wróć tutaj.</div>`}
+    </div>
+
     <div class="akcje"><button class="btn btn-danger" id="usun">Usuń badanie</button></div>`;
 
-  document.getElementById('wroc').onclick = () => { widok = 'lista'; rysuj(); };
+  const panelPr = document.getElementById('d-problemy');
+  if (panelPr) panelPr.onclick = async (ev) => {
+    const b = ev.target.closest('[data-pr]');
+    if (!b) return;
+    const id = Number(b.dataset.pr);
+    // Przełączamy od razu w widoku, zapis leci w tle — czekanie na odpowiedź
+    // przy stuknięciu w etykietę wyglądałoby jak zacięcie.
+    if (przypiete.has(id)) przypiete.delete(id); else przypiete.add(id);
+    b.setAttribute('aria-pressed', String(przypiete.has(id)));
+    await zapiszProblemyDokumentu(d.id, [...przypiete]);
+  };
+
+  document.getElementById('wroc').onclick = () => { widok = 'os'; rysuj(); };
   document.getElementById('usun').onclick = async () => {
     if (!confirm('Usunąć to badanie razem z wynikami?')) return;
     await authFetch('/api/health/dokumenty/' + d.id, { method: 'DELETE' });
-    widok = 'lista';
+    widok = 'os';
     rysuj();
   };
 }

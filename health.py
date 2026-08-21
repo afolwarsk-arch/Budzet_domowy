@@ -93,8 +93,10 @@ async def odczytaj(
 
 @router.get("/dokumenty")
 def lista_dokumentow(osoba_id: int | None = None, rodzaj: str | None = None,
+                     problem_id: int | None = None,
                      current_user: dict = Depends(get_current_user)):
-    return {"dokumenty": health_db.dokumenty(_hid(current_user), osoba_id, rodzaj)}
+    """Pominięcie `osoba_id` daje oś czasu całego gospodarstwa."""
+    return {"dokumenty": health_db.dokumenty(_hid(current_user), osoba_id, rodzaj, problem_id)}
 
 
 @router.get("/dokumenty/{dokument_id}")
@@ -161,6 +163,76 @@ def pobierz_plik(dokument_id: int, current_user: dict = Depends(get_current_user
     # `inline` — telefon otworzy PDF w przeglądarce zamiast go pobierać.
     return Response(bajty, media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{nazwa}"'})
+
+
+# ── problemy zdrowotne ──────────────────────────────────────────────────────
+
+# Paleta ma osiem slotów (patrz `PALETA` w static/health.js) — indeks spoza
+# zakresu zawijamy zamiast odrzucać: kolor jest ozdobą przy nazwie, nie danymi,
+# i nie ma powodu, żeby psuł zapis problemu.
+_ILE_KOLOROW = 8
+
+
+def _kolor(wartosc) -> int:
+    try:
+        return int(wartosc) % _ILE_KOLOROW
+    except (TypeError, ValueError):
+        return 0
+
+
+@router.get("/problemy")
+def lista_problemow(osoba_id: int | None = None,
+                    current_user: dict = Depends(get_current_user)):
+    return {"problemy": health_db.problemy(_hid(current_user), osoba_id)}
+
+
+@router.post("/problemy")
+def nowy_problem(dane: dict, current_user: dict = Depends(get_current_user)):
+    hid = _hid(current_user)
+    nazwa = (dane.get("nazwa") or "").strip()
+    osoba_id = dane.get("osoba_id")
+    if not nazwa:
+        raise HTTPException(400, "Podaj nazwę problemu")
+    if not osoba_id or not health_db.osoba_po_id(hid, int(osoba_id)):
+        raise HTTPException(400, "Nie ma takiej osoby")
+    pid = health_db.dodaj_problem(hid, int(osoba_id), nazwa,
+                                  _kolor(dane.get("kolor")), dane.get("opis"))
+    return {"id": pid}
+
+
+@router.put("/problemy/{problem_id}")
+def zmien_problem(problem_id: int, dane: dict,
+                  current_user: dict = Depends(get_current_user)):
+    nazwa = (dane.get("nazwa") or "").strip()
+    if not nazwa:
+        raise HTTPException(400, "Podaj nazwę problemu")
+    ok = health_db.edytuj_problem(_hid(current_user), problem_id, nazwa,
+                                  _kolor(dane.get("kolor")), dane.get("opis"),
+                                  bool(dane.get("zamkniety")))
+    if not ok:
+        raise HTTPException(404, "Nie ma takiego problemu")
+    return {"ok": True}
+
+
+@router.delete("/problemy/{problem_id}")
+def skasuj_problem(problem_id: int, current_user: dict = Depends(get_current_user)):
+    if not health_db.usun_problem(_hid(current_user), problem_id):
+        raise HTTPException(404, "Nie ma takiego problemu")
+    return {"ok": True}
+
+
+@router.put("/dokumenty/{dokument_id}/problemy")
+def przypnij_problemy(dokument_id: int, dane: dict,
+                      current_user: dict = Depends(get_current_user)):
+    """Podmienia cały zestaw problemów dokumentu na przysłany."""
+    ids = dane.get("problem_ids")
+    if not isinstance(ids, list):
+        raise HTTPException(400, "Oczekuję listy problem_ids")
+    ok = health_db.ustaw_problemy_dokumentu(
+        _hid(current_user), dokument_id, [int(x) for x in ids])
+    if not ok:
+        raise HTTPException(404, "Nie ma takiego dokumentu")
+    return {"ok": True}
 
 
 # ── przebieg parametru ──────────────────────────────────────────────────────

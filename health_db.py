@@ -168,6 +168,40 @@ def init_health_db() -> None:
         # tłumaczenia: H/L, HH/LL przy wartościach krytycznych, klasa IgE 0–6,
         # centyl u dziecka, kategoria BI-RADS w mammografii.
 
+        # ── problemy zdrowotne ──────────────────────────────────────────────
+        # Wątek, który ciągnie się przez wiele dokumentów: „tarczyca",
+        # „kręgosłup", „ciąża". Problem należy do OSOBY, nie do gospodarstwa —
+        # tarczyca Adama i tarczyca Oli to dwie różne historie, które nigdy nie
+        # powinny się zejść na jednej osi.
+        cur.execute("""CREATE TABLE IF NOT EXISTS health_problemy (
+            id           SERIAL PRIMARY KEY,
+            household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            osoba_id     INTEGER NOT NULL REFERENCES health_osoby(id) ON DELETE CASCADE,
+            nazwa        TEXT NOT NULL,
+            kolor        INTEGER NOT NULL DEFAULT 0,
+            opis         TEXT,
+            zamkniety    BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS health_probl_osoba "
+                    "ON health_problemy (osoba_id)")
+        # `kolor` to INDEKS w palecie (0–7), nie hex. Paleta ma osobne kroki dla
+        # motywu jasnego i ciemnego, a kolejność slotów jest dobrana tak, żeby
+        # sąsiednie były rozróżnialne przy daltonizmie — zapisany hex zamroziłby
+        # jeden motyw i uniemożliwił poprawienie palety bez migracji danych.
+
+        # Powiązanie wiele-do-wielu, a NIE kolumna `problem_id` w dokumencie:
+        # jeden lipidogram służy naraz diabetologowi i kardiologowi, a wypis ze
+        # szpitala potrafi dotyczyć trzech spraw. Kolumna kazałaby wybrać jedną
+        # i zgubiłaby dokument przy filtrowaniu po pozostałych.
+        cur.execute("""CREATE TABLE IF NOT EXISTS health_dokument_problemy (
+            dokument_id INTEGER NOT NULL REFERENCES health_dokumenty(id) ON DELETE CASCADE,
+            problem_id  INTEGER NOT NULL REFERENCES health_problemy(id) ON DELETE CASCADE,
+            PRIMARY KEY (dokument_id, problem_id)
+        )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS health_dokprob_problem "
+                    "ON health_dokument_problemy (problem_id)")
+
 
 # ── osoby ───────────────────────────────────────────────────────────────────
 
@@ -207,24 +241,55 @@ def osoba_po_id(household_id: int, osoba_id: int) -> dict | None:
 
 # Kolumny dokumentu bez `plik` — bajty PDF-a nie mają czego szukać na liście
 # ani w JSON-ie odpowiedzi. Wyciągamy je wyłącznie przy pobieraniu pliku.
-_POLA_DOK = """id, osoba_id, rodzaj, nazwa, data_badania, data_do, data_pobrania,
-               placowka, opis, rozpoznanie, kod_icd10, zalecenia, numer_badania,
-               data_nastepnego, kontekst, norma_wg, ukryty, dodane_przez,
-               created_at, plik_nazwa, (plik IS NOT NULL) AS ma_plik"""
+# Prefiks `d.` jest obowiązkowy: lista dołącza tabelę osób, a `id` i `created_at`
+# są w obu tabelach — bez niego zapytanie jest niejednoznaczne.
+_POLA_DOK = """d.id, d.osoba_id, d.rodzaj, d.nazwa, d.data_badania, d.data_do,
+               d.data_pobrania, d.placowka, d.opis, d.rozpoznanie, d.kod_icd10,
+               d.zalecenia, d.numer_badania, d.data_nastepnego, d.kontekst,
+               d.norma_wg, d.ukryty, d.dodane_przez, d.created_at, d.plik_nazwa,
+               (d.plik IS NOT NULL) AS ma_plik"""
+
+
+# Problemy przypięte do dokumentu, jednym podzapytaniem zamiast pytania na
+# każdy wiersz — oś czasu rysuje naraz całą historię, więc N+1 byłoby tu
+# odczuwalne od pierwszego roku zbierania.
+_PROBLEMY_DOK = """COALESCE((
+        SELECT json_agg(json_build_object('id', p.id, 'nazwa', p.nazwa, 'kolor', p.kolor)
+                        ORDER BY p.nazwa)
+        FROM health_dokument_problemy dp
+        JOIN health_problemy p ON p.id = dp.problem_id
+        WHERE dp.dokument_id = d.id), '[]'::json) AS problemy"""
 
 
 def dokumenty(household_id: int, osoba_id: int | None = None,
-              rodzaj: str | None = None) -> list[dict]:
+              rodzaj: str | None = None, problem_id: int | None = None) -> list[dict]:
+    """Dokumenty do listy i do osi czasu.
+
+    `osoba_id = None` znaczy „wszyscy domownicy" — oś czasu ma przełącznik
+    i w trybie zbiorczym potrzebuje wiedzieć, czyj jest każdy wpis, stąd JOIN
+    po imię.
+    """
     with get_db() as cur:
         cur.execute(
-            f"SELECT {_POLA_DOK} FROM health_dokumenty "
-            "WHERE household_id = %s AND NOT ukryty "
-            "  AND (%s::int IS NULL OR osoba_id = %s) "
-            "  AND (%s::text IS NULL OR rodzaj = %s) "
+            f"SELECT {_POLA_DOK}, o.imie AS osoba_imie, {_PROBLEMY_DOK}, "
+            # Ile wyników w tym dokumencie miało flagę z laboratorium. Bez tego
+            # każdy wpis na osi wygląda identycznie i trzeba wchodzić w każdy,
+            # żeby się dowiedzieć, czy coś było nie tak. Liczymy FLAGI, nie
+            # porównujemy z normą sami — ocena należy do laboratorium.
+            "  (SELECT COUNT(*) FROM health_wyniki w "
+            "   WHERE w.dokument_id = d.id AND w.flaga IS NOT NULL AND w.flaga <> '') AS ile_flag, "
+            "  (SELECT COUNT(*) FROM health_wyniki w WHERE w.dokument_id = d.id) AS ile_wynikow "
+            "FROM health_dokumenty d "
+            "JOIN health_osoby o ON o.id = d.osoba_id "
+            "WHERE d.household_id = %s AND NOT d.ukryty AND NOT o.ukryta "
+            "  AND (%s::int IS NULL OR d.osoba_id = %s) "
+            "  AND (%s::text IS NULL OR d.rodzaj = %s) "
+            "  AND (%s::int IS NULL OR EXISTS (SELECT 1 FROM health_dokument_problemy f "
+            "                                  WHERE f.dokument_id = d.id AND f.problem_id = %s)) "
             # Dokumenty bez daty badania (jeszcze nieuzupełnione) mają trafiać
             # na górę, a nie na sam koniec — NULLS FIRST przy malejącej dacie.
-            "ORDER BY data_badania DESC NULLS FIRST, id DESC",
-            (household_id, osoba_id, osoba_id, rodzaj, rodzaj),
+            "ORDER BY d.data_badania DESC NULLS FIRST, d.id DESC",
+            (household_id, osoba_id, osoba_id, rodzaj, rodzaj, problem_id, problem_id),
         )
         return [dict(r) for r in cur.fetchall()]
 
@@ -233,7 +298,8 @@ def dokument(household_id: int, dokument_id: int) -> dict | None:
     """Dokument razem z wynikami — ekran szczegółów potrzebuje obu naraz."""
     with get_db() as cur:
         cur.execute(
-            f"SELECT {_POLA_DOK} FROM health_dokumenty WHERE id = %s AND household_id = %s",
+            f"SELECT {_POLA_DOK}, {_PROBLEMY_DOK} FROM health_dokumenty d "
+            "WHERE d.id = %s AND d.household_id = %s",
             (dokument_id, household_id),
         )
         r = cur.fetchone()
@@ -314,6 +380,85 @@ def plik_dokumentu(household_id: int, dokument_id: int) -> tuple[bytes, str] | N
                     (dokument_id, household_id))
         r = cur.fetchone()
         return (bytes(r["plik"]), r["plik_nazwa"] or "wynik.pdf") if r else None
+
+
+# ── problemy zdrowotne ──────────────────────────────────────────────────────
+
+def problemy(household_id: int, osoba_id: int | None = None) -> list[dict]:
+    """Problemy z licznikiem dokumentów — filtr bez liczby jest ślepy.
+
+    Pokazujemy też problemy z zerem wpisów: dopiero co założony problem musi
+    być widoczny, żeby dało się do niego cokolwiek przypiąć.
+    """
+    with get_db() as cur:
+        cur.execute(
+            "SELECT p.id, p.osoba_id, p.nazwa, p.kolor, p.opis, p.zamkniety, "
+            "       o.imie AS osoba_imie, "
+            "       (SELECT COUNT(*) FROM health_dokument_problemy dp "
+            "        WHERE dp.problem_id = p.id) AS ile "
+            "FROM health_problemy p "
+            "JOIN health_osoby o ON o.id = p.osoba_id "
+            "WHERE p.household_id = %s AND (%s::int IS NULL OR p.osoba_id = %s) "
+            "ORDER BY p.zamkniety, p.nazwa",
+            (household_id, osoba_id, osoba_id),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def dodaj_problem(household_id: int, osoba_id: int, nazwa: str,
+                  kolor: int = 0, opis: str | None = None) -> int:
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO health_problemy (household_id, osoba_id, nazwa, kolor, opis) "
+            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            (household_id, osoba_id, nazwa.strip(), kolor, opis or None),
+        )
+        return cur.fetchone()["id"]
+
+
+def edytuj_problem(household_id: int, problem_id: int, nazwa: str, kolor: int,
+                   opis: str | None, zamkniety: bool) -> bool:
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE health_problemy SET nazwa=%s, kolor=%s, opis=%s, zamkniety=%s "
+            "WHERE id=%s AND household_id=%s",
+            (nazwa.strip(), kolor, opis or None, zamkniety, problem_id, household_id),
+        )
+        return cur.rowcount > 0
+
+
+def usun_problem(household_id: int, problem_id: int) -> bool:
+    """Usuwa sam problem. Dokumenty ZOSTAJĄ — kasujemy etykietę, nie historię
+    leczenia; powiązania znikają kaskadą z tabeli łączącej."""
+    with get_db() as cur:
+        cur.execute("DELETE FROM health_problemy WHERE id=%s AND household_id=%s",
+                    (problem_id, household_id))
+        return cur.rowcount > 0
+
+
+def ustaw_problemy_dokumentu(household_id: int, dokument_id: int,
+                             problem_ids: list[int]) -> bool:
+    """Podmienia CAŁY zestaw problemów dokumentu na podany.
+
+    Podmiana zamiast dokładania, bo ekran wysyła stan wszystkich pól naraz —
+    dokładanie nie pozwoliłoby nigdy odpiąć problemu. Filtr po `household_id`
+    przy wstawianiu jest po to, żeby nie dało się przypiąć cudzego problemu
+    przez spreparowane żądanie.
+    """
+    with get_db() as cur:
+        cur.execute("SELECT id FROM health_dokumenty WHERE id=%s AND household_id=%s",
+                    (dokument_id, household_id))
+        if not cur.fetchone():
+            return False
+        cur.execute("DELETE FROM health_dokument_problemy WHERE dokument_id=%s",
+                    (dokument_id,))
+        for pid in dict.fromkeys(problem_ids or []):
+            cur.execute(
+                "INSERT INTO health_dokument_problemy (dokument_id, problem_id) "
+                "SELECT %s, id FROM health_problemy WHERE id=%s AND household_id=%s",
+                (dokument_id, pid, household_id),
+            )
+        return True
 
 
 # ── przebieg parametru w czasie ─────────────────────────────────────────────

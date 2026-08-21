@@ -130,6 +130,85 @@
             cursor: pointer; padding: 6px 0; margin-bottom: 8px; }
     .wroc:hover { color: var(--accent); }
 
+    /* ── paleta problemów ──
+       Osiem slotów w STAŁEJ kolejności — problem dostaje indeks, nie hex, więc
+       paletę da się poprawić bez migracji danych. Kolejność nie jest ozdobna:
+       sąsiednie sloty są dobrane tak, żeby dało się je odróżnić przy
+       daltonizmie (sprawdzone walidatorem na tle #ffffff i #1e2126 — najgorsza
+       para ΔE 9,1 jasny / 8,4 ciemny).
+
+       W motywie jasnym akwamaryna, żółty i magenta mają kontrast poniżej 3:1
+       wobec tła. Dlatego przy KAŻDEJ kropce stoi nazwa problemu tekstem i nic
+       nie jest przekazywane samym kolorem — bez tej zasady paleta nie
+       przechodzi. Nie usuwaj etykiet z osi. */
+    :root {
+      --pr-0: #2a78d6; --pr-1: #eb6834; --pr-2: #1baf7a; --pr-3: #eda100;
+      --pr-4: #e87ba4; --pr-5: #008300; --pr-6: #4a3aa7; --pr-7: #e34948;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --pr-0: #3987e5; --pr-1: #d95926; --pr-2: #199e70; --pr-3: #c98500;
+        --pr-4: #d55181; --pr-5: #008300; --pr-6: #9085e9; --pr-7: #e66767;
+      }
+    }
+    :root[data-theme="dark"] {
+      --pr-0: #3987e5; --pr-1: #d95926; --pr-2: #199e70; --pr-3: #c98500;
+      --pr-4: #d55181; --pr-5: #008300; --pr-6: #9085e9; --pr-7: #e66767;
+    }
+
+    /* ── pasek narzędzi osi ── */
+    .narzedzia { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    .filtry { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+    .chip { border: 1px solid var(--border); background: var(--surface); border-radius: 999px;
+            padding: 7px 12px; min-height: 38px; font: inherit; font-size: 12.5px;
+            cursor: pointer; color: var(--text); display: inline-flex; align-items: center;
+            gap: 6px; }
+    .chip[aria-pressed="true"] { border-color: var(--marka); background: var(--surface-2);
+            font-weight: 600; }
+    .chip.dodaj { border-style: dashed; color: var(--muted); }
+    .kropka-pr { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+
+    /* Suwak skali — zmienia gęstość osi, nie zakres danych. Oś zawsze pokazuje
+       wszystko; skala decyduje tylko, ile pikseli dostaje dzień. */
+    .skala { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+    .skala input { flex: 1; min-width: 120px; accent-color: var(--marka); }
+
+    /* ── oś czasu ── */
+    .os { position: relative; padding-left: 34px; }
+    /* Linia biegnie przez całą oś i jest tłem, nie treścią — stąd cieńsza niż
+       obramowania kart i w kolorze obramowania, nie tekstu. */
+    .os::before { content: ""; position: absolute; left: 9px; top: 4px; bottom: 4px;
+                  width: 2px; background: var(--border); border-radius: 1px; }
+    .os-rok { position: relative; font-size: 11px; text-transform: uppercase;
+              letter-spacing: .07em; font-weight: 700; color: var(--muted);
+              margin: 0 0 10px -34px; padding-left: 34px; }
+    .os-rok::after { content: ""; display: block; height: 1px; background: var(--border);
+                     margin-top: 6px; }
+    .os-cisza { position: relative; font-size: 11px; color: var(--muted); font-style: italic;
+                margin-left: -12px; }
+    .os-wpis { position: relative; display: block; width: 100%; text-align: left;
+               border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+               padding: 11px 13px; font: inherit; color: var(--text); cursor: pointer; }
+    .os-wpis:hover { border-color: var(--marka); }
+    /* Kropka siedzi na linii, nie obok — dlatego ujemny lewy margines równy
+       wcięciu osi, a nie pozycjonowanie względem karty. */
+    .os-wpis::before { content: ""; position: absolute; left: -29px; top: 16px;
+                       width: 11px; height: 11px; border-radius: 50%;
+                       background: var(--surface); border: 2.5px solid var(--muted); }
+    .os-wpis.ma-problem::before { border-color: var(--pr-akt); }
+    .os-gl { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .os-nazwa { font-weight: 600; font-size: 14px; color: var(--heading); }
+    .os-data { font-size: 11.5px; color: var(--muted); white-space: nowrap;
+               font-variant-numeric: tabular-nums; }
+    .os-pod { font-size: 12px; color: var(--muted); margin-top: 5px; display: flex;
+              gap: 7px; flex-wrap: wrap; align-items: center; }
+    .etykieta-pr { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px;
+                   color: var(--text); background: var(--surface-2); border-radius: 999px;
+                   padding: 2px 8px 2px 6px; }
+    .os-osoba { font-size: 11px; font-weight: 700; text-transform: uppercase;
+                letter-spacing: .05em; color: var(--muted); }
+    .poza-norma { color: var(--danger); font-weight: 600; }
+
     @media (max-width: 560px) { .pola-2 { grid-template-columns: 1fr; } }
   </style>
 </head>
