@@ -108,10 +108,25 @@ async function rysuj() {
 
 const dni = (a, b) => Math.abs((new Date(a) - new Date(b)) / 86400000);
 
+// Polska odmiana przez liczbę: 1 rok, 2–4 lata, 5+ lat — z wyjątkiem 12–14,
+// które mimo końcówki 2–4 biorą formę mnogą („13 lat", nie „13 lata").
+function odmien(n, poj, kilka, wiele) {
+  if (n === 1) return poj;
+  const r10 = n % 10, r100 = n % 100;
+  return (r10 >= 2 && r10 <= 4 && !(r100 >= 12 && r100 <= 14)) ? kilka : wiele;
+}
+
 function opiszPrzerwe(d) {
-  if (d >= 365) { const l = Math.round(d / 365); return l === 1 ? 'rok przerwy' : `${l} lata przerwy`; }
-  if (d >= 60) return `${Math.round(d / 30)} miesiące przerwy`;
-  return `${Math.round(d)} dni przerwy`;
+  if (d >= 365) {
+    const l = Math.round(d / 365);
+    return `${l} ${odmien(l, 'rok', 'lata', 'lat')} przerwy`;
+  }
+  if (d >= 60) {
+    const m = Math.round(d / 30);
+    return `${m} ${odmien(m, 'miesiąc', 'miesiące', 'miesięcy')} przerwy`;
+  }
+  const dn = Math.round(d);
+  return `${dn} ${odmien(dn, 'dzień', 'dni', 'dni')} przerwy`;
 }
 
 // Kolor bierzemy z PIERWSZEGO problemu dokumentu. Dokument bywa przypięty do
