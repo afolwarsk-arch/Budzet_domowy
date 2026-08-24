@@ -33,6 +33,11 @@
        input nie reaguje na programowe kliknięcie. Chowamy je rozmiarem. */
     .wejscia input[type=file] { position: absolute; width: 1px; height: 1px;
                                 opacity: 0; pointer-events: none; }
+    /* To samo pole, ale na ekranie podglądu — dokładanie kolejnej strony. */
+    .plik-ukryty { position: absolute; width: 1px; height: 1px;
+                   opacity: 0; pointer-events: none; }
+    .dokladanie b { font-size: 14px; color: var(--heading); }
+    .dokladanie .uwaga { margin: 6px 0 12px; }
 
     /* Ekran oczekiwania — bez niego po wybraniu pliku przez kilkanaście sekund
        nic się nie dzieje i wygląda to, jakby przycisk nie zadziałał. */

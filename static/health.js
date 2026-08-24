@@ -35,8 +35,11 @@ let problemy = [];
 let problemId = null;     // null = bez filtrowania po problemie
 let widok = 'os';         // os | podglad | szczegoly | problemy
 let odczyt = null;        // { dokument } — czeka na zapis
-// Pliku NIE przetrzymujemy między odczytem a zapisem: oryginały nie trafiają
-// do bazy (patrz `zapisz` w health.py), więc nie ma czego wysyłać drugi raz.
+// Strony bieżącego odczytu — obiekty File, wyłącznie w pamięci karty. Trzymamy
+// je do czasu zapisu TYLKO po to, żeby dało się dołożyć kolejną kartkę i
+// przeczytać komplet od nowa; do bazy nie idzie żaden oryginał (patrz `zapisz`
+// w health.py), więc po zapisie lista leci do kosza.
+let strony = [];
 let szczegoly = null;
 
 // Ile pikseli dostaje jeden dzień. Suwak zmienia GĘSTOŚĆ osi, nigdy zakres —
@@ -57,6 +60,14 @@ const ODSTEP_MAX = 210;
 const CISZA_OD = 64;      // od tylu pikseli podpisujemy przerwę
 
 const box = () => document.getElementById('tresc');
+
+// „1 strona", „2 strony", „5 stron" — polska odmiana po liczbie, z wyjątkiem
+// nastek (12 stron, nie 12 strony).
+function stronyOpis(n) {
+  const j = n % 10, d = n % 100;
+  if (n === 1) return '1 strona';
+  return `${n} ${j >= 2 && j <= 4 && (d < 12 || d > 14) ? 'strony' : 'stron'}`;
+}
 
 function dataPl(iso) {
   if (!iso) return '—';
@@ -255,8 +266,8 @@ async function rysujOs() {
         <svg viewBox="0 0 24 24"><path d="M6 3.5h7.5L19 9v11.5H6z"/><path d="M13.2 3.6V9H19"/></svg>
         <b>PDF</b><span>Wynik z laboratorium — czyta się dokładniej</span>
       </button>
-      <input type="file" id="plik-zdjecie" accept="image/*" capture="environment">
-      <input type="file" id="plik-pdf" accept="application/pdf,image/*">
+      <input type="file" id="plik-zdjecie" accept="image/*" capture="environment" multiple>
+      <input type="file" id="plik-pdf" accept="application/pdf,image/*" multiple>
     </div>
     ${budujOs(dokumenty)}`;
 
@@ -293,9 +304,11 @@ async function rysujOs() {
   document.getElementById('w-pdf').onclick = () => document.getElementById('plik-pdf').click();
   ['plik-zdjecie', 'plik-pdf'].forEach((id) => {
     document.getElementById(id).onchange = (ev) => {
-      const f = ev.target.files && ev.target.files[0];
-      if (f) odczytaj(f);
+      const wybrane = Array.from(ev.target.files || []);
       ev.target.value = '';
+      // Aparat na telefonie oddaje jedno zdjęcie naraz mimo `multiple` — drugą
+      // kartkę dokłada się na ekranie podglądu, po odczytaniu pierwszej.
+      if (wybrane.length) { strony = wybrane; odczytaj(); }
     };
   });
   podepnijOtwieranie();
@@ -371,16 +384,20 @@ async function zapiszOsobe() {
 
 // ── odczyt ──────────────────────────────────────────────────────────────────
 
-async function odczytaj(plik) {
+// Czyta CAŁY komplet `strony` — także przy dokładaniu kartki. Odczyt strony 2
+// w oderwaniu od pierwszej dawałby wyniki bez nazwy badania i bez daty, a
+// urwaną w połowie tabelę trzeba widzieć z obu stron naraz, żeby ją skleić.
+async function odczytaj() {
+  const ile = strony.length;
   box().innerHTML = `<div class="czekaj">
       <div class="czekaj-znak"><i></i><i></i></div>
       <b>Czytam dokument…</b>
-      <span>Przepisuję wyniki, normy i oznaczenia. Zaraz pokażę je do sprawdzenia —
-      nic nie zapisuję bez twojej zgody.</span>
+      <span>${ile > 1 ? `Składam ${stronyOpis(ile)} w jedno badanie. ` : ''}Przepisuję wyniki,
+      normy i oznaczenia. Zaraz pokażę je do sprawdzenia — nic nie zapisuję bez twojej zgody.</span>
     </div>`;
 
   const fd = new FormData();
-  fd.append('plik', plik);
+  strony.forEach((p) => fd.append('pliki', p));
   try {
     const r = await authFetch('/api/health/odczytaj', { method: 'POST', body: fd });
     const d = await r.json();
@@ -393,7 +410,7 @@ async function odczytaj(plik) {
     const wroc = document.createElement('button');
     wroc.className = 'wroc';
     wroc.textContent = '← Wróć';
-    wroc.onclick = () => { widok = 'os'; rysuj(); };
+    wroc.onclick = () => { strony = []; widok = 'os'; rysuj(); };
     box().prepend(wroc);
   }
 }
@@ -439,6 +456,7 @@ function rysujPodglad() {
         <input id="p-placowka" value="${esc(d.placowka || '')}">
       </div>
       <div class="uwaga">Zapisuję to przy osobie: <b>${esc(osoba ? osoba.imie : '—')}</b>.
+        ${strony.length > 1 ? `Odczytane z <b>${stronyOpis(strony.length)}</b>. ` : ''}
         Zapisuję <b>tylko odczytane dane</b> — plik służył do odczytu i nie zostanie
         zachowany. Zatrzymaj oryginał u siebie, jeśli będzie potrzebny u lekarza.</div>
     </div>
@@ -458,12 +476,33 @@ function rysujPodglad() {
       <div class="proza">${esc(d.rozpoznanie)}${d.kod_icd10 ? ` (${esc(d.kod_icd10)})` : ''}</div></div>` : ''}
     ${d.zalecenia ? `<div class="karta"><h2>Zalecenia</h2><div class="proza">${esc(d.zalecenia)}</div></div>` : ''}
 
+    <div class="karta dokladanie">
+      <b>Dokument ma dalszy ciąg?</b>
+      <p class="uwaga">Dołóż kolejną kartkę, a przeczytam <b>całość od nowa</b> jako jedno
+      badanie — razem z tabelą urwaną na granicy stron. Poprawki wpisane wyżej trzeba
+      będzie nanieść ponownie, więc dokładaj strony przed poprawianiem.</p>
+      <div class="akcje">
+        <button class="btn btn-outline" type="button" id="dodaj-strone">+ Dodaj kolejną stronę</button>
+      </div>
+      <input type="file" id="plik-strona" class="plik-ukryty" accept="image/*,application/pdf" multiple>
+    </div>
+
     <div class="akcje">
       <button class="btn btn-primary" id="zapisz">Zapisz badanie</button>
     </div>`;
 
   document.getElementById('anuluj').onclick = () => {
-    odczyt = null; widok = 'os'; rysuj();
+    odczyt = null; strony = []; widok = 'os'; rysuj();
+  };
+  // Bez `capture`, w odróżnieniu od wejścia na ekranie głównym: drugą stronę
+  // równie często się fotografuje, co dobiera z galerii albo z pobranych PDF-ów.
+  document.getElementById('dodaj-strone').onclick = () => document.getElementById('plik-strona').click();
+  document.getElementById('plik-strona').onchange = (ev) => {
+    const wybrane = Array.from(ev.target.files || []);
+    ev.target.value = '';
+    if (!wybrane.length) return;
+    strony = strony.concat(wybrane);
+    odczytaj();
   };
   document.getElementById('zapisz').onclick = zapiszDokument;
 }
@@ -487,7 +526,7 @@ async function zapiszDokument() {
   try {
     const r = await authFetch('/api/health/dokumenty', { method: 'POST', body: fd });
     if (!r.ok) throw new Error();
-    odczyt = null; widok = 'os';
+    odczyt = null; strony = []; widok = 'os';
     rysuj();
   } catch {
     btn.disabled = false;

@@ -6,6 +6,10 @@ DWIE DROGI, JEDEN PROMPT. Claude czyta PDF natywnie (blok `document`), więc
 wynik z laboratorium i zdjęcie tego samego wyniku idą tym samym promptem —
 różni się wyłącznie typ bloku w wiadomości.
 
+JEDEN DOKUMENT MOŻE MIEĆ WIELE STRON. Wejściem jest lista plików, bo karta
+wizyty czy wypis ze szpitala to kilka kartek, a każdą trzeba widzieć razem
+z pozostałymi — patrz `czytaj_dokument`.
+
 PDF JEST LEPSZĄ DROGĄ NIŻ ZDJĘCIE i warto do niego zachęcać. Wynik z ALAB-u
 czy Diagnostyki ma warstwę tekstową, więc model czyta znaki, a nie piksele.
 Znika cała klasa błędów, którą znamy z paragonów: zgubiony przecinek,
@@ -21,11 +25,16 @@ import anthropic
 
 MODEL = "claude-sonnet-4-6"
 
-# Limity API dla bloku `document`: 32 MB na żądanie, 600 stron. Wynik
-# laboratoryjny to 1–3 strony, więc realnie ograniczeniem jest tylko rozmiar
-# pliku — a ten sprawdzamy, żeby zamiast błędu 413 z API dać zrozumiały
-# komunikat.
-MAX_PLIK = 20 * 1024 * 1024
+# Limity API dla bloku `document`: 32 MB na żądanie, 600 stron. Liczy się
+# rozmiar PO zakodowaniu w base64, czyli o jedną trzecią większy niż plik —
+# na surowe bajty zostaje z grubsza 20 MB. To limit na CAŁY komplet stron,
+# nie na pojedynczy plik. Sprawdzamy go sami, żeby zamiast błędu 413 z API
+# dać zrozumiały komunikat.
+MAX_RAZEM = 20 * 1024 * 1024
+
+# Wypis ze szpitala miewa kilka stron, ale kilkanaście to już cała teczka
+# wrzucona naraz — a każda strona kosztuje tokeny i wydłuża odczyt.
+MAX_STRON = 12
 
 OBRAZY = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
@@ -141,6 +150,21 @@ NAJWAŻNIEJSZE SZCZEGÓŁY:
 10. DATY w formacie RRRR-MM-DD. Jeśli na dokumencie jest tylko data wyniku,
     wpisz ją do data_badania i zostaw data_pobrania puste. Nie zgaduj roku.
 
+DOKUMENT WIELOSTRONICOWY. Gdy dostajesz kilka stron, to JEST JEDEN dokument,
+a nie kilka. Zwróć jeden JSON obejmujący całość:
+- wyniki ze wszystkich stron w jednej tablicy "wyniki", w kolejności stron;
+- nagłówek (nazwa badania, data, placówka, numer) bywa wyłącznie na pierwszej
+  stronie — weź go stamtąd i nie zostawiaj pustych pól tylko dlatego, że dalsze
+  strony go nie powtarzają;
+- żywa pagina, stopka i podpis ("strona 2 z 3", adres laboratorium, dane
+  diagnosty) NIE są wynikami;
+- gdy tabela urywa się na jednej stronie i ma ciąg dalszy na następnej, wpisz
+  każdy parametr RAZ — powtórzony wiersz nagłówkowy tabeli pomiń;
+- sekcja z "grupa" potrafi przechodzić przez łamanie strony; przepisz nagłówek
+  sekcji także przy wynikach z dalszej strony, choć tam już go nie widać;
+- pola prozą ("opis", "zalecenia") sklej w ciągły tekst przez granicę stron,
+  razem ze zdaniem przerwanym w połowie.
+
 Kolejność wyników w tablicy musi być taka jak na dokumencie."""
 
 
@@ -154,21 +178,57 @@ def _blok_pliku(dane: bytes, mime: str) -> dict:
             "source": {"type": "base64", "media_type": mime, "data": b64}}
 
 
-def czytaj_dokument(dane: bytes, mime: str, podpowiedz: str | None = None) -> tuple[dict, dict]:
-    """Zdjęcie albo PDF dokumentacji → (struktura dokumentu, zużycie tokenów)."""
-    if not dane:
-        raise OdczytError("Pusty plik.")
-    if len(dane) > MAX_PLIK:
-        raise OdczytError(
-            f"Plik ma {len(dane) // (1024 * 1024)} MB, a maksimum to {MAX_PLIK // (1024 * 1024)} MB.")
+def czytaj_dokument(strony: list[tuple[bytes, str]],
+                    podpowiedz: str | None = None) -> tuple[dict, dict]:
+    """Strony dokumentacji (zdjęcia albo PDF) → (struktura dokumentu, zużycie tokenów).
 
-    mime = (mime or "").lower().split(";")[0].strip()
-    if mime not in OBRAZY and mime != "application/pdf":
-        raise OdczytError(f"Nieobsługiwany typ pliku: {mime or 'nieznany'}. "
-                          "Przyjmujemy PDF oraz zdjęcia JPG, PNG i WEBP.")
+    WEJŚCIEM JEST LISTA STRON, BO PAPIER RZADKO MIEŚCI SIĘ NA JEDNEJ KARTCE.
+    Karta wizyty czy wypis ze szpitala to dwie–trzy kartki, a rozbicie ich na
+    osobne odczyty zniszczyłoby wynik: nazwa badania i data stoją wyłącznie na
+    pierwszej stronie, tabela wyników urywa się w połowie, a model oglądający
+    samą stronę drugą nie ma jak wiedzieć, czego dotyczy. Dlatego wszystkie
+    strony idą w JEDNEJ wiadomości i wracają jako JEDEN dokument.
 
-    tresc = [_blok_pliku(dane, mime)]
-    polecenie = "Przepisz ten dokument i zwróć JSON."
+    PDF zostaje osobnym przypadkiem — jego wielostronicowość obsługuje samo API,
+    więc trzystronicowy wynik z laboratorium to nadal jeden element listy.
+    """
+    if not strony:
+        raise OdczytError("Nie wybrano pliku.")
+    if len(strony) > MAX_STRON:
+        raise OdczytError(f"Naraz czytam najwyżej {MAX_STRON} stron, "
+                          f"a dostałem {len(strony)}. Podziel dokument na mniejsze części.")
+
+    gotowe = []
+    razem = 0
+    for i, (dane, mime) in enumerate(strony, 1):
+        if not dane:
+            raise OdczytError(f"Strona {i} jest pusta." if len(strony) > 1 else "Pusty plik.")
+        razem += len(dane)
+        mime = (mime or "").lower().split(";")[0].strip()
+        if mime not in OBRAZY and mime != "application/pdf":
+            raise OdczytError(f"Nieobsługiwany typ pliku: {mime or 'nieznany'}. "
+                              "Przyjmujemy PDF oraz zdjęcia JPG, PNG i WEBP.")
+        gotowe.append((dane, mime))
+
+    if razem > MAX_RAZEM:
+        ile = "Plik ma" if len(gotowe) == 1 else f"{len(gotowe)} stron waży razem"
+        raise OdczytError(f"{ile} {razem // (1024 * 1024)} MB, a maksimum to "
+                          f"{MAX_RAZEM // (1024 * 1024)} MB na jeden odczyt.")
+
+    # Etykieta przed każdą stroną, bo bez niej model dostaje ciąg obrazów bez
+    # informacji, że to kolejność — a od kolejności zależy sklejenie urwanej
+    # tabeli i przypisanie nagłówka z pierwszej kartki do reszty.
+    tresc = []
+    wiele = len(gotowe) > 1
+    for i, (dane, mime) in enumerate(gotowe, 1):
+        if wiele:
+            rzecz = "PDF" if mime == "application/pdf" else "Strona"
+            tresc.append({"type": "text", "text": f"{rzecz} {i} z {len(gotowe)}:"})
+        tresc.append(_blok_pliku(dane, mime))
+
+    polecenie = ("Przepisz ten dokument i zwróć JSON." if not wiele else
+                 f"To jeden dokument złożony z {len(gotowe)} części pokazanych wyżej "
+                 "w kolejności. Przepisz go w całości i zwróć JEDEN JSON.")
     if podpowiedz:
         # Podpowiedź użytkownika („to wynik Zosi", „badanie z maja") bywa
         # jedyną drogą do informacji, której na papierze nie ma.

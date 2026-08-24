@@ -60,26 +60,40 @@ def nowa_osoba(dane: dict, current_user: dict = Depends(get_current_user)):
 
 @router.post("/odczytaj")
 async def odczytaj(
-    plik: UploadFile = File(...),
+    pliki: list[UploadFile] | None = File(None),
+    plik: UploadFile | None = File(None),
     podpowiedz: str = Form(""),
     current_user: dict = Depends(get_current_user),
 ):
-    """Zdjęcie albo PDF → struktura do sprawdzenia. NIC nie zapisuje.
+    """Strony dokumentu (zdjęcia albo PDF) → struktura do sprawdzenia. NIC nie zapisuje.
 
-    Plik ginie razem z żądaniem — i zdjęcie, i PDF. Zostają wyłącznie
+    Pliki giną razem z żądaniem — i zdjęcia, i PDF-y. Zostają wyłącznie
     przepisane dane, które użytkownik za chwilę zatwierdzi. Patrz `zapisz`.
+
+    Pole `plik` w liczbie pojedynczej zostaje dla kart otwartych przed tym
+    wdrożeniem: karta wisząca w tle wysłałaby starą nazwę pola i dostała 422
+    zamiast odczytu.
     """
     _hid(current_user)
-    dane = await plik.read()
-    mime = (plik.content_type or "").lower().split(";")[0].strip()
-    # Przeglądarki telefonów potrafią przysłać PDF z pustym albo ogólnym typem —
-    # wtedy rozstrzyga nazwa pliku, bo bez tego dokument poszedłby jako obraz.
-    if mime in ("", "application/octet-stream") and (plik.filename or "").lower().endswith(".pdf"):
-        mime = "application/pdf"
+    wejscie = list(pliki or [])
+    if plik is not None:
+        wejscie.append(plik)
+    if not wejscie:
+        raise HTTPException(400, "Nie wybrano pliku.")
+
+    strony = []
+    for u in wejscie:
+        dane = await u.read()
+        mime = (u.content_type or "").lower().split(";")[0].strip()
+        # Przeglądarki telefonów potrafią przysłać PDF z pustym albo ogólnym typem —
+        # wtedy rozstrzyga nazwa pliku, bo bez tego dokument poszedłby jako obraz.
+        if mime in ("", "application/octet-stream") and (u.filename or "").lower().endswith(".pdf"):
+            mime = "application/pdf"
+        strony.append((dane, mime))
 
     try:
         odczyt, usage = await run_in_threadpool(
-            health_ai.czytaj_dokument, dane, mime, podpowiedz.strip() or None)
+            health_ai.czytaj_dokument, strony, podpowiedz.strip() or None)
     except health_ai.OdczytError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
