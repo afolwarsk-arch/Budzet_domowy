@@ -343,24 +343,24 @@ function toggleArch() {
 }
 
 async function archiwizujCel(id, nazwa, odlozone) {
-  let msg = `Zakończyć cel „${nazwa}" i przenieść do zrealizowanych?`;
+  let tresc = '';
   if (odlozone > 0.01) {
-    msg += `\n\nNa tym subkoncie jest jeszcze ${fmtZl(odlozone)}. Po archiwizacji ta kwota przestanie być przypisana do celu — na koncie oszczędnościowym trafi do „nieprzypisane". Jeśli już wydałeś te środki, dodaj najpierw wypłatę (przelewem z subkonta).`;
+    tresc = `Na tym subkoncie jest jeszcze ${fmtZl(odlozone)}. Po archiwizacji ta kwota przestanie być przypisana do celu — na koncie oszczędnościowym trafi do „nieprzypisane". Jeśli już wydałeś te środki, dodaj najpierw wypłatę (przelewem z subkonta).`;
   }
-  if (!confirm(msg)) return;
+  if (!(await potwierdz({ tytul: `Zakończyć cel „${nazwa}"?`, tresc, tak: 'Zakończ' }))) return;
   const res = await authFetch(`/api/cele/${id}/archiwizuj`, { method: 'POST' });
-  if (!res.ok) { alert('Nie udało się zarchiwizować.'); return; }
+  if (!res.ok) { toast('Nie udało się zarchiwizować.', 'blad'); return; }
   loadCele();
 }
 
 async function przywrocCel(id) {
   const res = await authFetch(`/api/cele/${id}/przywroc`, { method: 'POST' });
-  if (!res.ok) { alert('Nie udało się przywrócić.'); return; }
+  if (!res.ok) { toast('Nie udało się przywrócić.', 'blad'); return; }
   loadCele();
 }
 
 function openPrzesun() {
-  if (celeLista.length < 2) { alert('Potrzebujesz co najmniej dwóch celów, żeby przesuwać między nimi.'); return; }
+  if (celeLista.length < 2) { toast('Potrzebujesz co najmniej dwóch celów, żeby przesuwać między nimi.', 'blad'); return; }
   const opts = celeLista.map(c => `<option value="${c.id}">${escHtml(c.nazwa)} — ${fmt(c.odlozone)} zł</option>`).join('');
   document.getElementById('pr-z').innerHTML = opts;
   document.getElementById('pr-na').innerHTML = opts;
@@ -379,10 +379,10 @@ async function savePrzesun() {
     data: document.getElementById('pr-data').value,
     opis: document.getElementById('pr-opis').value.trim() || null,
   };
-  if (body.cel_z_id === body.cel_na_id) { alert('Wybierz dwa różne cele.'); return; }
-  if (!body.data || isNaN(body.kwota) || body.kwota <= 0) { alert('Podaj datę i kwotę.'); return; }
+  if (body.cel_z_id === body.cel_na_id) { toast('Wybierz dwa różne cele.', 'blad'); return; }
+  if (!body.data || isNaN(body.kwota) || body.kwota <= 0) { toast('Podaj datę i kwotę.', 'blad'); return; }
   const res = await authFetch('/api/cele/przesun', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Nie udało się przesunąć.'); return; }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); toast(e.detail || 'Nie udało się przesunąć.', 'blad'); return; }
   closeModal('m-przesun');
   loadCele();
 }
@@ -397,7 +397,7 @@ function refreshCKonto(prefer) {
 
 function openCel(preferKonto) {
   if (!konta.some(k => k.typ === 'oszczędności')) {
-    alert('Najpierw utwórz konto oszczędnościowe na stronie Konta — cele to subkonta na takim koncie.');
+    toast('Najpierw utwórz konto oszczędnościowe na stronie Konta — cele to subkonta na takim koncie.', 'blad');
     return;
   }
   editCelId = null;
@@ -429,19 +429,23 @@ async function saveCel() {
     konto_id: parseInt(document.getElementById('c-konto').value) || null,
     termin: document.getElementById('c-termin').value || null,
   };
-  if (!body.nazwa || isNaN(body.kwota_docelowa) || body.kwota_docelowa <= 0) { alert('Podaj nazwę i kwotę docelową.'); return; }
-  if (!body.konto_id) { alert('Wybierz konto oszczędnościowe dla celu.'); return; }
+  if (!body.nazwa || isNaN(body.kwota_docelowa) || body.kwota_docelowa <= 0) { toast('Podaj nazwę i kwotę docelową.', 'blad'); return; }
+  if (!body.konto_id) { toast('Wybierz konto oszczędnościowe dla celu.', 'blad'); return; }
   const url = editCelId ? `/api/cele/${editCelId}` : '/api/cele';
   const res = await authFetch(url, { method: editCelId ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  if (!res.ok) { const e = await res.json().catch(()=>({})); alert(e.detail || 'Nie udało się zapisać.'); return; }
+  if (!res.ok) { const e = await res.json().catch(()=>({})); toast(e.detail || 'Nie udało się zapisać.', 'blad'); return; }
   closeModal('m-cel');
   loadCele();
 }
 
 async function delCel(id, nazwa) {
-  if (!confirm(`Usunąć cel „${nazwa}"?\n\nUsunie też historię wpłat na ten cel (pieniądze na koncie zostają nietknięte).`)) return;
+  if (!(await potwierdz({
+    tytul: `Usunąć cel „${nazwa}"?`,
+    tresc: 'Usunie też historię wpłat na ten cel (pieniądze na koncie zostają nietknięte).',
+    tak: 'Usuń', groznie: true,
+  }))) return;
   const res = await authFetch(`/api/cele/${id}`, { method:'DELETE' });
-  if (!res.ok) { alert('Nie udało się usunąć.'); return; }
+  if (!res.ok) { toast('Nie udało się usunąć.', 'blad'); return; }
   loadCele();
 }
 
@@ -472,14 +476,14 @@ async function saveWplata() {
   const data = document.getElementById('wp-data').value;
   const kwota = parseFloat(document.getElementById('wp-kwota').value);
   const opis = document.getElementById('wp-opis').value.trim() || null;
-  if (!data || isNaN(kwota) || kwota === 0) { alert('Podaj datę i kwotę.'); return; }
+  if (!data || isNaN(kwota) || kwota === 0) { toast('Podaj datę i kwotę.', 'blad'); return; }
   const zKonto = parseInt(document.getElementById('wp-zkonto').value) || null;
   let res;
   if (zKonto) {
     // realny przelew z wybranego konta na subkonto (backend utworzy wpłatę na cel)
-    if (kwota <= 0) { alert('Przy przelewie z konta kwota musi być dodatnia.'); return; }
+    if (kwota <= 0) { toast('Przy przelewie z konta kwota musi być dodatnia.', 'blad'); return; }
     const goal = celeLista.find(c => c.id === wplataCelId);
-    if (!goal || !goal.konto_id) { alert('Cel nie ma konta oszczędnościowego.'); return; }
+    if (!goal || !goal.konto_id) { toast('Cel nie ma konta oszczędnościowego.', 'blad'); return; }
     res = await authFetch('/api/przelewy', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ konto_z_id: zKonto, konto_na_id: goal.konto_id, kwota, data, opis, cel_id: wplataCelId }),
@@ -491,7 +495,7 @@ async function saveWplata() {
       body: JSON.stringify({ data, kwota, opis }),
     });
   }
-  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Nie udało się zapisać.'); return; }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); toast(e.detail || 'Nie udało się zapisać.', 'blad'); return; }
   closeModal('m-wplata');
   loadCele();
 }
@@ -516,10 +520,10 @@ async function saveWyplata() {
   const data = document.getElementById('wy-data').value;
   const kwota = parseFloat(document.getElementById('wy-kwota').value);
   const opis = document.getElementById('wy-opis').value.trim() || null;
-  if (!data || isNaN(kwota) || kwota <= 0) { alert('Podaj datę i dodatnią kwotę.'); return; }
+  if (!data || isNaN(kwota) || kwota <= 0) { toast('Podaj datę i dodatnią kwotę.', 'blad'); return; }
   const naKonto = parseInt(document.getElementById('wy-nakonto').value) || null;
   const goal = celeLista.find(c => c.id === wplataCelId);
-  if (!goal || !goal.konto_id) { alert('Cel nie ma konta.'); return; }
+  if (!goal || !goal.konto_id) { toast('Cel nie ma konta.', 'blad'); return; }
   let res;
   if (naKonto) {
     // realny przelew z konta oszczędnościowego na inne — backend zrobi ujemną wpłatę na cel
@@ -534,7 +538,7 @@ async function saveWyplata() {
       body: JSON.stringify({ data, kwota: -kwota, opis: opis || 'Wypłata z celu' }),
     });
   }
-  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.detail || 'Nie udało się wypłacić.'); return; }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); toast(e.detail || 'Nie udało się wypłacić.', 'blad'); return; }
   closeModal('m-wyplata');
   loadCele();
 }
@@ -557,9 +561,9 @@ async function openHist(id, nazwa) {
 }
 
 async function delWplata(id) {
-  if (!confirm('Usunąć tę wpłatę?')) return;
+  if (!(await potwierdz({ tytul: 'Usunąć tę wpłatę?', tak: 'Usuń', groznie: true }))) return;
   const res = await authFetch(`/api/cele/wplaty/${id}`, { method:'DELETE' });
-  if (!res.ok) { alert('Nie udało się usunąć.'); return; }
+  if (!res.ok) { toast('Nie udało się usunąć.', 'blad'); return; }
   closeModal('m-hist');
   loadCele();
 }
@@ -632,17 +636,17 @@ async function saveLimit() {
     podkategoria: document.getElementById('l-podkat').value || null,
     kwota_miesieczna: parseFloat(document.getElementById('l-kwota').value),
   };
-  if (!body.kategoria_glowna || isNaN(body.kwota_miesieczna) || body.kwota_miesieczna <= 0) { alert('Wybierz kategorię i podaj limit.'); return; }
+  if (!body.kategoria_glowna || isNaN(body.kwota_miesieczna) || body.kwota_miesieczna <= 0) { toast('Wybierz kategorię i podaj limit.', 'blad'); return; }
   const res = await authFetch('/api/limity', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  if (!res.ok) { const e = await res.json().catch(()=>({})); alert(e.detail || 'Nie udało się zapisać.'); return; }
+  if (!res.ok) { const e = await res.json().catch(()=>({})); toast(e.detail || 'Nie udało się zapisać.', 'blad'); return; }
   closeModal('m-limit');
   loadLimity();
 }
 
 async function delLimit(id) {
-  if (!confirm('Usunąć ten limit?')) return;
+  if (!(await potwierdz({ tytul: 'Usunąć ten limit?', tak: 'Usuń', groznie: true }))) return;
   const res = await authFetch(`/api/limity/${id}`, { method:'DELETE' });
-  if (!res.ok) { alert('Nie udało się usunąć.'); return; }
+  if (!res.ok) { toast('Nie udało się usunąć.', 'blad'); return; }
   loadLimity();
 }
 
@@ -687,15 +691,15 @@ async function saveFlow() {
     typ: document.querySelector('input[name="flow-typ"]:checked').value,
     wartosc: parseFloat(document.getElementById('flow-wartosc').value),
   };
-  if (isNaN(body.wartosc) || body.wartosc <= 0) { alert('Podaj wartość.'); return; }
+  if (isNaN(body.wartosc) || body.wartosc <= 0) { toast('Podaj wartość.', 'blad'); return; }
   const res = await authFetch('/api/cel-przeplywowy', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  if (!res.ok) { const e = await res.json().catch(()=>({})); alert(e.detail || 'Nie udało się zapisać.'); return; }
+  if (!res.ok) { const e = await res.json().catch(()=>({})); toast(e.detail || 'Nie udało się zapisać.', 'blad'); return; }
   closeModal('m-flow');
   loadFlow();
 }
 
 async function deleteFlow() {
-  if (!confirm('Usunąć cel przepływowy?')) return;
+  if (!(await potwierdz({ tytul: 'Usunąć cel przepływowy?', tak: 'Usuń', groznie: true }))) return;
   await authFetch('/api/cel-przeplywowy', { method:'DELETE' });
   closeModal('m-flow');
   loadFlow();

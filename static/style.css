@@ -1144,6 +1144,55 @@ tr:hover td { background: var(--hover); }
 .hdr-menu-items button { gap: 10px; }
 
 
+/* ── komunikaty i potwierdzenia ──────────────────────────────────────────
+   Zastępują `alert()` i `confirm()`. Powód nie jest kosmetyczny: okno
+   systemowe blokuje wątek, wygląda obco w apce zainstalowanej z ekranu
+   początkowego i pokazuje adres serwera, a `confirm()` nie pozwala nazwać
+   przycisku — przy usuwaniu wydatku „OK/Anuluj" to za mało. */
+.toast-stos {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  z-index: 10050; display: flex; flex-direction: column; align-items: center;
+  gap: 8px; width: min(460px, calc(100vw - 24px)); pointer-events: none;
+}
+.toast {
+  width: 100%; box-sizing: border-box;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-left: 3px solid var(--muted);
+  border-radius: 12px; padding: 12px 14px; font-size: 13.5px; line-height: 1.45;
+  box-shadow: var(--shadow-lg); pointer-events: auto;
+  display: flex; align-items: flex-start; gap: 10px;
+  animation: toast-wjazd .18s ease-out;
+}
+.toast.znika { opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s; }
+.toast.blad { border-left-color: var(--danger); background: var(--danger-bg); }
+.toast.ok   { border-left-color: var(--good);   background: var(--good-bg); }
+.toast-x {
+  margin-left: auto; flex: none; background: none; border: 0; cursor: pointer;
+  color: var(--muted); font-size: 18px; line-height: 1; padding: 2px 4px;
+  min-width: 32px; min-height: 32px;   /* pole dotykowe, nie sam znak */
+}
+@keyframes toast-wjazd { from { opacity: 0; transform: translateY(10px); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+/* nad dolnym paskiem nawigacji */
+@media (max-width: 700px) {
+  .toast-stos { bottom: calc(78px + env(safe-area-inset-bottom)); }
+}
+
+.pyt-tlo {
+  position: fixed; inset: 0; z-index: 10060; background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center; padding: 14px;
+}
+.pyt {
+  background: var(--surface); border-radius: 14px; padding: 20px;
+  width: 380px; max-width: 100%; box-shadow: var(--shadow-lg);
+}
+.pyt h3 { margin: 0 0 6px; font-size: 1.05rem; color: var(--heading); }
+.pyt p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.55; white-space: pre-line; }
+.pyt-akcje { display: flex; gap: 9px; margin-top: 18px; }
+.pyt-akcje button { flex: 1; min-height: 44px; }
+.btn-groznie { background: var(--danger); border-color: var(--danger); color: #fff; }
+
 /* nagłówek sekcji z ikoną — ikona ma siedzieć na linii pisma, nie nad nią */
 .h2-ikona { display: flex; align-items: center; gap: 9px; }
 .h2-ikona .ikona svg { width: 20px; height: 20px; }

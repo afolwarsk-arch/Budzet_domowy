@@ -1408,3 +1408,100 @@ if (document.readyState === 'loading') {
 } else {
   _zbudujNawigacje();
 }
+
+// ── komunikaty i potwierdzenia ──────────────────────────────────────────────
+//
+// `toast()` zastępuje alert(), `potwierdz()` zastępuje confirm(). Mieszkają
+// w auth.js, bo ten plik ładuje każda strona — komunikat wyskakujący tylko
+// na połowie apki byłby gorszy niż jednolity alert.
+//
+// DWIE RZECZY, KTÓRYCH OKNO SYSTEMOWE NIE UMIE, A KTÓRE SĄ TU POWODEM ZMIANY:
+// komunikat nie zatrzymuje strony (można czytać dalej, toast sam znika),
+// a pytanie o usunięcie ma przycisk nazwany „Usuń" zamiast „OK" — przy
+// nieodwracalnej akcji nazwa przycisku jest zabezpieczeniem, nie ozdobą.
+
+function _toastStos() {
+  let s = document.getElementById('_toasty');
+  if (!s) {
+    s = document.createElement('div');
+    s.id = '_toasty';
+    s.className = 'toast-stos';
+    s.setAttribute('role', 'status');       // czytnik ekranu przeczyta sam
+    s.setAttribute('aria-live', 'polite');
+    document.body.appendChild(s);
+  }
+  return s;
+}
+
+// rodzaj: 'blad' | 'ok' | pominięty (neutralny)
+function toast(tekst, rodzaj) {
+  if (!tekst) return;
+  const el = document.createElement('div');
+  el.className = 'toast' + (rodzaj ? ' ' + rodzaj : '');
+  const t = document.createElement('span');
+  t.textContent = tekst;                    // treść bywa z serwera — nie innerHTML
+  const x = document.createElement('button');
+  x.className = 'toast-x';
+  x.type = 'button';
+  x.setAttribute('aria-label', 'Zamknij komunikat');
+  x.textContent = '\u00d7';
+  el.appendChild(t);
+  el.appendChild(x);
+  _toastStos().appendChild(el);
+
+  let zegar;
+  const zamknij = () => {
+    clearTimeout(zegar);
+    el.classList.add('znika');
+    setTimeout(() => el.remove(), 220);
+  };
+  x.onclick = zamknij;
+  // Błąd stoi dłużej: zwykle trzeba coś poprawić w formularzu, a komunikat,
+  // który zniknie w trakcie czytania, każe powtarzać całą akcję.
+  zegar = setTimeout(zamknij, rodzaj === 'blad' ? 6500 : 4000);
+  return zamknij;
+}
+
+// Zwraca Promise<boolean>. Wywołanie: `if (!(await potwierdz({...}))) return;`
+function potwierdz(opcje) {
+  const o = opcje || {};
+  return new Promise((rozstrzygnij) => {
+    const tlo = document.createElement('div');
+    tlo.className = 'pyt-tlo';
+    tlo.innerHTML = `
+      <div class="pyt" role="dialog" aria-modal="true" aria-labelledby="_pyt-t">
+        <h3 id="_pyt-t"></h3>
+        <p></p>
+        <div class="pyt-akcje">
+          <button class="btn btn-outline" type="button" data-nie></button>
+          <button class="btn ${o.groznie ? 'btn-groznie' : 'btn-primary'}" type="button" data-tak></button>
+        </div>
+      </div>`;
+    tlo.querySelector('h3').textContent = o.tytul || 'Na pewno?';
+    tlo.querySelector('p').textContent = o.tresc || '';
+    if (!o.tresc) tlo.querySelector('p').remove();
+    const tak = tlo.querySelector('[data-tak]');
+    const nie = tlo.querySelector('[data-nie]');
+    tak.textContent = o.tak || 'Potwierdź';
+    nie.textContent = o.nie || 'Anuluj';
+
+    const skoncz = (wynik) => {
+      document.removeEventListener('keydown', klawisz);
+      tlo.remove();
+      rozstrzygnij(wynik);
+    };
+    // Escape i kliknięcie w tło znaczą „nie" — wyjście z pytania nigdy nie
+    // może przypadkiem potwierdzić usunięcia.
+    const klawisz = (e) => { if (e.key === 'Escape') skoncz(false); };
+    document.addEventListener('keydown', klawisz);
+    tlo.addEventListener('click', (e) => { if (e.target === tlo) skoncz(false); });
+    tak.onclick = () => skoncz(true);
+    nie.onclick = () => skoncz(false);
+
+    document.body.appendChild(tlo);
+    nie.focus();   // ostrożniejszy przycisk pod Enterem
+  });
+}
+
+window.toast = toast;
+window.potwierdz = potwierdz;
