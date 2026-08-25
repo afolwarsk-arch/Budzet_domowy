@@ -829,7 +829,19 @@ tr:hover td { background: var(--hover); }
   font-size: 0.85rem;
   cursor: pointer;
 }
-.nav-samouczek:hover { border-color: var(--accent); color: var(--accent); }
+/* DWIE rzeczy naraz, obie widoczne dopiero na telefonie:
+   · --accent jest globalny (przyciemniony koral), a nie modułowy — w eat
+     i health przebarwiał ramkę i ikonę na bordowo, czyli kolor spoza palety
+     modułu. Stąd --marka, która zmienia się razem z modułem.
+   · (hover: hover) — dotyk zostawia :hover PRZYKLEJONY po stuknięciu, aż do
+     kliknięcia gdzie indziej. Na myszce mignęłoby, na telefonie wyglądało
+     jak trwałe przebarwienie.
+   Etykieta zostaje w kolorze tekstu: --marka finansów (#ff6b6b) na białym
+   nie ma kontrastu na pismo, choć na kreskę ikony i ramkę wystarcza. */
+@media (hover: hover) {
+  .nav-samouczek:hover { border-color: var(--marka); }
+  .nav-samouczek:hover .ikona { color: var(--marka); }
+}
 @media (max-width: 900px) {
   .nav-samouczek .nav-etykieta { display: none; }
   .nav-samouczek { padding: 6px 10px; }
