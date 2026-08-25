@@ -823,9 +823,15 @@ function _injectProfileButton(me) {
   }
 }
 
-const _SAMOUCZEK_SLAJDY = [
+// Samouczek NIE JEST JEDEN — jest osobny dla każdego modułu. Wcześniej stała
+// tu jedna tablica o paragonach i kontach, więc na dzienniku jedzenia apka
+// tłumaczyła, jak sfotografować paragon, a na historii zdrowia — jak prowadzić
+// budżet. Zestaw wybiera `_modulBiezacy()`, ten sam mechanizm co kolor paska
+// i dopisek „wiem.eat" przy znaku.
+const _SAMOUCZEK_SLAJDY = {
+  finance: [
   { znak: true, tytul: 'Witaj w <span class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></span>',
-    opis: 'To wspólny budżet całego gospodarstwa: dodajesz wydatki (zdjęciem paragonu, notatką albo ręcznie), a apka pokazuje statystyki, pilnuje płatności i podpowiada, gdzie oszczędzić. Ten przewodnik przejdzie przez wszystkie funkcje — wrócisz do niego kiedy chcesz przyciskiem „Samouczek" na górnym pasku.' },
+    opis: 'To wspólny budżet całego gospodarstwa: dodajesz wydatki (zdjęciem paragonu, notatką albo ręcznie), a apka pokazuje statystyki, pilnuje płatności i podpowiada, gdzie oszczędzić. Wiem ma kilka modułów — jedzenie i zdrowie przełączysz kwadracikami obok logo, a każdy ma własny samouczek. Do tego wrócisz kiedy chcesz przyciskiem „Samouczek" na górnym pasku.' },
   { ikona: 'aparat', tytul: 'Paragon = zdjęcie',
     opis: 'W „Dodaj wydatek" zrób zdjęcie paragonu — Claude AI sam odczyta sklep, datę, wszystkie pozycje z cenami i przypisze kategorie. Możesz wrzucić kilka paragonów naraz: każdy stanie się osobnym wydatkiem. Przed zapisem wszystko sprawdzisz i poprawisz.' },
   { ikona: 'recznie', tytul: 'Nie chcesz AI? Wpisz ręcznie',
@@ -852,9 +858,48 @@ const _SAMOUCZEK_SLAJDY = [
     opis: 'Cały budżet pobierzesz w każdej chwili z menu „⋯" na dashboardzie — pozycja „Pobierz kopię danych". Statystyki, filtry i pseudonimy dostosujesz pod siebie — kliknij swój pseudonim na górnym pasku, żeby go zmienić.' },
   { ikona: 'telefon', tytul: 'Miej budżet w kieszeni',
     opis: 'Na telefonie wybierz w przeglądarce „Dodaj do ekranu głównego" — apka działa jak natywna: dolny pasek nawigacji i aparat do paragonów zawsze pod ręką. To wszystko — miłego oszczędzania!' },
-];
+  ],
+
+  eat: [
+  { znak: true, tytul: 'Witaj w <span class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></span><span style="font-size:.62em;font-weight:600;letter-spacing:0">eat</span>',
+    opis: 'Dziennik jedzenia dla całego gospodarstwa. Zapisujesz, co zjadłeś, a apka liczy kalorie i makroskładniki, pokazuje jakość jedzenia i pilnuje celu dziennego. Ten przewodnik dotyczy modułu jedzenia — finanse i zdrowie mają własne, pod tym samym przyciskiem.' },
+  { ikona: 'aparat', tytul: 'Cztery drogi do produktu',
+    opis: 'Możesz zeskanować kod kreskowy, poszukać po nazwie, zrobić zdjęcie <b>przodu opakowania</b> (apka dopasuje produkt w bazie Open Food Facts) albo zdjęcie <b>tabeli wartości odżywczych</b>, gdy produktu nigdzie nie ma. Cztery drogi, bo w sklepie działa co innego niż w kuchni.' },
+  { ikona: 'lista', tytul: 'Wróć do tego, co jesz często',
+    opis: '„Z dziennika" podsuwa produkty, które już jadłeś, a serce oznacza ulubione — jedno stuknięcie i wpis jest gotowy. Codzienne jedzenie powtarza się bardziej, niż się wydaje, i to jest najszybsza droga.' },
+  { ikona: 'przelicz', tytul: 'Porcje, gramy, sztuki',
+    opis: 'Wybierasz jednostkę, w której naprawdę myślisz: porcja, gram albo sztuka. Waga sztuki to waga <b>jednej sztuki</b>, nie całego opakowania zbiorczego — przy jajkach czy batonikach to różnica dziesięciokrotna.' },
+  { ikona: 'analiza', tytul: 'Cel dzienny i niepełny dzień',
+    opis: 'Ustawiasz cel kaloryczny, a apka pokazuje, ile zostało. Dzień, w którym zapisałeś tylko śniadanie, oznaczysz jako <b>niekompletny</b> — nie zaniży wtedy średnich, bo inaczej każdy pominięty obiad wyglądałby jak dzień pod celem.' },
+  { ikona: 'ksiazka', tytul: 'Przepisy — gotujesz raz, wpisujesz wiele razy',
+    opis: 'Przepis dodasz na cztery sposoby: opisując słowami, zdjęciem przepisu, ręcznie albo składając go z tego, co już masz w dzienniku. Jednostką jest <b>porcja</b>, bo kalorie się nie gotują — a rozpiska składników zostaje zamrożona przy wpisie, więc późniejsza zmiana przepisu nie przepisuje historii.' },
+  { ikona: 'lupa', tytul: 'Statystyki i oceny',
+    opis: 'Na „Statystykach" zobaczysz Nutri-Score (a–e) i NOVA (1–4) z Open Food Facts. To <b>oceny cudze i opublikowane</b> — apka nie wymyśla własnego wskaźnika „zdrowe", bo taki wskaźnik byłby naszą opinią udającą fakt. Procenty liczą się od całości dnia, nie tylko od produktów, które ocenę mają.' },
+  ],
+
+  health: [
+  { znak: true, tytul: 'Witaj w <span class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></span><span style="font-size:.62em;font-weight:600;letter-spacing:0">health</span>',
+    opis: 'Miejsce na wyniki badań i dokumentację medyczną całej rodziny. Robisz zdjęcie albo wgrywasz PDF, a apka przepisuje wyniki, normy i oznaczenia do bazy — żeby za dwa lata dało się sprawdzić, jak zmieniało się żelazo, a nie szukać kartki w szufladzie.' },
+  { ikona: 'osoby', tytul: 'Zacznij od osoby',
+    opis: 'Każdy wynik zapisujesz przy konkretnej osobie — także takiej, która nie ma konta w aplikacji, na przykład dziecka. Data urodzenia jest nieobowiązkowa, ale przy wynikach dziecka pozwala odczytać normę właściwą dla wieku w dniu badania.' },
+  { ikona: 'aparat', tytul: 'PDF czyta się dokładniej niż zdjęcie',
+    opis: 'Wynik z laboratorium ma warstwę tekstową, więc model czyta znaki, a nie piksele — znika cała klasa błędów: zgubiony przecinek, „0,05" odczytane jako „0,06". Papierową kartę wizyty sfotografuj; jeśli ma kilka stron, dołóż je wszystkie, a przeczytam je <b>jako jeden dokument</b>.' },
+  { ikona: 'recznie', tytul: 'Sprawdzasz Ty, nie apka',
+    opis: 'Po odczycie zobaczysz wszystko do sprawdzenia i nic nie zapisuje się bez Twojej zgody. To nie jest wygoda, tylko warunek: wynik zapisany błędnie i niezauważony jest gorszy niż brak wyniku, bo za pół roku nikt nie będzie pamiętał, że tej liczby nie sprawdzał.' },
+  { ikona: 'kategorie', tytul: 'Normy są przepisane, nie wyliczone',
+    opis: 'Zakres normy i oznaczenia (H, L, klasa alergiczna, centyl, BI-RADS) apka <b>przepisuje z dokumentu</b>, nigdy nie liczy sama — bo każde laboratorium ma własne normy i własną metodę. Wynik typu „&lt;0,005" zostaje z tym znakiem, bo sama liczba znaczyłaby co innego.' },
+  { ikona: 'analiza', tytul: 'Oś czasu i przebieg parametru',
+    opis: 'Badania układają się na osi czasu, z odstępami proporcjonalnymi do upływu czasu — widać zagęszczenie przy chorobie i ciszę przy zdrowiu. Suwak zmienia gęstość, a wpisy przefiltrujesz po problemie zdrowotnym. Klikając parametr, zobaczysz jego przebieg na wykresie, z pasmem normy <b>schodkowym</b>, bo norma bywa inna w każdym laboratorium.' },
+  { ikona: 'dysk', tytul: 'Oryginały nie zostają',
+    opis: 'Zdjęcie ani PDF nie trafiają do bazy — plik służy wyłącznie do odczytu i ginie razem z żądaniem. Zostają tylko przepisane dane. Zatrzymaj oryginał u siebie, jeśli będzie potrzebny u lekarza.' },
+  ],
+};
 
 function pokazSamouczek(pierwszyRaz) {
+  // Zestaw wybiera strona, na której stoisz. `_modulBiezacy()` dla ścieżek
+  // spoza modułów (np. /admin) zwraca finanse, więc zapasowa gałąź jest tylko
+  // na wypadek modułu bez własnych slajdów — lepiej pokazać cokolwiek niż nic.
+  const slajdy = _SAMOUCZEK_SLAJDY[_modulBiezacy().id] || _SAMOUCZEK_SLAJDY.finance;
   let idx = 0;
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,20,40,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
@@ -864,8 +909,8 @@ function pokazSamouczek(pierwszyRaz) {
   };
   overlay.addEventListener('click', e => { if (e.target === overlay) zamknij(); });
   const render = () => {
-    const s = _SAMOUCZEK_SLAJDY[idx];
-    const ostatni = idx === _SAMOUCZEK_SLAJDY.length - 1;
+    const s = slajdy[idx];
+    const ostatni = idx === slajdy.length - 1;
     overlay.innerHTML = `
       <div class="sam-karta">
         <div class="sam-naglowek" style="--kat:${130 + idx * 7}deg"><span class="sam-emoji">${s.znak ? '<span class="sam-znak"><span class="logo"><span class="lg-lit">w</span><span class="lg-i"><span class="lg-lit">ı</span><i class="lg-kropka"></i></span><span class="lg-lit">em</span><i class="lg-kropka"></i></span></span>' : ikonaSvg(s.ikona)}</span></div>
@@ -873,7 +918,7 @@ function pokazSamouczek(pierwszyRaz) {
           <h3 style="font-size:1.15rem;margin:0 0 8px;color:var(--text)">${s.tytul}</h3>
           <p style="font-size:14px;line-height:1.6;color:var(--text);margin:0 0 16px">${s.opis}</p>
           <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-bottom:14px">
-            ${_SAMOUCZEK_SLAJDY.map((_, i) => `<span class="sam-kropka${i === idx ? ' jest' : ''}"></span>`).join('')}
+            ${slajdy.map((_, i) => `<span class="sam-kropka${i === idx ? ' jest' : ''}"></span>`).join('')}
           </div>
           <div style="display:flex;gap:8px;align-items:center">
             <button data-t="pomin" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:8px 4px">Pomiń</button>
