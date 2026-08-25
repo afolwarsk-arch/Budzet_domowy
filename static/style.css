@@ -869,7 +869,15 @@ tr:hover td { background: var(--hover); }
   align-items: center;
   justify-content: center;
   border-radius: 18px 18px 0 0;
-  background: linear-gradient(var(--kat, 135deg), #1a1d20, #4a2b2b 55%, var(--marka));
+  /* Trzy przystanki, ale środkowy WYLICZONY z koloru modułu, nie wpisany.
+     Stało tu #4a2b2b — bordo dobrane pod koral finansów. Że --marka zmienia
+     się per moduł (auth.js, _ustawKolorModulu), w eat wychodziło czarny →
+     bordo → zielony, a w health czarny → bordo → morski: kolor z zupełnie
+     innej palety w samym środku nagłówka. Pierwsza deklaracja jest zapasowa
+     dla przeglądarek bez color-mix — lepiej dwa przystanki niż brak tła. */
+  background: linear-gradient(var(--kat, 135deg), #1a1d20, var(--marka));
+  background: linear-gradient(var(--kat, 135deg) in oklab, #1a1d20,
+              color-mix(in oklab, var(--marka) 45%, #1a1d20) 55%, var(--marka));
 }
 .sam-emoji { animation: sam-emoji .42s cubic-bezier(.2,.9,.3,1.2); }
 .sam-emoji:has(.sam-znak) { animation: none; }
