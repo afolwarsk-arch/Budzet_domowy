@@ -23,6 +23,7 @@ const RODZAJE = {
   lab: 'Wynik badania',
   obrazowe: 'Badanie obrazowe',
   wizyta: 'Wizyta',
+  skierowanie: 'Skierowanie',
   inne: 'Inne',
 };
 
@@ -35,6 +36,10 @@ let problemy = [];
 let problemId = null;     // null = bez filtrowania po problemie
 let widok = 'os';         // os | podglad | szczegoly | problemy
 let odczyt = null;        // { dokument } — czeka na zapis
+// Problemy zaznaczone na ekranie podglądu, jeszcze przed zapisem dokumentu.
+// Trzymamy je osobno, bo dokument nie ma jeszcze identyfikatora — przypięcie
+// idzie drugim żądaniem, zaraz po zapisie.
+let wybraneProblemy = new Set();
 // Strony bieżącego odczytu — obiekty File, wyłącznie w pamięci karty. Trzymamy
 // je do czasu zapisu TYLKO po to, żeby dało się dołożyć kolejną kartkę i
 // przeczytać komplet od nowa; do bazy nie idzie żaden oryginał (patrz `zapisz`
@@ -493,6 +498,35 @@ function karta(tytul, tresc, klasa) {
   return `<div class="karta"><h2>${tytul}</h2><div class="${klasa || 'proza'}">${tresc}</div></div>`;
 }
 
+// Skierowanie czyta się inaczej niż wynik: opisuje coś, co ma się DOPIERO
+// wydarzyć. Najważniejszy jest kod, z którym się rejestrujesz, i termin
+// ważności — jedno i drugie ma być widoczne bez czytania prozy.
+function kartaSkierowania(d) {
+  if (d.rodzaj !== 'skierowanie' && !d.kod_eskierowania && !d.wazne_do) return '';
+  const dzis = new Date(); dzis.setHours(0, 0, 0, 0);
+  let stan = '';
+  if (d.wazne_do) {
+    const koniec = new Date(String(d.wazne_do).slice(0, 10) + 'T00:00:00');
+    const dni = Math.round((koniec - dzis) / 86400000);
+    stan = dni < 0 ? '<span class="wazne-po">termin minął</span>'
+      : `<span class="wazne-do">ważne jeszcze ${odmien(dni, 'dzień', 'dni', 'dni')}</span>`;
+  }
+  return `
+    <div class="karta">
+      <h2>Skierowanie</h2>
+      ${d.kod_eskierowania ? `<div class="kod-e">
+        <span class="kod-e-etykieta">kod e-skierowania</span>
+        <span class="kod-e-cyfry">${esc(d.kod_eskierowania)}</span>
+      </div>` : ''}
+      <div class="dok-pod">
+        ${d.specjalizacja ? `<span>do: ${esc(d.specjalizacja)}</span>` : ''}
+        ${d.tryb ? `<span class="znacznik">${esc(d.tryb)}</span>` : ''}
+        ${d.wazne_do ? `<span>ważne do ${dataPl(d.wazne_do)}</span>` : ''}
+        ${stan}
+      </div>
+    </div>`;
+}
+
 function sekcjeTresci(d) {
   const leki = (d.leki || []).map((l) => `
     <div class="lek">
@@ -502,6 +536,7 @@ function sekcjeTresci(d) {
     </div>`).join('');
 
   return `
+    ${kartaSkierowania(d)}
     ${leki ? `<div class="karta"><h2>Leki</h2>${leki}</div>` : ''}
     ${d.rozpoznanie ? karta('Rozpoznanie',
       esc(d.rozpoznanie) + (d.kod_icd10 ? ` <span class="znacznik">${esc(d.kod_icd10)}</span>` : '')) : ''}
@@ -575,6 +610,18 @@ function rysujPodglad() {
 
     ${sekcjeTresci(d)}
 
+    ${problemy.length ? `<div class="karta">
+      <h2>Przypisz do problemu</h2>
+      <div class="filtry" id="p-problemy">
+        ${problemy.map((p) => `<button class="chip" type="button" data-pr="${p.id}"
+            aria-pressed="${wybraneProblemy.has(p.id)}">
+            <span class="kropka-pr" style="background: var(--pr-${p.kolor % 8})"></span>${esc(p.nazwa)}
+          </button>`).join('')}
+      </div>
+      <div class="uwaga">Przypnij od razu, zamiast wracać do tego po zapisie.
+        Jedno badanie może należeć do kilku problemów.</div>
+    </div>` : ''}
+
     <div class="karta dokladanie">
       <b>Dokument ma dalszy ciąg?</b>
       <p class="uwaga">Dołóż kolejną kartkę, a przeczytam <b>całość od nowa</b> jako jedno
@@ -591,7 +638,15 @@ function rysujPodglad() {
     </div>`;
 
   document.getElementById('anuluj').onclick = () => {
-    odczyt = null; strony = []; widok = 'os'; rysuj();
+    odczyt = null; strony = []; wybraneProblemy = new Set(); widok = 'os'; rysuj();
+  };
+  const chipyProblemow = document.getElementById('p-problemy');
+  if (chipyProblemow) chipyProblemow.onclick = (ev) => {
+    const b = ev.target.closest('[data-pr]');
+    if (!b) return;
+    const id = Number(b.dataset.pr);
+    if (wybraneProblemy.has(id)) wybraneProblemy.delete(id); else wybraneProblemy.add(id);
+    b.setAttribute('aria-pressed', wybraneProblemy.has(id));
   };
   // Przełączenie rodzaju na „wizyta" odsłania pola specjalisty bez przerysowania
   // ekranu — przerysowanie zgubiłoby to, co użytkownik zdążył poprawić wyżej.
@@ -631,7 +686,15 @@ async function zapiszDokument() {
   try {
     const r = await authFetch('/api/health/dokumenty', { method: 'POST', body: fd });
     if (!r.ok) throw new Error();
-    odczyt = null; strony = []; widok = 'os';
+    // Problemy przypinamy drugim żądaniem — dopiero teraz dokument ma
+    // identyfikator. Nieudane przypięcie NIE cofa zapisu badania: gorzej
+    // stracić przypisanie niż odczytany wynik, a przypiąć można później.
+    if (wybraneProblemy.size) {
+      const { id } = await r.json();
+      try { await zapiszProblemyDokumentu(id, [...wybraneProblemy]); }
+      catch { toast('Badanie zapisane, ale nie udało się przypiąć problemu.', 'blad'); }
+    }
+    odczyt = null; strony = []; wybraneProblemy = new Set(); widok = 'os';
     rysuj();
   } catch {
     btn.disabled = false;

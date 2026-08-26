@@ -51,15 +51,30 @@ kodów ICD-10 na słowa. Nie dopisujesz zaleceń, których nie ma na dokumencie.
 Jeśli czegoś nie ma — pomijasz pole. Puste pole jest poprawną odpowiedzią,
 zmyślone nie jest.
 
-Zwróć WYŁĄCZNIE JSON tej postaci:
+ZWRÓĆ WYŁĄCZNIE JSON — jeden obiekt, bez ani jednego słowa przed nim i po nim,
+bez tablicy na wierzchu, bez komentarzy. Odpowiedź jest czytana przez program,
+nie przez człowieka: każde zdanie wstępu psuje odczyt.
+
+Jeśli dostajesz kilka stron i widzisz, że pochodzą z RÓŻNYCH dokumentów (inne
+daty, inni lekarze, inne badania), NIE łącz ich i NIE zwracaj tablicy. Zwróć
+obiekt opisujący pierwszy dokument i dodaj do niego pole "rozne_dokumenty": true.
+Program pokaże wtedy użytkownikowi, żeby wgrał je osobno.
+
+Wewnątrz łańcuchów znakowych escapuj cudzysłowy (\\") i nie wstawiaj surowych
+znaków nowej linii — użyj \\n.
+
+JSON ma mieć tę postać:
 
 {
-  "rodzaj": "lab" | "obrazowe" | "wizyta" | "inne",
+  "rodzaj": "lab" | "obrazowe" | "wizyta" | "skierowanie" | "inne",
   "nazwa": "Morfologia krwi obwodowej",
   "data_badania": "2026-08-14",
   "data_do": null,
   "data_pobrania": "2026-08-13",
   "placowka": "ALAB Laboratoria",
+  "kod_eskierowania": "2885",
+  "wazne_do": null,
+  "tryb": null,
   "specjalizacja": "stomatolog",
   "lekarz": "dr n. med. Anna Kowalska",
   "forma": "stacjonarna",
@@ -114,7 +129,16 @@ RODZAJ DOKUMENTU:
 - "wizyta" — karta wizyty, wypis ze szpitala, konsultacja. Treść rozdziel na
   osobne pola — patrz „ROZBICIE WIZYTY" niżej. Pola "opis" przy wizycie NIE
   wypełniaj.
-- "inne" — cokolwiek innego (skierowanie, zwolnienie, szczepienie).
+- "skierowanie" — skierowanie do poradni, na badanie, do szpitala albo na
+  rehabilitację. Opisuje coś, co ma się DOPIERO wydarzyć, więc wypełnij:
+  "specjalizacja" (dokąd kieruje: "neurolog", "rezonans magnetyczny",
+  "rehabilitacja"), "kod_eskierowania" (czterocyfrowy kod, z którym rejestruje
+  się wizytę — NIE mylić z kilkudziesięciocyfrowym kluczem), "wazne_do" (termin
+  ważności, jeśli podany), "tryb" ("pilny" albo "stabilny", jeśli zaznaczony),
+  "lekarz" (kto skierował), "rozpoznanie" i "kod_icd10" (powód skierowania).
+  Data wystawienia idzie do "data_badania". Wyniki zostają puste — skierowanie
+  niczego nie mierzy.
+- "inne" — cokolwiek innego (zwolnienie, szczepienie, zaświadczenie).
 
 ROZBICIE WIZYTY NA CZĘŚCI. Karta wizyty sama podaje ten podział nagłówkami —
 idź za nimi, nie sklejaj wszystkiego w jedno pole:
@@ -302,21 +326,91 @@ def czytaj_dokument(strony: list[tuple[bytes, str]],
     client = anthropic.Anthropic()
     msg = client.messages.create(
         model=MODEL,
-        max_tokens=8000,
+        # 16000, nie 8000: przy dokumencie wielostronicowym doszły wywiad,
+        # badanie, pouczenia i lista leków. Ucięta odpowiedź kończy się urwanym
+        # JSON-em, a błąd składni w niczym nie przypomina prawdziwej przyczyny.
+        max_tokens=16000,
         system=_PROMPT,
         messages=[{"role": "user", "content": tresc}],
     )
+    if getattr(msg, "stop_reason", None) == "max_tokens":
+        raise OdczytError(
+            "Dokument jest za długi, żeby przepisać go w całości. Wgraj go "
+            "w mniejszych częściach — na przykład osobno wyniki i osobno opis.")
     return _parsuj(msg.content[0].text), _usage(msg)
+
+
+def _wytnij_json(txt: str):
+    """Wyłuskuje pierwszą kompletną strukturę JSON z odpowiedzi modelu.
+
+    NIE ZAKŁADAMY, ŻE ODPOWIEDŹ JEST GOŁYM JSON-em. Model bywa uczynny i pisze
+    zdanie wstępu („Mam dwa osobne dokumenty, zwrócę tablicę…"), zwłaszcza gdy
+    dostanie strony, które do siebie nie pasują. Zdarzyło się to na produkcji
+    i wywalało odczyt komunikatem o błędzie składni, który niczego nie tłumaczył.
+
+    Liczymy nawiasy z uwzględnieniem łańcuchów znakowych — inaczej klamra
+    w środku opisu badania przerwałaby zliczanie w połowie.
+    """
+    start = None
+    for i, z in enumerate(txt):
+        if z in "{[":
+            start = i
+            break
+    if start is None:
+        return None
+    otwarcie = txt[start]
+    zamkniecie = "}" if otwarcie == "{" else "]"
+    glebokosc = 0
+    w_lancuchu = False
+    ucieczka = False
+    for i in range(start, len(txt)):
+        z = txt[i]
+        if w_lancuchu:
+            if ucieczka:
+                ucieczka = False
+            elif z == "\\":
+                ucieczka = True
+            elif z == '"':
+                w_lancuchu = False
+            continue
+        if z == '"':
+            w_lancuchu = True
+        elif z == otwarcie:
+            glebokosc += 1
+        elif z == zamkniecie:
+            glebokosc -= 1
+            if glebokosc == 0:
+                return txt[start:i + 1]
+    return txt[start:]          # niedomknięte — niech zdecyduje parser
 
 
 def _parsuj(surowy: str) -> dict:
     txt = re.sub(r"```(?:json)?|```", "", surowy or "").strip()
+    wyciety = _wytnij_json(txt) or txt
     try:
-        dane = json.loads(txt)
+        dane = json.loads(wyciety)
     except json.JSONDecodeError as e:
-        raise OdczytError(f"Model nie zwrócił poprawnego JSON-a: {e}") from e
+        # Do logów idzie surowa odpowiedź, bo bez niej takiego błędu nie da się
+        # zdiagnozować po fakcie — użytkownik widzi tylko komunikat.
+        print(f"[health_ai] niepoprawny JSON ({e}); odpowiedz modelu:\n{txt[:4000]}")
+        raise OdczytError(
+            "Nie udało się odczytać dokumentu — odpowiedź modelu była uszkodzona. "
+            "Spróbuj jeszcze raz; jeśli wgrywasz kilka stron, sprawdź, czy wszystkie "
+            "należą do tego samego badania.") from e
+
+    # Tablica znaczy, że model uznał strony za ODRĘBNE dokumenty. Nie sklejamy
+    # ich na siłę: dwie wizyty z różnych dni scalone w jeden wpis to gorsza
+    # szkoda niż odmowa — w dokumentacji medycznej data i lekarz muszą się zgadzać.
+    if isinstance(dane, list):
+        raise OdczytError(
+            "To wyglądają na kilka RÓŻNYCH dokumentów, a nie kolejne strony jednego. "
+            "Wgraj każdy osobno.")
     if not isinstance(dane, dict):
         raise OdczytError("Model zwrócił coś innego niż opis dokumentu.")
+    if dane.get("rozne_dokumenty"):
+        raise OdczytError(
+            "To wyglądają na kilka RÓŻNYCH dokumentów, a nie kolejne strony jednego. "
+            "Wgraj każdy osobno.")
 
     dane["wyniki"] = [_czysc_wynik(w) for w in (dane.get("wyniki") or [])
                       if isinstance(w, dict) and (w.get("nazwa") or "").strip()]
@@ -327,7 +421,7 @@ def _parsuj(surowy: str) -> dict:
                     if isinstance(l, dict) and (l.get("nazwa") or "").strip()]
     if not (dane.get("nazwa") or "").strip():
         dane["nazwa"] = "Badanie"
-    if dane.get("rodzaj") not in ("lab", "obrazowe", "wizyta", "inne"):
+    if dane.get("rodzaj") not in ("lab", "obrazowe", "wizyta", "skierowanie", "inne"):
         dane["rodzaj"] = "lab"
     return dane
 

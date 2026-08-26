@@ -62,6 +62,18 @@
     .os-kto, .dok-kto { font-size: 12px; color: var(--muted); margin-top: 3px; }
     .dok-kto { margin-top: 6px; }
 
+    /* ── skierowanie ──
+       Kod e-skierowania jest tu najważniejszy: to jego dyktuje się przez telefon
+       przy rejestracji. Duży, w jednej linii, z odstępami między cyframi. */
+    .kod-e { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+             margin-bottom: 8px; }
+    .kod-e-etykieta { font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+                      color: var(--muted); font-weight: 700; }
+    .kod-e-cyfry { font-size: 26px; font-weight: 700; letter-spacing: .18em;
+                   color: var(--heading); font-variant-numeric: tabular-nums; }
+    .wazne-do { color: var(--good); font-weight: 600; }
+    .wazne-po { color: var(--danger); font-weight: 600; }
+
     /* ── leki ──
        Wiersz na preparat, a nie proza: „co pan przyjmuje?" to pytanie padające
        przy każdej wizycie i odpowiedź ma się dać przeczytać jednym spojrzeniem. */

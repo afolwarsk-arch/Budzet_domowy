@@ -27,7 +27,7 @@ from database import get_db
 # Cztery rodzaje dokumentu, bo każdy czyta się inaczej. Rozdzielone nie dla
 # porządku, tylko dlatego, że sterują wyglądem ekranu: „lab" pokazuje tabelę
 # wyników, „obrazowe" i „wizyta" pokazują opis, bo tam cała treść jest w prozie.
-RODZAJE = ("lab", "obrazowe", "wizyta", "inne")
+RODZAJE = ("lab", "obrazowe", "wizyta", "skierowanie", "inne")
 
 # Operator przy wyniku. Laboratorium wydaje „TSH <0,005", bo poniżej progu
 # czułości metody nie da się zmierzyć wartości — tylko stwierdzić, że jest
@@ -107,6 +107,17 @@ def init_health_db() -> None:
         cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS wywiad TEXT")
         cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS badanie TEXT")
         cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS pouczenia TEXT")
+
+        # ── skierowanie ─────────────────────────────────────────────────────
+        # Skierowanie różni się od reszty tym, że opisuje coś, co ma się DOPIERO
+        # WYDARZYĆ. Liczą się przy nim trzy rzeczy, których nie ma w wyniku:
+        # czterocyfrowy kod e-skierowania (z nim rejestruje się wizytę),
+        # termin ważności (część skierowań przepada po 30 dniach) i tryb —
+        # „pilny" wobec „stabilny" ustawia kolejkę w przychodni.
+        # Dokąd kieruje, mówi już istniejąca `specjalizacja`.
+        cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS kod_eskierowania TEXT")
+        cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS wazne_do DATE")
+        cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS tryb TEXT")
 
         # ── leki ────────────────────────────────────────────────────────────
         # Osobna tabela, bo „co pan przyjmuje?" to pytanie padające przy każdej
@@ -291,6 +302,7 @@ _POLA_DOK = """d.id, d.osoba_id, d.rodzaj, d.nazwa, d.data_badania, d.data_do,
                d.zalecenia, d.numer_badania, d.data_nastepnego, d.kontekst,
                d.norma_wg, d.specjalizacja, d.lekarz, d.forma,
                d.wywiad, d.badanie, d.pouczenia,
+               d.kod_eskierowania, d.wazne_do, d.tryb,
                d.ukryty, d.dodane_przez, d.created_at"""
 
 
@@ -380,9 +392,10 @@ def zapisz_dokument(household_id: int, osoba_id: int, dane: dict,
                (household_id, osoba_id, rodzaj, nazwa, data_badania, data_do,
                 data_pobrania, placowka, opis, rozpoznanie, kod_icd10, zalecenia,
                 numer_badania, data_nastepnego, kontekst, norma_wg,
-                specjalizacja, lekarz, forma, wywiad, badanie, pouczenia, dodane_przez)
+                specjalizacja, lekarz, forma, wywiad, badanie, pouczenia,
+                kod_eskierowania, wazne_do, tryb, dodane_przez)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                       %s, %s, %s, %s, %s, %s, %s)
+                       %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                RETURNING id""",
             (household_id, osoba_id,
              dane.get("rodzaj") or "lab",
@@ -393,6 +406,7 @@ def zapisz_dokument(household_id: int, osoba_id: int, dane: dict,
              dane.get("data_nastepnego"), dane.get("kontekst"), dane.get("norma_wg"),
              dane.get("specjalizacja"), dane.get("lekarz"), dane.get("forma"),
              dane.get("wywiad"), dane.get("badanie"), dane.get("pouczenia"),
+             dane.get("kod_eskierowania"), dane.get("wazne_do"), dane.get("tryb"),
              dodane_przez),
         )
         dok_id = cur.fetchone()["id"]
@@ -438,7 +452,8 @@ def _wstaw_wynik(cur, dokument_id: int, w: dict, kolejnosc: int) -> None:
 # skierowaniu, a dopisuje się je z pamięci tydzień później.
 _POLA_EDYCJI = ("nazwa", "data_badania", "data_do", "placowka", "specjalizacja",
                 "lekarz", "forma", "rozpoznanie", "kod_icd10", "zalecenia",
-                "data_nastepnego", "kontekst", "wywiad", "badanie", "pouczenia")
+                "data_nastepnego", "kontekst", "wywiad", "badanie", "pouczenia",
+                "kod_eskierowania", "wazne_do", "tryb")
 
 
 def edytuj_dokument(household_id: int, dokument_id: int, dane: dict) -> bool:
