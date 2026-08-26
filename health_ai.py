@@ -60,8 +60,11 @@ daty, inni lekarze, inne badania), NIE łącz ich i NIE zwracaj tablicy. Zwróć
 obiekt opisujący pierwszy dokument i dodaj do niego pole "rozne_dokumenty": true.
 Program pokaże wtedy użytkownikowi, żeby wgrał je osobno.
 
-Wewnątrz łańcuchów znakowych escapuj cudzysłowy (\\") i nie wstawiaj surowych
-znaków nowej linii — użyj \\n.
+CUDZYSŁOWY: wewnątrz tekstu NIE UŻYWAJ prostego cudzysłowa ("). Jeśli dokument
+zawiera cytat albo wyrażenie w cudzysłowie, zapisz go polskimi cudzysłowami
+drukarskimi: „tak”. Prosty cudzysłów kończy łańcuch w JSON-ie i rozbija całą
+odpowiedź w połowie zdania — zdarzyło się to na zdaniu „częste »strzały bólowe«
+języka". Nie wstawiaj też surowych znaków nowej linii — użyj \\n.
 
 JSON ma mieć tę postać:
 
@@ -418,19 +421,68 @@ def _wytnij_json(txt: str):
     return txt[start:]          # niedomknięte — niech zdecyduje parser
 
 
+def _napraw_cudzyslowy(txt: str) -> str:
+    """Escapuje cudzysłowy, które są TREŚCIĄ, a nie końcem łańcucha.
+
+    NAJCZĘSTSZA PRZYCZYNA POPSUTEJ ODPOWIEDZI. Dokumentacja medyczna cytuje
+    słowa pacjenta („częste »strzały bólowe« języka"), a model potrafi otworzyć
+    cytat polskim cudzysłowem i zamknąć prostym. Prosty kończy łańcuch w JSON-ie
+    i cała struktura urywa się w połowie zdania.
+
+    Rozstrzygamy po tym, co następuje PO cudzysłowie: jeśli pierwszy niebiały
+    znak to `,` `}` `]` albo `:`, to był koniec łańcucha; cokolwiek innego znaczy,
+    że cudzysłów należy do tekstu i trzeba go zabezpieczyć. Poprawny JSON
+    przechodzi przez tę funkcję bez zmian.
+    """
+    wynik = []
+    w_lancuchu = False
+    ucieczka = False
+    for i, z in enumerate(txt):
+        if not w_lancuchu:
+            wynik.append(z)
+            if z == '"':
+                w_lancuchu = True
+            continue
+        if ucieczka:
+            wynik.append(z)
+            ucieczka = False
+            continue
+        if z == "\\":
+            wynik.append(z)
+            ucieczka = True
+            continue
+        if z == '"':
+            dalej = txt[i + 1:i + 40].lstrip()
+            if dalej[:1] in (",", "}", "]", ":", ""):
+                w_lancuchu = False
+                wynik.append(z)
+            else:
+                wynik.append('\\"')      # cudzysłów w treści — zabezpieczamy
+            continue
+        wynik.append(z)
+    return "".join(wynik)
+
+
 def _parsuj(surowy: str) -> dict:
     txt = re.sub(r"```(?:json)?|```", "", surowy or "").strip()
     wyciety = _wytnij_json(txt) or txt
     try:
         dane = json.loads(wyciety)
-    except json.JSONDecodeError as e:
-        # Do logów idzie surowa odpowiedź, bo bez niej takiego błędu nie da się
-        # zdiagnozować po fakcie — użytkownik widzi tylko komunikat.
-        print(f"[health_ai] niepoprawny JSON ({e}); odpowiedz modelu:\n{txt[:4000]}")
-        raise OdczytError(
-            "Nie udało się odczytać dokumentu — odpowiedź modelu była uszkodzona. "
-            "Spróbuj jeszcze raz; jeśli wgrywasz kilka stron, sprawdź, czy wszystkie "
-            "należą do tego samego badania.") from e
+    except json.JSONDecodeError:
+        # Druga szansa: najczęstsza usterka to niezaescapowany cudzysłów
+        # w cytacie z dokumentu. Naprawiamy i próbujemy jeszcze raz, zamiast
+        # kazać użytkownikowi wgrywać wszystko od nowa i płacić za drugi odczyt.
+        try:
+            dane = json.loads(_napraw_cudzyslowy(wyciety))
+            print("[health_ai] JSON naprawiony — cudzyslow w tresci dokumentu")
+        except json.JSONDecodeError as e:
+            # Do logów idzie surowa odpowiedź, bo bez niej takiego błędu nie da
+            # się zdiagnozować po fakcie — użytkownik widzi tylko komunikat.
+            print(f"[health_ai] niepoprawny JSON ({e}); odpowiedz modelu:\n{txt[:4000]}")
+            raise OdczytError(
+                "Nie udało się odczytać dokumentu — odpowiedź modelu była uszkodzona. "
+                "Spróbuj jeszcze raz; jeśli wgrywasz kilka stron, sprawdź, czy wszystkie "
+                "należą do tego samego badania.") from e
 
     # Tablica znaczy, że model uznał strony za ODRĘBNE dokumenty. Nie sklejamy
     # ich na siłę: dwie wizyty z różnych dni scalone w jeden wpis to gorsza
