@@ -19,6 +19,7 @@ import eat
 import eat_db
 import health
 import health_db
+import task_db
 import push
 from auth import get_current_user, require_admin, user_from_token, delete_firebase_user
 
@@ -40,6 +41,8 @@ try:
 except Exception as _e:
     print(f"[health] NIE zalozono tabel, sekcja zdrowia bedzie niedostepna: {_e!r}")
     _HEALTH_OK = False
+
+task_db.init_task_db()
 
 app = FastAPI(title="Budżet domowy")
 
