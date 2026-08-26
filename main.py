@@ -19,6 +19,7 @@ import eat
 import eat_db
 import health
 import health_db
+import task
 import task_db
 import push
 from auth import get_current_user, require_admin, user_from_token, delete_firebase_user
@@ -53,6 +54,8 @@ if _EAT_OK:
 
 if _HEALTH_OK:
     app.include_router(health.router)
+
+app.include_router(task.router)
 
 try:
     _BUILD = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
@@ -248,6 +251,11 @@ def skaner_page():
 @app.get("/health")
 def health_page():
     return _html("health.html")
+
+
+@app.get("/task")
+def task_page():
+    return _html("task.html")
 
 
 @app.get("/kategorie")
