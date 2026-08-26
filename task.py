@@ -17,21 +17,44 @@ def _hid(u: dict) -> int:
     return hid
 
 
-def _dane(d: dict) -> dict:
+def _dane(d: dict, nowe: bool) -> dict:
+    """`nowe=True` tylko przy tworzeniu zadania (POST) — `nowe=False` przy
+    edycji (PUT).
+
+    Dlaczego to ma znaczenie: `task_db.edytuj()` rozpoznaje ZAMIAR zmiany
+    rodzica (i osobno — zmiany prywatności) po samej OBECNOŚCI klucza
+    `parent_id` / `prywatne` w przekazanym słowniku, nie po jego wartości.
+    Gdybyśmy przy każdej edycji wstawiali `parent_id` bezwarunkowo (jak
+    poprzednio), zwykła zmiana samej daty czy tytułu byłaby odczytana jako
+    "przenieś na korzeń" i odczepiałaby zadanie od rodzica, bo klient
+    zwykle w ogóle nie przysyła `parent_id` przy takiej edycji. Dlatego przy
+    PUT wstawiamy `parent_id` / `prywatne` WYŁĄCZNIE gdy klient naprawdę je
+    przysłał. Przy POST nowe zadanie zawsze może być dzieckiem, więc klucz
+    `parent_id` ma być zawsze — nawet brak wartości to świadome "bez rodzica".
+
+    Identyfikator właściciela prywatnego zadania (`prywatne_dla`) NIGDY nie
+    jest czytany z żądania — mógłby wskazać cudzy user_id i wstawić zadanie
+    do cudzej prywatnej skrzynki. Jedyne dopuszczalne wejście od klienta to
+    logiczna flaga `prywatne`; identyfikator dokłada wyłącznie kod endpointu
+    na podstawie zalogowanej sesji (`current_user["user_id"]`).
+    """
     tytul = (d.get("tytul") or "").strip()
     if not tytul:
         raise HTTPException(400, "Podaj treść zadania")
-    return {
+    dane = {
         "tytul": tytul[:300],
         "opis": (d.get("opis") or "").strip() or None,
         "termin": d.get("termin") or None,
         "pora": d.get("pora") or None,
-        "parent_id": d.get("parent_id") or None,
         "wykonawca_user_id": d.get("wykonawca_user_id") or None,
         "wykonawca_virtual_id": d.get("wykonawca_virtual_id") or None,
-        "prywatne_dla": d.get("prywatne_dla") or None,
         "kamien_milowy": bool(d.get("kamien_milowy")),
     }
+    if nowe or "parent_id" in d:
+        dane["parent_id"] = d.get("parent_id") or None
+    if "prywatne" in d:
+        dane["prywatne"] = bool(d.get("prywatne"))
+    return dane
 
 
 @router.get("/zadania")
@@ -45,7 +68,7 @@ def lista_zadan(zakres: str = "dzis", osoba: int | None = None,
 
 @router.post("/zadania")
 def nowe_zadanie(dane: dict, current_user: dict = Depends(get_current_user)):
-    d = _dane(dane)
+    d = _dane(dane, nowe=True)
     # Prywatność ustawia się wyłącznie na sobie — przekazany identyfikator
     # innego użytkownika byłby cudzą skrzynką.
     if dane.get("prywatne"):
@@ -61,7 +84,7 @@ def edytuj_zadanie(zadanie_id: int, dane: dict,
                    current_user: dict = Depends(get_current_user)):
     try:
         ok = task_db.edytuj(_hid(current_user), current_user["user_id"], zadanie_id,
-                            _dane(dane))
+                            _dane(dane, nowe=False))
     except ValueError as e:
         raise HTTPException(400, str(e))
     if not ok:
