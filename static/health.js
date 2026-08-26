@@ -551,6 +551,23 @@ function sekcjeTresci(d) {
     </details>` : ''}`;
 }
 
+// Przepisuje to, co użytkownik zdążył poprawić w polach, z powrotem do odczytu.
+// Wywołuj PRZED każdym przerysowaniem podglądu — ekran budowany jest z `odczyt`,
+// więc bez tego dodanie problemu skasowałoby poprawioną nazwę badania albo datę.
+function zachowajPolaPodgladu() {
+  if (!odczyt || !odczyt.dokument) return;
+  const w = (id) => {
+    const el = document.getElementById(id);
+    return el ? el.value : undefined;
+  };
+  const d = odczyt.dokument;
+  if (w('p-nazwa') !== undefined) d.nazwa = w('p-nazwa').trim() || d.nazwa;
+  if (w('p-rodzaj') !== undefined) d.rodzaj = w('p-rodzaj');
+  if (w('p-data') !== undefined) d.data_badania = w('p-data') || null;
+  if (w('p-placowka') !== undefined) d.placowka = w('p-placowka').trim() || null;
+  Object.assign(d, daneWizyty());
+}
+
 // ── widok: podgląd przed zapisem ────────────────────────────────────────────
 
 function rysujPodglad() {
@@ -610,17 +627,22 @@ function rysujPodglad() {
 
     ${sekcjeTresci(d)}
 
-    ${problemy.length ? `<div class="karta">
+    <div class="karta">
       <h2>Przypisz do problemu</h2>
       <div class="filtry" id="p-problemy">
         ${problemy.map((p) => `<button class="chip" type="button" data-pr="${p.id}"
             aria-pressed="${wybraneProblemy.has(p.id)}">
             <span class="kropka-pr" style="background: var(--pr-${p.kolor % 8})"></span>${esc(p.nazwa)}
           </button>`).join('')}
+        <button class="chip dodaj" type="button" id="p-nowy">+ Nowy problem</button>
+      </div>
+      <div class="pole" id="p-nowy-pole" style="display:none;margin-top:10px">
+        <label for="p-nowa-nazwa">Nazwa problemu</label>
+        <input id="p-nowa-nazwa" autocomplete="off" placeholder="np. Ból pleców">
       </div>
       <div class="uwaga">Przypnij od razu, zamiast wracać do tego po zapisie.
         Jedno badanie może należeć do kilku problemów.</div>
-    </div>` : ''}
+    </div>
 
     <div class="karta dokladanie">
       <b>Dokument ma dalszy ciąg?</b>
@@ -647,6 +669,44 @@ function rysujPodglad() {
     const id = Number(b.dataset.pr);
     if (wybraneProblemy.has(id)) wybraneProblemy.delete(id); else wybraneProblemy.add(id);
     b.setAttribute('aria-pressed', wybraneProblemy.has(id));
+  };
+
+  // NOWY PROBLEM WPROST STĄD. Skanujesz zwykle wtedy, gdy dzieje się coś
+  // nowego — czyli dokładnie wtedy, gdy właściwego problemu jeszcze nie ma.
+  // Odsyłanie po niego na inny ekran kończyłoby się nieprzypięciem niczego.
+  const nowyBtn = document.getElementById('p-nowy');
+  if (nowyBtn) nowyBtn.onclick = async () => {
+    const pole = document.getElementById('p-nowy-pole');
+    const wpis = document.getElementById('p-nowa-nazwa');
+    if (pole.style.display === 'none') {
+      pole.style.display = '';
+      wpis.focus();
+      return;
+    }
+    const nazwa = wpis.value.trim();
+    if (!nazwa) { wpis.focus(); return; }
+    nowyBtn.disabled = true;
+    try {
+      const r = await authFetch('/api/health/problemy', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nazwa, osoba_id: osobaId, kolor: problemy.length }),
+      });
+      if (!r.ok) throw new Error();
+      const { id } = await r.json();
+      await wczytajProblemy();
+      wybraneProblemy.add(id);       // świeżo utworzony od razu zaznaczony
+      zachowajPolaPodgladu();        // patrz niżej — przerysowanie kasuje pola
+      rysujPodglad();                // nowy problem pojawia się wśród kafelków
+    } catch {
+      nowyBtn.disabled = false;
+      toast('Nie udało się dodać problemu.', 'blad');
+    }
+  };
+  const wpisNowy = document.getElementById('p-nowa-nazwa');
+  if (wpisNowy) wpisNowy.onkeydown = (ev) => {
+    // Enter w polu ma robić to samo co przycisk — inaczej trzeba celować
+    // w przycisk po wpisaniu nazwy, co na telefonie jest uciążliwe.
+    if (ev.key === 'Enter') { ev.preventDefault(); nowyBtn.click(); }
   };
   // Przełączenie rodzaju na „wizyta" odsłania pola specjalisty bez przerysowania
   // ekranu — przerysowanie zgubiłoby to, co użytkownik zdążył poprawić wyżej.
