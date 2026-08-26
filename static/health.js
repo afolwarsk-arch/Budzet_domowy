@@ -24,6 +24,7 @@ const RODZAJE = {
   obrazowe: 'Badanie obrazowe',
   wizyta: 'Wizyta',
   skierowanie: 'Skierowanie',
+  recepta: 'Recepta',
   inne: 'Inne',
 };
 
@@ -507,11 +508,19 @@ function karta(tytul, tresc, klasa) {
   return `<div class="karta"><h2>${tytul}</h2><div class="${klasa || 'proza'}">${tresc}</div></div>`;
 }
 
-// Skierowanie czyta się inaczej niż wynik: opisuje coś, co ma się DOPIERO
-// wydarzyć. Najważniejszy jest kod, z którym się rejestrujesz, i termin
-// ważności — jedno i drugie ma być widoczne bez czytania prozy.
+// Skierowanie i recepta czytają się inaczej niż wynik: opisują coś, co ma się
+// DOPIERO wydarzyć. Najważniejszy jest kod — przy skierowaniu dyktujesz go
+// w rejestracji, przy recepcie w aptece — i termin ważności. Jedno i drugie
+// ma być widoczne bez czytania prozy. To samo pole w bazie, bo rola jest ta sama;
+// różni się tylko podpis, żeby nikt nie szukał „skierowania" na recepcie.
+const KODY = {
+  skierowanie: 'kod e-skierowania',
+  recepta: 'kod e-recepty',
+};
+
 function kartaSkierowania(d) {
-  if (d.rodzaj !== 'skierowanie' && !d.kod_eskierowania && !d.wazne_do) return '';
+  const doPrzyszlosci = d.rodzaj === 'skierowanie' || d.rodzaj === 'recepta';
+  if (!doPrzyszlosci && !d.kod_eskierowania && !d.wazne_do) return '';
   const dzis = new Date(); dzis.setHours(0, 0, 0, 0);
   let stan = '';
   if (d.wazne_do) {
@@ -522,13 +531,13 @@ function kartaSkierowania(d) {
   }
   return `
     <div class="karta">
-      <h2>Skierowanie</h2>
+      <h2>${RODZAJE[d.rodzaj] || 'Skierowanie'}</h2>
       ${d.kod_eskierowania ? `<div class="kod-e">
-        <span class="kod-e-etykieta">kod e-skierowania</span>
+        <span class="kod-e-etykieta">${KODY[d.rodzaj] || 'kod dostępowy'}</span>
         <span class="kod-e-cyfry">${esc(d.kod_eskierowania)}</span>
       </div>` : ''}
       <div class="dok-pod">
-        ${d.specjalizacja ? `<span>do: ${esc(d.specjalizacja)}</span>` : ''}
+        ${d.specjalizacja && d.rodzaj !== 'recepta' ? `<span>do: ${esc(d.specjalizacja)}</span>` : ''}
         ${d.tryb ? `<span class="znacznik">${esc(d.tryb)}</span>` : ''}
         ${d.wazne_do ? `<span>ważne do ${dataPl(d.wazne_do)}</span>` : ''}
         ${stan}

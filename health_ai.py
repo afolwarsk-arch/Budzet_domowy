@@ -66,7 +66,7 @@ znaków nowej linii — użyj \\n.
 JSON ma mieć tę postać:
 
 {
-  "rodzaj": "lab" | "obrazowe" | "wizyta" | "skierowanie" | "inne",
+  "rodzaj": "lab" | "obrazowe" | "wizyta" | "skierowanie" | "recepta" | "inne",
   "nazwa": "Morfologia krwi obwodowej",
   "data_badania": "2026-08-14",
   "data_do": null,
@@ -138,6 +138,13 @@ RODZAJ DOKUMENTU:
   "lekarz" (kto skierował), "rozpoznanie" i "kod_icd10" (powód skierowania).
   Data wystawienia idzie do "data_badania". Wyniki zostają puste — skierowanie
   niczego nie mierzy.
+- "recepta" — recepta albo wydruk informacyjny e-recepty. Sercem dokumentu są
+  LEKI: wypisz każdy do tablicy "leki". Poza tym wypełnij "kod_eskierowania"
+  (czterocyfrowy kod dostępowy, którym wykupuje się lek w aptece — to samo pole
+  co przy skierowaniu, bo rola jest ta sama), "wazne_do" (termin realizacji,
+  jeśli podany — recepta zwykle traci ważność po 30 dniach, antybiotyk po 7),
+  "lekarz" (kto wystawił) i "data_badania" (data wystawienia). Wyniki zostają
+  puste. Jeśli na dokumencie jest też rozpoznanie, przepisz je normalnie.
 - "inne" — cokolwiek innego (zwolnienie, szczepienie, zaświadczenie).
 
 ROZBICIE WIZYTY NA CZĘŚCI. Karta wizyty sama podaje ten podział nagłówkami —
@@ -448,7 +455,7 @@ def _parsuj(surowy: str) -> dict:
                     if isinstance(l, dict) and (l.get("nazwa") or "").strip()]
     if not (dane.get("nazwa") or "").strip():
         dane["nazwa"] = "Badanie"
-    if dane.get("rodzaj") not in ("lab", "obrazowe", "wizyta", "skierowanie", "inne"):
+    if dane.get("rodzaj") not in ("lab", "obrazowe", "wizyta", "skierowanie", "recepta", "inne"):
         dane["rodzaj"] = "lab"
     return dane
 

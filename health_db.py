@@ -24,10 +24,11 @@ poza normą stwierdzony przez diagnostę — i nie dałoby się ich odróżnić.
 
 from database import get_db
 
-# Cztery rodzaje dokumentu, bo każdy czyta się inaczej. Rozdzielone nie dla
-# porządku, tylko dlatego, że sterują wyglądem ekranu: „lab" pokazuje tabelę
-# wyników, „obrazowe" i „wizyta" pokazują opis, bo tam cała treść jest w prozie.
-RODZAJE = ("lab", "obrazowe", "wizyta", "skierowanie", "inne")
+# Rodzaje dokumentu — rozdzielone nie dla porządku, tylko dlatego, że sterują
+# wyglądem ekranu: „lab" pokazuje tabelę wyników, „obrazowe" i „wizyta" pokazują
+# prozę, a „skierowanie" i „recepta" wysuwają na wierzch kod i termin ważności,
+# bo opisują coś, co ma się dopiero wydarzyć.
+RODZAJE = ("lab", "obrazowe", "wizyta", "skierowanie", "recepta", "inne")
 
 # Operator przy wyniku. Laboratorium wydaje „TSH <0,005", bo poniżej progu
 # czułości metody nie da się zmierzyć wartości — tylko stwierdzić, że jest
