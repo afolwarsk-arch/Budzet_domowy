@@ -160,6 +160,24 @@ async def zapisz(
     return {"id": dok_id}
 
 
+@router.patch("/dokumenty/{dokument_id}")
+def popraw_dokument(dokument_id: int, dane: dict,
+                    current_user: dict = Depends(get_current_user)):
+    """Poprawia opis zapisanego badania — nazwę, datę, placówkę, a przy wizycie
+    specjalizację, lekarza i formę.
+
+    WYNIKÓW NIE RUSZAMY. Są przepisane z papieru i mają zostać takie, jakie
+    wydało laboratorium; nagłówek to co innego — specjalizacji czy nazwiska
+    lekarza często nie ma na dokumencie i dopisuje się je z pamięci.
+    """
+    hid = _hid(current_user)
+    if not health_db.dokument(hid, dokument_id):
+        raise HTTPException(404, "Nie ma takiego dokumentu")
+    if not health_db.edytuj_dokument(hid, dokument_id, dane):
+        raise HTTPException(400, "Nie ma czego zmienić")
+    return {"ok": True}
+
+
 @router.delete("/dokumenty/{dokument_id}")
 def usun(dokument_id: int, current_user: dict = Depends(get_current_user)):
     if not health_db.usun_dokument(_hid(current_user), dokument_id):

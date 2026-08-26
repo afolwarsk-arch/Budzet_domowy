@@ -60,6 +60,9 @@ Zwróć WYŁĄCZNIE JSON tej postaci:
   "data_do": null,
   "data_pobrania": "2026-08-13",
   "placowka": "ALAB Laboratoria",
+  "specjalizacja": "stomatolog",
+  "lekarz": "dr n. med. Anna Kowalska",
+  "forma": "stacjonarna",
   "numer_badania": "12345/26",
   "opis": "...",
   "rozpoznanie": "...",
@@ -101,6 +104,18 @@ RODZAJ DOKUMENTU:
   przedmiotowe do "opis", rozpoznanie do "rozpoznanie", ICD-10 do "kod_icd10",
   zalecenia do "zalecenia".
 - "inne" — cokolwiek innego (skierowanie, zwolnienie, szczepienie).
+
+PRZY WIZYCIE WYPEŁNIJ TAKŻE:
+- "specjalizacja" — czyja to poradnia albo jakim specjalistą jest podpisany
+  lekarz: "stomatolog", "neurolog", "dermatolog", "lekarz rodzinny". Bierz to
+  z pieczątki, nagłówka poradni albo z tytułu ("specjalista chorób wewnętrznych").
+  Zapisz małą literą, w mianowniku. Nie zgaduj po treści wizyty — brak
+  specjalizacji na dokumencie znaczy puste pole.
+- "lekarz" — imię i nazwisko razem z tytułem, tak jak na pieczątce.
+- "forma" — "zdalna", jeśli dokument mówi o teleporadzie, telekonsultacji albo
+  poradzie na odległość; "stacjonarna", jeśli wprost pisze o wizycie w gabinecie
+  albo osobistej. Gdy nie ma o tym ani słowa, zostaw puste — teleporada bywa
+  nieoznaczona, ale zgadywanie zrobiłoby z braku informacji fałszywą pewność.
 
 NAJWAŻNIEJSZE SZCZEGÓŁY:
 

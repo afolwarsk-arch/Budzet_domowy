@@ -84,6 +84,17 @@ def init_health_db() -> None:
         # hospitalizacja), a data pobrania materiału bywa inna niż data wyniku —
         # przy posiewie różnica to kilka dni i to ona ustawia kolejność zdarzeń.
         cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS data_do DATE")
+
+        # Kto przyjmował i w jakim trybie. Przy wizycie sama nazwa („Konsultacja")
+        # nie mówi nic — a szuka się właśnie po specjalizacji („kiedy byliśmy
+        # u neurologa?"). `specjalizacja` i `lekarz` to zwykły tekst przepisany
+        # z pieczątki, bez słownika: specjalizacji jest kilkadziesiąt, lista
+        # zawsze byłaby niepełna, a nietypowy przypadek lądowałby w „Inne”.
+        cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS specjalizacja TEXT")
+        cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS lekarz TEXT")
+        # 'stacjonarna' albo 'zdalna'. Teleporada bywa niepodpisana inaczej niż
+        # słowem w nagłówku, a po roku to jedyny ślad, że wizyty nie było na żywo.
+        cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS forma TEXT")
         cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS data_pobrania DATE")
         # Numer z papieru — jedyny sposób, żeby dopasować nasz wpis do oryginału
         # w laboratorium, gdy trzeba coś reklamować albo dosłać.
@@ -249,7 +260,8 @@ def osoba_po_id(household_id: int, osoba_id: int) -> dict | None:
 _POLA_DOK = """d.id, d.osoba_id, d.rodzaj, d.nazwa, d.data_badania, d.data_do,
                d.data_pobrania, d.placowka, d.opis, d.rozpoznanie, d.kod_icd10,
                d.zalecenia, d.numer_badania, d.data_nastepnego, d.kontekst,
-               d.norma_wg, d.ukryty, d.dodane_przez, d.created_at"""
+               d.norma_wg, d.specjalizacja, d.lekarz, d.forma,
+               d.ukryty, d.dodane_przez, d.created_at"""
 
 
 # Problemy przypięte do dokumentu, jednym podzapytaniem zamiast pytania na
@@ -331,8 +343,10 @@ def zapisz_dokument(household_id: int, osoba_id: int, dane: dict,
             """INSERT INTO health_dokumenty
                (household_id, osoba_id, rodzaj, nazwa, data_badania, data_do,
                 data_pobrania, placowka, opis, rozpoznanie, kod_icd10, zalecenia,
-                numer_badania, data_nastepnego, kontekst, norma_wg, dodane_przez)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                numer_badania, data_nastepnego, kontekst, norma_wg,
+                specjalizacja, lekarz, forma, dodane_przez)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                       %s, %s, %s, %s)
                RETURNING id""",
             (household_id, osoba_id,
              dane.get("rodzaj") or "lab",
@@ -341,6 +355,7 @@ def zapisz_dokument(household_id: int, osoba_id: int, dane: dict,
              dane.get("placowka"), dane.get("opis"), dane.get("rozpoznanie"),
              dane.get("kod_icd10"), dane.get("zalecenia"), dane.get("numer_badania"),
              dane.get("data_nastepnego"), dane.get("kontekst"), dane.get("norma_wg"),
+             dane.get("specjalizacja"), dane.get("lekarz"), dane.get("forma"),
              dodane_przez),
         )
         dok_id = cur.fetchone()["id"]
@@ -366,6 +381,43 @@ def _wstaw_wynik(cur, dokument_id: int, w: dict, kolejnosc: int) -> None:
          w.get("lokalizacja"), w.get("grupa"), w.get("metoda"),
          w.get("wartosc_odniesienia"), w.get("komentarz"), kolejnosc),
     )
+
+
+# ── edycja nagłówka ─────────────────────────────────────────────────────────
+# Zmieniamy WYŁĄCZNIE opis dokumentu, nigdy wyników. Wynik jest przepisany
+# z papieru i ma zostać taki, jaki wydało laboratorium — poprawianie liczb
+# po fakcie zatarłoby różnicę między tym, co zmierzono, a tym, co ktoś pamięta.
+# Nagłówek to co innego: specjalizacji i nazwiska lekarza często nie ma na
+# skierowaniu, a dopisuje się je z pamięci tydzień później.
+_POLA_EDYCJI = ("nazwa", "data_badania", "data_do", "placowka", "specjalizacja",
+                "lekarz", "forma", "rozpoznanie", "kod_icd10", "zalecenia",
+                "data_nastepnego", "kontekst")
+
+
+def edytuj_dokument(household_id: int, dokument_id: int, dane: dict) -> bool:
+    """Aktualizuje tylko te pola nagłówka, które faktycznie przyszły w żądaniu.
+
+    Budujemy zapytanie z białej listy `_POLA_EDYCJI`, więc nazwa kolumny nigdy
+    nie pochodzi od użytkownika — wartości i tak idą parametrami.
+    """
+    ustaw, wartosci = [], []
+    for pole in _POLA_EDYCJI:
+        if pole in dane:
+            wartosc = dane[pole]
+            if isinstance(wartosc, str):
+                wartosc = wartosc.strip() or None
+            # Nazwa jest wymagana przez schemat — pusta zostawia poprzednią.
+            if pole == "nazwa" and not wartosc:
+                continue
+            ustaw.append(f"{pole} = %s")
+            wartosci.append(wartosc)
+    if not ustaw:
+        return False
+    with get_db() as cur:
+        cur.execute(f"UPDATE health_dokumenty SET {', '.join(ustaw)} "
+                    "WHERE id = %s AND household_id = %s",
+                    (*wartosci, dokument_id, household_id))
+        return cur.rowcount > 0
 
 
 def usun_dokument(household_id: int, dokument_id: int) -> bool:

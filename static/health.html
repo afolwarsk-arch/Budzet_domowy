@@ -56,6 +56,12 @@
     .czekaj b { font-size: 15px; color: var(--heading); }
     .czekaj span { font-size: 13px; color: var(--muted); margin-top: 6px; max-width: 30ch; }
 
+    /* Kto przyjmował — specjalista, lekarz, forma wizyty. Osobna linia pod
+       nazwą wpisu, bo przy wizycie to ona jest właściwą informacją: „Konsultacja"
+       nic nie mówi, „stomatolog · dr Kowalska" mówi wszystko. */
+    .os-kto, .dok-kto { font-size: 12px; color: var(--muted); margin-top: 3px; }
+    .dok-kto { margin-top: 6px; }
+
     /* Podpis pod nagłówkiem dokumentu (rodzaj, data, placówka, numer). */
     .dok-pod { font-size: 12.5px; color: var(--muted); margin-top: 4px;
                display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -235,3 +241,4 @@
 <script defer src="/static/health.js"></script>
 </body>
 </html>
+

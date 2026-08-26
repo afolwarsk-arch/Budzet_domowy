@@ -181,6 +181,7 @@ function wpisOsi(d, poprzedni) {
         <span class="os-nazwa">${esc(d.nazwa)}</span>
         <span class="os-data">${dataPl(d.data_badania)}</span>
       </div>
+      ${opisWizyty(d) ? `<div class="os-kto">${opisWizyty(d)}</div>` : ''}
       <div class="os-pod">
         ${osobaId === null ? `<span class="os-osoba">${esc(d.osoba_imie || '')}</span>` : ''}
         <span class="znacznik">${esc(RODZAJE[d.rodzaj] || d.rodzaj)}</span>
@@ -415,6 +416,66 @@ async function odczytaj() {
   }
 }
 
+// ── wizyta: kto przyjmował ──────────────────────────────────────────────────
+//
+// Przy wizycie sama nazwa („Konsultacja") nie mówi nic, a po pół roku szuka się
+// właśnie po specjaliście: „kiedy byliśmy u neurologa?". Specjalizacja i lekarz
+// to zwykły tekst z pieczątki — bez słownika, bo specjalizacji są dziesiątki
+// i lista zawsze byłaby niepełna.
+
+const FORMY = { stacjonarna: 'wizyta w gabinecie', zdalna: 'teleporada' };
+
+function blokWizyty(d) {
+  // Pokazujemy przy wizycie, a przy innych rodzajach tylko wtedy, gdy coś już
+  // jest wpisane — pola „specjalista" przy morfologii byłyby hałasem.
+  const widoczny = d.rodzaj === 'wizyta' || d.specjalizacja || d.lekarz || d.forma;
+  return `
+    <div id="p-wizyta" style="${widoczny ? '' : 'display:none'}">
+      <div class="pola-2">
+        <div class="pole">
+          <label for="p-spec">Specjalista</label>
+          <input id="p-spec" list="lista-spec" autocomplete="off"
+                 placeholder="np. stomatolog" value="${esc(d.specjalizacja || '')}">
+          <datalist id="lista-spec">
+            ${SPECJALIZACJE.map((s) => `<option value="${esc(s)}">`).join('')}
+          </datalist>
+        </div>
+        <div class="pole">
+          <label for="p-forma">Forma</label>
+          <select id="p-forma">
+            <option value="">—</option>
+            ${Object.entries(FORMY).map(([k, v]) =>
+              `<option value="${k}"${k === d.forma ? ' selected' : ''}>${v}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="pole">
+        <label for="p-lekarz">Lekarz</label>
+        <input id="p-lekarz" autocomplete="off" placeholder="imię i nazwisko"
+               value="${esc(d.lekarz || '')}">
+      </div>
+    </div>`;
+}
+
+// Podpowiedzi, nie słownik: pole zostaje otwarte, a lista tylko skraca pisanie
+// tego, co powtarza się najczęściej.
+const SPECJALIZACJE = ['stomatolog', 'lekarz rodzinny', 'pediatra', 'ginekolog',
+  'dermatolog', 'neurolog', 'ortopeda', 'okulista', 'laryngolog', 'kardiolog',
+  'endokrynolog', 'psychiatra', 'fizjoterapeuta'];
+
+function daneWizyty() {
+  const w = (id) => {
+    const el = document.getElementById(id);
+    return el && el.value.trim() ? el.value.trim() : null;
+  };
+  return { specjalizacja: w('p-spec'), lekarz: w('p-lekarz'), forma: w('p-forma') };
+}
+
+// Opis wizyty jedną linią — na oś czasu i do nagłówka szczegółów.
+function opisWizyty(d) {
+  return [d.specjalizacja, d.lekarz, FORMY[d.forma]].filter(Boolean).map(esc).join(' · ');
+}
+
 // ── widok: podgląd przed zapisem ────────────────────────────────────────────
 
 function rysujPodglad() {
@@ -455,6 +516,7 @@ function rysujPodglad() {
         <label for="p-placowka">Placówka</label>
         <input id="p-placowka" value="${esc(d.placowka || '')}">
       </div>
+      ${blokWizyty(d)}
       <div class="uwaga">Zapisuję to przy osobie: <b>${esc(osoba ? osoba.imie : '—')}</b>.
         ${strony.length > 1 ? `Odczytane z <b>${stronyOpis(strony.length)}</b>. ` : ''}
         Zapisuję <b>tylko odczytane dane</b> — plik służył do odczytu i nie zostanie
@@ -494,6 +556,12 @@ function rysujPodglad() {
   document.getElementById('anuluj').onclick = () => {
     odczyt = null; strony = []; widok = 'os'; rysuj();
   };
+  // Przełączenie rodzaju na „wizyta" odsłania pola specjalisty bez przerysowania
+  // ekranu — przerysowanie zgubiłoby to, co użytkownik zdążył poprawić wyżej.
+  document.getElementById('p-rodzaj').onchange = (ev) => {
+    const blok = document.getElementById('p-wizyta');
+    if (blok) blok.style.display = ev.target.value === 'wizyta' ? '' : 'none';
+  };
   // Bez `capture`, w odróżnieniu od wejścia na ekranie głównym: drugą stronę
   // równie często się fotografuje, co dobiera z galerii albo z pobranych PDF-ów.
   document.getElementById('dodaj-strone').onclick = () => document.getElementById('plik-strona').click();
@@ -517,7 +585,7 @@ async function zapiszDokument() {
     rodzaj: document.getElementById('p-rodzaj').value,
     data_badania: document.getElementById('p-data').value || null,
     placowka: document.getElementById('p-placowka').value.trim() || null,
-  });
+  }, daneWizyty());
 
   const fd = new FormData();
   fd.append('osoba_id', String(osobaId));
@@ -897,6 +965,83 @@ async function zapiszProblemyDokumentu(dokumentId, ids) {
   });
 }
 
+// Formularz poprawek nagłówka zapisanego dokumentu. WYNIKÓW nie ruszamy —
+// są przepisane z papieru i mają zostać takie, jakie wydało laboratorium.
+// Nagłówek to co innego: specjalizacji ani nazwiska lekarza często nie ma na
+// dokumencie i dopisuje się je z pamięci, po fakcie.
+function blokPoprawek(d) {
+  return `
+    <div id="d-formularz" style="display:none;margin-top:14px">
+      <div class="pola-2">
+        <div class="pole">
+          <label for="e-nazwa">Nazwa</label>
+          <input id="e-nazwa" value="${esc(d.nazwa || '')}">
+        </div>
+        <div class="pole">
+          <label for="e-data">Data</label>
+          <input id="e-data" type="date" value="${esc((d.data_badania || '').slice(0, 10))}">
+        </div>
+      </div>
+      <div class="pole">
+        <label for="e-placowka">Placówka</label>
+        <input id="e-placowka" value="${esc(d.placowka || '')}">
+      </div>
+      <div class="pola-2">
+        <div class="pole">
+          <label for="e-spec">Specjalista</label>
+          <input id="e-spec" list="lista-spec-e" autocomplete="off"
+                 placeholder="np. stomatolog" value="${esc(d.specjalizacja || '')}">
+          <datalist id="lista-spec-e">
+            ${SPECJALIZACJE.map((s) => `<option value="${esc(s)}">`).join('')}
+          </datalist>
+        </div>
+        <div class="pole">
+          <label for="e-forma">Forma</label>
+          <select id="e-forma">
+            <option value="">—</option>
+            ${Object.entries(FORMY).map(([k, v]) =>
+              `<option value="${k}"${k === d.forma ? ' selected' : ''}>${v}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="pole">
+        <label for="e-lekarz">Lekarz</label>
+        <input id="e-lekarz" autocomplete="off" placeholder="imię i nazwisko"
+               value="${esc(d.lekarz || '')}">
+      </div>
+      <div class="akcje">
+        <button class="btn btn-outline" type="button" id="e-anuluj">Anuluj</button>
+        <button class="btn btn-primary" type="button" id="e-zapisz">Zapisz poprawki</button>
+      </div>
+    </div>`;
+}
+
+async function zapiszPoprawki(id) {
+  const v = (x) => {
+    const el = document.getElementById(x);
+    return el ? (el.value.trim() || null) : null;
+  };
+  const btn = document.getElementById('e-zapisz');
+  btn.disabled = true;
+  try {
+    const r = await authFetch(`/api/health/dokumenty/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nazwa: v('e-nazwa'), data_badania: v('e-data'), placowka: v('e-placowka'),
+        specjalizacja: v('e-spec'), lekarz: v('e-lekarz'), forma: v('e-forma'),
+      }),
+    });
+    if (!r.ok) throw new Error();
+    // Przeładowanie z serwera, a nie łatanie ekranu w miejscu: pokazuje to,
+    // co naprawdę zostało zapisane, razem z odświeżonym podpisem wizyty.
+    await otworzDokument(id);
+    toast('Zapisano.', 'ok');
+  } catch {
+    btn.disabled = false;
+    toast('Nie udało się zapisać poprawek.', 'blad');
+  }
+}
+
 function rysujSzczegoly() {
   const d = szczegoly;
   const w = d.wyniki || [];
@@ -933,8 +1078,15 @@ function rysujSzczegoly() {
         ${d.placowka ? `<span>${esc(d.placowka)}</span>` : ''}
         ${d.numer_badania ? `<span>nr ${esc(d.numer_badania)}</span>` : ''}
       </div>
+      ${opisWizyty(d) ? `<div class="dok-kto">${opisWizyty(d)}</div>` : ''}
       ${d.kontekst ? `<div class="uwaga">Kontekst badania: ${esc(d.kontekst)}</div>` : ''}
       ${d.norma_wg ? `<div class="uwaga">Normy wg: ${esc(d.norma_wg)}</div>` : ''}
+      <div class="akcje" style="margin-top:12px">
+        <button class="btn btn-outline" type="button" id="d-popraw">
+          ${d.rodzaj === 'wizyta' && !opisWizyty(d) ? 'Dopisz specjalistę' : 'Popraw opis'}
+        </button>
+      </div>
+      ${blokPoprawek(d)}
     </div>
 
     ${w.length ? `<div class="karta">
@@ -981,6 +1133,16 @@ function rysujSzczegoly() {
   };
 
   document.getElementById('wroc').onclick = () => { widok = 'os'; rysuj(); };
+  const popraw = document.getElementById('d-popraw');
+  const formularz = document.getElementById('d-formularz');
+  popraw.onclick = () => {
+    const otwarty = formularz.style.display !== 'none';
+    formularz.style.display = otwarty ? 'none' : '';
+    if (!otwarty) document.getElementById('e-spec').focus();
+  };
+  document.getElementById('e-anuluj').onclick = () => { formularz.style.display = 'none'; };
+  document.getElementById('e-zapisz').onclick = () => zapiszPoprawki(d.id);
+
   document.getElementById('usun').onclick = async () => {
     if (!confirm('Usunąć to badanie razem z wynikami?')) return;
     await authFetch('/api/health/dokumenty/' + d.id, { method: 'DELETE' });
