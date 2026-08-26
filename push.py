@@ -277,29 +277,40 @@ def wyslij_przypomnienia_zadan() -> None:
 
     Wysyłka do jednego adresata jest wyizolowana w `try` — awaria jednego
     zadania (np. martwa subskrypcja) nie może zablokować pozostałych z tego
-    samego tiku ani, przez brak wpisu w `oznacz_przypomniane`, spowodować
-    powtórki przy następnym."""
+    samego tiku. Każde zadanie jest oznaczane jako przypomniane ZARAZ PO
+    UDANEJ wysyłce (wewnątrz pętli, nie po niej). To ogranicza ryzyko
+    powtórki do jednego powiadomienia przy restarcie — całe zgrupowanie
+    nigdy się nie powtórzy."""
     if not skonfigurowane():
         return
     import task_db
-    zadania = task_db.do_przypomnienia()
-    wyslane = []
+    try:
+        zadania = task_db.do_przypomnienia()
+    except Exception as e:
+        print(f"[push] błąd pobrania listy zadań do przypomnień: {e!r}")
+        return
     for z in zadania:
         tytul = "Zadanie na dziś"
         tresc = z["tytul"]
+        adresat_info = None
         try:
             if z["prywatne_dla"]:
+                adresat_info = f"user {z['prywatne_dla']}"
                 wyslij_do_uzytkownika(z["prywatne_dla"], tytul, tresc, url="/task")
             elif z["wykonawca_user_id"]:
+                adresat_info = f"user {z['wykonawca_user_id']}"
                 wyslij_do_uzytkownika(z["wykonawca_user_id"], tytul, tresc, url="/task")
             else:
                 # Nikt nie przypisany albo wykonawcą jest osoba bez konta —
                 # taka osoba nie ma gdzie odebrać powiadomienia.
+                adresat_info = f"household {z['household_id']}"
                 wyslij_do_gospodarstwa(z["household_id"], tytul, tresc, url="/task")
-            wyslane.append(z["id"])
+            # Oznaczamy ZARAZ PO UDANEJ wysyłce, wewnątrz try — jeśli wysyłka
+            # się nie powiedzie, to zadanie będzie wybrane przy następnym tiku
+            # i spróbujemy jeszcze raz.
+            task_db.oznacz_przypomniane([z["id"]])
         except Exception as e:
-            print(f"[task] przypomnienie {z['id']} nie poszlo: {e}")
-    task_db.oznacz_przypomniane(wyslane)
+            print(f"[push] zadanie {z['id']} ({adresat_info}) nie poszło: {e!r}")
 
 
 if __name__ == "__main__":
