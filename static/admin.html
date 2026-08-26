@@ -546,6 +546,15 @@ async function wczytajKosztyOsob() {
 
 // Rozbicie kosztów AI na moduły — dociągane osobno, żeby błąd tej jednej tabeli
 // nie zabrał całej strony statystyk.
+
+// 1 zapytanie, 2–4 zapytania, 5+ zapytań — z wyjątkiem nastek, które mimo
+// końcówki biorą formę mnogą („12 zapytań", nie „12 zapytania").
+function odmienZapytania(n) {
+  if (n === 1) return 'zapytanie';
+  const j = n % 10, d = n % 100;
+  return (j >= 2 && j <= 4 && (d < 12 || d > 14)) ? 'zapytania' : 'zapytań';
+}
+
 async function wczytajKosztyModulow() {
   const box = document.getElementById('usage-moduly-tresc');
   if (!box) return;
@@ -562,7 +571,7 @@ async function wczytajKosztyModulow() {
       return `<div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:6px">
           <b style="color:var(--text);font-size:0.95rem">wiem. ${modul}</b>
-          <span style="color:var(--text)"><b>$${suma.toFixed(4)}</b> · ${zapytania} zapytań</span>
+          <span style="color:var(--text)"><b>$${suma.toFixed(4)}</b> · ${zapytania} ${odmienZapytania(zapytania)}</span>
         </div>
         ${lista.map((w) => `<div style="display:flex;justify-content:space-between;padding:3px 0">
             <span>${w.endpoint}</span>
