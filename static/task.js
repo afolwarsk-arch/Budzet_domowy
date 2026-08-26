@@ -375,32 +375,44 @@ function rysujSzczegoly() {
   };
 
   document.getElementById('s-usun').onclick = () => {
-    const maDzieci = zadania.some((z) => z.parent_id === w.id);
-    usunZadanie(w.id, w.tytul, maDzieci);
+    usunZadanie(w.id, w.tytul);
   };
 }
 
 async function zapiszSzczegoly(id, dane) {
-  const r = await authFetch(`/api/task/zadania/${id}`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(dane),
-  });
-  if (!r.ok) {
-    const e = await r.json().catch(() => ({}));
-    toast(e.detail || 'Nie udało się zapisać.', 'blad');
+  try {
+    const r = await authFetch(`/api/task/zadania/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dane),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      toast(e.detail || 'Nie udało się zapisać.', 'blad');
+      return false;
+    }
+    toast('Zapisano.', 'ok');
+    return true;
+  } catch {
+    toast('Błąd połączenia. Spróbuj ponownie.', 'blad');
     return false;
   }
-  toast('Zapisano.', 'ok');
-  return true;
 }
 
-async function usunZadanie(id, tytul, maDzieci) {
+async function usunZadanie(id, tytul) {
+  // Nie liczymy dzieci z filtrowanej listy `zadania`, bo zawiera tylko zadania
+  // z bieżącego zakresu (Dziś/Nadchodzące/Zrobione). Krok, który nie pasuje do
+  // zakresu, nie będzie wykryty — wtedy pytanie nie ostrzega o nim, a kaskadowe
+  // usuwanie go i tak skasuje. Zawsze ostrzegamy, że usunięcie zabiera kroki.
   if (!(await potwierdz({
     tytul: `Usunąć „${tytul}"?`,
-    tresc: maDzieci ? 'Usunie też wszystkie kroki w środku.' : '',
+    tresc: 'Usunie też wszystkie kroki w środku, łącznie z już zrobionymi.',
     tak: 'Usuń', groznie: true,
   }))) return;
-  const r = await authFetch(`/api/task/zadania/${id}`, { method: 'DELETE' });
-  if (!r.ok) { toast('Nie udało się usunąć.', 'blad'); return; }
-  wczytaj();
+  try {
+    const r = await authFetch(`/api/task/zadania/${id}`, { method: 'DELETE' });
+    if (!r.ok) { toast('Nie udało się usunąć.', 'blad'); return; }
+    wczytaj();
+  } catch {
+    toast('Błąd połączenia. Spróbuj ponownie.', 'blad');
+  }
 }
