@@ -324,7 +324,39 @@ def czytaj_dokument(strony: list[tuple[bytes, str]],
     tresc.append({"type": "text", "text": polecenie})
 
     client = anthropic.Anthropic()
-    msg = client.messages.create(
+    try:
+        msg = _zapytaj(client, tresc)
+    except anthropic.APIStatusError as e:
+        raise OdczytError(_komunikat_api(e)) from e
+    if getattr(msg, "stop_reason", None) == "max_tokens":
+        raise OdczytError(
+            "Dokument jest za długi, żeby przepisać go w całości. Wgraj go "
+            "w mniejszych częściach — na przykład osobno wyniki i osobno opis.")
+    return _parsuj(msg.content[0].text), _usage(msg)
+
+
+def _komunikat_api(e) -> str:
+    """Zamienia błąd API na zdanie po polsku.
+
+    SUROWA ODPOWIEDŹ API NIE MA PRAWA TRAFIĆ NA EKRAN. Użytkownik zobaczył
+    kiedyś „Error code: 400 - {'type': 'error', 'error': {...}}" i nie miał
+    z tego żadnej informacji — a chodziło po prostu o wyczerpane środki.
+    """
+    tresc = str(getattr(e, "message", "") or e).lower()
+    if "credit balance" in tresc or "billing" in tresc:
+        return ("Skończyły się środki na koncie Anthropic API — odczyt dokumentów "
+                "jest chwilowo niemożliwy. Doładuj konto w Plans & Billing na "
+                "console.anthropic.com. To osobny portfel niż subskrypcja Claude.")
+    if getattr(e, "status_code", None) == 429:
+        return ("Za dużo zapytań naraz — odczekaj chwilę i spróbuj ponownie.")
+    if getattr(e, "status_code", 0) >= 500:
+        return ("Usługa odczytu chwilowo nie odpowiada. Spróbuj za kilka minut — "
+                "plik nie został nigdzie zapisany.")
+    return "Nie udało się odczytać dokumentu. Spróbuj ponownie."
+
+
+def _zapytaj(client, tresc):
+    return client.messages.create(
         model=MODEL,
         # 16000, nie 8000: przy dokumencie wielostronicowym doszły wywiad,
         # badanie, pouczenia i lista leków. Ucięta odpowiedź kończy się urwanym
@@ -333,11 +365,6 @@ def czytaj_dokument(strony: list[tuple[bytes, str]],
         system=_PROMPT,
         messages=[{"role": "user", "content": tresc}],
     )
-    if getattr(msg, "stop_reason", None) == "max_tokens":
-        raise OdczytError(
-            "Dokument jest za długi, żeby przepisać go w całości. Wgraj go "
-            "w mniejszych częściach — na przykład osobno wyniki i osobno opis.")
-    return _parsuj(msg.content[0].text), _usage(msg)
 
 
 def _wytnij_json(txt: str):

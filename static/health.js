@@ -409,6 +409,15 @@ async function odczytaj() {
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || 'Nie udało się odczytać.');
     odczyt = d;
+    // Problemy należą do osoby, a filtr osi mógł być ustawiony na „Wszyscy" —
+    // dociągamy je dla tej osoby, przy której faktycznie zapiszemy dokument.
+    osobaZapisu = osobaPodgladu();
+    if (osobaZapisu && osobaId !== osobaZapisu) {
+      const poprzednia = osobaId;
+      osobaId = osobaZapisu;
+      await wczytajProblemy();
+      osobaId = poprzednia;
+    }
     widok = 'podglad';
     rysuj();
   } catch (e) {
@@ -551,6 +560,18 @@ function sekcjeTresci(d) {
     </details>` : ''}`;
 }
 
+// Osoba, przy której zapiszemy dokument. NIE JEST TYM SAMYM CO FILTR OSI:
+// na osi wolno wybrać „Wszyscy" (osobaId === null), a wtedy zapis nie miał
+// komu przypisać badania i kończył się błędem — dokument zawsze należy do
+// konkretnej osoby. Stąd jawne pole wyboru na ekranie zatwierdzania.
+let osobaZapisu = null;
+
+function osobaPodgladu() {
+  if (osobaZapisu && osoby.some((o) => o.id === osobaZapisu)) return osobaZapisu;
+  if (osobaId && osoby.some((o) => o.id === osobaId)) return osobaId;
+  return osoby.length ? osoby[0].id : null;
+}
+
 // Przepisuje to, co użytkownik zdążył poprawić w polach, z powrotem do odczytu.
 // Wywołuj PRZED każdym przerysowaniem podglądu — ekran budowany jest z `odczyt`,
 // więc bez tego dodanie problemu skasowałoby poprawioną nazwę badania albo datę.
@@ -609,7 +630,13 @@ function rysujPodglad() {
         <input id="p-placowka" value="${esc(d.placowka || '')}">
       </div>
       ${blokWizyty(d)}
-      <div class="uwaga">Zapisuję to przy osobie: <b>${esc(osoba ? osoba.imie : '—')}</b>.
+      <div class="pole">
+        <label for="p-osoba">Czyje to badanie</label>
+        <select id="p-osoba">
+          ${osoby.map((o) => `<option value="${o.id}"${o.id === osobaPodgladu() ? ' selected' : ''}>${esc(o.imie)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="uwaga">
         ${strony.length > 1 ? `Odczytane z <b>${stronyOpis(strony.length)}</b>. ` : ''}
         Zapisuję <b>tylko odczytane dane</b> — plik służył do odczytu i nie zostanie
         zachowany. Zatrzymaj oryginał u siebie, jeśli będzie potrzebny u lekarza.</div>
@@ -660,8 +687,22 @@ function rysujPodglad() {
     </div>`;
 
   document.getElementById('anuluj').onclick = () => {
-    odczyt = null; strony = []; wybraneProblemy = new Set(); widok = 'os'; rysuj();
+    odczyt = null; strony = []; wybraneProblemy = new Set(); osobaZapisu = null; widok = 'os'; rysuj();
   };
+  // Zmiana osoby przeładowuje listę problemów — problemy należą do osoby,
+  // więc kafelki poprzedniej byłyby po prostu nie do przypięcia.
+  const wyborOsoby = document.getElementById('p-osoba');
+  if (wyborOsoby) wyborOsoby.onchange = async () => {
+    osobaZapisu = Number(wyborOsoby.value);
+    wybraneProblemy = new Set();
+    const poprzednia = osobaId;
+    osobaId = osobaZapisu;
+    await wczytajProblemy();
+    osobaId = poprzednia;               // filtr osi zostaje nietknięty
+    zachowajPolaPodgladu();
+    rysujPodglad();
+  };
+
   const chipyProblemow = document.getElementById('p-problemy');
   if (chipyProblemow) chipyProblemow.onclick = (ev) => {
     const b = ev.target.closest('[data-pr]');
@@ -689,7 +730,7 @@ function rysujPodglad() {
     try {
       const r = await authFetch('/api/health/problemy', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nazwa, osoba_id: osobaId, kolor: problemy.length }),
+        body: JSON.stringify({ nazwa, osoba_id: osobaPodgladu(), kolor: problemy.length }),
       });
       if (!r.ok) throw new Error();
       const { id } = await r.json();
@@ -740,7 +781,7 @@ async function zapiszDokument() {
   }, daneWizyty());
 
   const fd = new FormData();
-  fd.append('osoba_id', String(osobaId));
+  fd.append('osoba_id', String(osobaPodgladu()));
   fd.append('dane', JSON.stringify(d));
 
   try {
@@ -754,7 +795,7 @@ async function zapiszDokument() {
       try { await zapiszProblemyDokumentu(id, [...wybraneProblemy]); }
       catch { toast('Badanie zapisane, ale nie udało się przypiąć problemu.', 'blad'); }
     }
-    odczyt = null; strony = []; wybraneProblemy = new Set(); widok = 'os';
+    odczyt = null; strony = []; wybraneProblemy = new Set(); osobaZapisu = null; widok = 'os';
     rysuj();
   } catch {
     btn.disabled = false;
