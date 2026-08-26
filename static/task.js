@@ -76,6 +76,41 @@ async function wczytaj() {
 
 window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(wczytaj));
 
+function podepnijPtaszki() {
+  const lista = document.querySelector('.zadania');
+  if (!lista) return;
+  lista.onclick = async (ev) => {
+    const b = ev.target.closest('[data-ptaszek]');
+    if (!b) return;
+    const id = Number(b.dataset.ptaszek);
+    const w = budujDrzewo(zadania).flatMap(splaszcz).find((x) => x.id === id);
+    if (!w) return;
+    const zrobione = w.status !== 'zrobione';
+    let kaskada = false;
+    const p = postep(w);
+    // Zamykanie poddrzewa PYTAMY, nie robimy po cichu: użytkownik odhacza
+    // rodzica często dlatego, że sprawa odpadła, a nie dlatego, że zrobił
+    // wszystkie kroki — a cicho zamknięte kroki znikają bez śladu.
+    if (zrobione && p.razem - p.gotowe > 0) {
+      kaskada = await potwierdz({
+        tytul: 'Zamknąć też kroki?',
+        tresc: `To zadanie ma ${p.razem - p.gotowe} nieskończonych kroków.`,
+        tak: 'Zamknij wszystko', nie: 'Tylko to zadanie',
+      });
+    }
+    const r = await authFetch(`/api/task/zadania/${id}/status`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zrobione, kaskada }),
+    });
+    if (!r.ok) { toast('Nie udało się zmienić zadania.', 'blad'); return; }
+    wczytaj();
+  };
+}
+
+function splaszcz(w) {
+  return [w].concat(w.dzieci.flatMap(splaszcz));
+}
+
 const ZAKRESY = [['dzis', 'Dziś'], ['nadchodzace', 'Nadchodzące'], ['zrobione', 'Zrobione']];
 
 function rysuj() {
