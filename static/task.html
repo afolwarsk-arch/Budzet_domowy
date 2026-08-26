@@ -13,7 +13,17 @@
   <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script defer src="/static/auth.js"></script>
   <style>
+    .gora { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .gora h1 { margin: 0; font-size: 1.25rem; }
+
     .filtry { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .chip { border: 1px solid var(--border); background: var(--surface); border-radius: 999px;
+            padding: 7px 12px; min-height: 38px; font: inherit; font-size: 12.5px;
+            cursor: pointer; color: var(--text); display: inline-flex; align-items: center;
+            gap: 6px; }
+    .chip[aria-pressed="true"] { border-color: var(--marka); background: var(--surface-2);
+            font-weight: 600; }
+
     .szybkie { display: flex; gap: 8px; margin-bottom: 16px; }
     .szybkie input { flex: 1; min-height: 46px; }
     .zad { display: flex; align-items: center; gap: 10px; padding: 12px;
@@ -21,7 +31,10 @@
     .zad.zrobione .zad-tytul { text-decoration: line-through; color: var(--muted); }
     .ptaszek { flex: none; width: 26px; height: 26px; border-radius: 50%;
                border: 1.5px solid var(--border); background: none; cursor: pointer;
-               color: var(--marka); font-size: 15px; line-height: 1; }
+               color: var(--marka); line-height: 1; display: flex; align-items: center;
+               justify-content: center; }
+    .ptaszek .ikona { display: flex; align-items: center; justify-content: center; }
+    .ptaszek .ikona svg { width: 16px; height: 16px; stroke-width: 2; }
     .zad-tresc { flex: 1; min-width: 0; }
     .zad-tytul { font-size: 14.5px; color: var(--text); }
     .zad-nast { font-size: 12px; color: var(--muted); margin-top: 2px; }

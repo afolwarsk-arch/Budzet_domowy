@@ -12,6 +12,16 @@ const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
+// Dzisiejsza data W CZASIE LOKALNYM. toISOString() daje UTC, więc między
+// północą a drugą w nocy pokazywałby jeszcze wczoraj i zaległe zadanie nie
+// zapalałoby się na czerwono.
+function dzisIso() {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dz = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${dz}`;
+}
+
 let zakres = 'dzis';        // dzis | nadchodzace | zrobione
 let zadania = [];           // płasko, jak z serwera
 let korzen = null;          // null = widok listy; liczba = wejście w zadanie
@@ -64,16 +74,6 @@ async function wczytaj() {
   rysuj();
 }
 
-async function szybkieDodanie(tytul) {
-  if (!tytul.trim()) return;
-  const r = await authFetch('/api/task/zadania', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tytul, parent_id: korzen }),
-  });
-  if (!r.ok) { toast('Nie udało się zapisać zadania.', 'blad'); return; }
-  await wczytaj();
-}
-
 window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(wczytaj));
 
 const ZAKRESY = [['dzis', 'Dziś'], ['nadchodzace', 'Nadchodzące'], ['zrobione', 'Zrobione']];
@@ -99,12 +99,21 @@ function rysuj() {
     zakres = b.dataset.z;
     wczytaj();
   };
-  document.getElementById('szybkie').onsubmit = (ev) => {
+  document.getElementById('szybkie').onsubmit = async (ev) => {
     ev.preventDefault();
     const pole = document.getElementById('sz-tytul');
     const t = pole.value;
-    pole.value = '';
-    szybkieDodanie(t);
+    if (!t.trim()) return;
+    const r = await authFetch('/api/task/zadania', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tytul: t.trim(), parent_id: korzen }),
+    });
+    if (r.ok) {
+      pole.value = '';
+      await wczytaj();
+    } else {
+      toast('Nie udało się zapisać zadania.', 'blad');
+    }
   };
   podepnijPtaszki();
 }
@@ -113,14 +122,14 @@ function wiersz(w, poziom) {
   const p = postep(w);
   const nast = p.razem && w.status !== 'zrobione' ? nastepnyKrok(w) : {};
   const spozniony = w.termin && w.status === 'otwarte' &&
-    w.termin.slice(0, 10) < new Date().toISOString().slice(0, 10);
+    w.termin.slice(0, 10) < dzisIso();
   // Wcięcia tylko do trzeciego poziomu — głębiej wchodzi się w zadanie.
   // Przy 412 px czwarty poziom zostawia na tytuł około 200 px.
   const wciecie = Math.min(poziom, 2) * 18;
   return `
     <div class="zad${w.status === 'zrobione' ? ' zrobione' : ''}" style="padding-left:${wciecie}px">
       <button class="ptaszek" type="button" data-ptaszek="${w.id}"
-              aria-label="Odhacz zadanie">${w.status === 'zrobione' ? '✓' : ''}</button>
+              aria-label="Odhacz zadanie">${w.status === 'zrobione' ? ikonaSvg('ptaszek') : ''}</button>
       <div class="zad-tresc">
         <div class="zad-tytul">${w.kamien_milowy ? '<span class="kamien"></span>' : ''}${esc(w.tytul)}</div>
         ${nast.tytul ? `<div class="zad-nast">następne: ${esc(nast.tytul)}</div>` : ''}
