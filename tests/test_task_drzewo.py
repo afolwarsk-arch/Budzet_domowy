@@ -1,6 +1,6 @@
 """Testy czystej logiki drzewa zadań — bez bazy, bez sieci."""
 
-from task_db import wykryj_cykl
+from task_drzewo import wykryj_cykl
 
 # pary: [(id, parent_id), ...] — całe drzewo gospodarstwa
 DRZEWO = [(1, None), (2, 1), (3, 2), (4, None)]
