@@ -44,6 +44,69 @@
     .kamien { display: inline-block; width: 9px; height: 9px; margin-right: 6px;
               background: var(--marka); transform: rotate(45deg); }
     .pusto { color: var(--muted); font-size: 13px; text-align: center; padding: 28px 12px; }
+
+    /* ── wejście w zadanie: okruszki, karta bieżącego zadania, strzałka ── */
+    .okruszki { display: flex; flex-wrap: wrap; align-items: center; gap: 2px;
+                margin-bottom: 12px; font-size: 12.5px; }
+    .okruszki button { background: none; border: none; font: inherit; font-size: 12.5px;
+                        color: var(--muted); cursor: pointer; padding: 4px 3px; min-height: 32px; }
+    .okruszki button:hover { color: var(--marka); }
+    .okruszki button:last-child { color: var(--heading); font-weight: 600; pointer-events: none; }
+    .okruszki span { color: var(--border); padding: 0 1px; }
+
+    .zad-korzen { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+                  border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+                  padding: 12px 14px; margin-bottom: 14px; }
+    .zad-korzen-tytul { font-size: 15px; font-weight: 600; color: var(--heading); }
+    .zad-korzen-postep { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .zad-korzen .btn { flex: none; min-height: 44px; }
+
+    .zad-strzalka { flex: none; width: 44px; height: 44px; margin-right: -10px; border: none;
+                    background: none; color: var(--muted); font-size: 20px; line-height: 1;
+                    cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .zad-strzalka:hover { color: var(--marka); }
+
+    /* Przycisk „Szczegóły" przy zadaniu dodanym przed chwilą przez szybkie
+       dodawanie — jedyna droga do formularza bez wchodzenia strzałką. */
+    .zad-szczegoly-btn { display: inline-flex; align-items: center; margin-top: 6px;
+                          border: 1px solid var(--border); background: var(--surface);
+                          color: var(--marka); border-radius: 8px; padding: 6px 12px;
+                          font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+                          min-height: 44px; }
+    .zad-szczegoly-btn:hover { border-color: var(--marka); }
+
+    /* ── formularz szczegółów (przeniesione wiernie z health.html) ── */
+    .pole { display: flex; flex-direction: column; gap: 4px; margin-bottom: 11px; }
+    .pole label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
+                  color: var(--muted); font-weight: 700; }
+    .pole input, .pole select, .pole textarea {
+      border: 1px solid var(--border); border-radius: 9px; padding: 10px 11px;
+      font: inherit; font-size: 14px; background: var(--surface); color: var(--text);
+      min-height: 44px; width: 100%; }
+    .pole textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
+    .pola-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+
+    .pole-cb { margin-bottom: 11px; }
+    .pole-cb label { display: flex; align-items: center; gap: 10px; font-size: 14px;
+                      color: var(--text); min-height: 44px; cursor: pointer; }
+    .pole-cb label.wylaczone { color: var(--muted); cursor: default; }
+    .pole-cb input[type="checkbox"] { width: 20px; height: 20px; flex: none;
+                                       accent-color: var(--marka); }
+    .pole-cb input[type="checkbox"]:disabled { cursor: not-allowed; }
+
+    .uwaga { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: -4px; }
+
+    /* Przyciski biorą wygląd z systemu (.btn + .btn-primary/-outline/-danger)
+       — tutaj tylko rozciągamy je na szerokość, bo na telefonie mają być
+       łatwe do trafienia kciukiem. */
+    .akcje { display: flex; gap: 9px; margin-top: 4px; }
+    .akcje .btn { flex: 1; min-height: 46px; justify-content: center; font-size: 14.5px; }
+
+    .wroc { background: none; border: none; color: var(--muted); font: inherit; font-size: 13.5px;
+            cursor: pointer; padding: 6px 0; margin-bottom: 8px; }
+    .wroc:hover { color: var(--accent); }
+
+    @media (max-width: 560px) { .pola-2 { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
