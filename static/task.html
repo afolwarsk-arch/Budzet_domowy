@@ -57,7 +57,9 @@
     .zad-korzen { display: flex; align-items: center; justify-content: space-between; gap: 10px;
                   border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
                   padding: 12px 14px; margin-bottom: 14px; }
-    .zad-korzen-tytul { font-size: 15px; font-weight: 600; color: var(--heading); }
+    .zad-korzen > div:first-child { min-width: 0; flex: 1; }
+    .zad-korzen-tytul { font-size: 15px; font-weight: 600; color: var(--heading);
+                         overflow-wrap: break-word; }
     .zad-korzen-postep { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .zad-korzen .btn { flex: none; min-height: 44px; }
 
