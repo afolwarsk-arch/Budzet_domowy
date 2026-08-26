@@ -268,19 +268,37 @@ def wyslij_przypomnienia_dzienne() -> None:
 
 # ── zadania (scheduler, co minutę) ──────────────────────────────────────────
 
+# Zadania, dla których wysyłka się powiodła, ale DWIE próby oznaczenia w bazie
+# (`task_db.oznacz_przypomniane`) zawiodły. Bez tego zbioru takie zadanie
+# zostałoby wybrane przez `do_przypomnienia()` ponownie za minutę — i tak co
+# minutę aż do końca dwudniowego okna, czyli telefon dzwoniący w kółko przy
+# każdej trwałej awarii zapisu. Zwykły `set` na poziomie modułu wystarcza:
+# znika przy restarcie procesu, ale restart to świeży start, nie powtórka tej
+# samej awarii. NIE usuwać jako „niepotrzebnej pamięci podręcznej" — to jedyna
+# zapora przed spamem, gdy zapis do bazy padnie trwale.
+_JUZ_WYSLANE: set[int] = set()
+
+
 def wyslij_przypomnienia_zadan() -> None:
     """Tik przypomnień o zadaniach. Woła go harmonogram co minutę.
 
     Osobnych zadań w harmonogramie per przypomnienie NIE rejestrujemy —
     zniknęłyby przy każdym restarcie kontenera, a Railway restartuje przy
-    każdym wdrożeniu. Stan trzyma baza, nie pamięć procesu.
+    każdym wdrożeniu. Stan trzyma baza, nie pamięć procesu (poza `_JUZ_WYSLANE`
+    — patrz komentarz przy definicji, to zapora awaryjna, nie główny mechanizm).
 
     Wysyłka do jednego adresata jest wyizolowana w `try` — awaria jednego
     zadania (np. martwa subskrypcja) nie może zablokować pozostałych z tego
     samego tiku. Każde zadanie jest oznaczane jako przypomniane ZARAZ PO
     UDANEJ wysyłce (wewnątrz pętli, nie po niej). To ogranicza ryzyko
     powtórki do jednego powiadomienia przy restarcie — całe zgrupowanie
-    nigdy się nie powtórzy."""
+    nigdy się nie powtórzy.
+
+    Wysyłka i oznaczenie są w OSOBNYCH `try` (nie jednym), żeby log mówił
+    prawdę o tym, który krok zawiódł. Gdy oznaczenie padnie, próbujemy raz
+    jeszcze od razu — to wystarcza na błąd chwilowy. Gdy padnie i druga
+    próba, zadanie ląduje w `_JUZ_WYSLANE`, żeby nie wysyłać go ponownie co
+    minutę."""
     if not skonfigurowane():
         return
     import task_db
@@ -289,28 +307,46 @@ def wyslij_przypomnienia_zadan() -> None:
     except Exception as e:
         print(f"[push] błąd pobrania listy zadań do przypomnień: {e!r}")
         return
+    zadania = [z for z in zadania if z["id"] not in _JUZ_WYSLANE]
+    if not zadania:
+        return
+    print(f"[push] tik zadań: {len(zadania)} do wysyłki")
     for z in zadania:
         tytul = "Zadanie na dziś"
         tresc = z["tytul"]
-        adresat_info = None
+        if z["prywatne_dla"]:
+            adresat_info = f"user {z['prywatne_dla']}"
+        elif z["wykonawca_user_id"]:
+            adresat_info = f"user {z['wykonawca_user_id']}"
+        else:
+            adresat_info = f"household {z['household_id']}"
+
         try:
             if z["prywatne_dla"]:
-                adresat_info = f"user {z['prywatne_dla']}"
                 wyslij_do_uzytkownika(z["prywatne_dla"], tytul, tresc, url="/task")
             elif z["wykonawca_user_id"]:
-                adresat_info = f"user {z['wykonawca_user_id']}"
                 wyslij_do_uzytkownika(z["wykonawca_user_id"], tytul, tresc, url="/task")
             else:
                 # Nikt nie przypisany albo wykonawcą jest osoba bez konta —
                 # taka osoba nie ma gdzie odebrać powiadomienia.
-                adresat_info = f"household {z['household_id']}"
                 wyslij_do_gospodarstwa(z["household_id"], tytul, tresc, url="/task")
-            # Oznaczamy ZARAZ PO UDANEJ wysyłce, wewnątrz try — jeśli wysyłka
-            # się nie powiedzie, to zadanie będzie wybrane przy następnym tiku
-            # i spróbujemy jeszcze raz.
-            task_db.oznacz_przypomniane([z["id"]])
         except Exception as e:
-            print(f"[push] zadanie {z['id']} ({adresat_info}) nie poszło: {e!r}")
+            print(f"[push] zadanie {z['id']} ({adresat_info}) — wysyłka nie poszła: {e!r}")
+            continue
+
+        # Wysyłka się powiodła. Oznaczenie próbujemy do dwóch razy — druga
+        # próba od razu, bo chodzi o złapanie błędu chwilowego (np. krótka
+        # niedostępność bazy), nie o odczekanie.
+        try:
+            task_db.oznacz_przypomniane([z["id"]])
+        except Exception as e1:
+            try:
+                task_db.oznacz_przypomniane([z["id"]])
+            except Exception as e2:
+                _JUZ_WYSLANE.add(z["id"])
+                print(f"[push] zadanie {z['id']} ({adresat_info}) — powiadomienie WYSŁANE, "
+                      f"ale zapis stanu nie poszedł dwukrotnie ({e1!r}, {e2!r}) — "
+                      f"pomijam dalej w tym procesie")
 
 
 if __name__ == "__main__":
