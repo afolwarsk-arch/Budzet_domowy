@@ -65,9 +65,20 @@ Zwróć WYŁĄCZNIE JSON tej postaci:
   "forma": "stacjonarna",
   "numer_badania": "12345/26",
   "opis": "...",
+  "wywiad": "...",
+  "badanie": "...",
+  "pouczenia": "...",
   "rozpoznanie": "...",
   "kod_icd10": "E11.9",
   "zalecenia": "...",
+  "leki": [
+    {
+      "nazwa": "Pregabalin Accord",
+      "dawka": "25 mg",
+      "dawkowanie": "1 x 2 kaps. wieczorem",
+      "odplatnosc": "100%"
+    }
+  ],
   "data_nastepnego": "2026-11-14",
   "kontekst": "22 tydzień ciąży",
   "norma_wg": "WHO 2021",
@@ -100,10 +111,41 @@ RODZAJ DOKUMENTU:
 - "obrazowe" — RTG, USG, tomografia, rezonans, mammografia. Tu prawie cała
   treść idzie do "opis", a "wyniki" zwykle zostaje puste. NIE streszczaj opisu
   — przepisz go w całości, bo to jest właściwa treść badania.
-- "wizyta" — karta wizyty, wypis ze szpitala, konsultacja. Wywiad i badanie
-  przedmiotowe do "opis", rozpoznanie do "rozpoznanie", ICD-10 do "kod_icd10",
-  zalecenia do "zalecenia".
+- "wizyta" — karta wizyty, wypis ze szpitala, konsultacja. Treść rozdziel na
+  osobne pola — patrz „ROZBICIE WIZYTY" niżej. Pola "opis" przy wizycie NIE
+  wypełniaj.
 - "inne" — cokolwiek innego (skierowanie, zwolnienie, szczepienie).
+
+ROZBICIE WIZYTY NA CZĘŚCI. Karta wizyty sama podaje ten podział nagłówkami —
+idź za nimi, nie sklejaj wszystkiego w jedno pole:
+- "wywiad" — co powiedział pacjent i co lekarz o nim odnotował (sekcja „Wywiad
+  lekarski"): objawy, od kiedy trwają, choroby przewlekłe, alergie, przyjmowane
+  leki. To jest właściwa treść wizyty.
+- "badanie" — sekcja „Badanie przedmiotowe": co lekarz stwierdził badając.
+  Przy teleporadzie bywa to samo zdanie o braku możliwości zbadania — przepisz je,
+  bo brak badania jest informacją.
+- "pouczenia" — STANDARDOWE FORMUŁY, które wyglądają tak samo na każdym takim
+  dokumencie: co robić przy pogorszeniu, numer 112, SOR, izba przyjęć,
+  informacje o ograniczeniach teleporady, o możliwości wizyty stacjonarnej,
+  potwierdzenia weryfikacji tożsamości i PESEL-u. Wrzuć je TUTAJ, nie do wywiadu.
+  Powód jest praktyczny: w jednej konsultacji realna medycyna to cztery linijki,
+  a te formuły potrafią zająć trzy czwarte tekstu i całkowicie ją przykryć.
+  Nie skracaj ich i nie streszczaj — po prostu trzymaj osobno.
+
+LEKI wypisz do tablicy "leki", każdy osobno, a nie w prozie zaleceń.
+Dla każdego: "nazwa" (sama nazwa preparatu, bez „Rp."), "dawka" (moc, np. „25 mg”),
+"dawkowanie" (jak brać, np. „1 x 2 kaps. wieczorem"), "odplatnosc" jeśli podana.
+Bierz zarówno leki z recepty, jak i te zalecane bez recepty, jeśli są wymienione
+z nazwy. Powód: „co pan przyjmuje?" to pytanie padające przy każdej kolejnej
+wizycie, a odpowiedź wyciągnięta z prozy wymaga czytania całej karty.
+
+CZEGO NIE PRZEPISYWAĆ: klucza recepty (kilkudziesięciocyfrowy ciąg przy leku)
+ani identyfikatorów dokumentu w postaci „ID 2.16.840...". To jednorazowe kody
+techniczne, po tygodniu bezużyteczne, a zaśmiecają zalecenia. Czterocyfrowy
+kod dostępowy eRecepty zostaw — z nim wykupuje się lek.
+
+ROZPOZNANIE bez kodu: do "rozpoznanie" wpisz sam opis („Zaburzenia nerwu
+trójdzielnego"), a kod do "kod_icd10" („G50"). Nie powtarzaj kodu w obu polach.
 
 PRZY WIZYCIE WYPEŁNIJ TAKŻE:
 - "specjalizacja" — czyja to poradnia albo jakim specjalistą jest podpisany
@@ -271,6 +313,11 @@ def _parsuj(surowy: str) -> dict:
 
     dane["wyniki"] = [_czysc_wynik(w) for w in (dane.get("wyniki") or [])
                       if isinstance(w, dict) and (w.get("nazwa") or "").strip()]
+    # Lek bez nazwy to nie lek, tylko resztka po nieudanym odczycie.
+    dane["leki"] = [{k: (str(v).strip() if isinstance(v, str) else v)
+                     for k, v in l.items() if k in ("nazwa", "dawka", "dawkowanie", "odplatnosc")}
+                    for l in (dane.get("leki") or [])
+                    if isinstance(l, dict) and (l.get("nazwa") or "").strip()]
     if not (dane.get("nazwa") or "").strip():
         dane["nazwa"] = "Badanie"
     if dane.get("rodzaj") not in ("lab", "obrazowe", "wizyta", "inne"):

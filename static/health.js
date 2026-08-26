@@ -476,6 +476,46 @@ function opisWizyty(d) {
   return [d.specjalizacja, d.lekarz, FORMY[d.forma]].filter(Boolean).map(esc).join(' · ');
 }
 
+// ── treść dokumentu ─────────────────────────────────────────────────────────
+//
+// Jedna funkcja na dwa ekrany: podgląd przed zapisem i szczegóły zapisanego.
+// Wcześniej były to dwa niemal identyczne kawałki szablonu i rozjeżdżały się
+// przy każdej zmianie.
+//
+// KOLEJNOŚĆ NIE JEST PRZYPADKOWA: najpierw leki i rozpoznanie (po to się tu
+// wraca), potem wywiad i badanie, na końcu pouczenia — standardowe formuły
+// o SOR-ze i numerze 112, identyczne na każdej karcie teleporady. Są zwinięte,
+// bo w konsultacji potrafią zająć trzy czwarte tekstu i przykryć te cztery
+// linijki, które naprawdę dotyczą pacjenta.
+
+function karta(tytul, tresc, klasa) {
+  if (!tresc) return '';
+  return `<div class="karta"><h2>${tytul}</h2><div class="${klasa || 'proza'}">${tresc}</div></div>`;
+}
+
+function sekcjeTresci(d) {
+  const leki = (d.leki || []).map((l) => `
+    <div class="lek">
+      <div class="lek-nazwa">${esc(l.nazwa)}${l.dawka ? ` <span class="lek-dawka">${esc(l.dawka)}</span>` : ''}</div>
+      ${l.dawkowanie ? `<div class="lek-pod">${esc(l.dawkowanie)}</div>` : ''}
+      ${l.odplatnosc ? `<div class="lek-pod">odpłatność ${esc(l.odplatnosc)}</div>` : ''}
+    </div>`).join('');
+
+  return `
+    ${leki ? `<div class="karta"><h2>Leki</h2>${leki}</div>` : ''}
+    ${d.rozpoznanie ? karta('Rozpoznanie',
+      esc(d.rozpoznanie) + (d.kod_icd10 ? ` <span class="znacznik">${esc(d.kod_icd10)}</span>` : '')) : ''}
+    ${karta('Zalecenia', d.zalecenia ? esc(d.zalecenia) : '')}
+    ${karta('Wywiad', d.wywiad ? esc(d.wywiad) : '')}
+    ${karta('Badanie przedmiotowe', d.badanie ? esc(d.badanie) : '')}
+    ${karta('Opis', d.opis ? esc(d.opis) : '')}
+    ${d.data_nastepnego ? karta('Kontrola', dataPl(d.data_nastepnego)) : ''}
+    ${d.pouczenia ? `<details class="karta pouczenia">
+      <summary>Standardowe pouczenia</summary>
+      <div class="proza">${esc(d.pouczenia)}</div>
+    </details>` : ''}`;
+}
+
 // ── widok: podgląd przed zapisem ────────────────────────────────────────────
 
 function rysujPodglad() {
@@ -533,10 +573,7 @@ function rysujPodglad() {
         z dokumentu</b>, nie wyliczone przez aplikację.</div>
     </div>` : ''}
 
-    ${d.opis ? `<div class="karta"><h2>Opis</h2><div class="proza">${esc(d.opis)}</div></div>` : ''}
-    ${d.rozpoznanie ? `<div class="karta"><h2>Rozpoznanie</h2>
-      <div class="proza">${esc(d.rozpoznanie)}${d.kod_icd10 ? ` (${esc(d.kod_icd10)})` : ''}</div></div>` : ''}
-    ${d.zalecenia ? `<div class="karta"><h2>Zalecenia</h2><div class="proza">${esc(d.zalecenia)}</div></div>` : ''}
+    ${sekcjeTresci(d)}
 
     <div class="karta dokladanie">
       <b>Dokument ma dalszy ciąg?</b>
@@ -1097,12 +1134,7 @@ function rysujSzczegoly() {
       </table></div>
     </div>` : ''}
 
-    ${d.opis ? `<div class="karta"><h2>Opis</h2><div class="proza">${esc(d.opis)}</div></div>` : ''}
-    ${d.rozpoznanie ? `<div class="karta"><h2>Rozpoznanie</h2>
-      <div class="proza">${esc(d.rozpoznanie)}${d.kod_icd10 ? ` (${esc(d.kod_icd10)})` : ''}</div></div>` : ''}
-    ${d.zalecenia ? `<div class="karta"><h2>Zalecenia</h2><div class="proza">${esc(d.zalecenia)}</div></div>` : ''}
-    ${d.data_nastepnego ? `<div class="karta"><h2>Kontrola</h2>
-      <div class="proza">${dataPl(d.data_nastepnego)}</div></div>` : ''}
+    ${sekcjeTresci(d)}
 
     <div class="karta">
       <h2>Problemy</h2>

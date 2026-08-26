@@ -95,6 +95,35 @@ def init_health_db() -> None:
         # 'stacjonarna' albo 'zdalna'. Teleporada bywa niepodpisana inaczej niż
         # słowem w nagłówku, a po roku to jedyny ślad, że wizyty nie było na żywo.
         cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS forma TEXT")
+
+        # ROZBICIE OPISU WIZYTY NA TRZY CZĘŚCI. Dokumenty same podają ten podział
+        # nagłówkami („Wywiad lekarski", „Badanie przedmiotowe"), a sklejanie ich
+        # w jedno pole kosztowało czytelność: w konsultacji telemedycznej realna
+        # treść to cztery linijki, a resztę z tysiąca znaków zajmują standardowe
+        # pouczenia o SOR-ze i numerze 112 — identyczne w każdej takiej wizycie.
+        # `opis` ZOSTAJE i jest nadal używany przez badania obrazowe, gdzie cała
+        # treść to jeden ciągły opis radiologa. Stare dokumenty mają wypełniony
+        # tylko `opis` i tak zostanie — ekran czyta oba warianty.
+        cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS wywiad TEXT")
+        cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS badanie TEXT")
+        cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS pouczenia TEXT")
+
+        # ── leki ────────────────────────────────────────────────────────────
+        # Osobna tabela, bo „co pan przyjmuje?" to pytanie padające przy każdej
+        # wizycie, a odpowiedź na nie z pola tekstowego wymaga czytania prozy
+        # z kilku dokumentów. Wiersz na lek daje ją jednym zapytaniem — i z czasem
+        # historię: co brał, od kiedy, w jakiej dawce.
+        cur.execute("""CREATE TABLE IF NOT EXISTS health_leki (
+            id          SERIAL PRIMARY KEY,
+            dokument_id INTEGER NOT NULL REFERENCES health_dokumenty(id) ON DELETE CASCADE,
+            nazwa       TEXT NOT NULL,
+            dawka       TEXT,
+            dawkowanie  TEXT,
+            odplatnosc  TEXT,
+            kolejnosc   INTEGER NOT NULL DEFAULT 0
+        )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS health_leki_dok "
+                    "ON health_leki (dokument_id)")
         cur.execute("ALTER TABLE health_dokumenty ADD COLUMN IF NOT EXISTS data_pobrania DATE")
         # Numer z papieru — jedyny sposób, żeby dopasować nasz wpis do oryginału
         # w laboratorium, gdy trzeba coś reklamować albo dosłać.
@@ -261,6 +290,7 @@ _POLA_DOK = """d.id, d.osoba_id, d.rodzaj, d.nazwa, d.data_badania, d.data_do,
                d.data_pobrania, d.placowka, d.opis, d.rozpoznanie, d.kod_icd10,
                d.zalecenia, d.numer_badania, d.data_nastepnego, d.kontekst,
                d.norma_wg, d.specjalizacja, d.lekarz, d.forma,
+               d.wywiad, d.badanie, d.pouczenia,
                d.ukryty, d.dodane_przez, d.created_at"""
 
 
@@ -328,6 +358,12 @@ def dokument(household_id: int, dokument_id: int) -> dict | None:
             (dokument_id,),
         )
         d["wyniki"] = [dict(w) for w in cur.fetchall()]
+        cur.execute(
+            "SELECT id, nazwa, dawka, dawkowanie, odplatnosc FROM health_leki "
+            "WHERE dokument_id = %s ORDER BY kolejnosc, id",
+            (dokument_id,),
+        )
+        d["leki"] = [dict(l) for l in cur.fetchall()]
         return d
 
 
@@ -344,9 +380,9 @@ def zapisz_dokument(household_id: int, osoba_id: int, dane: dict,
                (household_id, osoba_id, rodzaj, nazwa, data_badania, data_do,
                 data_pobrania, placowka, opis, rozpoznanie, kod_icd10, zalecenia,
                 numer_badania, data_nastepnego, kontekst, norma_wg,
-                specjalizacja, lekarz, forma, dodane_przez)
+                specjalizacja, lekarz, forma, wywiad, badanie, pouczenia, dodane_przez)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                       %s, %s, %s, %s)
+                       %s, %s, %s, %s, %s, %s, %s)
                RETURNING id""",
             (household_id, osoba_id,
              dane.get("rodzaj") or "lab",
@@ -356,11 +392,22 @@ def zapisz_dokument(household_id: int, osoba_id: int, dane: dict,
              dane.get("kod_icd10"), dane.get("zalecenia"), dane.get("numer_badania"),
              dane.get("data_nastepnego"), dane.get("kontekst"), dane.get("norma_wg"),
              dane.get("specjalizacja"), dane.get("lekarz"), dane.get("forma"),
+             dane.get("wywiad"), dane.get("badanie"), dane.get("pouczenia"),
              dodane_przez),
         )
         dok_id = cur.fetchone()["id"]
         for i, w in enumerate(wyniki or []):
             _wstaw_wynik(cur, dok_id, w, i)
+        for i, l in enumerate(dane.get("leki") or []):
+            nazwa = (l.get("nazwa") or "").strip()
+            if not nazwa:
+                continue          # lek bez nazwy to nie lek, tylko szum z odczytu
+            cur.execute(
+                "INSERT INTO health_leki (dokument_id, nazwa, dawka, dawkowanie, "
+                "odplatnosc, kolejnosc) VALUES (%s, %s, %s, %s, %s, %s)",
+                (dok_id, nazwa, l.get("dawka"), l.get("dawkowanie"),
+                 l.get("odplatnosc"), i),
+            )
         return dok_id
 
 
@@ -391,7 +438,7 @@ def _wstaw_wynik(cur, dokument_id: int, w: dict, kolejnosc: int) -> None:
 # skierowaniu, a dopisuje się je z pamięci tydzień później.
 _POLA_EDYCJI = ("nazwa", "data_badania", "data_do", "placowka", "specjalizacja",
                 "lekarz", "forma", "rozpoznanie", "kod_icd10", "zalecenia",
-                "data_nastepnego", "kontekst")
+                "data_nastepnego", "kontekst", "wywiad", "badanie", "pouczenia")
 
 
 def edytuj_dokument(household_id: int, dokument_id: int, dane: dict) -> bool:
