@@ -222,3 +222,37 @@ def usun(household_id, user_id, zadanie_id) -> bool:
         cur.execute("DELETE FROM task_zadania WHERE household_id = %s AND id = %s",
                     (household_id, zadanie_id))
         return cur.rowcount > 0
+
+
+def do_przypomnienia():
+    """Zadania, którym właśnie minęła godzina przypomnienia.
+
+    Zapytanie musi zostać tanie — woła je tik co minutę — dlatego trzyma się
+    wyłącznie kolumn objętych indeksem częściowym `task_zadania_przypomnienia`
+    (`termin`, `pora` przy `status = 'otwarte' AND przypomniano_at IS NULL`) i
+    nie robi nic ponad wybór wierszy do wysyłki.
+
+    Okno dwóch dni chroni przed lawiną: gdy ktoś wpisze zaległe zadanie
+    z terminem sprzed miesiąca, nie ma sensu wysyłać powiadomienia w sekundę
+    po zapisaniu — użytkownik właśnie na nie patrzy.
+    """
+    with get_db() as cur:
+        cur.execute("""SELECT id, household_id, tytul, termin, wykonawca_user_id,
+                              prywatne_dla
+            FROM task_zadania
+            WHERE status = 'otwarte' AND przypomniano_at IS NULL
+              AND termin IS NOT NULL AND pora IS NOT NULL
+              AND (termin + pora) <= (now() AT TIME ZONE 'Europe/Warsaw')
+              AND termin >= CURRENT_DATE - INTERVAL '2 days'
+            LIMIT 200""")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def oznacz_przypomniane(ids) -> None:
+    """Znaczy zadania jako już przypomniane — po jednym locie wysyłki, żeby
+    kolejny tik ich nie powtórzył."""
+    if not ids:
+        return
+    with get_db() as cur:
+        cur.execute("UPDATE task_zadania SET przypomniano_at = now() WHERE id = ANY(%s)",
+                    (list(ids),))

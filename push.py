@@ -266,6 +266,42 @@ def wyslij_przypomnienia_dzienne() -> None:
     print("[push] koniec przypomnień dziennych")
 
 
+# ── zadania (scheduler, co minutę) ──────────────────────────────────────────
+
+def wyslij_przypomnienia_zadan() -> None:
+    """Tik przypomnień o zadaniach. Woła go harmonogram co minutę.
+
+    Osobnych zadań w harmonogramie per przypomnienie NIE rejestrujemy —
+    zniknęłyby przy każdym restarcie kontenera, a Railway restartuje przy
+    każdym wdrożeniu. Stan trzyma baza, nie pamięć procesu.
+
+    Wysyłka do jednego adresata jest wyizolowana w `try` — awaria jednego
+    zadania (np. martwa subskrypcja) nie może zablokować pozostałych z tego
+    samego tiku ani, przez brak wpisu w `oznacz_przypomniane`, spowodować
+    powtórki przy następnym."""
+    if not skonfigurowane():
+        return
+    import task_db
+    zadania = task_db.do_przypomnienia()
+    wyslane = []
+    for z in zadania:
+        tytul = "Zadanie na dziś"
+        tresc = z["tytul"]
+        try:
+            if z["prywatne_dla"]:
+                wyslij_do_uzytkownika(z["prywatne_dla"], tytul, tresc, url="/task")
+            elif z["wykonawca_user_id"]:
+                wyslij_do_uzytkownika(z["wykonawca_user_id"], tytul, tresc, url="/task")
+            else:
+                # Nikt nie przypisany albo wykonawcą jest osoba bez konta —
+                # taka osoba nie ma gdzie odebrać powiadomienia.
+                wyslij_do_gospodarstwa(z["household_id"], tytul, tresc, url="/task")
+            wyslane.append(z["id"])
+        except Exception as e:
+            print(f"[task] przypomnienie {z['id']} nie poszlo: {e}")
+    task_db.oznacz_przypomniane(wyslane)
+
+
 if __name__ == "__main__":
     from dotenv import load_dotenv
     from pathlib import Path

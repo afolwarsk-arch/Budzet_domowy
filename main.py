@@ -100,6 +100,15 @@ def _start_scheduler():
             CronTrigger(hour=3, minute=40, timezone=ZoneInfo("Europe/Warsaw")),
             id="push_sprzatanie", replace_existing=True, misfire_grace_time=3600,
         )
+        # Przypomnienia o zadaniach: tik co minutę, jedno powiadomienie per
+        # zadanie (stan w przypomniano_at). misfire_grace_time krótki (2 min)
+        # z tego samego powodu co wyżej — spóźnione przypomnienie o zadaniu na
+        # konkretną godzinę traci sens.
+        _scheduler.add_job(
+            push.wyslij_przypomnienia_zadan,
+            CronTrigger(minute="*", timezone=ZoneInfo("Europe/Warsaw")),
+            id="task_przypomnienia", replace_existing=True, misfire_grace_time=120,
+        )
         _scheduler.start()
         print("[scheduler] auto-raport zaplanowany: ostatni dzień miesiąca 18:00 Europe/Warsaw")
         print("[scheduler] purge osieroconych gospodarstw: codziennie 3:30 Europe/Warsaw")
