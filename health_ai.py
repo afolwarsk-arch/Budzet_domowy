@@ -148,11 +148,18 @@ ROZPOZNANIE bez kodu: do "rozpoznanie" wpisz sam opis („Zaburzenia nerwu
 trójdzielnego"), a kod do "kod_icd10" („G50"). Nie powtarzaj kodu w obu polach.
 
 PRZY WIZYCIE WYPEŁNIJ TAKŻE:
-- "specjalizacja" — czyja to poradnia albo jakim specjalistą jest podpisany
-  lekarz: "stomatolog", "neurolog", "dermatolog", "lekarz rodzinny". Bierz to
-  z pieczątki, nagłówka poradni albo z tytułu ("specjalista chorób wewnętrznych").
-  Zapisz małą literą, w mianowniku. Nie zgaduj po treści wizyty — brak
-  specjalizacji na dokumencie znaczy puste pole.
+- "specjalizacja" — jakim specjalistą jest lekarz albo czego dotyczy poradnia:
+  "stomatolog", "neurolog", "dermatolog", "internista". Szukaj W TEJ KOLEJNOŚCI:
+    1. pieczątka lekarza — pole „Specjalizacje" przy nazwisku;
+    2. rodzaj działalności poradni — „Poradnia chorób wewnętrznych" daje
+       "internista", „Poradnia neurologiczna" daje "neurolog";
+    3. nazwa miejsca wystawienia, jeśli mówi o dziedzinie.
+  UWAGA NA PUSTĄ PIECZĄTKĘ: jeśli w polu „Specjalizacje" stoi samo „Lekarz",
+  to znaczy, że specjalizacji NIE PODANO — nie zapisuj wtedy "lekarz", tylko
+  zejdź do punktu 2. „Lekarz" w tym polu jest niczym.
+  Zapisz małą literą, w mianowniku, jako nazwę specjalisty a nie poradni
+  ("neurolog", nie "poradnia neurologiczna"). Nie zgaduj po treści wizyty —
+  jeśli żaden z trzech punktów nic nie daje, zostaw puste.
 - "lekarz" — imię i nazwisko razem z tytułem, tak jak na pieczątce.
 - "forma" — "zdalna", jeśli dokument mówi o teleporadzie, telekonsultacji albo
   poradzie na odległość; "stacjonarna", jeśli wprost pisze o wizycie w gabinecie
