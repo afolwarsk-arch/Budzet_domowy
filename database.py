@@ -1687,17 +1687,32 @@ def get_usage_stats() -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+# Przypisanie wywołania AI do modułu. JEDNO MIEJSCE, bo ta sama reguła jest
+# potrzebna w kilku zestawieniach i rozjechanie się ich znaczyłoby, że koszty
+# w dwóch tabelach tego samego panelu się nie zgadzają. `{t}` to alias tabeli
+# `api_usage` w konkretnym zapytaniu.
+#
+# UWAGA: pojedynczy znak `%`, nie podwojony — oba zapytania, które tego używają,
+# nie przekazują parametrów, więc psycopg2 nie interpretuje tu `%` w żaden
+# sposób. Gdyby kiedyś doszedł parametr, znaki trzeba będzie podwoić.
+_MODUL_SQL = """CASE
+                    WHEN {t}.endpoint LIKE 'eat-%'    THEN 'eat'
+                    WHEN {t}.endpoint LIKE 'health-%' THEN 'health'
+                    WHEN {t}.endpoint LIKE 'task-%'   THEN 'task'
+                    ELSE 'finance'
+                END"""
+
+
 def get_usage_wg_modulu() -> list[dict]:
     """Koszty AI rozbite na moduły aplikacji.
 
-    Moduł rozpoznajemy po przedrostku etykiety endpointu: wszystko, co zaczyna
-    się od `eat-`, należy do sekcji jedzenia, reszta do finansów. Dzięki temu
-    dołożenie kolejnego modułu nie wymaga migracji — wystarczy nazywać jego
-    wywołania z własnym przedrostkiem."""
+    Moduł rozpoznajemy po przedrostku etykiety endpointu — patrz `_MODUL_SQL`.
+    Dołożenie kolejnego modułu nie wymaga migracji: wystarczy nazywać jego
+    wywołania z własnym przedrostkiem i dopisać go do tej jednej reguły."""
     with get_db() as cur:
-        cur.execute("""
+        cur.execute(f"""
             SELECT
-                CASE WHEN u.endpoint LIKE 'eat-%' THEN 'eat' ELSE 'finance' END AS modul,
+                {_MODUL_SQL.format(t='u')} AS modul,
                 u.endpoint,
                 COUNT(*) AS calls,
                 SUM(u.input_tokens)  AS input_tokens,
@@ -1716,11 +1731,11 @@ def get_usage_wg_uzytkownika() -> list[dict]:
     `user_id` mają NULL i pokazują się jako „(przed rejestrowaniem osoby)" —
     kasowanie ich zabrałoby historię kosztów gospodarstwa."""
     with get_db() as cur:
-        cur.execute("""
+        cur.execute(f"""
             SELECT
                 COALESCE(u.display_name, u.name, '(przed rejestrowaniem osoby)') AS osoba,
                 COALESCE(h.name, '(brak)') AS household_name,
-                CASE WHEN a.endpoint LIKE 'eat-%' THEN 'eat' ELSE 'finance' END AS modul,
+                {_MODUL_SQL.format(t='a')} AS modul,
                 COUNT(*) AS calls,
                 ROUND(CAST(SUM(a.input_tokens * 3.0 + a.output_tokens * 15.0) / 1000000 AS numeric), 4) AS cost_usd,
                 MAX(a.created_at) AS last_call

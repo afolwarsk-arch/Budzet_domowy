@@ -14,6 +14,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
+import database
 import health_ai
 import health_db
 from auth import get_current_user
@@ -97,8 +98,18 @@ async def odczytaj(
     except health_ai.OdczytError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
-        raise HTTPException(502, f"Nie udało się odczytać dokumentu: {e}")
+        print(f"[health] odczyt padl: {e}")
+        raise HTTPException(502, "Nie udało się odczytać dokumentu. Spróbuj ponownie.")
 
+    # Dziennik kosztów AI. Przedrostek `health-` decyduje o tym, do którego
+    # modułu zaliczy je panel admina — patrz `_MODUL_SQL` w database.py.
+    # Bez tego wywołania odczyt dokumentacji był jedynym miejscem w apce,
+    # które woła model i nie zostawia śladu w kosztach.
+    database.log_api_usage(
+        _hid(current_user), "health-odczyt",
+        usage.get("input_tokens", 0), usage.get("output_tokens", 0),
+        current_user.get("user_id"),
+    )
     return {"dokument": odczyt, "usage": usage}
 
 
