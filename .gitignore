@@ -17,6 +17,9 @@ _*.py
 migration_data.json
 # notatnik postępu wykonywania planu (lokalny, nie należy do repo)
 .superpowers/
+# dokumenty wrzucane do odczytu — dokumentacja medyczna z danymi osobowymi.
+# NIGDY nie mogą trafić do repozytorium, nawet przypadkiem przez `git add .`
+komunikacja/
 budzet_backup_*.json
 budzet_PELNY_*.json
 
