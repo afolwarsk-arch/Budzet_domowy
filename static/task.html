@@ -12,6 +12,26 @@
   <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script defer src="/static/auth.js"></script>
+  <style>
+    .filtry { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .szybkie { display: flex; gap: 8px; margin-bottom: 16px; }
+    .szybkie input { flex: 1; min-height: 46px; }
+    .zad { display: flex; align-items: center; gap: 10px; padding: 12px;
+           border-bottom: 1px solid var(--border-soft); }
+    .zad.zrobione .zad-tytul { text-decoration: line-through; color: var(--muted); }
+    .ptaszek { flex: none; width: 26px; height: 26px; border-radius: 50%;
+               border: 1.5px solid var(--border); background: none; cursor: pointer;
+               color: var(--marka); font-size: 15px; line-height: 1; }
+    .zad-tresc { flex: 1; min-width: 0; }
+    .zad-tytul { font-size: 14.5px; color: var(--text); }
+    .zad-nast { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .zad-termin { font-size: 12px; color: var(--muted); flex: none; }
+    .zad-termin.po-czasie { color: var(--danger); font-weight: 600; }
+    .zad-postep { font-size: 12px; color: var(--muted); flex: none; }
+    .kamien { display: inline-block; width: 9px; height: 9px; margin-right: 6px;
+              background: var(--marka); transform: rotate(45deg); }
+    .pusto { color: var(--muted); font-size: 13px; text-align: center; padding: 28px 12px; }
+  </style>
 </head>
 <body>
 <nav>
