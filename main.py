@@ -164,7 +164,10 @@ _MOTYW_BOOT = (
 # JUŻ W ODPOWIEDZI SERWERA. Robienie tego w JS dałoby mignięcie koralem przed
 # przemalowaniem na zielono.
 _STRONY_MODULU = {"eat.html": "eat", "przepisy.html": "eat", "statystyki.html": "eat",
-                  "skaner.html": "eat"}
+                  "skaner.html": "eat",
+                  "health.html": "health", "task.html": "task"}
+# Strony finansów celowo BEZ wpisu: ich paleta jest wartością domyślną w :root,
+# więc każda strona spoza modułów (admin, profil) dostaje akcent finansów.
 
 
 def _html(filename: str) -> HTMLResponse:

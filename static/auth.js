@@ -952,6 +952,9 @@ const IKONY_SVG = {
   // Krzyż w karcie, a nie serce ani puls: moduł jest o dokumentacji i wynikach,
   // nie o kondycji. Karta obrysowana, żeby nie mylił się z „dodaj" (kółko z plusem).
   zdrowie: '<rect x="3.4" y="5" width="17.2" height="14" rx="2.4"/><path class="akc" d="M12 9.2v5.6M9.2 12h5.6"/>',
+  // Kartka z odhaczonym punktem. Ptaszek w kolorze modułu (`akc`), bo to on
+  // niesie znaczenie — sama ramka jest tylko kartką i myliłaby się ze „zdrowiem".
+  zadania: '<rect x="3.6" y="4.4" width="16.8" height="15.6" rx="2.4"/><path class="akc" d="M8 12.4l2.6 2.6 5-5.2"/>',
   osoby: '<circle cx="9.2" cy="8.4" r="3.4"/><path d="M3.4 19.4c0-3.2 2.6-5.4 5.8-5.4s5.8 2.2 5.8 5.4"/><path d="M16.6 6.2a3.2 3.2 0 010 6.2M17.6 14.6c2.1.6 3.4 2.4 3.4 4.8"/>',
   osoba_plus: '<circle cx="10" cy="8.4" r="3.4"/><path d="M4.2 19.4c0-3.2 2.6-5.4 5.8-5.4 1 0 2 .2 2.8.6"/><path class="akc" d="M17.6 13.4v6.2M14.5 16.5h6.2"/>',
   pobierz: '<path class="akc" d="M12 3.6v10.2M8.4 10.6l3.6 3.6 3.6-3.6"/><path d="M4.2 16.4v2.2a1.8 1.8 0 001.8 1.8h12a1.8 1.8 0 001.8-1.8v-2.2"/>',
@@ -1021,7 +1024,11 @@ const MODULY = [
   {
     id: 'finance',
     nazwa: 'finance',
-    kolor: '#ff6b6b',
+    // Złoto, nie koral: koral przeszedł do zadań. Odcień dobrany pomiarem
+    // kontrastu wobec tła dolnego paska (#1a1d20), bo --marka jest tam kolorem
+    // PISMA aktywnej pozycji — 7,82:1 przy wymaganych 4,5:1. Ta sama wartość
+    // stoi w palecie ikon apki, więc nie jest to nowy odcień w systemie.
+    kolor: '#eda100',
     opis: 'Wydatki, konta, cele',
     ikona: 'wplywy',
     strony: [
@@ -1057,6 +1064,16 @@ const MODULY = [
     ikona: 'zdrowie',
     strony: [
       { href: '/health', ikona: 'zdrowie', label: 'Historia', pelny: 'Historia zdrowia' },
+    ],
+  },
+  {
+    id: 'task',
+    nazwa: 'task',
+    kolor: '#ff6b6b',
+    opis: 'Zadania i projekty',
+    ikona: 'zadania',
+    strony: [
+      { href: '/task', ikona: 'zadania', label: 'Zadania', pelny: 'Zadania' },
     ],
   },
 ];

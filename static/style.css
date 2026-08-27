@@ -18,12 +18,22 @@
   --primary-dark: #14171a;
   --on-primary: #fbf9f4;
 
-  --accent: #c94f43;         /* koral przyciemniony — przechodzi kontrast na tekst */
-  --accent-strong: #9c3a30;  /* na tekst przy jasnym tle */
-  --accent-soft: #fbeae7;
-  --accent-border: #f2c9c2;
-  --marka: #ff6b6b;          /* koral — wartość zapasowa; auth.js nadpisuje ją
-                                kolorem bieżącego modułu na <html> */
+  /* Akcent finansów — złoto. Wartości domyślne, bo finanse są modułem bez
+     `data-modul` (patrz _STRONY_MODULU w main.py); pozostałe moduły nadpisują
+     je niżej. Odcienie dobrane licznikiem kontrastu:
+       #6d4e10 — 6,3 na papierze (poprzedni koral #c94f43 miał 4,01, czyli
+                 mimo komentarza NIE przechodził progu 4,5),
+       #503a0b — 9,0 na plakietce #fbf1da.
+     Świadomie ciemniejsze od samego złota marki: jaśniejsze odcienie siadały
+     17 jednostek RGB od --warn i przypomnienie o płatności przestawało się
+     odróżniać od zwykłego akcentu. */
+  --accent: #6d4e10;
+  --accent-strong: #503a0b;  /* na tekst przy jasnym tle */
+  --accent-soft: #fbf1da;
+  --accent-border: #e9d6a0;
+  --marka: #eda100;          /* złoto finansów — wartość zapasowa; auth.js nadpisuje
+                                ją kolorem bieżącego modułu na <html>. Koral przeszedł
+                                do wiem.task, więc zapas musiał pójść za finansami. */
 
   --good: #4f7a52;      --good-bg: #e9f2e9;   --good-border: #c3ddc5;
   --danger: #b4453a;    --danger-bg: #fbeae8; --danger-border: #f0cac5;
@@ -52,11 +62,11 @@
     --primary-dark: #fbf9f4;
     --on-primary: #17191c;
 
-    --accent: #ff8b8b;
-    --accent-strong: #ffa8a8;
-    --accent-soft: #3a2220;
-    --accent-border: #55302c;
-    --marka: #ff6b6b;
+    --accent: #eda100;
+    --accent-strong: #f5c04d;
+    --accent-soft: #302713;
+    --accent-border: #4d3f1e;
+    --marka: #eda100;
 
     --good: #6fa572;    --good-bg: #1d2a1f;   --good-border: #2f4432;
     --danger: #d4695c;  --danger-bg: #2e1d1b; --danger-border: #4a2c28;
@@ -84,11 +94,11 @@
   --primary-dark: #fbf9f4;
   --on-primary: #17191c;
 
-  --accent: #ff8b8b;
-  --accent-strong: #ffa8a8;
-  --accent-soft: #3a2220;
-  --accent-border: #55302c;
-  --marka: #ff6b6b;
+  --accent: #eda100;
+  --accent-strong: #f5c04d;
+  --accent-soft: #302713;
+  --accent-border: #4d3f1e;
+  --marka: #eda100;
 
   --good: #6fa572;    --good-bg: #1d2a1f;   --good-border: #2f4432;
   --danger: #d4695c;  --danger-bg: #2e1d1b; --danger-border: #4a2c28;
@@ -131,7 +141,7 @@ nav {
   --heading: #f2efe9;
   --muted: #8f8a81;
   --border: #2c3036;
-  --accent: #ff8b8b;
+  --accent: #eda100;         /* złoto finansów — moduły nadpisują niżej */
   --on-primary: #17191c;
   --primary: #f2efe9;
   color-scheme: dark;
@@ -712,7 +722,7 @@ tr:hover td { background: var(--hover); }
 .bottom-nav {
   --surface: #1a1d20;
   --muted: #bdb7ac;          /* jasniej niz w gornym pasku — podpisy maja 11 px */
-  --accent: #ff8b8b;
+  --accent: #eda100;         /* złoto finansów — moduły nadpisują niżej */
   display: none;
   position: fixed;
   bottom: 0; left: 0; right: 0;
@@ -952,6 +962,61 @@ tr:hover td { background: var(--hover); }
    został koralowy — przy kolejnym module sprawdzić jedno i drugie. */
 :root[data-modul="eat"] nav,
 :root[data-modul="eat"] .bottom-nav { --accent: #9bcf3f; }
+
+/* Turkus modułu zdrowia. Wcześniej health miał kolorowy TYLKO znak (--marka
+   z auth.js), a akcenty zostawały koralowe — czyli formularze w module zdrowia
+   były pomalowane kolorem finansów. Odcienie zmierzone:
+     #00695f — 5,90 na papierze,
+     #2ad4ca — 9,63 na atramencie,
+     #004f47 na plakietce #e2f5f3 — z zapasem. */
+:root[data-modul="health"] {
+  --accent: #00695f;
+  --accent-strong: #004f47;
+  --accent-soft: #e2f5f3;
+  --accent-border: #b6e2dd;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-modul="health"]:not([data-theme="light"]) {
+    --accent: #2ad4ca;
+    --accent-strong: #4fd8d0;
+    --accent-soft: #12302e;
+    --accent-border: #234945;
+  }
+}
+:root[data-theme="dark"][data-modul="health"] {
+  --accent: #2ad4ca;
+  --accent-strong: #4fd8d0;
+  --accent-soft: #12302e;
+  --accent-border: #234945;
+}
+:root[data-modul="health"] nav,
+:root[data-modul="health"] .bottom-nav { --accent: #2ad4ca; }
+
+/* Koral przeszedł z finansów do zadań — to te same wartości, które stały
+   w :root do czasu przemalowania finansów na złoto. Jedyna zmiana to jasny
+   akcent: #c94f43 miał na papierze 4,01, więc idzie #b4453a z 4,87. */
+:root[data-modul="task"] {
+  --accent: #b4453a;
+  --accent-strong: #9c3a30;
+  --accent-soft: #fbeae7;
+  --accent-border: #f2c9c2;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-modul="task"]:not([data-theme="light"]) {
+    --accent: #ff8b8b;
+    --accent-strong: #ffa8a8;
+    --accent-soft: #3a2220;
+    --accent-border: #55302c;
+  }
+}
+:root[data-theme="dark"][data-modul="task"] {
+  --accent: #ff8b8b;
+  --accent-strong: #ffa8a8;
+  --accent-soft: #3a2220;
+  --accent-border: #55302c;
+}
+:root[data-modul="task"] nav,
+:root[data-modul="task"] .bottom-nav { --accent: #ff8b8b; }
 
 /* ── przełącznik modułów ─────────────────────────────────────────────────
    Kwadratowa siatka kropek jak w Google — ten gest jest na tyle rozpowszechniony,
