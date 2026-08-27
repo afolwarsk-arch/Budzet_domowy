@@ -274,7 +274,10 @@ async function rysujOs() {
         <b>Z dysku</b><span>PDF z laboratorium albo zdjęcie z galerii</span>
       </button>
       <input type="file" id="plik-zdjecie" accept="image/*" capture="environment" multiple>
-      <input type="file" id="plik-dysk" accept="image/*,application/pdf" multiple>
+      <!-- Rozszerzenia, a NIE image/*: dla Androida image/* znaczy „użytkownik
+           chce obrazek", więc system dokłada aparat obok plików i galerii — a to
+           jest wejście dla pliku, który już gdzieś leży. Aparat ma własny kafelek. -->
+      <input type="file" id="plik-dysk" accept=".jpg,.jpeg,.png,.webp,.pdf" multiple>
     </div>
     ${budujOs(dokumenty)}`;
 
@@ -394,6 +397,18 @@ async function zapiszOsobe() {
 // Czyta CAŁY komplet `strony` — także przy dokładaniu kartki. Odczyt strony 2
 // w oderwaniu od pierwszej dawałby wyniki bez nazwy badania i bez daty, a
 // urwaną w połowie tabelę trzeba widzieć z obu stron naraz, żeby ją skleić.
+// Zerwane połączenie to jedyny błąd, którego serwer nie opisze — nie zdążył
+// odpowiedzieć. `fetch` rzuca wtedy TypeError z angielskim „Failed to fetch",
+// który trafiał prosto na ekran i nie mówił użytkownikowi zupełnie nic.
+// Rozpoznajemy go po tym, że NIE jest naszym Error z komunikatem z API.
+function bladOdczytu(e) {
+  if (e instanceof TypeError) {
+    return 'Połączenie zostało przerwane, zanim dokument został odczytany. '
+         + 'Dokument nie został nigdzie zapisany — spróbuj ponownie.';
+  }
+  return e.message || 'Nie udało się odczytać dokumentu.';
+}
+
 async function odczytaj() {
   const ile = strony.length;
   box().innerHTML = `<div class="czekaj">
@@ -422,7 +437,7 @@ async function odczytaj() {
     widok = 'podglad';
     rysuj();
   } catch (e) {
-    box().innerHTML = `<div class="blad">${esc(e.message || 'Nie udało się odczytać dokumentu.')}</div>`;
+    box().innerHTML = `<div class="blad">${esc(bladOdczytu(e))}</div>`;
     const wroc = document.createElement('button');
     wroc.className = 'wroc';
     wroc.textContent = '← Wróć';
