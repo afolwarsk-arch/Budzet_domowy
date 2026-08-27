@@ -613,14 +613,27 @@ async function otworzFiltry() {
   tlo.addEventListener('click', (e) => { if (e.target === tlo) tlo.remove(); });
   document.body.appendChild(tlo);
 
-  // Wartości zależą od wybranej osoby, więc pobieramy je przy każdym otwarciu.
-  try {
-    const q = osobaId !== null && osobaId !== undefined ? '?osoba_id=' + osobaId : '';
-    const r = await authFetch('/api/health/filtry' + q);
-    filtryDostepne = r.ok ? await r.json() : null;
-  } catch { filtryDostepne = null; }
-
   const pola = tlo.querySelector('#filtry-pola');
+  const przewiniecia = { rodzaj: 0, specjalizacja: 0, lekarz: 0, placowka: 0 };
+
+  // Liczniki zależą od pozostałych wyborów, więc po każdym kliknięciu pytamy
+  // serwer od nowa. Zapytanie jest tanie (cztery zgrupowania), a bez tego dało
+  // się złożyć wybór sprzeczny i zobaczyć pustą oś bez wyjaśnienia.
+  async function przelicz() {
+    const q = new URLSearchParams();
+    if (osobaId !== null && osobaId !== undefined) q.set('osoba_id', osobaId);
+    if (problemId !== null) q.set('problem_id', problemId);
+    for (const [k, lista] of Object.entries(wybor)) lista.forEach((v) => q.append(k, v));
+    try {
+      const r = await authFetch('/api/health/filtry?' + q);
+      filtryDostepne = r.ok ? await r.json() : null;
+    } catch { filtryDostepne = null; }
+    rysujPola();
+  }
+
+  await przelicz();
+
+  function rysujPola() {
   if (!filtryDostepne) {
     pola.innerHTML = '<div class="blad">Nie udało się wczytać wartości filtrów.</div>';
   } else {
@@ -645,30 +658,45 @@ async function otworzFiltry() {
         <label>${ETYKIETY_FILTROW[klucz]}${
           wybor[klucz].length ? ` <span class="ile-wybrano">${wybor[klucz].length}</span>` : ''}</label>
         <div class="filtry-lista" data-lista="${klucz}">
-          ${lista.map((p) => `<button class="chip" type="button" data-w="${esc(p.nazwa)}"
-              aria-pressed="${wybor[klucz].includes(p.nazwa)}">${
-            esc(etykieta(p.nazwa))} <span class="os-data">${p.ile}</span></button>`).join('')}
+          ${lista.map((p) => {
+            const zaznaczony = wybor[klucz].includes(p.nazwa);
+            // Zero znaczy: przy pozostałych wyborach ta wartość nic nie daje.
+            // Zostaje widoczna, ale nieklikalna — znikające pozycje wyglądałyby
+            // jak usterka, a tak widać, że to skutek innego filtra.
+            const martwy = !p.ile && !zaznaczony;
+            return `<button class="chip${martwy ? ' martwy' : ''}" type="button"
+                data-w="${esc(p.nazwa)}" aria-pressed="${zaznaczony}"${martwy ? ' disabled' : ''}>${
+              esc(etykieta(p.nazwa))} <span class="os-data">${p.ile}</span></button>`;
+          }).join('')}
         </div>
       </div>`;
     }).join('');
 
+    // Przewinięcie list wraca na swoje miejsce po przerysowaniu — przy dwudziestu
+    // placówkach skok na początek listy po każdym kliknięciu byłby nie do użycia.
+    for (const [klucz, gdzie] of Object.entries(przewiniecia)) {
+      const box = pola.querySelector(`[data-lista="${klucz}"]`);
+      if (box) box.scrollTop = gdzie;
+    }
+
     pola.querySelectorAll('[data-lista]').forEach((box) => {
       box.onclick = (e) => {
         const b = e.target.closest('[data-w]');
-        if (!b) return;
+        if (!b || b.disabled) return;
         const klucz = box.dataset.lista;
         const v = b.dataset.w;
         const jest = wybor[klucz].includes(v);
         wybor[klucz] = jest ? wybor[klucz].filter((x) => x !== v) : [...wybor[klucz], v];
-        b.setAttribute('aria-pressed', String(!jest));
-        // Licznik przy nazwie pola aktualizujemy bez przerysowania listy —
-        // przerysowanie zgubiłoby pozycję przewijania przy dwudziestu placówkach.
-        const etykieta = box.parentElement.querySelector('label');
-        const ile = wybor[klucz].length;
-        etykieta.innerHTML = ETYKIETY_FILTROW[klucz]
-          + (ile ? ` <span class="ile-wybrano">${ile}</span>` : '');
+        // Liczniki POZOSTAŁYCH pól właśnie się zmieniły — trzeba je przeliczyć,
+        // inaczej dałoby się dołożyć wybór sprzeczny z tym, co już zaznaczone.
+        Object.keys(przewiniecia).forEach((k) => {
+          const el = pola.querySelector(`[data-lista="${k}"]`);
+          if (el) przewiniecia[k] = el.scrollTop;
+        });
+        przelicz();
       };
     });
+  }
   }
 
   tlo.querySelector('#fl-czysc').onclick = () => {

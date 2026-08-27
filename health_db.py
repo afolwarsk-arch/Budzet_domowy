@@ -383,20 +383,50 @@ def dokumenty(household_id: int, osoba_id: int | None = None,
         return [dict(r) for r in cur.fetchall()]
 
 
-def wartosci_filtrow(household_id: int, osoba_id: int | None = None) -> dict:
-    """Co da się wybrać w filtrach — wyłącznie wartości, które w historii są.
+def wartosci_filtrow(household_id: int, osoba_id: int | None = None,
+                     problem_id: int | None = None, rodzaj=None,
+                     specjalizacja=None, lekarz=None, placowka=None) -> dict:
+    """Co da się wybrać w filtrach — z licznikami W KONTEKŚCIE reszty wyborów.
 
     LISTA WYBORU MUSI POCHODZIĆ Z DANYCH, nie ze słownika. Specjalizacja
     i lekarz są przepisywane z pieczątki, więc żadna z góry ustalona lista nie
     trafiłaby w to, co faktycznie leży w bazie tego gospodarstwa.
 
-    Zwracamy licznik przy każdej wartości, bo „neurolog (7)" od razu mówi,
-    czy warto tam zaglądać. Grupujemy po zapisie sprowadzonym do małych liter
-    bez spacji brzegowych — inaczej „URSEL ANNA" i „Ursel Anna" byłyby dwiema
-    pozycjami — ale pokazujemy wersję najczęściej występującą, żeby na liście
-    nie wyświetlać nazwiska wersalikami tylko dlatego, że tak wyszło pierwszemu.
+    LICZNIK KAŻDEGO POLA POMIJA FILTR TEGO SAMEGO POLA, a uwzględnia wszystkie
+    pozostałe. Bez tego dawało się złożyć wybór sprzeczny („recepta" plus
+    „radiolog") i dostać pustą oś bez wyjaśnienia. Pominięcie własnego pola jest
+    konieczne, bo inaczej po zaznaczeniu jednego wariantu specjalizacji reszta
+    wariantów pokazywałaby zero i nie dałoby się dobrać drugiego — a to jest
+    właśnie powód, dla którego wybór jest wielokrotny.
+
+    Wartości z zerem zostają na liście (wyszarzone po stronie interfejsu),
+    zamiast znikać: znikające pozycje wyglądają jak błąd i nie widać, że wybór
+    gdzie indziej właśnie je odciął.
     """
+    f = {
+        "rodzaj": _lista_filtra(rodzaj),
+        "specjalizacja": _lista_filtra(specjalizacja),
+        "lekarz": _lista_filtra(lekarz),
+        "placowka": _lista_filtra(placowka),
+    }
+
+    def warunki_bez(pole: str):
+        """Warunki i parametry wszystkich filtrów OPRÓCZ wskazanego pola."""
+        czesci = ["d.household_id = %s", "NOT d.ukryty", "NOT o.ukryta",
+                  "(%s::int IS NULL OR d.osoba_id = %s)"]
+        p = [household_id, osoba_id, osoba_id]
+        czesci.append("(%s::int IS NULL OR EXISTS (SELECT 1 FROM health_dokument_problemy dp2 "
+                      "WHERE dp2.dokument_id = d.id AND dp2.problem_id = %s))")
+        p += [problem_id, problem_id]
+        for kol, wart in f.items():
+            if kol == pole or not wart:
+                continue
+            czesci.append(f"(lower(btrim(d.{kol})) = ANY(%s))")
+            p.append(wart)
+        return " AND ".join(czesci), p
+
     def zbierz(kolumna: str) -> list[dict]:
+        gdzie, p = warunki_bez(kolumna)
         with get_db() as cur:
             cur.execute(
                 f"SELECT lower(btrim(d.{kolumna})) AS klucz, "
@@ -404,31 +434,49 @@ def wartosci_filtrow(household_id: int, osoba_id: int | None = None) -> dict:
                 "       COUNT(*) AS ile "
                 "FROM health_dokumenty d "
                 "JOIN health_osoby o ON o.id = d.osoba_id "
-                "WHERE d.household_id = %s AND NOT d.ukryty AND NOT o.ukryta "
+                f"WHERE {gdzie} "
                 f"  AND d.{kolumna} IS NOT NULL AND btrim(d.{kolumna}) <> '' "
-                "  AND (%s::int IS NULL OR d.osoba_id = %s) "
                 "GROUP BY 1 ORDER BY 3 DESC, 2",
-                (household_id, osoba_id, osoba_id),
+                p,
             )
-            return [{"nazwa": r["nazwa"], "ile": r["ile"]} for r in cur.fetchall()]
-
-    with get_db() as cur:
-        cur.execute(
-            "SELECT d.rodzaj AS nazwa, COUNT(*) AS ile FROM health_dokumenty d "
-            "JOIN health_osoby o ON o.id = d.osoba_id "
-            "WHERE d.household_id = %s AND NOT d.ukryty AND NOT o.ukryta "
-            "  AND (%s::int IS NULL OR d.osoba_id = %s) "
-            "GROUP BY 1 ORDER BY 2 DESC, 1",
-            (household_id, osoba_id, osoba_id),
-        )
-        rodzaje = [{"nazwa": r["nazwa"], "ile": r["ile"]} for r in cur.fetchall()]
+            znalezione = [{"nazwa": r["nazwa"], "klucz": r["klucz"], "ile": r["ile"]}
+                          for r in cur.fetchall()]
+        return _dolacz_zerowe(kolumna, znalezione, f.get(kolumna), household_id, osoba_id)
 
     return {
-        "rodzaje": rodzaje,
+        "rodzaje": zbierz("rodzaj"),
         "specjalizacje": zbierz("specjalizacja"),
         "lekarze": zbierz("lekarz"),
         "placowki": zbierz("placowka"),
     }
+
+
+def _dolacz_zerowe(kolumna: str, znalezione: list[dict], wybrane, household_id: int,
+                   osoba_id: int | None) -> list[dict]:
+    """Dokłada wartości, których przy tym zestawie filtrów nie ma — z zerem.
+
+    Lista skracająca się przy każdym kliknięciu wygląda jak znikające przyciski.
+    Lepiej pokazać, że pozycja istnieje, ale w tym zestawieniu nic nie ma —
+    interfejs wyszarza ją i nie da się jej kliknąć.
+    """
+    with get_db() as cur:
+        cur.execute(
+            f"SELECT lower(btrim(d.{kolumna})) AS klucz, "
+            f"       (array_agg(btrim(d.{kolumna}) ORDER BY btrim(d.{kolumna})))[1] AS nazwa "
+            "FROM health_dokumenty d JOIN health_osoby o ON o.id = d.osoba_id "
+            "WHERE d.household_id = %s AND NOT d.ukryty AND NOT o.ukryta "
+            f"  AND d.{kolumna} IS NOT NULL AND btrim(d.{kolumna}) <> '' "
+            "  AND (%s::int IS NULL OR d.osoba_id = %s) "
+            "GROUP BY 1 ORDER BY 2",
+            (household_id, osoba_id, osoba_id),
+        )
+        wszystkie = [{"nazwa": r["nazwa"], "klucz": r["klucz"], "ile": 0} for r in cur.fetchall()]
+
+    # Wszystko, czego nie było w wyniku, dochodzi z zerem — łącznie z wartościami
+    # zaznaczonymi, które przy tym zestawie filtrów nic nie dają. Zaznaczone
+    # MUSZĄ zostać na liście, inaczej nie dałoby się ich odznaczyć.
+    mam = {w["klucz"] for w in znalezione}
+    return znalezione + [w for w in wszystkie if w["klucz"] not in mam]
 
 
 def dokument(household_id: int, dokument_id: int) -> dict | None:

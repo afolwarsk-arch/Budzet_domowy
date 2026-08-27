@@ -135,14 +135,24 @@ def lista_dokumentow(osoba_id: int | None = None,
 
 
 @router.get("/filtry")
-def wartosci_filtrow(osoba_id: int | None = None,
+def wartosci_filtrow(osoba_id: int | None = None, problem_id: int | None = None,
+                     rodzaj: list[str] | None = Query(None),
+                     specjalizacja: list[str] | None = Query(None),
+                     lekarz: list[str] | None = Query(None),
+                     placowka: list[str] | None = Query(None),
                      current_user: dict = Depends(get_current_user)):
     """Wartości do wyboru w filtrach — zbierane z historii, nie ze słownika.
+
+    Przyjmuje BIEŻĄCE filtry, bo liczniki są liczone w ich kontekście: licznik
+    każdego pola uwzględnia wszystkie pozostałe pola, a pomija własne. Dzięki
+    temu nie da się bez ostrzeżenia złożyć wyboru sprzecznego — wartości, które
+    przy obecnym zestawie nic nie dają, wracają z zerem i interfejs je wyszarza.
 
     Zawężone do wskazanej osoby, bo lista specjalistów Adama nie ma czego
     szukać w filtrach ustawionych na dziecko.
     """
-    return health_db.wartosci_filtrow(_hid(current_user), osoba_id)
+    return health_db.wartosci_filtrow(_hid(current_user), osoba_id, problem_id,
+                                      rodzaj, specjalizacja, lekarz, placowka)
 
 
 @router.get("/dokumenty/{dokument_id}")
