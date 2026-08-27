@@ -141,8 +141,13 @@ RODZAJ DOKUMENTU:
   wypełniaj.
 - "skierowanie" — skierowanie do poradni, na badanie, do szpitala albo na
   rehabilitację. Opisuje coś, co ma się DOPIERO wydarzyć, więc wypełnij:
-  "specjalizacja" (dokąd kieruje: "neurolog", "rezonans magnetyczny",
-  "rehabilitacja"), "kod_eskierowania" (czterocyfrowy kod, z którym rejestruje
+  "specjalizacja" — UWAGA: KIM JEST LEKARZ WYSTAWIAJĄCY skierowanie, a NIE
+  dokąd ono kieruje. Skierowanie na rezonans wypisane przez neurologa ma
+  "specjalizacja": "neurolog", a nie "rezonans magnetyczny". Dokąd kieruje,
+  mówi już nazwa dokumentu („Skierowanie do poradni neurologicznej"), więc ta
+  informacja nie ginie — a pole specjalizacji ma w całej historii znaczyć
+  jedno i to samo: z jakim specjalistą mieliśmy do czynienia.
+  Dalej: "kod_eskierowania" (czterocyfrowy kod, z którym rejestruje
   się wizytę — NIE mylić z kilkudziesięciocyfrowym kluczem), "wazne_do" (termin
   ważności, jeśli podany), "tryb" ("pilny" albo "stabilny", jeśli zaznaczony),
   "lekarz" (kto skierował), "rozpoznanie" i "kod_icd10" (powód skierowania).

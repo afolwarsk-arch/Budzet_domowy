@@ -62,6 +62,26 @@ let filtry = pusteFiltry();
 // wybranej osoby, więc odświeżamy je przy każdym otwarciu arkusza.
 let filtryDostepne = null;
 
+// Zapisy już używane w gospodarstwie — do podpowiedzi w formularzu. Model
+// dostaje tę samą listę przy odczycie (patrz `slownik_gospodarstwa`), ale ręczna
+// edycja szła dotąd bez żadnej podpowiedzi i to ONA tworzyła nowe warianty:
+// wpisane z ręki „Neurolog" wielką literą zakładało kolejną pozycję w filtrach.
+let znaneWartosci = { lekarze: [], placowki: [], specjalizacje: [] };
+
+async function wczytajZnane() {
+  try {
+    const r = await authFetch('/api/health/filtry');
+    if (!r.ok) return;
+    const d = await r.json();
+    const nazwy = (lista) => (lista || []).filter((x) => x.ile).map((x) => x.nazwa);
+    znaneWartosci = {
+      lekarze: nazwy(d.lekarze),
+      placowki: nazwy(d.placowki),
+      specjalizacje: nazwy(d.specjalizacje),
+    };
+  } catch { /* podpowiedzi są dodatkiem — brak listy nie blokuje formularza */ }
+}
+
 const ETYKIETY_FILTROW = {
   rodzaj: 'Rodzaj', specjalizacja: 'Specjalizacja',
   lekarz: 'Lekarz', placowka: 'Placówka',
@@ -277,6 +297,9 @@ async function rysujOs() {
   if (!osoby.length) return rysujPierwszaOsoba();
 
   await wczytajProblemy();
+  // Podpowiedzi do formularza — pobierane razem z osią, żeby przy zapisie
+  // dokumentu były już na miejscu i pole od razu podpowiadało istniejące zapisy.
+  wczytajZnane();
   let dokumenty = [];
   try {
     const r = await authFetch('/api/health/dokumenty?' + zapytanieOsi());
@@ -731,8 +754,13 @@ function blokWizyty(d) {
           <label for="p-spec">Specjalista</label>
           <input id="p-spec" list="lista-spec" autocomplete="off"
                  placeholder="np. stomatolog" value="${esc(d.specjalizacja || '')}">
+          <!-- Najpierw to, co już jest w historii tego gospodarstwa, potem
+               reszta wykazu — przeglądarka pokazuje podpowiedzi w kolejności
+               z listy, a najczęściej wpisuje się kogoś, u kogo już się było. -->
           <datalist id="lista-spec">
-            ${SPECJALIZACJE.map((s) => `<option value="${esc(s)}">`).join('')}
+            ${[...znaneWartosci.specjalizacje,
+               ...SPECJALIZACJE.filter((s) => !znaneWartosci.specjalizacje
+                 .some((z) => z.toLowerCase() === s))].map((s) => `<option value="${esc(s)}">`).join('')}
           </datalist>
         </div>
         <div class="pole">
@@ -746,17 +774,60 @@ function blokWizyty(d) {
       </div>
       <div class="pole">
         <label for="p-lekarz">Lekarz</label>
-        <input id="p-lekarz" autocomplete="off" placeholder="imię i nazwisko"
-               value="${esc(d.lekarz || '')}">
+        <input id="p-lekarz" list="lista-lekarzy" autocomplete="off"
+               placeholder="imię i nazwisko" value="${esc(d.lekarz || '')}">
+        ${podpowiedzi('lista-lekarzy', znaneWartosci.lekarze)}
       </div>
     </div>`;
 }
 
-// Podpowiedzi, nie słownik: pole zostaje otwarte, a lista tylko skraca pisanie
-// tego, co powtarza się najczęściej.
-const SPECJALIZACJE = ['stomatolog', 'lekarz rodzinny', 'pediatra', 'ginekolog',
-  'dermatolog', 'neurolog', 'ortopeda', 'okulista', 'laryngolog', 'kardiolog',
-  'endokrynolog', 'psychiatra', 'fizjoterapeuta'];
+// Podpowiedzi z HISTORII, nie z żadnego wykazu — nazwisk lekarzy i nazw
+// przychodni nie da się wziąć znikąd indziej. Sens jest ten sam co przy
+// specjalizacjach: ta sama osoba ma się zapisać raz, a nie na trzy sposoby
+// zależnie od tego, jak akurat wyglądała pieczątka.
+function podpowiedzi(id, lista) {
+  if (!lista || !lista.length) return '';
+  return `<datalist id="${id}">${
+    lista.map((w) => `<option value="${esc(w)}">`).join('')}</datalist>`;
+}
+
+// PODPOWIEDZI, NIE SŁOWNIK ZAMKNIĘTY. Pole zostaje otwarte i wpisać można
+// cokolwiek — lista tylko skraca pisanie i pilnuje, żeby ten sam specjalista
+// nie zapisał się na trzy sposoby.
+//
+// Źródłem jest wykaz z rozporządzenia Ministra Zdrowia z 4 maja 2023 r.
+// (Dz.U. 2023 poz. 975), ale PRZEŁOŻONY NA FORMY OSOBOWE: rozporządzenie
+// wymienia dziedziny („neurologia", „otorynolaryngologia"), a na pieczątkach
+// i w mowie występuje osoba („neurolog", „laryngolog") — i tak też szuka się
+// po latach: „kiedy byliśmy u neurologa?".
+//
+// Ostatnia grupa to zawody SPOZA wykazu lekarskiego. Fizjoterapeuty ani
+// psychologa nie ma w rozporządzeniu, bo to osobne zawody medyczne z własnymi
+// ustawami — a chodzi się do nich tak samo jak do lekarza.
+const SPECJALIZACJE = [
+  'alergolog', 'anestezjolog', 'angiolog', 'audiolog', 'balneolog',
+  'chirurg', 'chirurg dziecięcy', 'chirurg naczyniowy', 'chirurg onkolog',
+  'chirurg plastyczny', 'chirurg stomatolog', 'chirurg szczękowo-twarzowy',
+  'dermatolog', 'diabetolog', 'diagnosta laboratoryjny', 'endokrynolog',
+  'endokrynolog dziecięcy', 'epidemiolog', 'farmakolog kliniczny', 'foniatra',
+  'gastroenterolog', 'gastroenterolog dziecięcy', 'genetyk kliniczny', 'geriatra',
+  'ginekolog', 'ginekolog onkolog', 'hematolog', 'hipertensjolog', 'immunolog',
+  'internista', 'kardiochirurg', 'kardiolog', 'kardiolog dziecięcy',
+  'laryngolog', 'laryngolog dziecięcy', 'lekarz medycyny paliatywnej',
+  'lekarz medycyny pracy', 'lekarz medycyny ratunkowej', 'lekarz medycyny sportowej',
+  'lekarz rodzinny', 'lekarz sądowy', 'mikrobiolog', 'nefrolog', 'nefrolog dziecięcy',
+  'neonatolog', 'neurochirurg', 'neurolog', 'neurolog dziecięcy', 'okulista',
+  'onkolog', 'onkolog dziecięcy', 'ortodonta', 'ortopeda', 'patomorfolog',
+  'pediatra', 'periodontolog', 'perinatolog', 'protetyk', 'psychiatra',
+  'psychiatra dziecięcy', 'pulmonolog', 'pulmonolog dziecięcy', 'radiolog',
+  'radioterapeuta', 'rehabilitant', 'reumatolog', 'seksuolog',
+  'specjalista chorób zakaźnych', 'specjalista medycyny nuklearnej',
+  'stomatolog', 'stomatolog dziecięcy', 'toksykolog', 'transfuzjolog',
+  'transplantolog', 'torakochirurg', 'urolog', 'urolog dziecięcy',
+  // spoza wykazu lekarskiego — osobne zawody medyczne
+  'dietetyk', 'fizjoterapeuta', 'logopeda', 'optometrysta', 'osteopata',
+  'położna', 'psycholog', 'psychoterapeuta',
+];
 
 function daneWizyty() {
   const w = (id) => {
@@ -916,7 +987,9 @@ function rysujPodglad() {
       </div>
       <div class="pole">
         <label for="p-placowka">Placówka</label>
-        <input id="p-placowka" value="${esc(d.placowka || '')}">
+        <input id="p-placowka" list="lista-placowek" autocomplete="off"
+               value="${esc(d.placowka || '')}">
+        ${podpowiedzi('lista-placowek', znaneWartosci.placowki)}
       </div>
       ${blokWizyty(d)}
       <div class="pole">
