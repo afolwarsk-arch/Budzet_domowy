@@ -318,23 +318,42 @@ _PROBLEMY_DOK = """COALESCE((
         WHERE dp.dokument_id = d.id), '[]'::json) AS problemy"""
 
 
+def _lista_filtra(wartosc) -> list[str] | None:
+    """Wejście filtra → lista kluczy do porównania, albo None gdy pusto.
+
+    Przyjmujemy i pojedynczy ciąg, i listę, bo ten sam filtr bywa wołany
+    z jedną wartością (link, stary adres) i z kilkoma naraz (arkusz).
+    """
+    if wartosc is None:
+        return None
+    surowe = [wartosc] if isinstance(wartosc, str) else list(wartosc)
+    klucze = [w.strip().lower() for w in surowe if w and w.strip()]
+    return klucze or None
+
+
 def dokumenty(household_id: int, osoba_id: int | None = None,
-              rodzaj: str | None = None, problem_id: int | None = None,
-              specjalizacja: str | None = None, lekarz: str | None = None,
-              placowka: str | None = None) -> list[dict]:
+              rodzaj=None, problem_id: int | None = None,
+              specjalizacja=None, lekarz=None, placowka=None) -> list[dict]:
     """Dokumenty do listy i do osi czasu.
 
     `osoba_id = None` znaczy „wszyscy domownicy" — oś czasu ma przełącznik
     i w trybie zbiorczym potrzebuje wiedzieć, czyj jest każdy wpis, stąd JOIN
     po imię.
 
-    Specjalizacja, lekarz i placówka filtrują po DOKŁADNEJ wartości, nie po
-    fragmencie: listę wyboru budujemy z wartości już zapisanych w bazie
-    (`wartosci_filtrow`), więc użytkownik wybiera to, co istnieje, i nie ma
-    czego dopasowywać częściowo. Porównanie jest za to nieczułe na wielkość
-    liter i spacje po brzegach — te same nazwiska bywają przepisane z pieczątki
-    raz wersalikami, raz nie.
+    KAŻDY Z FILTROW PRZYJMUJE KILKA WARTOŚCI NARAZ i łączy je przez LUB.
+    Powód jest w danych, nie w wygodzie: specjalizacja przepisywana z pieczątki
+    rozpada się na warianty tego samego („stomatolog-chirurg", „chirurg
+    stomatolog"), a scalanie ich automatycznie znaczyłoby zgadywanie, że to
+    naprawdę to samo. Zamiast tego pozwalamy zaznaczyć oba warianty.
+
+    Porównanie jest po DOKŁADNEJ wartości — listę wyboru budujemy z tego, co
+    w bazie już jest (`wartosci_filtrow`) — ale nieczułe na wielkość liter
+    i spacje brzegowe, bo nazwiska bywają przepisane raz wersalikami, raz nie.
     """
+    specjalizacja = _lista_filtra(specjalizacja)
+    lekarz = _lista_filtra(lekarz)
+    placowka = _lista_filtra(placowka)
+    rodzaj = _lista_filtra(rodzaj)
     with get_db() as cur:
         cur.execute(
             f"SELECT {_POLA_DOK}, o.imie AS osoba_imie, {_PROBLEMY_DOK}, "
@@ -349,12 +368,12 @@ def dokumenty(household_id: int, osoba_id: int | None = None,
             "JOIN health_osoby o ON o.id = d.osoba_id "
             "WHERE d.household_id = %s AND NOT d.ukryty AND NOT o.ukryta "
             "  AND (%s::int IS NULL OR d.osoba_id = %s) "
-            "  AND (%s::text IS NULL OR d.rodzaj = %s) "
+            "  AND (%s::text[] IS NULL OR lower(btrim(d.rodzaj)) = ANY(%s)) "
             "  AND (%s::int IS NULL OR EXISTS (SELECT 1 FROM health_dokument_problemy f "
             "                                  WHERE f.dokument_id = d.id AND f.problem_id = %s)) "
-            "  AND (%s::text IS NULL OR lower(btrim(d.specjalizacja)) = lower(btrim(%s))) "
-            "  AND (%s::text IS NULL OR lower(btrim(d.lekarz)) = lower(btrim(%s))) "
-            "  AND (%s::text IS NULL OR lower(btrim(d.placowka)) = lower(btrim(%s))) "
+            "  AND (%s::text[] IS NULL OR lower(btrim(d.specjalizacja)) = ANY(%s)) "
+            "  AND (%s::text[] IS NULL OR lower(btrim(d.lekarz)) = ANY(%s)) "
+            "  AND (%s::text[] IS NULL OR lower(btrim(d.placowka)) = ANY(%s)) "
             # Dokumenty bez daty badania (jeszcze nieuzupełnione) mają trafiać
             # na górę, a nie na sam koniec — NULLS FIRST przy malejącej dacie.
             "ORDER BY d.data_badania DESC NULLS FIRST, d.id DESC",

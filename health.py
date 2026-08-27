@@ -11,7 +11,7 @@ błędnie i niezauważony jest gorszy niż brak wyniku.
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
 import database
@@ -116,16 +116,22 @@ async def odczytaj(
 # ── dokumenty ───────────────────────────────────────────────────────────────
 
 @router.get("/dokumenty")
-def lista_dokumentow(osoba_id: int | None = None, rodzaj: str | None = None,
-                     problem_id: int | None = None, specjalizacja: str | None = None,
-                     lekarz: str | None = None, placowka: str | None = None,
+def lista_dokumentow(osoba_id: int | None = None,
+                     rodzaj: list[str] | None = Query(None),
+                     problem_id: int | None = None,
+                     specjalizacja: list[str] | None = Query(None),
+                     lekarz: list[str] | None = Query(None),
+                     placowka: list[str] | None = Query(None),
                      current_user: dict = Depends(get_current_user)):
-    """Pominięcie `osoba_id` daje oś czasu całego gospodarstwa."""
+    """Pominięcie `osoba_id` daje oś czasu całego gospodarstwa.
+
+    Filtry tekstowe przyjmują parametr POWTÓRZONY (`?specjalizacja=a&specjalizacja=b`)
+    i łączą wartości przez LUB — patrz `health_db.dokumenty`. Stary adres
+    z jedną wartością działa bez zmian.
+    """
     return {"dokumenty": health_db.dokumenty(
         _hid(current_user), osoba_id, rodzaj, problem_id,
-        (specjalizacja or "").strip() or None,
-        (lekarz or "").strip() or None,
-        (placowka or "").strip() or None)}
+        specjalizacja, lekarz, placowka)}
 
 
 @router.get("/filtry")

@@ -52,8 +52,12 @@ let szczegoly = null;
 // chipy nad osią i są widoczne bez otwierania czegokolwiek. Pusty ciąg znaczy
 // „bez filtrowania"; nie `null`, żeby wartość dało się wprost wstawić do pola
 // wyboru bez tłumaczenia w obie strony.
-const FILTRY_PUSTE = { rodzaj: '', specjalizacja: '', lekarz: '', placowka: '' };
-let filtry = { ...FILTRY_PUSTE };
+// KAŻDY FILTR TO LISTA, nie pojedyncza wartość. Powód jest w danych: ta sama
+// specjalizacja bywa przepisana z pieczątki na kilka sposobów („stomatolog-
+// chirurg", „chirurg stomatolog"), a scalanie ich automatycznie znaczyłoby
+// zgadywanie za użytkownika. Zamiast tego można zaznaczyć oba warianty naraz.
+const pusteFiltry = () => ({ rodzaj: [], specjalizacja: [], lekarz: [], placowka: [] });
+let filtry = pusteFiltry();
 // Wartości do wyboru, zbierane z historii przez /api/health/filtry. Zależą od
 // wybranej osoby, więc odświeżamy je przy każdym otwarciu arkusza.
 let filtryDostepne = null;
@@ -63,26 +67,31 @@ const ETYKIETY_FILTROW = {
   lekarz: 'Lekarz', placowka: 'Placówka',
 };
 
+// Liczymy WYBRANE WARTOŚCI, nie pola: dwa zaznaczone warianty specjalizacji
+// to dwa filtry z punktu widzenia kogoś, kto patrzy na oś i widzi mniej wpisów.
 function ileFiltrow() {
-  return Object.values(filtry).filter(Boolean).length;
+  return Object.values(filtry).reduce((s, v) => s + v.length, 0);
 }
 
 // Nazwy ustawionych filtrów obok przycisku — sam licznik mówi, ŻE coś jest
 // ustawione, ale nie co; a przy pustej osi to jedyna podpowiedź, dlaczego
-// historia nagle wygląda na krótszą, niż jest.
+// historia nagle wygląda na krótszą, niż jest. Każda wartość ma własną
+// plakietkę, więc jedną da się zdjąć bez ruszania pozostałych.
 function opisFiltrow() {
-  return Object.entries(filtry)
-    .filter(([, v]) => v)
-    .map(([k, v]) => `<button class="chip wlaczony" type="button" data-zdejmij="${k}"
-        title="Zdejmij filtr: ${esc(ETYKIETY_FILTROW[k])}">${esc(k === 'rodzaj' ? (RODZAJE[v] || v) : v)} ✕</button>`)
-    .join('');
+  return Object.entries(filtry).flatMap(([k, lista]) =>
+    lista.map((v) => `<button class="chip wlaczony" type="button"
+        data-zdejmij="${k}" data-wartosc="${esc(v)}"
+        title="Zdejmij filtr: ${esc(ETYKIETY_FILTROW[k])}">${
+      esc(k === 'rodzaj' ? (RODZAJE[v] || v) : v)} ✕</button>`)).join('');
 }
 
 function zapytanieOsi() {
   const q = new URLSearchParams();
   if (osobaId !== null && osobaId !== undefined) q.set('osoba_id', osobaId);
   if (problemId !== null) q.set('problem_id', problemId);
-  for (const [k, v] of Object.entries(filtry)) if (v) q.set(k, v);
+  // `append`, nie `set`: powtórzony parametr to sposób, w jaki serwer czyta
+  // kilka wartości jednego filtra.
+  for (const [k, lista] of Object.entries(filtry)) lista.forEach((v) => q.append(k, v));
   return q;
 }
 
@@ -333,17 +342,21 @@ async function rysujOs() {
     // więc po przełączeniu zwykle wskazywałaby na kogoś, kogo tam nie ma,
     // i oś wyglądałaby na pustą bez widocznego powodu.
     problemId = null;
-    filtry = { ...FILTRY_PUSTE };
+    filtry = pusteFiltry();
     rysuj();
   };
   document.getElementById('do-przebiegu').onclick = () => { widok = 'przebieg'; rysuj(); };
   document.getElementById('do-filtrow').onclick = otworzFiltry;
   const czysc = document.getElementById('czysc-filtry');
-  if (czysc) czysc.onclick = () => { filtry = { ...FILTRY_PUSTE }; rysuj(); };
-  // Krzyżyk na plakietce zdejmuje pojedynczy filtr — bez wchodzenia w arkusz
-  // po to, żeby odznaczyć jedną rzecz.
+  if (czysc) czysc.onclick = () => { filtry = pusteFiltry(); rysuj(); };
+  // Krzyżyk na plakietce zdejmuje JEDNĄ wartość — bez wchodzenia w arkusz
+  // i bez ruszania pozostałych zaznaczeń tego samego pola.
   document.querySelectorAll('[data-zdejmij]').forEach((b) => {
-    b.onclick = () => { filtry[b.dataset.zdejmij] = ''; rysuj(); };
+    b.onclick = () => {
+      const k = b.dataset.zdejmij;
+      filtry[k] = filtry[k].filter((v) => v !== b.dataset.wartosc);
+      rysuj();
+    };
   });
   document.getElementById('f-problemy').onclick = (ev) => {
     const b = ev.target.closest('[data-pr]');
@@ -584,7 +597,9 @@ async function zamknijOdczyt(d) {
 // i cztery przerysowania osi.
 
 async function otworzFiltry() {
-  const wybor = { ...filtry };
+  // Kopia głęboka: zaznaczanie ma dać się porzucić przez zamknięcie arkusza,
+  // a `{...filtry}` przepisałoby te same tablice i zmiany szłyby od razu.
+  const wybor = Object.fromEntries(Object.entries(filtry).map(([k, v]) => [k, [...v]]));
   const tlo = document.createElement('div');
   tlo.className = 'przelacznik-tlo';
   tlo.innerHTML = `<div class="przelacznik arkusz-filtry">
@@ -609,36 +624,60 @@ async function otworzFiltry() {
   if (!filtryDostepne) {
     pola.innerHTML = '<div class="blad">Nie udało się wczytać wartości filtrów.</div>';
   } else {
+    // Zaznaczanie wielokrotne, nie lista rozwijana: warianty tej samej
+    // specjalizacji trzeba móc zaznaczyć razem, a przy okazji od razu widać,
+    // co jest w historii, bez rozwijania czterech pól po kolei.
     pola.innerHTML = [
       ['rodzaj', filtryDostepne.rodzaje, (v) => RODZAJE[v] || v],
       ['specjalizacja', filtryDostepne.specjalizacje, (v) => v],
       ['lekarz', filtryDostepne.lekarze, (v) => v],
       ['placowka', filtryDostepne.placowki, (v) => v],
     ].map(([klucz, lista, etykieta]) => {
-      // Pole, w którym nie ma z czego wybierać, byłoby atrapą — pokazujemy je
-      // wyszarzone z informacją zamiast pustej listy.
-      const puste = !lista || !lista.length;
+      // Pole, w którym nie ma z czego wybierać, byłoby atrapą — zamiast pustej
+      // listy piszemy wprost, że danych nie ma.
+      if (!lista || !lista.length) {
+        return `<div class="pole">
+          <label>${ETYKIETY_FILTROW[klucz]}</label>
+          <p class="uwaga">Brak danych w historii.</p>
+        </div>`;
+      }
       return `<div class="pole">
-        <label for="fl-${klucz}">${ETYKIETY_FILTROW[klucz]}</label>
-        <select id="fl-${klucz}" data-f="${klucz}"${puste ? ' disabled' : ''}>
-          <option value="">${puste ? 'brak danych w historii' : 'wszystkie'}</option>
-          ${(lista || []).map((p) => `<option value="${esc(p.nazwa)}"${
-            wybor[klucz] === p.nazwa ? ' selected' : ''}>${esc(etykieta(p.nazwa))} (${p.ile})</option>`).join('')}
-        </select>
+        <label>${ETYKIETY_FILTROW[klucz]}${
+          wybor[klucz].length ? ` <span class="ile-wybrano">${wybor[klucz].length}</span>` : ''}</label>
+        <div class="filtry-lista" data-lista="${klucz}">
+          ${lista.map((p) => `<button class="chip" type="button" data-w="${esc(p.nazwa)}"
+              aria-pressed="${wybor[klucz].includes(p.nazwa)}">${
+            esc(etykieta(p.nazwa))} <span class="os-data">${p.ile}</span></button>`).join('')}
+        </div>
       </div>`;
     }).join('');
-    pola.querySelectorAll('[data-f]').forEach((s) => {
-      s.onchange = () => { wybor[s.dataset.f] = s.value; };
+
+    pola.querySelectorAll('[data-lista]').forEach((box) => {
+      box.onclick = (e) => {
+        const b = e.target.closest('[data-w]');
+        if (!b) return;
+        const klucz = box.dataset.lista;
+        const v = b.dataset.w;
+        const jest = wybor[klucz].includes(v);
+        wybor[klucz] = jest ? wybor[klucz].filter((x) => x !== v) : [...wybor[klucz], v];
+        b.setAttribute('aria-pressed', String(!jest));
+        // Licznik przy nazwie pola aktualizujemy bez przerysowania listy —
+        // przerysowanie zgubiłoby pozycję przewijania przy dwudziestu placówkach.
+        const etykieta = box.parentElement.querySelector('label');
+        const ile = wybor[klucz].length;
+        etykieta.innerHTML = ETYKIETY_FILTROW[klucz]
+          + (ile ? ` <span class="ile-wybrano">${ile}</span>` : '');
+      };
     });
   }
 
   tlo.querySelector('#fl-czysc').onclick = () => {
-    filtry = { ...FILTRY_PUSTE };
+    filtry = pusteFiltry();
     tlo.remove();
     rysuj();
   };
   tlo.querySelector('#fl-pokaz').onclick = () => {
-    filtry = { ...wybor };
+    filtry = wybor;
     tlo.remove();
     rysuj();
   };

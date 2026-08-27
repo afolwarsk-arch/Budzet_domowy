@@ -202,10 +202,21 @@
 
     /* Arkusz filtrów korzysta ze stylu przełącznika modułów (przelacznik-tlo),
        dokłada tylko odstępy pól i rząd przycisków na dole. */
-    .arkusz-filtry .pole { margin-bottom: 12px; }
+    .arkusz-filtry .pole { margin-bottom: 14px; }
     .arkusz-filtry .akcje { display: flex; gap: 9px; margin-top: 4px; }
     .arkusz-filtry .akcje button { flex: 1; }
-    .arkusz-filtry select:disabled { color: var(--muted); background: var(--surface-2); }
+    /* Lista wartości do zaznaczenia. Placówek bywa dwadzieścia, więc każda
+       lista przewija się u siebie — inaczej przyciski na dole arkusza uciekłyby
+       poza ekran telefonu. */
+    .filtry-lista { display: flex; flex-wrap: wrap; gap: 6px;
+                    max-height: 132px; overflow-y: auto; padding: 2px; }
+    .filtry-lista .chip { min-height: 34px; padding: 5px 10px; font-size: 12px; }
+    .ile-wybrano { display: inline-block; min-width: 18px; padding: 1px 5px; margin-left: 5px;
+                   border-radius: 999px; background: var(--marka); color: #fff;
+                   font-size: 11px; text-align: center; }
+    /* Arkusz nie może urosnąć ponad ekran: cztery listy plus przyciski to
+       przy małym telefonie więcej niż wysokość okna. */
+    .arkusz-filtry { max-height: 84vh; overflow-y: auto; }
 
     /* Suwak skali — zmienia gęstość osi, nie zakres danych. Oś zawsze pokazuje
        wszystko; skala decyduje tylko, ile pikseli dostaje dzień. */
