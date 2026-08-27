@@ -48,6 +48,44 @@ let wybraneProblemy = new Set();
 let strony = [];
 let szczegoly = null;
 
+// Filtry z arkusza — osobno od osoby i problemu, bo tamte dwa mają własne
+// chipy nad osią i są widoczne bez otwierania czegokolwiek. Pusty ciąg znaczy
+// „bez filtrowania"; nie `null`, żeby wartość dało się wprost wstawić do pola
+// wyboru bez tłumaczenia w obie strony.
+const FILTRY_PUSTE = { rodzaj: '', specjalizacja: '', lekarz: '', placowka: '' };
+let filtry = { ...FILTRY_PUSTE };
+// Wartości do wyboru, zbierane z historii przez /api/health/filtry. Zależą od
+// wybranej osoby, więc odświeżamy je przy każdym otwarciu arkusza.
+let filtryDostepne = null;
+
+const ETYKIETY_FILTROW = {
+  rodzaj: 'Rodzaj', specjalizacja: 'Specjalizacja',
+  lekarz: 'Lekarz', placowka: 'Placówka',
+};
+
+function ileFiltrow() {
+  return Object.values(filtry).filter(Boolean).length;
+}
+
+// Nazwy ustawionych filtrów obok przycisku — sam licznik mówi, ŻE coś jest
+// ustawione, ale nie co; a przy pustej osi to jedyna podpowiedź, dlaczego
+// historia nagle wygląda na krótszą, niż jest.
+function opisFiltrow() {
+  return Object.entries(filtry)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `<button class="chip wlaczony" type="button" data-zdejmij="${k}"
+        title="Zdejmij filtr: ${esc(ETYKIETY_FILTROW[k])}">${esc(k === 'rodzaj' ? (RODZAJE[v] || v) : v)} ✕</button>`)
+    .join('');
+}
+
+function zapytanieOsi() {
+  const q = new URLSearchParams();
+  if (osobaId !== null && osobaId !== undefined) q.set('osoba_id', osobaId);
+  if (problemId !== null) q.set('problem_id', problemId);
+  for (const [k, v] of Object.entries(filtry)) if (v) q.set(k, v);
+  return q;
+}
+
 // Ile pikseli dostaje jeden dzień. Suwak zmienia GĘSTOŚĆ osi, nigdy zakres —
 // oś zawsze pokazuje całą historię, bo jej sensem jest widzieć całość naraz.
 const SKALE = [
@@ -232,10 +270,7 @@ async function rysujOs() {
   await wczytajProblemy();
   let dokumenty = [];
   try {
-    const q = new URLSearchParams();
-    if (osobaId !== null) q.set('osoba_id', osobaId);
-    if (problemId !== null) q.set('problem_id', problemId);
-    const r = await authFetch('/api/health/dokumenty?' + q);
+    const r = await authFetch('/api/health/dokumenty?' + zapytanieOsi());
     if (r.ok) dokumenty = (await r.json()).dokumenty || [];
   } catch { /* pusta oś jest poprawnym stanem */ }
 
@@ -256,6 +291,12 @@ async function rysujOs() {
             <span class="os-data">${p.ile}</span></button>`).join('')}
         <button class="chip dodaj" type="button" data-pr="zarzadzaj">Problemy…</button>
         <button class="chip dodaj" type="button" id="do-przebiegu">Przebieg…</button>
+      </div>
+      <div class="filtry">
+        <button class="chip${ileFiltrow() ? ' wlaczony' : ''}" type="button" id="do-filtrow">
+          Filtry${ileFiltrow() ? ` (${ileFiltrow()})` : ''}</button>
+        ${ileFiltrow() ? '<button class="chip dodaj" type="button" id="czysc-filtry">Wyczyść</button>' : ''}
+        ${opisFiltrow()}
       </div>
       <div class="skala">
         <span>gęstość</span>
@@ -288,10 +329,22 @@ async function rysujOs() {
     if (v === 'nowa') return rysujPierwszaOsoba();
     osobaId = v === 'wszyscy' ? null : Number(v);
     // Problem należy do osoby — po zmianie osoby stary filtr nie ma sensu.
+    // Tak samo lekarz i specjalizacja: to lista zbierana z historii TEJ osoby,
+    // więc po przełączeniu zwykle wskazywałaby na kogoś, kogo tam nie ma,
+    // i oś wyglądałaby na pustą bez widocznego powodu.
     problemId = null;
+    filtry = { ...FILTRY_PUSTE };
     rysuj();
   };
   document.getElementById('do-przebiegu').onclick = () => { widok = 'przebieg'; rysuj(); };
+  document.getElementById('do-filtrow').onclick = otworzFiltry;
+  const czysc = document.getElementById('czysc-filtry');
+  if (czysc) czysc.onclick = () => { filtry = { ...FILTRY_PUSTE }; rysuj(); };
+  // Krzyżyk na plakietce zdejmuje pojedynczy filtr — bez wchodzenia w arkusz
+  // po to, żeby odznaczyć jedną rzecz.
+  document.querySelectorAll('[data-zdejmij]').forEach((b) => {
+    b.onclick = () => { filtry[b.dataset.zdejmij] = ''; rysuj(); };
+  });
   document.getElementById('f-problemy').onclick = (ev) => {
     const b = ev.target.closest('[data-pr]');
     if (!b) return;
@@ -521,6 +574,74 @@ async function zamknijOdczyt(d) {
   }
   widok = 'podglad';
   rysuj();
+}
+
+// ── arkusz filtrów ──────────────────────────────────────────────────────────
+//
+// Osobne okno, a nie kolejny rząd chipów: nagłówek ma już dwa rzędy (osoby
+// i problemy), a specjalizacji bywa kilkanaście. Wybór zatwierdza się dopiero
+// przyciskiem — zmiana czterech pól po kolei odpalałaby cztery zapytania
+// i cztery przerysowania osi.
+
+async function otworzFiltry() {
+  const wybor = { ...filtry };
+  const tlo = document.createElement('div');
+  tlo.className = 'przelacznik-tlo';
+  tlo.innerHTML = `<div class="przelacznik arkusz-filtry">
+      <div class="przelacznik-tyt">Filtry historii</div>
+      <div id="filtry-pola"><div class="laduje">Wczytuję…</div></div>
+      <div class="akcje">
+        <button class="btn btn-outline" type="button" id="fl-czysc">Wyczyść</button>
+        <button class="btn btn-primary" type="button" id="fl-pokaz">Pokaż</button>
+      </div>
+    </div>`;
+  tlo.addEventListener('click', (e) => { if (e.target === tlo) tlo.remove(); });
+  document.body.appendChild(tlo);
+
+  // Wartości zależą od wybranej osoby, więc pobieramy je przy każdym otwarciu.
+  try {
+    const q = osobaId !== null && osobaId !== undefined ? '?osoba_id=' + osobaId : '';
+    const r = await authFetch('/api/health/filtry' + q);
+    filtryDostepne = r.ok ? await r.json() : null;
+  } catch { filtryDostepne = null; }
+
+  const pola = tlo.querySelector('#filtry-pola');
+  if (!filtryDostepne) {
+    pola.innerHTML = '<div class="blad">Nie udało się wczytać wartości filtrów.</div>';
+  } else {
+    pola.innerHTML = [
+      ['rodzaj', filtryDostepne.rodzaje, (v) => RODZAJE[v] || v],
+      ['specjalizacja', filtryDostepne.specjalizacje, (v) => v],
+      ['lekarz', filtryDostepne.lekarze, (v) => v],
+      ['placowka', filtryDostepne.placowki, (v) => v],
+    ].map(([klucz, lista, etykieta]) => {
+      // Pole, w którym nie ma z czego wybierać, byłoby atrapą — pokazujemy je
+      // wyszarzone z informacją zamiast pustej listy.
+      const puste = !lista || !lista.length;
+      return `<div class="pole">
+        <label for="fl-${klucz}">${ETYKIETY_FILTROW[klucz]}</label>
+        <select id="fl-${klucz}" data-f="${klucz}"${puste ? ' disabled' : ''}>
+          <option value="">${puste ? 'brak danych w historii' : 'wszystkie'}</option>
+          ${(lista || []).map((p) => `<option value="${esc(p.nazwa)}"${
+            wybor[klucz] === p.nazwa ? ' selected' : ''}>${esc(etykieta(p.nazwa))} (${p.ile})</option>`).join('')}
+        </select>
+      </div>`;
+    }).join('');
+    pola.querySelectorAll('[data-f]').forEach((s) => {
+      s.onchange = () => { wybor[s.dataset.f] = s.value; };
+    });
+  }
+
+  tlo.querySelector('#fl-czysc').onclick = () => {
+    filtry = { ...FILTRY_PUSTE };
+    tlo.remove();
+    rysuj();
+  };
+  tlo.querySelector('#fl-pokaz').onclick = () => {
+    filtry = { ...wybor };
+    tlo.remove();
+    rysuj();
+  };
 }
 
 // ── wizyta: kto przyjmował ──────────────────────────────────────────────────

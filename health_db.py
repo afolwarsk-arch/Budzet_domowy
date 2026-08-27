@@ -319,12 +319,21 @@ _PROBLEMY_DOK = """COALESCE((
 
 
 def dokumenty(household_id: int, osoba_id: int | None = None,
-              rodzaj: str | None = None, problem_id: int | None = None) -> list[dict]:
+              rodzaj: str | None = None, problem_id: int | None = None,
+              specjalizacja: str | None = None, lekarz: str | None = None,
+              placowka: str | None = None) -> list[dict]:
     """Dokumenty do listy i do osi czasu.
 
     `osoba_id = None` znaczy „wszyscy domownicy" — oś czasu ma przełącznik
     i w trybie zbiorczym potrzebuje wiedzieć, czyj jest każdy wpis, stąd JOIN
     po imię.
+
+    Specjalizacja, lekarz i placówka filtrują po DOKŁADNEJ wartości, nie po
+    fragmencie: listę wyboru budujemy z wartości już zapisanych w bazie
+    (`wartosci_filtrow`), więc użytkownik wybiera to, co istnieje, i nie ma
+    czego dopasowywać częściowo. Porównanie jest za to nieczułe na wielkość
+    liter i spacje po brzegach — te same nazwiska bywają przepisane z pieczątki
+    raz wersalikami, raz nie.
     """
     with get_db() as cur:
         cur.execute(
@@ -343,12 +352,64 @@ def dokumenty(household_id: int, osoba_id: int | None = None,
             "  AND (%s::text IS NULL OR d.rodzaj = %s) "
             "  AND (%s::int IS NULL OR EXISTS (SELECT 1 FROM health_dokument_problemy f "
             "                                  WHERE f.dokument_id = d.id AND f.problem_id = %s)) "
+            "  AND (%s::text IS NULL OR lower(btrim(d.specjalizacja)) = lower(btrim(%s))) "
+            "  AND (%s::text IS NULL OR lower(btrim(d.lekarz)) = lower(btrim(%s))) "
+            "  AND (%s::text IS NULL OR lower(btrim(d.placowka)) = lower(btrim(%s))) "
             # Dokumenty bez daty badania (jeszcze nieuzupełnione) mają trafiać
             # na górę, a nie na sam koniec — NULLS FIRST przy malejącej dacie.
             "ORDER BY d.data_badania DESC NULLS FIRST, d.id DESC",
-            (household_id, osoba_id, osoba_id, rodzaj, rodzaj, problem_id, problem_id),
+            (household_id, osoba_id, osoba_id, rodzaj, rodzaj, problem_id, problem_id,
+             specjalizacja, specjalizacja, lekarz, lekarz, placowka, placowka),
         )
         return [dict(r) for r in cur.fetchall()]
+
+
+def wartosci_filtrow(household_id: int, osoba_id: int | None = None) -> dict:
+    """Co da się wybrać w filtrach — wyłącznie wartości, które w historii są.
+
+    LISTA WYBORU MUSI POCHODZIĆ Z DANYCH, nie ze słownika. Specjalizacja
+    i lekarz są przepisywane z pieczątki, więc żadna z góry ustalona lista nie
+    trafiłaby w to, co faktycznie leży w bazie tego gospodarstwa.
+
+    Zwracamy licznik przy każdej wartości, bo „neurolog (7)" od razu mówi,
+    czy warto tam zaglądać. Grupujemy po zapisie sprowadzonym do małych liter
+    bez spacji brzegowych — inaczej „URSEL ANNA" i „Ursel Anna" byłyby dwiema
+    pozycjami — ale pokazujemy wersję najczęściej występującą, żeby na liście
+    nie wyświetlać nazwiska wersalikami tylko dlatego, że tak wyszło pierwszemu.
+    """
+    def zbierz(kolumna: str) -> list[dict]:
+        with get_db() as cur:
+            cur.execute(
+                f"SELECT lower(btrim(d.{kolumna})) AS klucz, "
+                f"       (array_agg(btrim(d.{kolumna}) ORDER BY btrim(d.{kolumna})))[1] AS nazwa, "
+                "       COUNT(*) AS ile "
+                "FROM health_dokumenty d "
+                "JOIN health_osoby o ON o.id = d.osoba_id "
+                "WHERE d.household_id = %s AND NOT d.ukryty AND NOT o.ukryta "
+                f"  AND d.{kolumna} IS NOT NULL AND btrim(d.{kolumna}) <> '' "
+                "  AND (%s::int IS NULL OR d.osoba_id = %s) "
+                "GROUP BY 1 ORDER BY 3 DESC, 2",
+                (household_id, osoba_id, osoba_id),
+            )
+            return [{"nazwa": r["nazwa"], "ile": r["ile"]} for r in cur.fetchall()]
+
+    with get_db() as cur:
+        cur.execute(
+            "SELECT d.rodzaj AS nazwa, COUNT(*) AS ile FROM health_dokumenty d "
+            "JOIN health_osoby o ON o.id = d.osoba_id "
+            "WHERE d.household_id = %s AND NOT d.ukryty AND NOT o.ukryta "
+            "  AND (%s::int IS NULL OR d.osoba_id = %s) "
+            "GROUP BY 1 ORDER BY 2 DESC, 1",
+            (household_id, osoba_id, osoba_id),
+        )
+        rodzaje = [{"nazwa": r["nazwa"], "ile": r["ile"]} for r in cur.fetchall()]
+
+    return {
+        "rodzaje": rodzaje,
+        "specjalizacje": zbierz("specjalizacja"),
+        "lekarze": zbierz("lekarz"),
+        "placowki": zbierz("placowka"),
+    }
 
 
 def dokument(household_id: int, dokument_id: int) -> dict | None:

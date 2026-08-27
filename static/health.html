@@ -193,7 +193,19 @@
     .chip[aria-pressed="true"] { border-color: var(--marka); background: var(--surface-2);
             font-weight: 600; }
     .chip.dodaj { border-style: dashed; color: var(--muted); }
+    /* Filtr ustawiony z arkusza. Wyróżniony mocniej niż zwykły chip wciśnięty,
+       bo jego przyczyna jest schowana — bez tego oś potrafi wyglądać na pustą,
+       a powód siedzi w oknie, którego nie widać. */
+    .chip.wlaczony { border-color: var(--marka); background: var(--accent-soft);
+            color: var(--accent-strong); font-weight: 600; }
     .kropka-pr { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+
+    /* Arkusz filtrów korzysta ze stylu przełącznika modułów (przelacznik-tlo),
+       dokłada tylko odstępy pól i rząd przycisków na dole. */
+    .arkusz-filtry .pole { margin-bottom: 12px; }
+    .arkusz-filtry .akcje { display: flex; gap: 9px; margin-top: 4px; }
+    .arkusz-filtry .akcje button { flex: 1; }
+    .arkusz-filtry select:disabled { color: var(--muted); background: var(--surface-2); }
 
     /* Suwak skali — zmienia gęstość osi, nie zakres danych. Oś zawsze pokazuje
        wszystko; skala decyduje tylko, ile pikseli dostaje dzień. */

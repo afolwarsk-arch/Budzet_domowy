@@ -117,10 +117,26 @@ async def odczytaj(
 
 @router.get("/dokumenty")
 def lista_dokumentow(osoba_id: int | None = None, rodzaj: str | None = None,
-                     problem_id: int | None = None,
+                     problem_id: int | None = None, specjalizacja: str | None = None,
+                     lekarz: str | None = None, placowka: str | None = None,
                      current_user: dict = Depends(get_current_user)):
     """Pominięcie `osoba_id` daje oś czasu całego gospodarstwa."""
-    return {"dokumenty": health_db.dokumenty(_hid(current_user), osoba_id, rodzaj, problem_id)}
+    return {"dokumenty": health_db.dokumenty(
+        _hid(current_user), osoba_id, rodzaj, problem_id,
+        (specjalizacja or "").strip() or None,
+        (lekarz or "").strip() or None,
+        (placowka or "").strip() or None)}
+
+
+@router.get("/filtry")
+def wartosci_filtrow(osoba_id: int | None = None,
+                     current_user: dict = Depends(get_current_user)):
+    """Wartości do wyboru w filtrach — zbierane z historii, nie ze słownika.
+
+    Zawężone do wskazanej osoby, bo lista specjalistów Adama nie ma czego
+    szukać w filtrach ustawionych na dziecko.
+    """
+    return health_db.wartosci_filtrow(_hid(current_user), osoba_id)
 
 
 @router.get("/dokumenty/{dokument_id}")
