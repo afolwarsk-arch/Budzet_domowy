@@ -1184,6 +1184,11 @@ function _injectNav() {
   nav.dataset.zbudowany = '1';
 }
 
+// KAŻDY KAFELEK NIESIE WŁASNY KOLOR. `--marka` ustawiona na kafelku obowiązuje
+// wszystko w jego środku: kropkę przy nazwie ORAZ akcenty w ikonie (`kropka`
+// i `akc` w SVG). Bez tego ikony brały kolor strony, na której akurat stoisz —
+// w finansach ptaszek zadań był złoty, a kreski dziennika miały złotą kropkę
+// zamiast zielonej. Przełącznik ma pokazywać moduły, a nie miejsce wyjścia.
 function _pokazPrzelacznik(ev) {
   const biezacy = _modulBiezacy();
   const o = document.createElement('div');
@@ -1192,9 +1197,10 @@ function _pokazPrzelacznik(ev) {
       <div class="przelacznik-tyt">Moduły</div>
       <div class="przelacznik-siatka">
         ${MODULY.map((m) => `
-          <a href="${m.strony[0].href}" class="modul-kafel${m.id === biezacy.id ? ' biezacy' : ''}">
+          <a href="${m.strony[0].href}" class="modul-kafel${m.id === biezacy.id ? ' biezacy' : ''}"
+             style="--marka:${m.kolor}">
             ${ikonaPelna(m.ikona)}
-            <span class="mk-n">wiem<i class="mk-kropka" style="background:${m.kolor}"></i> ${m.nazwa}</span>
+            <span class="mk-n">wiem<i class="mk-kropka"></i> ${m.nazwa}</span>
             <span class="mk-o">${m.opis}</span>
           </a>`).join('')}
       </div>
