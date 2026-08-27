@@ -1,0 +1,32 @@
+{
+  "opis": "Kopia zapasowa pol specjalizacja/lekarz/placowka w health_dokumenty PRZED jednorazowym porzadkowaniem 2026-08-27. Wykonana na wyrazna prosbe i za zgoda Adama. Pozwala cofnac scalanie: kazdy wpis to id dokumentu i wartosci sprzed zmiany.",
+  "data": "2026-08-27",
+  "dokumenty": [
+    {"id": 4,  "specjalizacja": "neurolog",                  "lekarz": "lek. Dorota Różański",              "placowka": "Poradnia Telemedyczna Neurologiczna, Świat Zdrowia Cyfrowa Przychodnia, Aleje Jerozolimskie 87, 02-001 Warszawa"},
+    {"id": 30, "specjalizacja": "neurolog",                  "lekarz": "Borowski Jan",                      "placowka": "Centrum Specjalistyczne BIOMED Borowscy Spółka Jawna, 59-700 Bolesławiec, ul. Piaskowa 15"},
+    {"id": 10, "specjalizacja": "gastroenterolog",           "lekarz": "lek. Anna Susło",                   "placowka": "Zespół Opieki Zdrowotnej w Bolesławcu, Przychodnia Przyszpitalna, Poradnia Gastroenterologiczna, Szpital Św. Łukasza w Bolesławcu"},
+    {"id": 26, "specjalizacja": "chirurg stomatolog",        "lekarz": "dr n. med. Aleksandra Hercka-Mulas", "placowka": "Klinika Implantologii i Estetyki Stomatologicznej Dr Hercka, Gliwice"},
+    {"id": 5,  "specjalizacja": "traumatolog ortopeda",      "lekarz": "lek. med. Grzegorz Pabijaniak",     "placowka": "Poradnia Chirurgii Urazowo-Ortopedycznej, Bolesławiec"},
+    {"id": 6,  "specjalizacja": "radiolog",                  "lekarz": "lek. med. Anna Spałek",             "placowka": "Przychodnia \"Lekarz Domowy\" Pieszko sp. j., Kraśnik Dolny 47A, 59-700 Bolesławiec"},
+    {"id": 3,  "specjalizacja": "internista",                "lekarz": "lek. Sylwia Widomska",              "placowka": "Poradnia Telemedyczna Internistyczna, Świat Zdrowia Cyfrowa Przychodnia"},
+    {"id": 8,  "specjalizacja": "ortopeda",                  "lekarz": "Lek. med. Grzegorz Pabijaniak",     "placowka": "Poradnia Chirurgii Urazowo-Ortopedycznej, Bolesławiec"},
+    {"id": 7,  "specjalizacja": null,                        "lekarz": "Agnieszka Trojanowska",             "placowka": "Centrum Specjalistyczne BIOMED Borowscy Sp. J., Pracownia tomografii komputerowej, ul. Komuny Paryskiej 14, 59-700 Bolesławiec"},
+    {"id": 21, "specjalizacja": "otolaryngolog",             "lekarz": "URSEL ANNA",                        "placowka": "Centrum Specjalistyczne BIOMED Borowscy Spółka Jawna, 59-700 Bolesławiec, ul. Piaskowa 15"},
+    {"id": 25, "specjalizacja": null,                        "lekarz": "Grażyna Ossowska",                  "placowka": null},
+    {"id": 23, "specjalizacja": "neurolog",                  "lekarz": "lek. Grażyna Ossowska",             "placowka": "Poradnia Neurologiczna - SCANMED Wrocław - Bema 2, Centrum Medyczne Wrocław Bema"},
+    {"id": 24, "specjalizacja": null,                        "lekarz": null,                                "placowka": "Zespół Opieki Zdrowotnej w Bolesławcu, Centrum Diagnostyki Laboratoryjnej, Szpital Św. Łukasza w Bolesławcu"},
+    {"id": 22, "specjalizacja": "rezonans magnetyczny",      "lekarz": "lek. Grażyna Ossowska",             "placowka": "PORADNIA NEUROLOGICZNA - SCANMED WROCŁAW - BEMA 2, SCANMED SPÓŁKA AKCYJNA"},
+    {"id": 20, "specjalizacja": "neurolog",                  "lekarz": "lek. Grażyna Ossowska",             "placowka": "Poradnia Neurologiczna - Scanmed Wrocław Bema 2"},
+    {"id": 18, "specjalizacja": "stomatolog",                "lekarz": "lek. stom. Halina Szczepańska",     "placowka": "Przychodnia \"STOMED\" s.c. Szczepańscy, Pasteura 1, 59-700 Bolesławiec"},
+    {"id": 29, "specjalizacja": "stomatolog-chirurg",        "lekarz": "Halina Szczepańska",                "placowka": "Przychodnia STOMED s.c. Szczepańscy, Bolesławiec, ul. L. Pasteura 1"},
+    {"id": 28, "specjalizacja": "lekarz medycyny rodzinnej", "lekarz": "lek. med. Franciszek Hertman",      "placowka": "Franciszek Hertman NZOZ Praktyka Lekarza Rodzinnego"},
+    {"id": 19, "specjalizacja": "neurolog",                  "lekarz": "lek. med. Franciszek Hertman",      "placowka": "Franciszek Hertman NZOZ, Praktyka Lekarza Rodzinnego lek. med. Franciszek Hertman, 59-700 Bolesławiec, ul. Starzyńskiego 6D"},
+    {"id": 17, "specjalizacja": "stomatolog - chirurg",      "lekarz": "lek. stom. Halina Szczepańska",     "placowka": "Przychodnia \"STOMED\" s.c. Szczepańscy, Pasteura 1, 59-700 Bolesławiec"},
+    {"id": 16, "specjalizacja": "stomatolog",                "lekarz": "lek. stom. Halina Szczepańska",     "placowka": "Przychodnia \"STOMED\" s.c. Szczepańscy, Pasteura 1, 59-700 Bolesławiec"},
+    {"id": 27, "specjalizacja": "Stomatolog",                "lekarz": "lek. stom. Halina Szczepańska",     "placowka": "Przychodnia „STOMED\" s.c. Szczepańscy, 59-700 Bolesławiec, ul. Pasteura 1"},
+    {"id": 15, "specjalizacja": "stomatolog",                "lekarz": "lek. stom. Halina Szczepańska",     "placowka": "Przychodnia \"STOMED\" s.c. Szczepańscy, Pasteura 1, 59-700 Bolesławiec"},
+    {"id": 14, "specjalizacja": "stomatolog-chirurg",        "lekarz": "lek. stom. Halina Szczepańska",     "placowka": "Przychodnia STOMED s.c. Szczepańscy, ul. Pasteura 1, 59-700 Bolesławiec"},
+    {"id": 13, "specjalizacja": "stomatolog-chirurg",        "lekarz": "lek. stom. Halina Szczepańska",     "placowka": "Przychodnia \"STOMED\" s.c. Szczepańscy, Bolesławiec, ul. Pasteura 1"},
+    {"id": 12, "specjalizacja": "stomatolog",                "lekarz": "Michał Kolibabski",                 "placowka": "Klinika Implantologii i Estetyki Stomatologicznej Dr Hercka / Ośrodek Medyczny PRAKTIDENT, Al. Tysiąclecia 10 a,b, 59-700 Bolesławiec"}
+  ]
+}

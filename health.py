@@ -155,6 +155,25 @@ def wartosci_filtrow(osoba_id: int | None = None, problem_id: int | None = None,
                                       rodzaj, specjalizacja, lekarz, placowka)
 
 
+@router.post("/scal")
+def scal_wartosci(dane: dict, current_user: dict = Depends(get_current_user)):
+    """Scala kilka zapisów tej samej placówki, lekarza albo specjalizacji w jeden.
+
+    Wywołanie ZMIENIA ZAPISANE DOKUMENTY, więc pole jest ograniczone do trzech
+    kolumn opisowych — nigdy do wyników, dat ani rozpoznań.
+    """
+    pole = (dane.get("pole") or "").strip()
+    warianty = dane.get("warianty") or []
+    na = (dane.get("na") or "").strip()
+    if not isinstance(warianty, list) or not warianty or not na:
+        raise HTTPException(400, "Podaj warianty do scalenia i wartość docelową.")
+    try:
+        ile = health_db.scal_wartosci(_hid(current_user), pole, warianty, na)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"zmienione": ile}
+
+
 @router.get("/dokumenty/{dokument_id}")
 def jeden_dokument(dokument_id: int, current_user: dict = Depends(get_current_user)):
     d = health_db.dokument(_hid(current_user), dokument_id)

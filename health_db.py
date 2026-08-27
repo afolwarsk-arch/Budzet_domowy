@@ -479,6 +479,35 @@ def _dolacz_zerowe(kolumna: str, znalezione: list[dict], wybrane, household_id: 
     return znalezione + [w for w in wszystkie if w["klucz"] not in mam]
 
 
+SCALALNE = ("specjalizacja", "lekarz", "placowka")
+
+
+def scal_wartosci(household_id: int, pole: str, warianty: list[str], na: str) -> int:
+    """Zamienia kilka zapisów tej samej rzeczy na jeden. Zwraca liczbę zmian.
+
+    POTRZEBNE, BO DANE POCHODZĄ Z PIECZĄTEK. Ta sama przychodnia bywa zapisana
+    na pięć sposobów, bo adres na każdym dokumencie stoi w innej kolejności.
+    Scalanie automatyczne odrzucone: to zgadywanie, że dwa różne zapisy
+    naprawdę znaczą to samo — decyzję podejmuje człowiek, funkcja ją wykonuje.
+
+    Dopasowanie po zapisie sprowadzonym do małych liter bez spacji brzegowych,
+    czyli tak samo jak w filtrach — inaczej wariant różniący się wielkością
+    litery przetrwałby scalanie i wróciłby na listę.
+    """
+    if pole not in SCALALNE:
+        raise ValueError(f"Nie scalam pola {pole}.")
+    klucze = [w.strip().lower() for w in warianty if w and w.strip()]
+    if not klucze or not (na or "").strip():
+        return 0
+    with get_db() as cur:
+        cur.execute(
+            f"UPDATE health_dokumenty SET {pole} = %s "
+            "WHERE household_id = %s AND lower(btrim(" + pole + ")) = ANY(%s)",
+            (na.strip(), household_id, klucze),
+        )
+        return cur.rowcount
+
+
 def dokument(household_id: int, dokument_id: int) -> dict | None:
     """Dokument razem z wynikami — ekran szczegółów potrzebuje obu naraz."""
     with get_db() as cur:
