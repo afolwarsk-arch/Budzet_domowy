@@ -976,8 +976,11 @@ const IKONY_SVG = {
   // UWAGA: `ikonaPelna` czyta najpierw IKONY_PELNE, a dopiero potem tę mapę.
   // Znak, który ma tam swoją wersję, trzeba zmienić w OBU miejscach.
   zdrowie: '<path d="M9.4 3.2h5.2v6.2h6.2v5.2h-6.2v6.2H9.4v-6.2H3.2V9.4h6.2z"/>',
-  moneta: '<path d="M12 3.4a8.6 8.6 0 100 17.2 8.6 8.6 0 000-17.2zm0 5.2a3.4 3.4 0 110 6.8 3.4 3.4 0 010-6.8z"/>',
-  jablko: '<path d="M12 7.6c-1.5-1.7-4.2-2-5.9-.3-2 2-1.7 5.7.4 8.6 1.3 1.8 2.7 3.2 3.8 3.2.6 0 1.1-.3 1.7-.3s1.1.3 1.7.3c1.1 0 2.5-1.4 3.8-3.2 2.1-2.9 2.4-6.6.4-8.6-1.7-1.7-4.4-1.4-5.9.3z"/><path class="kropka" d="M12.6 6.4c-.2-1.8 1-3.2 2.8-3.4.2 1.8-1 3.2-2.8 3.4z"/>',
+  // Stos monet, nie pojedyncza moneta: krążek z otworem czytał się jak
+  // dowolne kółko i nie miał gdzie pomieścić koloru modułu. Wierzchnia
+  // moneta jest akcentem — tak samo jak listek przy jabłku dziennika.
+  moneta: '<ellipse cx="12" cy="17.8" rx="7.4" ry="2.7"/><ellipse cx="12" cy="13.5" rx="7.4" ry="2.7"/><ellipse class="kropka" cx="12" cy="9.2" rx="7.4" ry="2.7"/>',
+  jablko: '<path d="M12 7.6c-1.5-1.7-4.2-2-5.9-.3-2 2-1.7 5.7.4 8.6 1.3 1.8 2.7 3.2 3.8 3.2.6 0 1.1-.3 1.7-.3s1.1.3 1.7.3c1.1 0 2.5-1.4 3.8-3.2 2.1-2.9 2.4-6.6.4-8.6-1.7-1.7-4.4-1.4-5.9.3z"/><path class="kropka" d="M12.4 7c-.3-2.4 1.3-4.2 3.8-4.5.3 2.4-1.3 4.2-3.8 4.5z"/>',
   zadania: '<path d="M4 5.6h9v2H4zM4 11h9v2H4zM4 16.4h6v2H4z"/><path class="kropka" d="M14.6 15.4l2.3 2.3 4.5-4.8 1.2 1.3-5.7 6-3.5-3.5z"/>',
   osoby: '<circle cx="9.2" cy="8.4" r="3.4"/><path d="M3.4 19.4c0-3.2 2.6-5.4 5.8-5.4s5.8 2.2 5.8 5.4"/><path d="M16.6 6.2a3.2 3.2 0 010 6.2M17.6 14.6c2.1.6 3.4 2.4 3.4 4.8"/>',
   osoba_plus: '<circle cx="10" cy="8.4" r="3.4"/><path d="M4.2 19.4c0-3.2 2.6-5.4 5.8-5.4 1 0 2 .2 2.8.6"/><path class="akc" d="M17.6 13.4v6.2M14.5 16.5h6.2"/>',
