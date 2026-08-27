@@ -350,6 +350,47 @@ def czytaj_dokument(strony: list[tuple[bytes, str]],
     return _parsuj(msg.content[0].text), _usage(msg)
 
 
+def _opis_dokumentu(d: dict) -> str:
+    """Jednozdaniowa wizytówka dokumentu: nazwa, data, placówka — ile jest."""
+    czesci = []
+    nazwa = (d.get("nazwa") or "").strip()
+    czesci.append(f"„{nazwa}”" if nazwa else "dokument bez nazwy")
+    data = (d.get("data_badania") or "").strip()
+    if len(data) == 10 and data[4] == "-":
+        czesci.append(f"z {data[8:10]}.{data[5:7]}.{data[0:4]}")
+    placowka = (d.get("placowka") or "").strip()
+    if placowka:
+        # Pełna nazwa placówki bywa na trzy linijki; do rozpoznania wystarczy początek.
+        czesci.append(f"({placowka[:60]})")
+    return " ".join(czesci)
+
+
+def _komunikat_wiele(rozpoznane: list) -> str:
+    """Odmowa sklejenia kilku dokumentów w jeden wpis — powiedziana konkretnie.
+
+    KOMUNIKAT MUSI NAZWAĆ TO, CO MODEL ZOBACZYŁ. Poprzednia wersja mówiła
+    tylko „to wyglądają na kilka RÓŻNYCH dokumentów", więc dla użytkownika
+    patrzącego na jedno zdjęcie brzmiała jak upór apki. Gdy padnie nazwa
+    i data rozpoznanego dokumentu, widać od razu, o co chodzi — na przykład
+    że w kadrze leży druga kartka sprzed roku.
+    """
+    opisy = [_opis_dokumentu(d) for d in rozpoznane if d.get("nazwa") or d.get("data_badania")]
+    # „Widzę tu", a nie „na zdjęciu": to samo wychodzi przy kilku wgranych
+    # stronach i przy PDF-ie, gdzie o żadnym zdjęciu nie ma mowy.
+    poczatek = ("Widzę tu więcej niż jeden dokument — mają różne daty "
+                "albo pochodzą z różnych placówek.")
+    if opisy:
+        lista = "; ".join(opisy)
+        rozpoznalem = (f" Rozpoznałem: {lista}." if len(opisy) > 1 else
+                       f" Jeden z nich to {lista}.")
+    else:
+        rozpoznalem = ""
+    return (poczatek + rozpoznalem + " Nie łączę ich w jeden wpis, bo data "
+            "i lekarz musiałyby się rozjechać. Wgraj każdy dokument osobno — "
+            "a jeśli fotografujesz, zrób zdjęcie tak, żeby w kadrze nie było "
+            "widać sąsiedniej kartki.")
+
+
 def _limit_czasu(ile_stron: int) -> float:
     """Ile sekund czekamy na model, zanim uznamy odczyt za przepadły.
 
@@ -510,15 +551,12 @@ def _parsuj(surowy: str) -> dict:
     # ich na siłę: dwie wizyty z różnych dni scalone w jeden wpis to gorsza
     # szkoda niż odmowa — w dokumentacji medycznej data i lekarz muszą się zgadzać.
     if isinstance(dane, list):
-        raise OdczytError(
-            "To wyglądają na kilka RÓŻNYCH dokumentów, a nie kolejne strony jednego. "
-            "Wgraj każdy osobno.")
+        raise OdczytError(_komunikat_wiele(
+            [d for d in dane if isinstance(d, dict)]))
     if not isinstance(dane, dict):
         raise OdczytError("Model zwrócił coś innego niż opis dokumentu.")
     if dane.get("rozne_dokumenty"):
-        raise OdczytError(
-            "To wyglądają na kilka RÓŻNYCH dokumentów, a nie kolejne strony jednego. "
-            "Wgraj każdy osobno.")
+        raise OdczytError(_komunikat_wiele([dane]))
 
     dane["wyniki"] = [_czysc_wynik(w) for w in (dane.get("wyniki") or [])
                       if isinstance(w, dict) and (w.get("nazwa") or "").strip()]
