@@ -893,6 +893,20 @@ const _SAMOUCZEK_SLAJDY = {
   { ikona: 'dysk', tytul: 'Oryginały nie zostają',
     opis: 'Zdjęcie ani PDF nie trafiają do bazy — plik służy wyłącznie do odczytu i ginie razem z żądaniem. Zostają tylko przepisane dane. Zatrzymaj oryginał u siebie, jeśli będzie potrzebny u lekarza.' },
   ],
+  task: [
+  { znak: true, tytul: 'Witaj w <span class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></span><span style="font-size:.62em;font-weight:600;letter-spacing:0">task</span>',
+    opis: 'Miejsce na wszystko, co macie do zrobienia — od „oddać PIT" po remont łazienki. Zapisujesz sprawę w sekundę, a szczegóły dopisujesz wtedy, kiedy masz chwilę.' },
+  { ikona: 'zadania', tytul: 'Wpisz i zapomnij',
+    opis: 'Pole na górze listy przyjmuje samo zdanie — piszesz, naciskasz Enter i sprawa jest zapisana. Termin, wykonawcę i przypomnienie dodasz później, jeśli w ogóle będą potrzebne.' },
+  { ikona: 'osoby', tytul: 'Kto się tym zajmie',
+    opis: 'Zadanie możesz przypisać domownikowi — także takiemu, który nie ma konta w aplikacji. Sprawy, których nie chcesz nikomu pokazywać, oznacz jako „tylko dla mnie".' },
+  { ikona: 'alerty', tytul: 'Przypomnienie o wybranej porze',
+    opis: 'Ustaw termin i godzinę, a apka odezwie się powiadomieniem dokładnie wtedy. Przesuniesz termin — przypomni się ponownie.' },
+  { ikona: 'lista', tytul: 'Duże sprawy dziel na kroki',
+    opis: 'Do każdego zadania dopiszesz kroki, a do kroków kolejne — tak głęboko, jak potrzebujesz. Na liście widzisz postęp i to, co jest do zrobienia jako następne.' },
+  { ikona: 'cele', tytul: 'Zaznacz to, co nieprzesuwalne',
+    opis: 'Termin oddania dokumentów albo odbiór mieszkania oznacz jako kamień milowy. Takie punkty wyróżniają się na liście, żeby nie zginęły między drobiazgami.' },
+  ],
 };
 
 function pokazSamouczek(pierwszyRaz) {
