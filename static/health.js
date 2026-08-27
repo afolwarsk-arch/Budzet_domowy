@@ -402,40 +402,75 @@ async function zapiszOsobe() {
 // który trafiał prosto na ekran i nie mówił użytkownikowi zupełnie nic.
 // Rozpoznajemy go po tym, że NIE jest naszym Error z komunikatem z API.
 function bladOdczytu(e) {
-  if (e instanceof TypeError) {
+  if (e.zerwane) {
     return 'Połączenie zostało przerwane, zanim dokument został odczytany. '
          + 'Dokument nie został nigdzie zapisany — spróbuj ponownie.';
   }
   return e.message || 'Nie udało się odczytać dokumentu.';
 }
 
+// XMLHttpRequest, a NIE `fetch` — wyłącznie dla paska postępu. `fetch` nie
+// mówi nic o tym, ile pliku już poszło, a przy trzech megabajtach z telefonu
+// to jedyny odcinek, na którym cokolwiek widać: sam odczyt po stronie serwera
+// trwa kilkanaście sekund i nie da się go odmierzyć.
+//
+// Zerwane połączenie oznaczamy flagą `zerwane`, bo tylko ono nadaje się do
+// ponowienia. Odpowiedź serwera z błędem — nawet 500 — znaczy, że żądanie
+// doszło i model już policzył swoje; powtarzanie go kosztuje drugi raz.
+function wyslijDokument(fd, token, naPostep) {
+  return new Promise((spelnij, odrzuc) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', '/api/health/odczytaj');
+    x.setRequestHeader('Authorization', 'Bearer ' + token);
+    x.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) naPostep(ev.loaded / ev.total);
+    };
+    x.onload = () => {
+      let d = {};
+      try { d = JSON.parse(x.responseText); } catch { /* obsłużone niżej */ }
+      if (x.status >= 200 && x.status < 300) return spelnij(d);
+      const e = new Error(d.detail || 'Nie udało się odczytać.');
+      odrzuc(e);
+    };
+    const zerwij = () => {
+      const e = new Error('Połączenie przerwane.');
+      e.zerwane = true;
+      odrzuc(e);
+    };
+    x.onerror = zerwij;
+    x.ontimeout = zerwij;
+    x.onabort = zerwij;
+    x.send(fd);
+  });
+}
+
+// Ekran nie może zgasnąć w trakcie wysyłki: gdy Android wygasza ekran albo
+// przeglądarka schodzi w tło, połączenie z niedokończonym uploadem ginie —
+// i to jest najczęstsza przyczyna zerwania przy wgrywaniu z telefonu.
+// Blokada jest prośbą, nie gwarancją; brak wsparcia zostawia stan bez zmian.
+async function trzymajEkran() {
+  try {
+    if (document.visibilityState !== 'visible') return null;
+    return await navigator.wakeLock.request('screen');
+  } catch { return null; }
+}
+
 async function odczytaj() {
   const ile = strony.length;
-  box().innerHTML = `<div class="czekaj">
-      <div class="czekaj-znak"><i></i><i></i></div>
-      <b>Czytam dokument…</b>
-      <span>${ile > 1 ? `Składam ${stronyOpis(ile)} w jedno badanie. ` : ''}Przepisuję wyniki,
-      normy i oznaczenia. Zaraz pokażę je do sprawdzenia — nic nie zapisuję bez twojej zgody.</span>
-    </div>`;
+  const ekranCzekania = (dopisek) => {
+    box().innerHTML = `<div class="czekaj">
+        <div class="czekaj-znak"><i></i><i></i></div>
+        <b>${dopisek || 'Czytam dokument…'}</b>
+        <span>${ile > 1 ? `Składam ${stronyOpis(ile)} w jedno badanie. ` : ''}Przepisuję wyniki,
+        normy i oznaczenia. Zaraz pokażę je do sprawdzenia — nic nie zapisuję bez twojej zgody.</span>
+        <div class="czekaj-pasek" id="pasek"><i></i></div>
+      </div>`;
+  };
+  ekranCzekania();
 
-  const fd = new FormData();
-  strony.forEach((p) => fd.append('pliki', p));
+  const blokada = await trzymajEkran();
   try {
-    const r = await authFetch('/api/health/odczytaj', { method: 'POST', body: fd });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || 'Nie udało się odczytać.');
-    odczyt = d;
-    // Problemy należą do osoby, a filtr osi mógł być ustawiony na „Wszyscy" —
-    // dociągamy je dla tej osoby, przy której faktycznie zapiszemy dokument.
-    osobaZapisu = osobaPodgladu();
-    if (osobaZapisu && osobaId !== osobaZapisu) {
-      const poprzednia = osobaId;
-      osobaId = osobaZapisu;
-      await wczytajProblemy();
-      osobaId = poprzednia;
-    }
-    widok = 'podglad';
-    rysuj();
+    await odczytajZPonowieniem(ekranCzekania);
   } catch (e) {
     box().innerHTML = `<div class="blad">${esc(bladOdczytu(e))}</div>`;
     const wroc = document.createElement('button');
@@ -443,7 +478,49 @@ async function odczytaj() {
     wroc.textContent = '← Wróć';
     wroc.onclick = () => { strony = []; widok = 'os'; rysuj(); };
     box().prepend(wroc);
+  } finally {
+    try { await blokada?.release(); } catch { /* zwolniona sama */ }
   }
+}
+
+// Jedno ponowienie, nie więcej: jeśli sieć padła dwa razy z rzędu, trzecia
+// próba też padnie, a użytkownik czeka już drugą minutę bez żadnej wiadomości.
+async function odczytajZPonowieniem(ekranCzekania) {
+  for (let proba = 0; ; proba++) {
+    const fd = new FormData();
+    strony.forEach((p) => fd.append('pliki', p));
+    try {
+      const token = await authGetToken();
+      return await zamknijOdczyt(await wyslijDokument(fd, token, (ile) => {
+        const pasek = document.getElementById('pasek');
+        if (!pasek) return;
+        // Plik doszedł — od tej chwili czeka się na model, a tego nie da się
+        // odmierzyć. Pełny pasek stojący nieruchomo czytałby się jak zawieszenie.
+        if (ile >= 1) { pasek.style.display = 'none'; return; }
+        pasek.firstElementChild.style.width = Math.round(ile * 100) + '%';
+      }));
+    } catch (e) {
+      if (!e.zerwane || proba > 0) throw e;
+      ekranCzekania('Połączenie przerwane — próbuję jeszcze raz…');
+    }
+  }
+}
+
+// Wspólne zakończenie udanego odczytu — wyniesione z `odczytaj`, żeby pętla
+// ponawiania miała jedno miejsce, do którego wraca po udanej próbie.
+async function zamknijOdczyt(d) {
+  odczyt = d;
+  // Problemy należą do osoby, a filtr osi mógł być ustawiony na „Wszyscy" —
+  // dociągamy je dla tej osoby, przy której faktycznie zapiszemy dokument.
+  osobaZapisu = osobaPodgladu();
+  if (osobaZapisu && osobaId !== osobaZapisu) {
+    const poprzednia = osobaId;
+    osobaId = osobaZapisu;
+    await wczytajProblemy();
+    osobaId = poprzednia;
+  }
+  widok = 'podglad';
+  rysuj();
 }
 
 // ── wizyta: kto przyjmował ──────────────────────────────────────────────────

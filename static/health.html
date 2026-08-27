@@ -56,6 +56,13 @@
     @media (prefers-reduced-motion: reduce) { .czekaj-znak i { animation: none; } }
     .czekaj b { font-size: 15px; color: var(--heading); }
     .czekaj span { font-size: 13px; color: var(--muted); margin-top: 6px; max-width: 30ch; }
+    /* Pasek wysyłki. Widoczny tylko dopóki plik leci na serwer — potem znika,
+       bo w czasie samego odczytu nie ma czego odmierzać i pełny pasek stojący
+       nieruchomo wygląda jak zawieszony. */
+    .czekaj-pasek { width: 190px; height: 4px; margin-top: 16px; border-radius: 2px;
+                    background: var(--border); overflow: hidden; }
+    .czekaj-pasek i { display: block; height: 100%; width: 0; border-radius: 2px;
+                      background: var(--marka); transition: width .15s linear; }
 
     /* Kto przyjmował — specjalista, lekarz, forma wizyty. Osobna linia pod
        nazwą wpisu, bo przy wizycie to ona jest właściwą informacją: „Konsultacja"
