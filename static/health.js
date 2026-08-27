@@ -201,7 +201,7 @@ function wpisOsi(d, poprzedni) {
 function budujOs(dokumenty) {
   if (!dokumenty.length) {
     return `<div class="pusto">Nic tu jeszcze nie ma.<br>
-      Zrób zdjęcie wyniku albo wgraj PDF — pojawi się na osi.</div>`;
+      Zrób zdjęcie wyniku albo wgraj plik z dysku — pojawi się na osi.</div>`;
   }
   let rok = null;
   let poprzedni = null;
@@ -269,12 +269,12 @@ async function rysujOs() {
         <svg viewBox="0 0 24 24"><path d="M3.5 8.5h3.2l1.5-2.4h7.6l1.5 2.4h3.2v10.5H3.5z"/><circle cx="12" cy="13.4" r="3.4"/></svg>
         <b>Zdjęcie</b><span>Papierowy wynik albo karta wizyty</span>
       </button>
-      <button class="wejscie" type="button" id="w-pdf">
-        <svg viewBox="0 0 24 24"><path d="M6 3.5h7.5L19 9v11.5H6z"/><path d="M13.2 3.6V9H19"/></svg>
-        <b>PDF</b><span>Wynik z laboratorium — czyta się dokładniej</span>
+      <button class="wejscie" type="button" id="w-dysk">
+        <svg viewBox="0 0 24 24"><path d="M3.5 7.2h6l1.6 2.1h9.4v10.2H3.5z"/><path d="M3.5 7.2V4.5h5.2l1.5 2.1"/></svg>
+        <b>Z dysku</b><span>PDF z laboratorium albo zdjęcie z galerii</span>
       </button>
       <input type="file" id="plik-zdjecie" accept="image/*" capture="environment" multiple>
-      <input type="file" id="plik-pdf" accept="application/pdf,image/*" multiple>
+      <input type="file" id="plik-dysk" accept="image/*,application/pdf" multiple>
     </div>
     ${budujOs(dokumenty)}`;
 
@@ -308,8 +308,8 @@ async function rysujOs() {
   };
 
   document.getElementById('w-zdjecie').onclick = () => document.getElementById('plik-zdjecie').click();
-  document.getElementById('w-pdf').onclick = () => document.getElementById('plik-pdf').click();
-  ['plik-zdjecie', 'plik-pdf'].forEach((id) => {
+  document.getElementById('w-dysk').onclick = () => document.getElementById('plik-dysk').click();
+  ['plik-zdjecie', 'plik-dysk'].forEach((id) => {
     document.getElementById(id).onchange = (ev) => {
       const wybrane = Array.from(ev.target.files || []);
       ev.target.value = '';
@@ -367,7 +367,7 @@ function rysujPierwszaOsoba() {
 
 // Gest MUSI trafić w to samo pole, które otwieramy — inaczej przeglądarka
 // telefonu uznaje otwarcie aparatu za niewywołane przez użytkownika. Dlatego
-// przyciski „Zdjęcie"/„PDF" klikają input, zamiast otwierać go po asynchronicznym
+// przyciski „Zdjęcie"/„Z dysku" klikają input, zamiast otwierać go po asynchronicznym
 // pobraniu czegokolwiek.
 
 async function zapiszOsobe() {
