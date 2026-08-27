@@ -92,9 +92,14 @@ async def odczytaj(
             mime = "application/pdf"
         strony.append((dane, mime))
 
+    # Zapisy już używane w tym gospodarstwie idą do modelu jako podpowiedź —
+    # bez nich ta sama przychodnia zapisuje się przy każdym dokumencie inaczej
+    # (adres na pieczątce stoi za każdym razem w innej kolejności) i filtry
+    # zarastają wariantami tego samego miejsca.
+    znane = health_db.slownik_gospodarstwa(_hid(current_user))
     try:
         odczyt, usage = await run_in_threadpool(
-            health_ai.czytaj_dokument, strony, podpowiedz.strip() or None)
+            health_ai.czytaj_dokument, strony, podpowiedz.strip() or None, znane)
     except health_ai.OdczytError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
@@ -168,7 +173,8 @@ def scal_wartosci(dane: dict, current_user: dict = Depends(get_current_user)):
     if not isinstance(warianty, list) or not warianty or not na:
         raise HTTPException(400, "Podaj warianty do scalenia i wartość docelową.")
     try:
-        ile = health_db.scal_wartosci(_hid(current_user), pole, warianty, na)
+        ile = health_db.scal_wartosci(_hid(current_user), pole, warianty, na,
+                                      dane.get("gdzie_lekarz"))
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"zmienione": ile}

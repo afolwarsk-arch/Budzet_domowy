@@ -60,6 +60,13 @@ daty, inni lekarze, inne badania), NIE łącz ich i NIE zwracaj tablicy. Zwróć
 obiekt opisujący pierwszy dokument i dodaj do niego pole "rozne_dokumenty": true.
 Program pokaże wtedy użytkownikowi, żeby wgrał je osobno.
 
+LEKARZ: zapisz SAMO IMIĘ I NAZWISKO, w tej kolejności. Bez tytułów i skrótów
+przed nazwiskiem („lek.", „lek. med.", „dr n. med.", „prof.", „lek. stom.").
+Z pieczątki „lek. stom. Halina Szczepańska" zapisz „Halina Szczepańska".
+Jeśli na dokumencie stoi „NOWAK ANNA", zapisz „Anna Nowak" — nie wersalikami
+i nie odwrotnie. Powód: to samo nazwisko podpisane raz z tytułem, raz bez,
+rozpada się w bazie na dwie różne osoby.
+
 CUDZYSŁOWY: wewnątrz tekstu NIE UŻYWAJ prostego cudzysłowa ("). Jeśli dokument
 zawiera cytat albo wyrażenie w cudzysłowie, zapisz go polskimi cudzysłowami
 drukarskimi: „tak”. Prosty cudzysłów kończy łańcuch w JSON-ie i rozbija całą
@@ -276,8 +283,39 @@ def _blok_pliku(dane: bytes, mime: str) -> dict:
             "source": {"type": "base64", "media_type": mime, "data": b64}}
 
 
+def _podpowiedz_znane(znane: dict | None) -> str:
+    """Zapisy już używane w gospodarstwie, doklejane do polecenia.
+
+    ZAPOBIEGA ROZJAZDOWI, ZANIM POWSTANIE. Adres placówki stoi na każdej
+    pieczątce w innej kolejności, więc bez tej listy ta sama przychodnia
+    zapisuje się za każdym razem inaczej i po dwudziestu dokumentach filtr ma
+    dwadzieścia pozycji zamiast dziesięciu. Model, który widzi wcześniejsze
+    zapisy, trafia w istniejący zamiast tworzyć kolejny wariant.
+
+    To PODPOWIEDŹ, nie słownik zamknięty: nowa przychodnia ma się zapisać
+    normalnie, bo inaczej model wciskałby każdy dokument w najbliższą znaną
+    nazwę i historia zaczęłaby kłamać.
+    """
+    if not znane:
+        return ""
+    czesci = []
+    for klucz, etykieta in (("placowki", "Placówki"), ("lekarze", "Lekarze"),
+                            ("specjalizacje", "Specjalizacje")):
+        lista = [w for w in (znane.get(klucz) or []) if w]
+        if lista:
+            czesci.append(f"{etykieta}: " + "; ".join(lista))
+    if not czesci:
+        return ""
+    return ("\n\nW tej rodzinie występują już poniższe zapisy. Jeśli dokument "
+            "dotyczy KTÓREJŚ Z NICH, użyj DOKŁADNIE tego samego brzmienia, "
+            "co poniżej — nawet jeśli na dokumencie zapisano to inaczej "
+            "(inna kolejność adresu, skrót, wersaliki). Jeśli to nowe miejsce "
+            "albo nowa osoba, zapisz normalnie z dokumentu.\n" + "\n".join(czesci))
+
+
 def czytaj_dokument(strony: list[tuple[bytes, str]],
-                    podpowiedz: str | None = None) -> tuple[dict, dict]:
+                    podpowiedz: str | None = None,
+                    znane: dict | None = None) -> tuple[dict, dict]:
     """Strony dokumentacji (zdjęcia albo PDF) → (struktura dokumentu, zużycie tokenów).
 
     WEJŚCIEM JEST LISTA STRON, BO PAPIER RZADKO MIEŚCI SIĘ NA JEDNEJ KARTCE.
@@ -331,6 +369,7 @@ def czytaj_dokument(strony: list[tuple[bytes, str]],
         # Podpowiedź użytkownika („to wynik Zosi", „badanie z maja") bywa
         # jedyną drogą do informacji, której na papierze nie ma.
         polecenie += f"\n\nDodatkowa informacja od użytkownika: {podpowiedz}"
+    polecenie += _podpowiedz_znane(znane)
     tresc.append({"type": "text", "text": polecenie})
 
     client = anthropic.Anthropic(timeout=_limit_czasu(len(gotowe)), max_retries=1)

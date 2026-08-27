@@ -479,10 +479,44 @@ def _dolacz_zerowe(kolumna: str, znalezione: list[dict], wybrane, household_id: 
     return znalezione + [w for w in wszystkie if w["klucz"] not in mam]
 
 
+def slownik_gospodarstwa(household_id: int, limit: int = 40) -> dict:
+    """Zapisy już używane w tym gospodarstwie — podpowiedź dla modelu przy odczycie.
+
+    ZAPOBIEGA ROZJAZDOWI U ŹRÓDŁA. Bez tego każdy dokument opisuje tę samą
+    przychodnię inaczej, bo adres na pieczątce stoi za każdym razem w innej
+    kolejności — i po dwudziestu dokumentach filtr placówki ma dwadzieścia
+    pozycji zamiast dziesięciu. Model, który widzi listę wcześniejszych zapisów,
+    trafia w istniejący zamiast tworzyć dwudziesty pierwszy.
+
+    Ograniczone do `limit` najczęstszych: lista ma być podpowiedzią w prompcie,
+    a nie wyciągiem z bazy — przy stu placówkach koszt zapytania rósłby bez
+    pożytku, bo i tak liczą się te, do których się wraca.
+    """
+    def zbierz(kolumna: str) -> list[str]:
+        with get_db() as cur:
+            cur.execute(
+                f"SELECT (array_agg(btrim(d.{kolumna}) ORDER BY btrim(d.{kolumna})))[1] AS nazwa "
+                "FROM health_dokumenty d "
+                "WHERE d.household_id = %s AND NOT d.ukryty "
+                f"  AND d.{kolumna} IS NOT NULL AND btrim(d.{kolumna}) <> '' "
+                f"GROUP BY lower(btrim(d.{kolumna})) "
+                "ORDER BY COUNT(*) DESC LIMIT %s",
+                (household_id, limit),
+            )
+            return [r["nazwa"] for r in cur.fetchall()]
+
+    return {
+        "placowki": zbierz("placowka"),
+        "lekarze": zbierz("lekarz"),
+        "specjalizacje": zbierz("specjalizacja"),
+    }
+
+
 SCALALNE = ("specjalizacja", "lekarz", "placowka")
 
 
-def scal_wartosci(household_id: int, pole: str, warianty: list[str], na: str) -> int:
+def scal_wartosci(household_id: int, pole: str, warianty: list[str], na: str,
+                  gdzie_lekarz: str | None = None) -> int:
     """Zamienia kilka zapisów tej samej rzeczy na jeden. Zwraca liczbę zmian.
 
     POTRZEBNE, BO DANE POCHODZĄ Z PIECZĄTEK. Ta sama przychodnia bywa zapisana
@@ -499,11 +533,19 @@ def scal_wartosci(household_id: int, pole: str, warianty: list[str], na: str) ->
     klucze = [w.strip().lower() for w in warianty if w and w.strip()]
     if not klucze or not (na or "").strip():
         return 0
+    # Zawężenie do jednego lekarza: ten sam zapis specjalizacji bywa poprawny
+    # u jednej osoby i błędny u drugiej. „Stomatolog" przy chirurgu stomatologu
+    # trzeba poprawić, ale przy stomatologu zachowawczym już nie.
+    warunek_lekarz = ""
+    p = [na.strip(), household_id, klucze]
+    if gdzie_lekarz and gdzie_lekarz.strip():
+        warunek_lekarz = " AND lower(btrim(lekarz)) = %s"
+        p.append(gdzie_lekarz.strip().lower())
     with get_db() as cur:
         cur.execute(
             f"UPDATE health_dokumenty SET {pole} = %s "
-            "WHERE household_id = %s AND lower(btrim(" + pole + ")) = ANY(%s)",
-            (na.strip(), household_id, klucze),
+            f"WHERE household_id = %s AND lower(btrim({pole})) = ANY(%s){warunek_lekarz}",
+            p,
         )
         return cur.rowcount
 
