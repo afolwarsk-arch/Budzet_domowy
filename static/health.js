@@ -1547,15 +1547,21 @@ function blokPoprawek(d) {
       </div>
       <div class="pole">
         <label for="e-placowka">Placówka</label>
-        <input id="e-placowka" value="${esc(d.placowka || '')}">
+        <input id="e-placowka" list="lista-placowek-e" autocomplete="off"
+               value="${esc(d.placowka || '')}">
+        ${podpowiedzi('lista-placowek-e', znaneWartosci.placowki)}
       </div>
       <div class="pola-2">
         <div class="pole">
           <label for="e-spec">Specjalista</label>
           <input id="e-spec" list="lista-spec-e" autocomplete="off"
                  placeholder="np. stomatolog" value="${esc(d.specjalizacja || '')}">
+          <!-- Ta sama kolejność co w formularzu przed zapisem: najpierw zapisy
+               z historii gospodarstwa, potem reszta wykazu. -->
           <datalist id="lista-spec-e">
-            ${SPECJALIZACJE.map((s) => `<option value="${esc(s)}">`).join('')}
+            ${[...znaneWartosci.specjalizacje,
+               ...SPECJALIZACJE.filter((s) => !znaneWartosci.specjalizacje
+                 .some((z) => z.toLowerCase() === s))].map((s) => `<option value="${esc(s)}">`).join('')}
           </datalist>
         </div>
         <div class="pole">
@@ -1569,8 +1575,9 @@ function blokPoprawek(d) {
       </div>
       <div class="pole">
         <label for="e-lekarz">Lekarz</label>
-        <input id="e-lekarz" autocomplete="off" placeholder="imię i nazwisko"
-               value="${esc(d.lekarz || '')}">
+        <input id="e-lekarz" list="lista-lekarzy-e" autocomplete="off"
+               placeholder="imię i nazwisko" value="${esc(d.lekarz || '')}">
+        ${podpowiedzi('lista-lekarzy-e', znaneWartosci.lekarze)}
       </div>
       <div class="akcje">
         <button class="btn btn-outline" type="button" id="e-anuluj">Anuluj</button>
