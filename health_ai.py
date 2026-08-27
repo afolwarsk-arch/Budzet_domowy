@@ -333,9 +333,14 @@ def czytaj_dokument(strony: list[tuple[bytes, str]],
         polecenie += f"\n\nDodatkowa informacja od użytkownika: {podpowiedz}"
     tresc.append({"type": "text", "text": polecenie})
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(timeout=_limit_czasu(len(gotowe)), max_retries=1)
     try:
         msg = _zapytaj(client, tresc)
+    except anthropic.APITimeoutError as e:
+        raise OdczytError(
+            "Odczyt trwał zbyt długo i został przerwany. Dokument nie został "
+            "nigdzie zapisany. Spróbuj ponownie — a jeśli wgrywasz kilka stron "
+            "naraz, podziel je na mniejsze porcje.") from e
     except anthropic.APIStatusError as e:
         raise OdczytError(_komunikat_api(e)) from e
     if getattr(msg, "stop_reason", None) == "max_tokens":
@@ -343,6 +348,23 @@ def czytaj_dokument(strony: list[tuple[bytes, str]],
             "Dokument jest za długi, żeby przepisać go w całości. Wgraj go "
             "w mniejszych częściach — na przykład osobno wyniki i osobno opis.")
     return _parsuj(msg.content[0].text), _usage(msg)
+
+
+def _limit_czasu(ile_stron: int) -> float:
+    """Ile sekund czekamy na model, zanim uznamy odczyt za przepadły.
+
+    POWÓD JEST PO STRONIE PRZEGLĄDARKI, NIE MODELU. Bez limitu biblioteka
+    czeka domyślnie dziesięć minut i po cichu ponawia żądanie, gdy API jest
+    przeciążone. Proxy zrywa wtedy połączenie na długo przedtem, a użytkownik
+    dostaje gołe „Failed to fetch" — bo serwer nie zdążył powiedzieć niczego.
+    Lepiej odpuścić wcześniej i odpowiedzieć zdaniem, które coś znaczy.
+
+    Zmierzone na jednostronicowym zdjęciu 2,92 MB: 18 s. Zapas jest spory,
+    bo czas rośnie z liczbą stron — model przepisuje je w jednym przebiegu.
+    `max_retries=1` zamiast domyślnych dwóch: przy trzech podejściach nawet
+    krótki limit sumuje się do minut.
+    """
+    return min(45 + 25 * ile_stron, 240)
 
 
 def _komunikat_api(e) -> str:
