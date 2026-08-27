@@ -968,12 +968,13 @@ const IKONY_SVG = {
   // Krzyż w karcie, a nie serce ani puls: moduł jest o dokumentacji i wynikach,
   // nie o kondycji. Karta obrysowana, żeby nie mylił się z „dodaj" (kółko z plusem).
   // ── znaki modułów ──────────────────────────────────────────────────────
-  // Te cztery są rysowane WYŁĄCZNIE w wersji pełnej (kafelek przełącznika
-  // i dolny pasek), więc liczy się sylwetka, a nie kreska: na pasku ikona jest
-  // jednolicie pokolorowana i wszystko w środku znika. Dlatego kształty są
-  // zamknięte i rozpoznawalne z samego obrysu — poprzednie („koło ze strzałką"
-  // dla finansów, „karta z krzyżem" dla zdrowia) zamieniały się tam w gołą
-  // kropkę i goły prostokąt.
+  // Rysowane w wersji pełnej (kafelek przełącznika, dolny pasek), więc liczy
+  // się sylwetka, a nie kreska: ikona bywa tam jednolicie pokolorowana i
+  // wszystko w środku znika. Kształty są zamknięte i rozpoznawalne z samego
+  // obrysu — poprzednie („koło ze strzałką" dla finansów, „karta z krzyżem"
+  // dla zdrowia) zamieniały się w gołą kropkę i goły prostokąt.
+  // UWAGA: `ikonaPelna` czyta najpierw IKONY_PELNE, a dopiero potem tę mapę.
+  // Znak, który ma tam swoją wersję, trzeba zmienić w OBU miejscach.
   zdrowie: '<path d="M9.4 3.2h5.2v6.2h6.2v5.2h-6.2v6.2H9.4v-6.2H3.2V9.4h6.2z"/>',
   moneta: '<path d="M12 3.4a8.6 8.6 0 100 17.2 8.6 8.6 0 000-17.2zm0 5.2a3.4 3.4 0 110 6.8 3.4 3.4 0 010-6.8z"/>',
   jablko: '<path d="M12 7.6c-1.5-1.7-4.2-2-5.9-.3-2 2-1.7 5.7.4 8.6 1.3 1.8 2.7 3.2 3.8 3.2.6 0 1.1-.3 1.7-.3s1.1.3 1.7.3c1.1 0 2.5-1.4 3.8-3.2 2.1-2.9 2.4-6.6.4-8.6-1.7-1.7-4.4-1.4-5.9.3z"/><path class="kropka" d="M12.6 6.4c-.2-1.8 1-3.2 2.8-3.4.2 1.8-1 3.2-2.8 3.4z"/>',
@@ -1026,7 +1027,10 @@ const IKONY_PELNE = {
   analiza: '<path d="M3 19h18v2H3zM3 3h2v18H3z"/><path d="M6.6 15.4l4.4-5 3.9 3.3 4.3-5.7 1.6 1.2-5.6 7.4-4-3.4-3 3.4z"/><circle class="kropka" cx="18.6" cy="8" r="2.3"/>',
   alerty: '<path d="M12 3.2a6 6 0 016 6c0 4.4 1.7 5.9 1.7 5.9H4.3s1.7-1.5 1.7-5.9a6 6 0 016-6z"/><circle class="kropka" cx="12" cy="19" r="2.2"/>',
   admin: '<rect x="3.6" y="6.2" width="16.8" height="2.4" rx="1.2"/><rect x="3.6" y="15.4" width="16.8" height="2.4" rx="1.2"/><circle class="kropka" cx="9" cy="7.4" r="2.4"/><circle class="kropka" cx="15.6" cy="16.6" r="2.4"/>',
-  zdrowie: '<rect x="3.4" y="5" width="17.2" height="14" rx="2.6"/><path class="pusto" d="M10.9 8.6h2.2v2.3h2.3v2.2h-2.3v2.3h-2.2v-2.3H8.6v-2.2h2.3z"/>',
+  // Krzyż rysowany BRYŁĄ, a nie jako wycięcie w karcie. `pusto` ma kolor
+  // dolnego paska wpisany na sztywno, więc na jasnym kafelku przełącznika
+  // wycięcie robiło się ciemną plamą i z całego znaku zostawał prostokąt.
+  zdrowie: '<path d="M9.4 3.2h5.2v6.2h6.2v5.2h-6.2v6.2H9.4v-6.2H3.2V9.4h6.2z"/>',
 };
 
 function ikonaPelna(nazwa) {
