@@ -896,7 +896,9 @@ const _SAMOUCZEK_SLAJDY = {
   task: [
   { znak: true, tytul: 'Witaj w <span class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></span><span style="font-size:.62em;font-weight:600;letter-spacing:0">task</span>',
     opis: 'Miejsce na wszystko, co macie do zrobienia — od „oddać PIT" po remont łazienki. Zapisujesz sprawę w sekundę, a szczegóły dopisujesz wtedy, kiedy masz chwilę.' },
-  { ikona: 'zadania', tytul: 'Wpisz i zapomnij',
+  // `ptaszek`, a nie `zadania`: slajdy rysują ikony kreską, a znak modułu jest
+  // bryłą i w tym trybie wyszłyby z niego same obrysy kresek.
+  { ikona: 'ptaszek', tytul: 'Wpisz i zapomnij',
     opis: 'Pole na górze listy przyjmuje samo zdanie — piszesz, naciskasz Enter i sprawa jest zapisana. Termin, wykonawcę i przypomnienie dodasz później, jeśli w ogóle będą potrzebne.' },
   { ikona: 'osoby', tytul: 'Kto się tym zajmie',
     opis: 'Zadanie możesz przypisać domownikowi — także takiemu, który nie ma konta w aplikacji. Sprawy, których nie chcesz nikomu pokazywać, oznacz jako „tylko dla mnie".' },
@@ -965,10 +967,17 @@ const IKONY_SVG = {
   admin: '<path d="M4 7.5h16M4 12h16M4 16.5h16"/><circle class="kropka" cx="9" cy="7.5" r="2"/><circle class="kropka" cx="15.6" cy="16.5" r="2"/>',
   // Krzyż w karcie, a nie serce ani puls: moduł jest o dokumentacji i wynikach,
   // nie o kondycji. Karta obrysowana, żeby nie mylił się z „dodaj" (kółko z plusem).
-  zdrowie: '<rect x="3.4" y="5" width="17.2" height="14" rx="2.4"/><path class="akc" d="M12 9.2v5.6M9.2 12h5.6"/>',
-  // Kartka z odhaczonym punktem. Ptaszek w kolorze modułu (`akc`), bo to on
-  // niesie znaczenie — sama ramka jest tylko kartką i myliłaby się ze „zdrowiem".
-  zadania: '<rect x="3.6" y="4.4" width="16.8" height="15.6" rx="2.4"/><path class="akc" d="M8 12.4l2.6 2.6 5-5.2"/>',
+  // ── znaki modułów ──────────────────────────────────────────────────────
+  // Te cztery są rysowane WYŁĄCZNIE w wersji pełnej (kafelek przełącznika
+  // i dolny pasek), więc liczy się sylwetka, a nie kreska: na pasku ikona jest
+  // jednolicie pokolorowana i wszystko w środku znika. Dlatego kształty są
+  // zamknięte i rozpoznawalne z samego obrysu — poprzednie („koło ze strzałką"
+  // dla finansów, „karta z krzyżem" dla zdrowia) zamieniały się tam w gołą
+  // kropkę i goły prostokąt.
+  zdrowie: '<path d="M9.4 3.2h5.2v6.2h6.2v5.2h-6.2v6.2H9.4v-6.2H3.2V9.4h6.2z"/>',
+  moneta: '<path d="M12 3.4a8.6 8.6 0 100 17.2 8.6 8.6 0 000-17.2zm0 5.2a3.4 3.4 0 110 6.8 3.4 3.4 0 010-6.8z"/>',
+  jablko: '<path d="M12 7.6c-1.5-1.7-4.2-2-5.9-.3-2 2-1.7 5.7.4 8.6 1.3 1.8 2.7 3.2 3.8 3.2.6 0 1.1-.3 1.7-.3s1.1.3 1.7.3c1.1 0 2.5-1.4 3.8-3.2 2.1-2.9 2.4-6.6.4-8.6-1.7-1.7-4.4-1.4-5.9.3z"/><path class="kropka" d="M12.6 6.4c-.2-1.8 1-3.2 2.8-3.4.2 1.8-1 3.2-2.8 3.4z"/>',
+  zadania: '<path d="M4 5.6h9v2H4zM4 11h9v2H4zM4 16.4h6v2H4z"/><path class="kropka" d="M14.6 15.4l2.3 2.3 4.5-4.8 1.2 1.3-5.7 6-3.5-3.5z"/>',
   osoby: '<circle cx="9.2" cy="8.4" r="3.4"/><path d="M3.4 19.4c0-3.2 2.6-5.4 5.8-5.4s5.8 2.2 5.8 5.4"/><path d="M16.6 6.2a3.2 3.2 0 010 6.2M17.6 14.6c2.1.6 3.4 2.4 3.4 4.8"/>',
   osoba_plus: '<circle cx="10" cy="8.4" r="3.4"/><path d="M4.2 19.4c0-3.2 2.6-5.4 5.8-5.4 1 0 2 .2 2.8.6"/><path class="akc" d="M17.6 13.4v6.2M14.5 16.5h6.2"/>',
   pobierz: '<path class="akc" d="M12 3.6v10.2M8.4 10.6l3.6 3.6 3.6-3.6"/><path d="M4.2 16.4v2.2a1.8 1.8 0 001.8 1.8h12a1.8 1.8 0 001.8-1.8v-2.2"/>',
@@ -1044,7 +1053,7 @@ const MODULY = [
     // stoi w palecie ikon apki, więc nie jest to nowy odcień w systemie.
     kolor: '#eda100',
     opis: 'Wydatki, konta, cele',
-    ikona: 'wplywy',
+    ikona: 'moneta',
     strony: [
       { href: '/',              ikona: 'pulpit',    label: 'Pulpit',        pelny: 'Pulpit' },
       { href: '/upload',        ikona: 'dodaj',     label: 'Dodaj',         pelny: 'Dodaj wydatek' },
@@ -1062,7 +1071,7 @@ const MODULY = [
     nazwa: 'eat',
     kolor: '#7cb518',
     opis: 'Dziennik i kalorie',
-    ikona: 'lista',
+    ikona: 'jablko',
     strony: [
       { href: '/eat', ikona: 'lista', label: 'Dziennik', pelny: 'Dziennik' },
       { href: '/przepisy', ikona: 'ksiazka', label: 'Przepisy', pelny: 'Przepisy' },
