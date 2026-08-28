@@ -1559,14 +1559,20 @@ class InwentaryzacjaIn(BaseModel):
     data: str
     saldo_rzeczywiste: float
     notatki: str | None = None
+    # 'saldo' — cicha korekta punktu startowego konta (domyślnie, jak dotąd);
+    # 'transakcja' — różnica staje się wydatkiem albo wpływem „Korekta salda",
+    # czyli WCHODZI do statystyk i bilansu okresu.
+    tryb: str = "saldo"
 
 
 @app.post("/api/konta/{konto_id}/inwentaryzacja", status_code=201)
 def api_create_inwentaryzacja(konto_id: int, body: InwentaryzacjaIn,
                               current_user: dict = Depends(get_current_user)):
     try:
-        return database.create_inwentaryzacja(konto_id, current_user["household_id"],
-                                              body.data, body.saldo_rzeczywiste, body.notatki)
+        return database.create_inwentaryzacja(
+            konto_id, current_user["household_id"], body.data,
+            body.saldo_rzeczywiste, body.notatki, body.tryb,
+            current_user.get("display_name") or current_user.get("name"))
     except ValueError as e:
         raise HTTPException(404, str(e))
 

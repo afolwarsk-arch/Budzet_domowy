@@ -284,7 +284,29 @@
     <h3 id="m-inwent-title">Inwentaryzacja</h3>
     <p style="font-size:13px;color: var(--muted);margin:-8px 0 18px">Wpisz rzeczywiste saldo — system wyliczy różnicę.</p>
     <div class="fg"><label>Data</label><input type="date" id="i-data"></div>
-    <div class="fg"><label>Rzeczywiste saldo</label><input type="number" id="i-saldo" step="0.01" placeholder="0.00"></div>
+    <div class="fg"><label>Rzeczywiste saldo</label><input type="number" id="i-saldo" step="0.01" placeholder="0.00" oninput="odswiezRoznice()"></div>
+    <!-- Różnica liczona na bieżąco, ZANIM zapadnie decyzja o jej losie: wybór
+         między cichą korektą a wydatkiem zależy od tego, o jakiej kwocie mowa.
+         Przy dwóch złotych nikt nie chce wpisu w statystykach, przy dwustu tak. -->
+    <div class="fg" id="i-roznica-wrap" style="display:none">
+      <label>Różnica</label>
+      <div id="i-roznica" style="font-size:20px;font-weight:700"></div>
+    </div>
+    <div class="fg" id="i-tryb-wrap" style="display:none">
+      <label>Co zrobić z różnicą</label>
+      <label style="display:flex;align-items:flex-start;gap:8px;text-transform:none;font-size:14px;font-weight:500;color:var(--text);margin-bottom:8px">
+        <input type="radio" name="i-tryb" value="saldo" checked style="width:auto;margin-top:3px">
+        <span>Tylko popraw saldo konta<br>
+          <span style="font-size:12px;color:var(--muted)">Nie pojawi się w statystykach ani w bilansie okresu. Dla zaokrągleń i drobiazgów, których nie da się przypisać.</span>
+        </span>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:8px;text-transform:none;font-size:14px;font-weight:500;color:var(--text)">
+        <input type="radio" name="i-tryb" value="transakcja" style="width:auto;margin-top:3px">
+        <span id="i-tryb-tr-label">Zapisz jako wydatek<br>
+          <span style="font-size:12px;color:var(--muted)">Trafi do kategorii „Korekta salda" i wejdzie do statystyk oraz bilansu. Dla zapomnianych zakupów i opłat banku.</span>
+        </span>
+      </label>
+    </div>
     <div class="fg"><label>Notatki (opcjonalnie)</label><textarea id="i-notatki" rows="2"></textarea></div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeModal('m-inwent')">Anuluj</button>
@@ -910,7 +932,30 @@ function openModalInwent(kontoId, nazwa) {
   document.getElementById('i-data').value = new Date().toISOString().slice(0,10);
   document.getElementById('i-saldo').value = '';
   document.getElementById('i-notatki').value = '';
+  document.querySelector('input[name="i-tryb"][value="saldo"]').checked = true;
+  odswiezRoznice();
   openModal('m-inwent');
+}
+
+// Różnicę liczymy w przeglądarce z salda, które konto już pokazuje — serwer
+// policzy ją i tak od nowa przy zapisie, więc ta wartość służy WYŁĄCZNIE do
+// pokazania, o czym właśnie decydujesz. Bez tego wybór między cichą korektą
+// a wpisem w statystykach byłby robiony w ciemno.
+function odswiezRoznice() {
+  const saldo = parseFloat(document.getElementById('i-saldo').value);
+  const k = konta.find(x => x.id === activeKontoId);
+  const wrapR = document.getElementById('i-roznica-wrap');
+  const wrapT = document.getElementById('i-tryb-wrap');
+  if (isNaN(saldo) || !k) { wrapR.style.display = 'none'; wrapT.style.display = 'none'; return; }
+  const roznica = Math.round((saldo - parseFloat(k.saldo)) * 100) / 100;
+  wrapR.style.display = '';
+  const el = document.getElementById('i-roznica');
+  el.textContent = (roznica > 0 ? '+' : '') + fmt(roznica);
+  el.style.color = roznica === 0 ? 'var(--good)' : (roznica < 0 ? 'var(--danger)' : 'var(--good)');
+  // Przy zerowej różnicy nie ma czego rozliczać — pytanie byłoby hałasem.
+  wrapT.style.display = roznica === 0 ? 'none' : '';
+  document.getElementById('i-tryb-tr-label').firstChild.textContent =
+    roznica < 0 ? 'Zapisz jako wydatek' : 'Zapisz jako wpływ';
 }
 
 async function saveInwent() {
@@ -918,6 +963,7 @@ async function saveInwent() {
     data: document.getElementById('i-data').value,
     saldo_rzeczywiste: parseFloat(document.getElementById('i-saldo').value),
     notatki: document.getElementById('i-notatki').value.trim() || null,
+    tryb: document.querySelector('input[name="i-tryb"]:checked').value,
   };
   if (!body.data || isNaN(body.saldo_rzeczywiste)) { alert('Wypełnij datę i saldo.'); return; }
   const wynik = await authFetch(`/api/konta/${activeKontoId}/inwentaryzacja`, {
@@ -928,11 +974,17 @@ async function saveInwent() {
   if (roznica === 0) {
     alert('<span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 12.4l4.6 4.6 9.8-10.4"/></svg></span> Saldo się zgadza!');
   } else {
+    // Komunikat mówi WPROST, co się właśnie stało z różnicą — bo od tego zależy,
+    // czy szukać jej potem w statystykach, czy nie ma jej tam wcale.
+    const los = wynik.wydatek_id
+      ? 'Różnica została zapisana jako wydatek „Korekta salda" i wchodzi do statystyk.'
+      : wynik.wplyw_id
+        ? 'Różnica została zapisana jako wpływ „Korekta salda" i wchodzi do statystyk.'
+        : 'Poprawione zostało samo saldo konta — w statystykach i bilansie tej kwoty nie zobaczysz.';
     alert(`Saldo skorygowane o ${roznica > 0 ? '+' : ''}${fmt(roznica)}\n\n`
       + `Wyliczone z zapisów: ${fmt(wynik.saldo_obliczone)}\n`
       + `Stan rzeczywisty: ${fmt(wynik.saldo_rzeczywiste)}\n\n`
-      + `Konto pokazuje teraz stan rzeczywisty. Różnica to transakcje, których`
-      + ` nie ma w apce — jeśli wiesz, czego brakuje, dopisz je normalnie.`);
+      + los);
   }
   // Saldo właśnie się zmieniło — bez tego karty pokazywałyby starą wartość
   // aż do ręcznego odświeżenia strony.

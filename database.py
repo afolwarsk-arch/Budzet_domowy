@@ -3028,11 +3028,39 @@ def set_konto_domyslne(user_id: int, konto_id: int | None) -> None:
             )
 
 
+KATEGORIA_KOREKTY = "Korekta salda"
+
+
 def create_inwentaryzacja(konto_id: int, household_id: int, data: str,
-                           saldo_rzeczywiste: float, notatki: str | None) -> dict:
+                           saldo_rzeczywiste: float, notatki: str | None,
+                           tryb: str = "saldo", osoba: str | None = None) -> dict:
+    """Spis rzeczywistego stanu konta. `tryb` decyduje, CO ZROBIĆ Z RÓŻNICĄ.
+
+    Spis MUSI domknąć saldo, inaczej jest tylko notatką: wcześniej zapisywał
+    różnicę i zostawiał konto rozjechane, więc jedyne narzędzie do uzgodnienia
+    z bankiem niczego nie uzgadniało. Domknąć da się na dwa sposoby i wybór
+    zależy od tego, skąd różnica się wzięła:
+
+    `saldo` (domyślny) — przesuwamy `saldo_poczatkowe` konta. Dla statystyk
+    i bilansu okresu korekta jest niewidoczna, bo nie jest ani wydatkiem, ani
+    wpływem. Właściwe, gdy różnica to szum: zaokrąglenia, stara pomyłka,
+    czegoś nie da się przypisać.
+
+    `transakcja` — dopisujemy prawdziwy wydatek (różnica ujemna) albo wpływ
+    (dodatnia) w kategorii „Korekta salda". Właściwe, gdy różnica ma realną
+    przyczynę: zapomniany zakup, odsetki, opłata banku. Wtedy MA się pokazać
+    w statystykach, bo to naprawdę wydane albo otrzymane pieniądze.
+
+    W trybie `transakcja` NIE ruszamy salda początkowego — sama transakcja
+    domyka saldo. Zrobienie obu naraz policzyłoby różnicę dwa razy.
+    """
+    if tryb not in ("saldo", "transakcja"):
+        raise ValueError("Nieznany tryb rozliczenia różnicy.")
     with get_db() as cur:
-        cur.execute("SELECT id FROM konta WHERE id=%s AND household_id=%s", (konto_id, household_id))
-        if not cur.fetchone():
+        cur.execute("SELECT id, nazwa FROM konta WHERE id=%s AND household_id=%s",
+                    (konto_id, household_id))
+        konto = cur.fetchone()
+        if not konto:
             raise ValueError("Konto nie istnieje")
         saldo_obl = _saldo_konta_na_date(cur, konto_id, data)
         roznica = round(saldo_rzeczywiste - saldo_obl, 2)
@@ -3041,25 +3069,51 @@ def create_inwentaryzacja(konto_id: int, household_id: int, data: str,
             (konto_id, data, saldo_rzeczywiste, saldo_obl, roznica, notatki or None),
         )
         wynik = dict(cur.fetchone())
-        # Spis rzeczywistego stanu MUSI domknąć saldo, inaczej jest tylko notatką:
-        # wcześniej zapisywał różnicę i zostawiał konto rozjechane, więc jedyne
-        # narzędzie do uzgodnienia z bankiem niczego nie uzgadniało.
-        #
-        # Korygujemy `saldo_poczatkowe`, a nie dopisujemy sztuczny wydatek czy
-        # wpływ: transakcja-widmo zafałszowałaby statystyki i bilans okresu, a
-        # przesunięcie punktu startowego jest dla nich niewidoczne. Ślad zostaje
-        # w tabeli `inwentaryzacje` (saldo obliczone, rzeczywiste i różnica), więc
-        # korekta jest udokumentowana i odwracalna.
-        #
+        wynik["tryb"] = tryb
+
         # Różnica bierze się z transakcji, których w apce nie ma — niewpisany
         # przelew, zapomniany zakup, opłata banku. Domknięcie na dziś nie cofa
         # historii: dawne salda pozostają takie, jakie wynikały z zapisów.
-        if roznica:
+        if not roznica:
+            return wynik
+
+        opis = f"Korekta po spisie stanu konta {konto['nazwa']}"
+        if notatki:
+            opis += f" — {notatki}"
+
+        if tryb == "saldo":
             cur.execute(
                 "UPDATE konta SET saldo_poczatkowe = saldo_poczatkowe + %s "
                 "WHERE id=%s AND household_id=%s",
                 (roznica, konto_id, household_id),
             )
+            return wynik
+
+        if roznica < 0:
+            # Wydatek z jedną pozycją, a nie sam nagłówek: rozbicie na pozycje
+            # jest w tej apce podstawą statystyk kategorii, więc wydatek bez
+            # pozycji byłby niewidoczny dokładnie tam, gdzie ma być widoczny.
+            kwota = abs(roznica)
+            cur.execute(
+                "INSERT INTO wydatki (data, sklep, suma, osoba, notatki, household_id, konto_id) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                (data, KATEGORIA_KOREKTY, kwota, osoba, opis, household_id, konto_id),
+            )
+            wydatek_id = cur.fetchone()["id"]
+            cur.execute(
+                "INSERT INTO pozycje (wydatek_id, nazwa, cena, ilosc, kategoria_glowna, kategoria) "
+                "VALUES (%s,%s,%s,%s,%s,%s)",
+                (wydatek_id, "Różnica ze spisu stanu konta", kwota, 1,
+                 KATEGORIA_KOREKTY, KATEGORIA_KOREKTY),
+            )
+            wynik["wydatek_id"] = wydatek_id
+        else:
+            cur.execute(
+                "INSERT INTO wplywy (household_id, data, kwota, osoba, kategoria, opis, konto_id) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                (household_id, data, roznica, osoba, KATEGORIA_KOREKTY, opis, konto_id),
+            )
+            wynik["wplyw_id"] = cur.fetchone()["id"]
         return wynik
 
 
