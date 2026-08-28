@@ -146,8 +146,17 @@
                                 border-radius: 3px; transform: rotate(45deg); padding: 0; }
     .gantt-belka.gantt-kamien span { display: none; }
 
-    /* Strzałki zależności — jedno SVG na całą siatkę, pod belkami. */
-    .gantt-zaleznosci { position: absolute; top: 0; pointer-events: none; z-index: 0; }
+    /* Strzałki zależności — jedno SVG na całą siatkę, pod belkami.
+       SVG przepuszcza kliknięcia (`pointer-events: none`), ale same strzałki
+       już nie: inaczej nie dałoby się ich kliknąć, a przezroczyste tło
+       zasłaniałoby belki pod spodem. */
+    .gantt-zaleznosci { position: absolute; top: 0; pointer-events: none; z-index: 1; }
+    .gantt-zaleznosci .zal-grupa { pointer-events: auto; cursor: pointer; }
+    /* Szerokie, niewidoczne pole trafienia — sama kreska ma 2 px i palcem
+       nie da się w nią wejść. */
+    .gantt-zaleznosci .zal-trafienie { fill: none; stroke: transparent; stroke-width: 14; }
+    .gantt-zaleznosci .zal-grupa:hover .zal { opacity: 1; stroke-width: 2.6; }
+    .gantt-zaleznosci .zal-grupa:hover .zal-grot { opacity: 1; }
     /* Wyraźniejsze niż domyślna szarość: na tle siatki i kilkunastu belek
        cienka przerywana linia po prostu ginęła. */
     .gantt-zaleznosci .zal { fill: none; stroke: var(--accent-strong); stroke-width: 1.8;

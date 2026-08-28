@@ -573,8 +573,16 @@ function strzalkiZaleznosci(wiersze, rzedy, od, px, szer) {
     const klasa = naruszone ? 'zal naruszona' : 'zal';
     // Łamana: w bok od poprzednika, w pionie do wiersza następnika, w bok do niego.
     const srodek = naruszone ? Math.min(x1, x2) - 10 : (x1 + x2) / 2;
-    linie.push(`<path class="${klasa}" d="M${x1} ${y1} H${srodek} V${y2} H${x2}"/>
-      <circle class="${klasa}-grot" cx="${x2}" cy="${y2}" r="3"/>`);
+    const sciezka = `M${x1} ${y1} H${srodek} V${y2} H${x2}`;
+    const opis = `${przed.tytul} → ${po.tytul}${naruszone ? ' (kolejność naruszona)' : ''}`;
+    // Gruba przezroczysta ścieżka pod widoczną — sama kreska ma 2 px i nie da
+    // się w nią trafić palcem. Rysunek zostaje cienki, pole trafienia jest szerokie.
+    linie.push(`<g class="zal-grupa" data-zal="${po.id}:${przed.id}">
+        <title>${esc(opis)} — kliknij, żeby usunąć powiązanie</title>
+        <path class="zal-trafienie" d="${sciezka}"/>
+        <path class="${klasa}" d="${sciezka}"/>
+        <circle class="${klasa}-grot" cx="${x2}" cy="${y2}" r="3.5"/>
+      </g>`);
   }
   if (!linie.length) return '';
   const wysokosc = wiersze.length * WYS_WIERSZA;
@@ -826,11 +834,32 @@ function podepnijBelki() {
   const g = document.querySelector('.gantt');
   if (!g) return;
   przeciaganieBelek(g);
-  g.onclick = (ev) => {
+  g.onclick = async (ev) => {
     // Kliknięcie tuż po przeciągnięciu nie ma otwierać szczegółów — przeglądarka
     // wysyła `click` po każdym `pointerup`, więc bez tego każde przesunięcie
     // belki kończyłoby się skokiem do formularza.
     if (Date.now() - ostatnioCiagnieto < 400) return;
+
+    // Kliknięcie w strzałkę zdejmuje powiązanie — z pytaniem, bo to jedyny
+    // ruch na wykresie, którego nie widać od razu po skutkach.
+    const zal = ev.target.closest('[data-zal]');
+    if (zal) {
+      const [doId, odId] = zal.dataset.zal.split(':').map(Number);
+      const wg = new Map(zadania.map((z) => [z.id, z]));
+      const czy = await potwierdz({
+        tytul: 'Usunąć powiązanie?',
+        tresc: `„${wg.get(odId)?.tytul || '?'}" przestanie blokować „${wg.get(doId)?.tytul || '?'}". `
+             + 'Daty zostaną bez zmian.',
+        tak: 'Usuń powiązanie', groznie: true,
+      });
+      if (!czy) return;
+      const r = await authFetch(
+        `/api/task/zaleznosci?zadanie_id=${doId}&poprzednik_id=${odId}`, { method: 'DELETE' });
+      if (!r.ok) { toast('Nie udało się usunąć powiązania.', 'blad'); return; }
+      await wczytajPlan();
+      return;
+    }
+
     const b = ev.target.closest('[data-otworz]');
     if (b) otworzSzczegoly(Number(b.dataset.otworz));
   };
