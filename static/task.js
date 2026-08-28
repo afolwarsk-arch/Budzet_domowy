@@ -554,7 +554,10 @@ const WYS_WIERSZA = 38;
 function strzalkiZaleznosci(wiersze, rzedy, od, px, szer) {
   if (!zaleznosci.length) return '';
   const wg = new Map(wiersze.map((w) => [w.z.id, w.z]));
-  const x = (data) => Math.round(((doDaty(data) - od) / DZIEN_MS) * px);
+  // `zakresZadania` zwraca gotowe obiekty Date, więc NIE przepuszczamy ich
+  // przez `doDaty` — ta oczekuje tekstu „RRRR-MM-DD" i z obiektu Date robiła
+  // NaN, przez co wszystkie ścieżki miały współrzędne NaN i nic się nie rysowało.
+  const x = (data) => Math.round(((data - od) / DZIEN_MS) * px);
 
   const linie = [];
   for (const zal of zaleznosci) {
