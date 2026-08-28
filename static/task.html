@@ -108,7 +108,9 @@
        zmieniają początek albo termin. `touch-action: none` jest KONIECZNE —
        bez niego przeglądarka na telefonie potraktuje ruch palcem jako
        przewijanie i belka nie drgnie. */
-    .gantt-belka { touch-action: none; cursor: grab; }
+    /* z-index podnosi belkę nad strzałki zależności — bez tego ich szerokie
+       pole trafienia przechwytywało stuknięcia w wąskie zadania. */
+    .gantt-belka { touch-action: none; cursor: grab; z-index: 1; }
     .gantt-belka.ciagniona { cursor: grabbing; opacity: .85;
                              box-shadow: 0 2px 10px rgba(0,0,0,.28); }
     /* Belka oparta o barierę wynikającą z zależności — dalej się nie da. */
@@ -180,11 +182,18 @@
        SVG przepuszcza kliknięcia (`pointer-events: none`), ale same strzałki
        już nie: inaczej nie dałoby się ich kliknąć, a przezroczyste tło
        zasłaniałoby belki pod spodem. */
-    .gantt-zaleznosci { position: absolute; top: 0; pointer-events: none; z-index: 1; }
+    /* POD belkami (z-index 0), nie nad. Pole trafienia strzałki ma kilkanaście
+       pikseli i przy wąskich belkach nachodziło na nie — stuknięcie w zadanie
+       trafiało w linię i pytało o usunięcie powiązania zamiast pokazać zadanie.
+       Belka zawsze wygrywa; strzałkę klika się tam, gdzie biegnie sama. */
+    .gantt-zaleznosci { position: absolute; top: 0; pointer-events: none; z-index: 0; }
     .gantt-zaleznosci .zal-grupa { pointer-events: auto; cursor: pointer; }
     /* Szerokie, niewidoczne pole trafienia — sama kreska ma 2 px i palcem
        nie da się w nią wejść. */
-    .gantt-zaleznosci .zal-trafienie { fill: none; stroke: transparent; stroke-width: 14; }
+    /* Węższe niż wcześniej (14 → 9): przy gęstym planie szerokie pole zbierało
+       stuknięcia należące do sąsiednich belek. Trafienie w linię jest nadal
+       wykonalne, bo linie biegną w wolnej przestrzeni między zadaniami. */
+    .gantt-zaleznosci .zal-trafienie { fill: none; stroke: transparent; stroke-width: 9; }
     .gantt-zaleznosci .zal-grupa:hover .zal { opacity: 1; stroke-width: 2.6; }
     .gantt-zaleznosci .zal-grupa:hover .zal-grot { opacity: 1; }
     /* Wyraźniejsze niż domyślna szarość: na tle siatki i kilkunastu belek

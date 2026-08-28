@@ -976,9 +976,15 @@ function podepnijBelki() {
     // belki kończyłoby się skokiem do formularza.
     if (Date.now() - ostatnioCiagnieto < 400) return;
 
+    // BELKA MA PIERWSZEŃSTWO nad strzałką. Gdy stuknięcie trafia w oba
+    // (linia przechodzi pod wąskim zadaniem), użytkownik prawie zawsze celuje
+    // w zadanie — a przypadkowe pytanie o usunięcie powiązania jest znacznie
+    // bardziej uciążliwe niż konieczność trafienia w linię obok belki.
+    const belkaPodKursorem = ev.target.closest('[data-belka]');
+
     // Kliknięcie w strzałkę zdejmuje powiązanie — z pytaniem, bo to jedyny
     // ruch na wykresie, którego nie widać od razu po skutkach.
-    const zal = ev.target.closest('[data-zal]');
+    const zal = !belkaPodKursorem && ev.target.closest('[data-zal]');
     if (zal) {
       const [doId, odId] = zal.dataset.zal.split(':').map(Number);
       const wg = new Map(zadania.map((z) => [z.id, z]));
