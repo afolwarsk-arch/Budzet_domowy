@@ -2044,7 +2044,40 @@ def get_historia_konta(konto_id: int, household_id: int, month: str | None = Non
             FROM przelewy pn {where_pn}
             ORDER BY data DESC, opis
         """, p_w + p_wp + p_pz + p_pn)
-        return [dict(r) for r in cur.fetchall()]
+        wiersze = [dict(r) for r in cur.fetchall()]
+
+        # SALDO PO KAŻDEJ OPERACJI — tak samo jak robi to wyciąg bankowy.
+        # Bez tego uzgodnienie konta z bankiem polega na sumowaniu w głowie:
+        # widać kwoty, ale nie widać, w którym miejscu historia rozjeżdża się
+        # z saldem banku, więc szuka się błędu wśród wszystkich transakcji naraz.
+        #
+        # Punkt zaczepienia liczymy z CAŁEJ historii, nie z bieżącego miesiąca:
+        # przy filtrze miesięcznym saldo musi uwzględniać wszystko, co było
+        # wcześniej, inaczej pierwszy wiersz startowałby od zera.
+        if wiersze:
+            najstarsza = min(str(w["data"])[:10] for w in wiersze)
+            cur.execute("SELECT saldo_poczatkowe FROM konta WHERE id=%s", (konto_id,))
+            row = cur.fetchone()
+            saldo = float(row["saldo_poczatkowe"]) if row else 0.0
+            for tabela, kolumna, znak in (("wplywy", "kwota", 1), ("wydatki", "suma", -1)):
+                cur.execute(
+                    f"SELECT COALESCE(SUM({kolumna}), 0) AS s FROM {tabela} "
+                    "WHERE konto_id=%s AND data < %s", (konto_id, najstarsza))
+                saldo += znak * float(cur.fetchone()["s"])
+            cur.execute("SELECT COALESCE(SUM(kwota), 0) AS s FROM przelewy "
+                        "WHERE konto_z_id=%s AND data < %s", (konto_id, najstarsza))
+            saldo -= float(cur.fetchone()["s"])
+            cur.execute("SELECT COALESCE(SUM(kwota), 0) AS s FROM przelewy "
+                        "WHERE konto_na_id=%s AND data < %s", (konto_id, najstarsza))
+            saldo += float(cur.fetchone()["s"])
+
+            # Idziemy od najstarszej do najnowszej, bo saldo narasta w czasie,
+            # a lista jest ułożona odwrotnie — stąd `reversed`.
+            for w in reversed(wiersze):
+                w["saldo_przed"] = round(saldo, 2)
+                saldo = round(saldo + float(w["kwota"]), 2)
+                w["saldo_po"] = saldo
+        return wiersze
 
 
 # --- inwentaryzacje ---

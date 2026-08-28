@@ -72,6 +72,10 @@
     .tx-row:last-child { border-bottom:none; }
     .tx-opis { color: var(--text); font-weight:500; }
     .tx-meta { font-size:0.75rem; color: var(--muted); margin-top:1px; }
+    /* Saldo przed → po. Cyfry o stałej szerokości, żeby kolumna kwot nie
+       drgała między wierszami przy porównywaniu z wyciągiem z banku. */
+    .tx-saldo { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .tx-saldo b { color: var(--text); font-weight: 600; }
     .tx-kwota { font-weight:600; white-space:nowrap; margin-left:12px; }
     .tx-kwota.plus { color: var(--good); }
     .tx-kwota.minus { color: var(--danger); }
@@ -907,7 +911,10 @@ function renderHistoria() {
     return `<div class="tx-row">
       <div>
         <div class="tx-opis">${t.opis || '—'}</div>
-        <div class="tx-meta">${fmtDate(t.data)}${t.osoba ? ' · ' + t.osoba : ''} · ${typLabel}</div>
+        <div class="tx-meta">${fmtDate(t.data)}${t.osoba ? ' · ' + t.osoba : ''} · ${typLabel}${
+          t.saldo_po !== undefined
+            ? ` · <span class="tx-saldo" title="Saldo konta przed operacją i po niej">${fmt(t.saldo_przed)} → <b>${fmt(t.saldo_po)}</b></span>`
+            : ''}</div>
       </div>
       <div style="display:flex;align-items:center">
         <div class="tx-kwota ${plus?'plus':'minus'}">${plus?'+':''}${fmt(t.kwota)}</div>
