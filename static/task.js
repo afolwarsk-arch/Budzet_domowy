@@ -391,6 +391,7 @@ function rysujPlan() {
     <div class="gantt${planSzerokieNazwy ? ' szerokie-nazwy' : ''}" style="--szer:${szer}px">
       <div class="gantt-osie">${osCzasu(od, dni, px)}</div>
       <div class="gantt-body">
+        ${pasyWeekendow(od, dni, px)}
         ${strzalkiZaleznosci(wiersze, rzedy, od, px, szer)}
         ${wiersze.map((w) => wierszPlanu(w, od, px, szer, dzis)).join('')}
         <!-- Pionowa kreska „dziś" — bez niej nie widać, co jest już za nami.
@@ -474,6 +475,26 @@ function podepnijNaglowekPlanu() {
   const sk = document.getElementById('p-skala');
   // Sama skala nie zmienia danych, więc przerysowujemy bez pytania serwera.
   if (sk) sk.oninput = (ev) => { planSkala = Number(ev.target.value); rysujPlan(); };
+}
+
+// Delikatne pasy pod weekendami — dają rytm tygodnia, bez którego nie widać,
+// czy termin nie wypada w sobotę. Rysowane jako tło, pod belkami i strzałkami.
+//
+// Przy najrzadszej skali (trzy piksele na dzień) pasy zlewałyby się w szarą
+// kaszę i wykres stałby się mniej czytelny, nie bardziej — wtedy ich nie ma.
+function pasyWeekendow(od, dni, px) {
+  if (px < 6) return '';
+  const pasy = [];
+  const kursor = new Date(od);
+  for (let i = 0; i < dni; i++) {
+    const dzien = kursor.getDay();          // 0 = niedziela, 6 = sobota
+    if (dzien === 6 || dzien === 0) {
+      pasy.push(`<div class="gantt-weekend" style="left:calc(var(--nazwa) + ${
+        Math.round(i * px)}px); width:${Math.round(px)}px"></div>`);
+    }
+    kursor.setDate(kursor.getDate() + 1);
+  }
+  return pasy.join('');
 }
 
 function osCzasu(od, dni, px) {

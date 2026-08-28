@@ -146,6 +146,12 @@
                                 border-radius: 3px; transform: rotate(45deg); padding: 0; }
     .gantt-belka.gantt-kamien span { display: none; }
 
+    /* Weekendy — najlżejszy możliwy ślad. Mają dawać rytm tygodnia, a nie
+       konkurować z belkami: gdy pas jest wyraźny, oko czyta go jako zdarzenie,
+       a nie jako tło. */
+    .gantt-weekend { position: absolute; top: 0; bottom: 0; z-index: 0;
+                     background: var(--surface-3); opacity: .55; pointer-events: none; }
+
     /* Strzałki zależności — jedno SVG na całą siatkę, pod belkami.
        SVG przepuszcza kliknięcia (`pointer-events: none`), ale same strzałki
        już nie: inaczej nie dałoby się ich kliknąć, a przezroczyste tło
