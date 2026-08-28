@@ -55,6 +55,7 @@ let planProjekty = new Set();
 // („Księga wieczysta — właściciel, hipoteki…") urywają się w połowie, a wykres
 // bez podpisów jest zbiorem kolorowych pasków.
 let planSzerokieNazwy = false;
+let planPanelOtwarty = false;   // czy rozwinięte są rzadziej używane ustawienia widoku
 // Powiązania „skończ, zanim zaczniesz": [{zadanie_id, poprzednik_id}].
 // Zadania bez powiązania są z definicji równoległe — brak wpisu TEŻ niesie
 // informację i nie trzeba osobnego typu „może iść obok".
@@ -426,37 +427,50 @@ function naglowekPlanu() {
       ${ZAKRESY.map(([k, l]) => `<button class="chip" type="button" data-z="${k}"
           aria-pressed="${k === zakres}">${l}</button>`).join('')}
     </div>
-    ${filtrProjektow()}
+    <!-- JEDEN rząd narzędzi zamiast trzech. Filtry i przełączniki zajmowały
+         na telefonie połowę ekranu, zanim w ogóle było widać wykres — więc
+         siedzą pod przyciskiem, a na wierzchu zostaje tylko gęstość, którą
+         zmienia się najczęściej. -->
     <div class="filtry plan-narzedzia">
-      <button class="chip" type="button" id="p-zrobione" aria-pressed="${planZrobione}">
-        Pokaż zrobione</button>
-      <button class="chip" type="button" id="p-nazwy" aria-pressed="${planSzerokieNazwy}"
-              title="Poszerz kolumnę z nazwami, żeby przeczytać dłuższe tytuły">
-        ${planSzerokieNazwy ? 'Zwęź nazwy' : 'Szersze nazwy'}</button>
+      <button class="chip${ileUstawienWidoku() ? ' wlaczony' : ''}" type="button" id="p-widok"
+              aria-expanded="${planPanelOtwarty}">Widok${
+        ileUstawienWidoku() ? ` (${ileUstawienWidoku()})` : ''} ${planPanelOtwarty ? '▴' : '▾'}</button>
       <div class="skala">
-        <span>gęstość</span>
         <input type="range" id="p-skala" min="0" max="2" step="1" value="${planSkala}"
                aria-label="Gęstość osi czasu">
         <span>${SKALE_PLANU[planSkala].opis}</span>
       </div>
+    </div>
+    ${planPanelOtwarty ? panelWidoku() : ''}`;
+}
+
+// Ile ustawień odbiega od domyślnych — licznik przy przycisku mówi, że coś
+// jest schowane, zanim użytkownik zacznie się zastanawiać, czemu wykres
+// wygląda inaczej, niż pamięta.
+function ileUstawienWidoku() {
+  return planProjekty.size + (planZrobione ? 1 : 0) + (planSzerokieNazwy ? 1 : 0);
+}
+
+function panelWidoku() {
+  const projekty = zadania.filter((z) => z.projekt && z.parent_id == null);
+  return `
+    <div class="panel-widoku">
+      <div class="filtry">
+        <button class="chip" type="button" id="p-zrobione" aria-pressed="${planZrobione}">
+          Zrobione</button>
+        <button class="chip" type="button" id="p-nazwy" aria-pressed="${planSzerokieNazwy}">
+          Szersze nazwy</button>
+      </div>
+      ${projekty.length ? `
+        <div class="filtry" id="p-projekty">
+          <button class="chip" type="button" data-proj="" aria-pressed="${!planProjekty.size}">
+            Wszystko</button>
+          ${projekty.map((p) => `<button class="chip" type="button" data-proj="${p.id}"
+              aria-pressed="${planProjekty.has(p.id)}">${esc(p.tytul)}</button>`).join('')}
+        </div>` : ''}
     </div>`;
 }
 
-// Chipy z projektami — wybór wielokrotny, bo dwa przedsięwzięcia naraz często
-// chce się zobaczyć obok siebie („czy remont nie wejdzie na wesele?").
-// Pokazujemy tylko wtedy, gdy projekty w ogóle istnieją: jeden chip „Wszystko"
-// bez alternatywy byłby ozdobą.
-function filtrProjektow() {
-  const projekty = zadania.filter((z) => z.projekt && z.parent_id == null);
-  if (!projekty.length) return '';
-  return `
-    <div class="filtry" id="p-projekty">
-      <button class="chip" type="button" data-proj="" aria-pressed="${!planProjekty.size}">
-        Wszystko</button>
-      ${projekty.map((p) => `<button class="chip" type="button" data-proj="${p.id}"
-          aria-pressed="${planProjekty.has(p.id)}">${esc(p.tytul)}</button>`).join('')}
-    </div>`;
-}
 
 function podepnijNaglowekPlanu() {
   document.getElementById('f-zakres').onclick = (ev) => {
@@ -466,6 +480,8 @@ function podepnijNaglowekPlanu() {
     nowyId = null;
     wczytaj();
   };
+  const widokBtn = document.getElementById('p-widok');
+  if (widokBtn) widokBtn.onclick = () => { planPanelOtwarty = !planPanelOtwarty; rysujPlan(); };
   const zr = document.getElementById('p-zrobione');
   if (zr) zr.onclick = () => { planZrobione = !planZrobione; wczytajPlan(); };
   const nz = document.getElementById('p-nazwy');
