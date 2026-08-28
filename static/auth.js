@@ -1105,6 +1105,7 @@ const MODULY = [
     ikona: 'zadania',
     strony: [
       { href: '/task', ikona: 'zadania', label: 'Zadania', pelny: 'Zadania' },
+      { href: '/plan', ikona: 'analiza', label: 'Plan', pelny: 'Wykres Gantta' },
     ],
   },
 ];

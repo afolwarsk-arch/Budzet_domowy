@@ -165,7 +165,8 @@ _MOTYW_BOOT = (
 # przemalowaniem na zielono.
 _STRONY_MODULU = {"eat.html": "eat", "przepisy.html": "eat", "statystyki.html": "eat",
                   "skaner.html": "eat",
-                  "health.html": "health", "task.html": "task"}
+                  "health.html": "health", "task.html": "task",
+                  "task-plan.html": "task"}
 # Strony finansów celowo BEZ wpisu: ich paleta jest wartością domyślną w :root,
 # więc każda strona spoza modułów (admin, profil) dostaje akcent finansów.
 
@@ -267,6 +268,18 @@ def health_page():
 
 @app.get("/task")
 def task_page():
+    return _html("task.html")
+
+
+@app.get("/plan")
+def task_plan_page():
+    """Wykres Gantta — ta sama strona, inny widok.
+
+    Osobny adres, a nie zakładka wśród filtrów listy: plan nie jest „zakresem"
+    jak „Dziś" czy „Zrobione", tylko innym sposobem patrzenia na te same
+    zadania. Dzięki temu wchodzi się w niego wprost z paska nawigacji i da się
+    go zapisać w zakładkach przeglądarki.
+    """
     return _html("task.html")
 
 

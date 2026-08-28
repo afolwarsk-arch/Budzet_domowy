@@ -38,7 +38,11 @@ function odmien(n, poj, kilka, wiele) {
   return (r10 >= 2 && r10 <= 4 && !(r100 >= 12 && r100 <= 14)) ? kilka : wiele;
 }
 
-let zakres = 'dzis';        // dzis | nadchodzace | zrobione
+// Plan ma własny adres (/plan), więc zakres bierzemy ze ścieżki. Dzięki temu
+// odświeżenie strony albo wejście z paska nawigacji trafia tam, gdzie trzeba,
+// zamiast zawsze na „Dziś".
+const TRYB_PLANU = location.pathname.replace(/\/$/, '') === '/plan';
+let zakres = TRYB_PLANU ? 'plan' : 'dzis';   // dzis | nadchodzace | zrobione | plan
 let zadania = [];           // płasko, jak z serwera
 let korzen = null;          // null = widok listy; liczba = wejście w zadanie
 let widok = 'lista';        // lista | szczegoly
@@ -278,8 +282,8 @@ function podepnijPtaszki() {
   };
 }
 
-const ZAKRESY = [['dzis', 'Dziś'], ['nadchodzace', 'Nadchodzące'],
-                 ['plan', 'Plan'], ['zrobione', 'Zrobione']];
+// Bez „Plan": to nie jest zakres listy, tylko osobny widok pod własnym adresem.
+const ZAKRESY = [['dzis', 'Dziś'], ['nadchodzace', 'Nadchodzące'], ['zrobione', 'Zrobione']];
 
 const OKRESY = [['dzien', 'codziennie'], ['tydzien', 'co tydzień'],
                 ['miesiac', 'co miesiąc'], ['rok', 'co rok']];
@@ -422,11 +426,7 @@ function splaszczPlan(w, poziom) {
 
 function naglowekPlanu() {
   return `
-    <div class="gora"><h1>Zadania</h1></div>
-    <div class="filtry" id="f-zakres">
-      ${ZAKRESY.map(([k, l]) => `<button class="chip" type="button" data-z="${k}"
-          aria-pressed="${k === zakres}">${l}</button>`).join('')}
-    </div>
+    <div class="gora"><h1>Plan</h1></div>
     <!-- JEDEN rząd narzędzi zamiast trzech. Filtry i przełączniki zajmowały
          na telefonie połowę ekranu, zanim w ogóle było widać wykres — więc
          siedzą pod przyciskiem, a na wierzchu zostaje tylko gęstość, którą
@@ -473,13 +473,6 @@ function panelWidoku() {
 
 
 function podepnijNaglowekPlanu() {
-  document.getElementById('f-zakres').onclick = (ev) => {
-    const b = ev.target.closest('[data-z]');
-    if (!b) return;
-    zakres = b.dataset.z;
-    nowyId = null;
-    wczytaj();
-  };
   const widokBtn = document.getElementById('p-widok');
   if (widokBtn) widokBtn.onclick = () => { planPanelOtwarty = !planPanelOtwarty; rysujPlan(); };
   const zr = document.getElementById('p-zrobione');
