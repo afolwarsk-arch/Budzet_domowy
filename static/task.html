@@ -26,6 +26,65 @@
 
     .szybkie { display: flex; gap: 8px; margin-bottom: 16px; }
     .szybkie input { flex: 1; min-height: 46px; }
+
+    /* ── wykres Gantta ────────────────────────────────────────────────────
+       Zwykły HTML, bez biblioteki: belka to div o szerokości liczonej z dni.
+       Wykres pokazuje kilkanaście spraw domowych, nie harmonogram budowy —
+       biblioteka ważyłaby więcej, niż daje.
+
+       KOLUMNA NAZW JEST PRZYKLEJONA, oś jedzie pod nią w poziomie. Bez tego
+       przewinięcie do listopada na telefonie zostawia same belki, o których
+       nie wiadomo, czego dotyczą. */
+    .gantt { --nazwa: 148px; border: 1px solid var(--border); border-radius: 12px;
+             overflow: hidden; background: var(--surface); margin-bottom: 18px; }
+    .plan-narzedzia { align-items: center; gap: 12px; }
+    .plan-narzedzia .skala { display: flex; align-items: center; gap: 8px;
+                             font-size: 12px; color: var(--muted); }
+    .plan-narzedzia .skala input { flex: 1; min-width: 110px; accent-color: var(--marka); }
+
+    .gantt-osie { position: relative; height: 26px; margin-left: var(--nazwa);
+                  border-bottom: 1px solid var(--border); overflow: hidden; }
+    .gantt-miesiac { position: absolute; top: 0; height: 26px; padding-left: 6px;
+                     font-size: 11px; color: var(--muted); line-height: 26px;
+                     border-left: 1px solid var(--border-soft); white-space: nowrap; }
+
+    .gantt-body { position: relative; overflow-x: auto; overflow-y: hidden;
+                  -webkit-overflow-scrolling: touch; }
+    .gantt-wiersz { display: flex; align-items: center; min-height: 38px;
+                    border-bottom: 1px solid var(--border-soft); }
+    .gantt-wiersz:last-child { border-bottom: none; }
+    .gantt-nazwa { position: sticky; left: 0; z-index: 2; flex: none;
+                   width: var(--nazwa); padding-right: 8px; font-size: 12.5px;
+                   background: var(--surface); cursor: pointer;
+                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                   border-right: 1px solid var(--border); }
+    .gantt-projekt { display: inline-block; width: 7px; height: 7px; margin-right: 5px;
+                     border-radius: 2px; background: var(--marka); vertical-align: middle; }
+    .gantt-tor { position: relative; height: 38px; flex: none; }
+
+    .gantt-belka { position: absolute; top: 9px; height: 20px; border-radius: 5px;
+                   background: var(--accent); cursor: pointer; overflow: hidden;
+                   display: flex; align-items: center; justify-content: flex-end;
+                   padding: 0 6px; min-width: 6px; }
+    .gantt-belka span { font-size: 10.5px; color: #fff; opacity: .92; white-space: nowrap; }
+    .gantt-belka.projekt { background: var(--marka); height: 24px; top: 7px; }
+    .gantt-belka.zrobiona { background: var(--good); opacity: .55; }
+    .gantt-belka.po-czasie { background: var(--danger); }
+    /* Kamień milowy to punkt, nie odcinek — romb zamiast paska. */
+    .gantt-belka.kamien { width: 16px !important; height: 16px; top: 11px;
+                          border-radius: 3px; transform: rotate(45deg); padding: 0; }
+    .gantt-belka.kamien span { display: none; }
+
+    .gantt-dzis { position: absolute; top: 0; bottom: 0; width: 2px;
+                  background: var(--marka); opacity: .55; pointer-events: none; z-index: 1; }
+    .gantt-dzis span { position: absolute; top: 0; left: 3px; font-size: 10px;
+                       color: var(--marka); font-weight: 700; }
+
+    @media (max-width: 700px) {
+      /* Na telefonie nazwa dostaje mniej miejsca — inaczej na oś zostaje pasek
+         szerokości kciuka i nie da się nic odczytać. */
+      .gantt { --nazwa: 104px; }
+    }
     .zad { display: flex; align-items: center; gap: 10px; padding: 12px;
            border-bottom: 1px solid var(--border-soft); }
     .zad.zrobione .zad-tytul { text-decoration: line-through; color: var(--muted); }

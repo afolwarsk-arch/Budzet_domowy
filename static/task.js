@@ -42,6 +42,8 @@ let widok = 'lista';        // lista | szczegoly
 let szczegolyId = null;     // id zadania otwartego w formularzu szczegółów
 let nowyId = null;          // id ostatnio dodanego szybkim dodawaniem — przy nim pokazujemy „Szczegóły"
 let household = null;       // {members, virtual_members} — wczytywane raz, przy pierwszym otwarciu formularza
+let planZrobione = false;   // czy wykres pokazuje też zadania zamknięte
+let planSkala = 1;          // 0 = ciasno (kwartał+), 1 = miesiąc, 2 = tydzień
 
 const box = () => document.getElementById('tresc');
 
@@ -120,10 +122,21 @@ function nagKorzenia(w) {
 }
 
 async function wczytaj() {
+  // Plan ma własne wejście: bierze zadania z JAKĄKOLWIEK datą, niezależnie od
+  // tego, czy termin już minął — oś czasu pokazuje rozpiętość, a nie „co dziś".
+  if (zakres === 'plan') return wczytajPlan();
   try {
     const r = await authFetch('/api/task/zadania?zakres=' + zakres);
     zadania = (await r.json()).zadania || [];
   } catch { zadania = []; toast('Nie udało się wczytać zadań.', 'blad'); }
+  rysuj();
+}
+
+async function wczytajPlan() {
+  try {
+    const r = await authFetch('/api/task/plan' + (planZrobione ? '?zrobione=true' : ''));
+    zadania = (await r.json()).zadania || [];
+  } catch { zadania = []; toast('Nie udało się wczytać planu.', 'blad'); }
   rysuj();
 }
 
@@ -173,11 +186,201 @@ function podepnijPtaszki() {
   };
 }
 
-const ZAKRESY = [['dzis', 'Dziś'], ['nadchodzace', 'Nadchodzące'], ['zrobione', 'Zrobione']];
+const ZAKRESY = [['dzis', 'Dziś'], ['nadchodzace', 'Nadchodzące'],
+                 ['plan', 'Plan'], ['zrobione', 'Zrobione']];
 
 function rysuj() {
   if (widok === 'szczegoly') return rysujSzczegoly();
+  if (zakres === 'plan') return rysujPlan();
   return rysujLista();
+}
+
+// ── wykres Gantta ───────────────────────────────────────────────────────────
+//
+// Rysowany zwykłym HTML-em, bez biblioteki: belka to `div` o szerokości
+// liczonej z liczby dni, a cała reszta to siatka. Wykres w tej apce ma pokazać
+// kilkanaście zadań domowych, nie harmonogram budowy — biblioteka kosztowałaby
+// więcej wagi strony niż daje.
+//
+// LEWA KOLUMNA JEST PRZYKLEJONA, oś przewija się pod nią w poziomie. Bez tego
+// na telefonie przewinięcie do listopada gubi nazwy zadań i widać same belki,
+// o których nie wiadomo, czego dotyczą.
+
+const SKALE_PLANU = [
+  { px: 3.2, opis: 'cały plan' },   // ~100 px na miesiąc
+  { px: 9,   opis: 'miesiąc' },
+  { px: 26,  opis: 'tydzień' },
+];
+
+const DZIEN_MS = 86400000;
+
+function doDaty(x) {
+  return x ? new Date(String(x).slice(0, 10) + 'T00:00:00') : null;
+}
+
+// Zadanie bez daty początku dostaje jednodniową belkę na terminie — inaczej
+// nie dałoby się go w ogóle postawić na osi. Kamień milowy jest punktem
+// z założenia, więc też ma jeden dzień.
+function zakresZadania(z) {
+  const koniec = doDaty(z.termin) || doDaty(z.data_start);
+  const start = doDaty(z.data_start) || koniec;
+  return start && koniec ? { start, koniec } : null;
+}
+
+function rysujPlan() {
+  const zDatami = zadania.filter(zakresZadania);
+  if (!zDatami.length) {
+    box().innerHTML = naglowekPlanu()
+      + `<p class="pusto">Żadne zadanie nie ma jeszcze dat. Otwórz zadanie,
+         ustaw termin (i opcjonalnie początek), a pojawi się na osi.</p>`;
+    podepnijNaglowekPlanu();
+    return;
+  }
+
+  // Okno czasu: od najwcześniejszego początku do najpóźniejszego terminu,
+  // zawsze z dzisiejszym dniem w środku — plan bez „dziś" nie mówi, czy coś
+  // jest już spóźnione.
+  const dzis = new Date(new Date().toDateString());
+  let od = new Date(Math.min(...zDatami.map((z) => zakresZadania(z).start), dzis));
+  let doK = new Date(Math.max(...zDatami.map((z) => zakresZadania(z).koniec), dzis));
+  od = new Date(od.getTime() - 3 * DZIEN_MS);
+  doK = new Date(doK.getTime() + 3 * DZIEN_MS);
+  const dni = Math.max(1, Math.round((doK - od) / DZIEN_MS));
+  const px = SKALE_PLANU[planSkala].px;
+  const szer = Math.round(dni * px);
+
+  const drzewo = budujDrzewo(zDatami.concat(
+    zadania.filter((z) => !zakresZadania(z))));   // przodkowie bez dat trzymają strukturę
+  const wiersze = drzewo.flatMap((w) => splaszczPlan(w, 0));
+
+  box().innerHTML = naglowekPlanu() + `
+    <div class="gantt" style="--szer:${szer}px">
+      <div class="gantt-osie">${osCzasu(od, dni, px)}</div>
+      <div class="gantt-body">
+        ${wiersze.map((w) => wierszPlanu(w, od, px, szer, dzis)).join('')}
+        <!-- Pionowa kreska „dziś" — bez niej nie widać, co jest już za nami.
+             Rysowana raz na całą wysokość, nie w każdym wierszu z osobna. -->
+        <div class="gantt-dzis" style="left:calc(var(--nazwa) + ${
+          Math.round(((dzis - od) / DZIEN_MS) * px)}px)"><span>dziś</span></div>
+      </div>
+    </div>`;
+  podepnijNaglowekPlanu();
+  podepnijBelki();
+}
+
+// Spłaszczenie z zachowaniem poziomu zagnieżdżenia — na wykresie wcięcie
+// zastępuje strzałki wchodzenia w głąb, bo cała struktura jest widoczna naraz.
+function splaszczPlan(w, poziom) {
+  return [{ z: w, poziom }].concat((w.dzieci || []).flatMap((d) => splaszczPlan(d, poziom + 1)));
+}
+
+function naglowekPlanu() {
+  return `
+    <div class="gora"><h1>Zadania</h1></div>
+    <div class="filtry" id="f-zakres">
+      ${ZAKRESY.map(([k, l]) => `<button class="chip" type="button" data-z="${k}"
+          aria-pressed="${k === zakres}">${l}</button>`).join('')}
+    </div>
+    <div class="filtry plan-narzedzia">
+      <button class="chip" type="button" id="p-zrobione" aria-pressed="${planZrobione}">
+        Pokaż zrobione</button>
+      <div class="skala">
+        <span>gęstość</span>
+        <input type="range" id="p-skala" min="0" max="2" step="1" value="${planSkala}"
+               aria-label="Gęstość osi czasu">
+        <span>${SKALE_PLANU[planSkala].opis}</span>
+      </div>
+    </div>`;
+}
+
+function podepnijNaglowekPlanu() {
+  document.getElementById('f-zakres').onclick = (ev) => {
+    const b = ev.target.closest('[data-z]');
+    if (!b) return;
+    zakres = b.dataset.z;
+    nowyId = null;
+    wczytaj();
+  };
+  const zr = document.getElementById('p-zrobione');
+  if (zr) zr.onclick = () => { planZrobione = !planZrobione; wczytajPlan(); };
+  const sk = document.getElementById('p-skala');
+  // Sama skala nie zmienia danych, więc przerysowujemy bez pytania serwera.
+  if (sk) sk.oninput = (ev) => { planSkala = Number(ev.target.value); rysujPlan(); };
+}
+
+function osCzasu(od, dni, px) {
+  // Podpisy miesięcy — przy gęstej skali dokładamy tygodnie, przy rzadkiej
+  // zostają same miesiące, bo etykiety zlewałyby się w kreskę.
+  const czesci = [];
+  const kursor = new Date(od);
+  kursor.setDate(1);
+  while (kursor <= new Date(od.getTime() + dni * DZIEN_MS)) {
+    const nast = new Date(kursor.getFullYear(), kursor.getMonth() + 1, 1);
+    const start = Math.max(0, Math.round((kursor - od) / DZIEN_MS));
+    const koniec = Math.min(dni, Math.round((nast - od) / DZIEN_MS));
+    const szerokosc = Math.round((koniec - start) * px);
+    if (szerokosc > 0) {
+      const nazwa = kursor.toLocaleDateString('pl-PL', { month: 'short', year: '2-digit' });
+      czesci.push(`<div class="gantt-miesiac" style="left:${Math.round(start * px)}px;
+        width:${szerokosc}px">${szerokosc > 46 ? esc(nazwa) : ''}</div>`);
+    }
+    kursor.setMonth(kursor.getMonth() + 1);
+  }
+  return czesci.join('');
+}
+
+function wierszPlanu(poz, od, px, szer, dzis) {
+  const z = poz.z;
+  const zakresZ = zakresZadania(z);
+  const wciecie = Math.min(poz.poziom, 3) * 12;
+  const etykieta = `<div class="gantt-nazwa" style="padding-left:${8 + wciecie}px"
+      data-otworz="${z.id}" title="${esc(z.tytul)}">${
+    z.projekt ? '<span class="gantt-projekt"></span>' : ''}${esc(z.tytul)}</div>`;
+
+  if (!zakresZ) {
+    // Przodek bez własnych dat: pokazujemy nazwę, żeby dzieci miały kontekst,
+    // ale nie rysujemy belki — nie byłoby jej gdzie postawić.
+    return `<div class="gantt-wiersz">${etykieta}
+      <div class="gantt-tor" style="width:${szer}px"></div></div>`;
+  }
+
+  const start = Math.round((zakresZ.start - od) / DZIEN_MS);
+  const dlugosc = Math.max(1, Math.round((zakresZ.koniec - zakresZ.start) / DZIEN_MS) + 1);
+  const spozniony = z.status === 'otwarte' && zakresZ.koniec < dzis;
+  const klasy = ['gantt-belka'];
+  if (z.status === 'zrobione') klasy.push('zrobiona');
+  if (spozniony) klasy.push('po-czasie');
+  if (z.projekt) klasy.push('projekt');
+  // Kamień milowy to punkt w czasie, nie odcinek — rysujemy romb zamiast belki.
+  if (z.kamien_milowy) klasy.push('kamien');
+
+  const podpis = dlugosc * px > 54 ? `<span>${esc(dataKrotka(zakresZ.koniec))}</span>` : '';
+  return `<div class="gantt-wiersz">${etykieta}
+    <div class="gantt-tor" style="width:${szer}px">
+      <div class="${klasy.join(' ')}" data-otworz="${z.id}"
+           style="left:${Math.round(start * px)}px; width:${Math.round(dlugosc * px)}px"
+           title="${esc(z.tytul)} — ${dataKrotka(zakresZ.start)} → ${dataKrotka(zakresZ.koniec)}">
+        ${podpis}
+      </div>
+    </div></div>`;
+}
+
+function dataKrotka(d) {
+  return d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' });
+}
+
+function podepnijBelki() {
+  const g = document.querySelector('.gantt');
+  if (!g) return;
+  g.onclick = (ev) => {
+    const b = ev.target.closest('[data-otworz]');
+    if (b) otworzSzczegoly(Number(b.dataset.otworz));
+  };
+  // Widok startuje na dzisiejszym dniu, a nie na początku osi: plan zwykle
+  // sięga wstecz, a interesuje to, co teraz i dalej.
+  const tor = g.querySelector('.gantt-body');
+  const dzisEl = g.querySelector('.gantt-dzis');
+  if (tor && dzisEl) tor.scrollLeft = Math.max(0, dzisEl.offsetLeft - 120);
 }
 
 function rysujLista() {
@@ -319,14 +522,20 @@ function rysujSzczegoly() {
       <textarea id="s-opis">${esc(w.opis || '')}</textarea>
     </div>
     <div class="pola-2">
+      <!-- Początek jest opcjonalny i stoi PRZED terminem: zadanie bez niego
+           to punkt na osi, z nim — odcinek. Dopiero to daje belkę na wykresie. -->
+      <div class="pole">
+        <label for="s-start">Początek</label>
+        <input id="s-start" type="date" value="${esc((w.data_start || '').slice(0, 10))}">
+      </div>
       <div class="pole">
         <label for="s-termin">Termin</label>
         <input id="s-termin" type="date" value="${esc((w.termin || '').slice(0, 10))}">
       </div>
-      <div class="pole">
-        <label for="s-pora">Godzina przypomnienia</label>
-        <input id="s-pora" type="time" value="${esc((w.pora || '').slice(0, 5))}">
-      </div>
+    </div>
+    <div class="pole">
+      <label for="s-pora">Godzina przypomnienia</label>
+      <input id="s-pora" type="time" value="${esc((w.pora || '').slice(0, 5))}">
     </div>
     <div class="pole">
       <label for="s-wykonawca">Wykonawca</label>
@@ -334,6 +543,18 @@ function rysujSzczegoly() {
     </div>
     <div class="pole-cb">
       <label><input type="checkbox" id="s-kamien" ${w.kamien_milowy ? 'checked' : ''}> Kamień milowy</label>
+    </div>
+    <div class="pole-cb">
+      <!-- Projektem może być tylko zadanie bez rodzica: przedsięwzięcie
+           w środku innego przedsięwzięcia to etap, nie projekt. -->
+      <label class="${maRodzica ? 'wylaczone' : ''}">
+        <input type="checkbox" id="s-projekt" ${w.projekt ? 'checked' : ''}
+               ${maRodzica ? 'disabled' : ''}>
+        To jest projekt
+      </label>
+      ${maRodzica
+        ? '<div class="uwaga">Krok jest częścią projektu nadrzędnego.</div>'
+        : '<div class="uwaga">Wyróżnia zadanie na osi planu jako całe przedsięwzięcie.</div>'}
     </div>
     <div class="pole-cb">
       <label class="${maRodzica ? 'wylaczone' : ''}">
@@ -358,11 +579,19 @@ function rysujSzczegoly() {
       tytul,
       opis: document.getElementById('s-opis').value.trim() || null,
       termin: document.getElementById('s-termin').value || null,
+      data_start: document.getElementById('s-start').value || null,
       pora: document.getElementById('s-pora').value || null,
       wykonawca_user_id: wyk.startsWith('u:') ? Number(wyk.slice(2)) : null,
       wykonawca_virtual_id: wyk.startsWith('v:') ? Number(wyk.slice(2)) : null,
       kamien_milowy: document.getElementById('s-kamien').checked,
+      projekt: !maRodzica && document.getElementById('s-projekt').checked,
     };
+    // Łapiemy zamianę pól po stronie klienta, żeby nie wysyłać żądania, które
+    // i tak wróci z błędem — komunikat pada od razu przy przycisku.
+    if (dane.data_start && dane.termin && dane.data_start > dane.termin) {
+      toast('Początek nie może być późniejszy niż termin.', 'blad');
+      return;
+    }
     // `parent_id` NIGDY nie jest tu dodawany — formularz szczegółów nie
     // przenosi zadań, a wysłanie `parent_id: null` odczepiłoby je od rodzica.
     // `prywatne` dokładamy tylko wtedy, gdy przełącznik w ogóle jest aktywny
