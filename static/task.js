@@ -19,11 +19,14 @@ const esc = (s) => String(s == null ? '' : s)
 // Dzisiejsza data W CZASIE LOKALNYM. toISOString() daje UTC, więc między
 // północą a drugą w nocy pokazywałby jeszcze wczoraj i zaległe zadanie nie
 // zapalałoby się na czerwono.
-function dzisIso() {
-  const d = new Date();
+function isoLokalne(d) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const dz = String(d.getDate()).padStart(2, '0');
   return `${d.getFullYear()}-${m}-${dz}`;
+}
+
+function dzisIso() {
+  return isoLokalne(new Date());
 }
 
 // Polska odmiana przez liczbę: 1 forma pojedyncza, 2–4 „kilka", 5+ „wiele" —
@@ -605,14 +608,14 @@ function graniceZadania(id) {
       const p = wg.get(zal.poprzednik_id);
       const zp = p && zakresZadania(p);
       if (!zp) continue;
-      const dzien = new Date(zp.koniec.getTime() + DZIEN_MS).toISOString().slice(0, 10);
+      const dzien = isoLokalne(new Date(zp.koniec.getTime() + DZIEN_MS));
       if (!najwczesniejszyStart || dzien > najwczesniejszyStart) najwczesniejszyStart = dzien;
     }
     if (zal.poprzednik_id === id) {
       const n = wg.get(zal.zadanie_id);
       const zn = n && zakresZadania(n);
       if (!zn) continue;
-      const dzien = new Date(zn.start.getTime() - DZIEN_MS).toISOString().slice(0, 10);
+      const dzien = isoLokalne(new Date(zn.start.getTime() - DZIEN_MS));
       if (!najpozniejszyKoniec || dzien < najpozniejszyKoniec) najpozniejszyKoniec = dzien;
     }
   }
@@ -743,11 +746,14 @@ function przeciaganieBelek(g) {
 
     const dx = ev.clientX - s.startX;
     const dni = dniZPikseli(dx);
+    // `isoLokalne`, a NIE toISOString(): ta druga przelicza na UTC, więc
+    // w naszej strefie zwracałaby dzień wcześniejszy i każde przeciągnięcie
+    // przesuwałoby zadanie o dobę za daleko.
     const przesun = (data, o) => {
       if (!data) return null;
       const d = new Date(String(data).slice(0, 10) + 'T00:00:00');
       d.setDate(d.getDate() + o);
-      return d.toISOString().slice(0, 10);
+      return isoLokalne(d);
     };
 
     let nowyStart = s.start0;
