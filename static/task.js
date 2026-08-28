@@ -689,21 +689,43 @@ function pokazPasekInfo(id) {
   if (wykonawca) czesci.push(wykonawca.display_name || wykonawca.name);
   if (z.kamien_milowy) czesci.push('kamień milowy');
   if (z.powtarzaj) czesci.push(opisPowtarzania(z));
-  // Na co czeka — to najczęstsze pytanie przy patrzeniu na belkę w planie.
+
+  // Powiązania jako PLAKIETKI Z KRZYŻYKIEM, nie jako tekst. Kliknięcie w samą
+  // kreskę na wykresie działa, ale po zwężeniu jej pola trafienia (żeby nie
+  // kradła stuknięć belkom) na telefonie jest loterią. Tu cel ma rozmiar palca.
   const czekaNa = zaleznosci.filter((x) => x.zadanie_id === id)
-    .map((x) => zadania.find((y) => y.id === x.poprzednik_id)?.tytul)
-    .filter(Boolean);
-  if (czekaNa.length) czesci.push('po: ' + czekaNa.join(', '));
+    .map((x) => ({ id: x.poprzednik_id, tytul: zadania.find((y) => y.id === x.poprzednik_id)?.tytul }))
+    .filter((x) => x.tytul);
 
   pasek.hidden = false;
   pasek.innerHTML = `
     <div class="gi-tytul">${esc(z.tytul)}</div>
     <div class="gi-dane">${esc(czesci.join(' · '))}</div>
+    ${czekaNa.length ? `<div class="gi-po">
+      <span class="gi-po-etykieta">zaczyna się po:</span>
+      ${czekaNa.map((p) => `<span class="chip wlaczony gi-zal">${esc(p.tytul)}
+        <button type="button" data-zdejmij="${p.id}"
+                aria-label="Usuń powiązanie z: ${esc(p.tytul)}">✕</button></span>`).join('')}
+    </div>` : ''}
     <button class="btn btn-outline gi-otworz" type="button" data-otworz-info="${id}">Otwórz</button>`;
+
   pasek.querySelector('[data-otworz-info]').onclick = (e) => {
     e.stopPropagation();
     otworzSzczegoly(id);
   };
+  pasek.querySelectorAll('[data-zdejmij]').forEach((b) => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      const poprzednik = Number(b.dataset.zdejmij);
+      const r = await authFetch(
+        `/api/task/zaleznosci?zadanie_id=${id}&poprzednik_id=${poprzednik}`, { method: 'DELETE' });
+      if (!r.ok) { toast('Nie udało się usunąć powiązania.', 'blad'); return; }
+      await wczytajPlan();
+      // Zaznaczenie zostaje — po zdjęciu jednego powiązania często zdejmuje się
+      // kolejne, a zniknięcie paska kazałoby zaczynać od nowa.
+      zaznaczBelke(id);
+    };
+  });
 }
 
 // GRANICE WYNIKAJĄCE Z ZALEŻNOŚCI. Skoro „B po A", to B nie ma prawa zacząć
