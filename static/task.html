@@ -27,6 +27,18 @@
     .szybkie { display: flex; gap: 8px; margin-bottom: 16px; }
     .szybkie input { flex: 1; min-height: 46px; }
 
+    /* Znacznik zadania powtarzalnego — bez niego nie widać, że sprawa wróci
+       po odhaczeniu, a nagłe pojawienie się „nowego" zadania wygląda jak błąd. */
+    .zad-cykl { margin-left: 7px; padding: 1px 7px; border-radius: 999px;
+                background: var(--accent-soft); color: var(--accent-strong);
+                font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .powtarzanie { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .powtarzanie select { flex: 1; min-width: 150px; }
+    .co-ile { display: flex; align-items: center; gap: 6px; font-size: 13px;
+              color: var(--muted); white-space: nowrap; }
+    .co-ile input { width: 62px; }
+    .co-ile.schowane { display: none; }
+
     /* ── wykres Gantta ────────────────────────────────────────────────────
        Zwykły HTML, bez biblioteki: belka to div o szerokości liczonej z dni.
        Wykres pokazuje kilkanaście spraw domowych, nie harmonogram budowy —

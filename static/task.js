@@ -189,6 +189,26 @@ function podepnijPtaszki() {
 const ZAKRESY = [['dzis', 'Dziś'], ['nadchodzace', 'Nadchodzące'],
                  ['plan', 'Plan'], ['zrobione', 'Zrobione']];
 
+const OKRESY = [['dzien', 'codziennie'], ['tydzien', 'co tydzień'],
+                ['miesiac', 'co miesiąc'], ['rok', 'co rok']];
+
+// Jednostka odmieniona przez liczbę — „co 2 tydzień" wygląda jak usterka.
+function jednostkaOkresu(okres, n) {
+  if (okres === 'dzien') return odmien(n, 'dzień', 'dni', 'dni');
+  if (okres === 'tydzien') return odmien(n, 'tydzień', 'tygodnie', 'tygodni');
+  if (okres === 'miesiac') return odmien(n, 'miesiąc', 'miesiące', 'miesięcy');
+  return odmien(n, 'rok', 'lata', 'lat');
+}
+
+// Podpis powtarzania na liście: przy „co 1" mówimy po ludzku („co tydzień"),
+// przy większych liczbach dopiero dokładamy liczebnik.
+function opisPowtarzania(z) {
+  if (!z.powtarzaj) return '';
+  const co = Number(z.powtarzaj_co) || 1;
+  if (co === 1) return (OKRESY.find(([k]) => k === z.powtarzaj) || [, ''])[1];
+  return `co ${co} ${jednostkaOkresu(z.powtarzaj, co)}`;
+}
+
 function rysuj() {
   if (widok === 'szczegoly') return rysujSzczegoly();
   if (zakres === 'plan') return rysujPlan();
@@ -462,7 +482,9 @@ function wiersz(w, poziom) {
       <button class="ptaszek" type="button" data-ptaszek="${w.id}"
               aria-label="Odhacz zadanie">${w.status === 'zrobione' ? ikonaSvg('ptaszek') : ''}</button>
       <div class="zad-tresc">
-        <div class="zad-tytul">${w.kamien_milowy ? '<span class="kamien"></span>' : ''}${esc(w.tytul)}</div>
+        <div class="zad-tytul">${w.kamien_milowy ? '<span class="kamien"></span>' : ''}${esc(w.tytul)}${
+          w.powtarzaj ? `<span class="zad-cykl" title="Po odhaczeniu wróci ${esc(opisPowtarzania(w))}">${
+            esc(opisPowtarzania(w))}</span>` : ''}</div>
         ${nast.tytul ? `<div class="zad-nast">następne: ${esc(nast.tytul)}</div>` : ''}
         ${w.id === nowyId ? `<button class="zad-szczegoly-btn" type="button" data-szczegoly="${w.id}">Szczegóły</button>` : ''}
       </div>
@@ -546,6 +568,23 @@ function rysujSzczegoly() {
     <div class="pole-cb">
       <label><input type="checkbox" id="s-kamien" ${w.kamien_milowy ? 'checked' : ''}> Kamień milowy</label>
     </div>
+    <!-- Powtarzanie wymaga terminu — bez niego nie ma od czego liczyć kolejnej
+         daty, więc pole jest wtedy wyłączone i mówi dlaczego. -->
+    <div class="pole">
+      <label for="s-powtarzaj">Powtarzaj</label>
+      <div class="powtarzanie">
+        <select id="s-powtarzaj" ${w.termin ? '' : 'disabled'}>
+          <option value="">nie powtarza się</option>
+          ${OKRESY.map(([k, l]) => `<option value="${k}"${
+            w.powtarzaj === k ? ' selected' : ''}>${l}</option>`).join('')}
+        </select>
+        <label class="co-ile${w.powtarzaj ? '' : ' schowane'}" id="s-co-ile-wrap">
+          co <input type="number" id="s-co-ile" min="1" max="99"
+                    value="${Number(w.powtarzaj_co) || 1}"> <span id="s-co-ile-jedn"></span>
+        </label>
+      </div>
+      ${w.termin ? '' : '<div class="uwaga">Najpierw ustaw termin — od niego liczy się kolejne powtórzenie.</div>'}
+    </div>
     <div class="pole-cb">
       <!-- Projektem może być tylko zadanie bez rodzica: przedsięwzięcie
            w środku innego przedsięwzięcia to etap, nie projekt. -->
@@ -573,6 +612,30 @@ function rysujSzczegoly() {
 
   document.getElementById('s-wroc').onclick = () => { widok = 'lista'; rysuj(); };
 
+  // Pole „co ile" ma sens dopiero, gdy wybrano okres — i musi odmieniać
+  // jednostkę przez liczbę, bo „co 2 tydzień" wygląda jak usterka.
+  const selPow = document.getElementById('s-powtarzaj');
+  const wrapCo = document.getElementById('s-co-ile-wrap');
+  const poleCo = document.getElementById('s-co-ile');
+  const odswiezPowtarzanie = () => {
+    const okres = selPow.value;
+    wrapCo.classList.toggle('schowane', !okres);
+    if (okres) {
+      document.getElementById('s-co-ile-jedn').textContent =
+        jednostkaOkresu(okres, Number(poleCo.value) || 1);
+    }
+  };
+  selPow.onchange = odswiezPowtarzanie;
+  poleCo.oninput = odswiezPowtarzanie;
+  odswiezPowtarzanie();
+
+  // Włączenie powtarzania bez terminu nie miałoby od czego liczyć następnej
+  // daty — odblokowujemy pole dopiero, gdy termin się pojawi.
+  document.getElementById('s-termin').onchange = (ev) => {
+    selPow.disabled = !ev.target.value;
+    if (!ev.target.value) { selPow.value = ''; odswiezPowtarzanie(); }
+  };
+
   document.getElementById('s-zapisz').onclick = async () => {
     const tytul = document.getElementById('s-tytul').value.trim();
     if (!tytul) { document.getElementById('s-tytul').focus(); return; }
@@ -587,6 +650,8 @@ function rysujSzczegoly() {
       wykonawca_virtual_id: wyk.startsWith('v:') ? Number(wyk.slice(2)) : null,
       kamien_milowy: document.getElementById('s-kamien').checked,
       projekt: !maRodzica && document.getElementById('s-projekt').checked,
+      powtarzaj: document.getElementById('s-powtarzaj').value || null,
+      powtarzaj_co: Number(document.getElementById('s-co-ile').value) || 1,
     };
     // Łapiemy zamianę pól po stronie klienta, żeby nie wysyłać żądania, które
     // i tak wróci z błędem — komunikat pada od razu przy przycisku.

@@ -48,6 +48,10 @@ def _dane(d: dict, nowe: bool) -> dict:
         "pora": d.get("pora") or None,
         "data_start": d.get("data_start") or None,
         "projekt": bool(d.get("projekt")),
+        "powtarzaj": (d.get("powtarzaj") or None) if d.get("powtarzaj") in task_db.OKRESY else None,
+        # Co ile jednostek. Górny limit chroni przed „co 9999 tygodni", które
+        # w praktyce znaczy „nigdy", a wygląda jak działające ustawienie.
+        "powtarzaj_co": min(max(int(d.get("powtarzaj_co") or 1), 1), 99),
         "wykonawca_user_id": d.get("wykonawca_user_id") or None,
         "wykonawca_virtual_id": d.get("wykonawca_virtual_id") or None,
         "kamien_milowy": bool(d.get("kamien_milowy")),

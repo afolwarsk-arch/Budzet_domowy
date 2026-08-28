@@ -11,6 +11,9 @@ tam, gdzie odpowiada na pytanie niemożliwe do zadania inaczej: czy nowy rodzic
 nie leży w poddrzewie przenoszonego zadania.
 """
 
+import calendar
+from datetime import date, timedelta
+
 from database import get_db
 from task_drzewo import wykryj_cykl  # re-eksport: używają go kolejne funkcje w tym pliku
 
@@ -64,14 +67,29 @@ def init_task_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS task_zadania_plan "
                     "ON task_zadania (household_id, data_start, termin)")
 
+        # ── cykliczność ────────────────────────────────────────────────────
+        # NIE generujemy wystąpień z góry. Zadanie powtarzalne to jeden wiersz;
+        # kolejne pojawia się dopiero PO ODHACZENIU poprzedniego. Generowanie
+        # z wyprzedzeniem zasypałoby listę pięćdziesięcioma wtorkami ze śmieciami
+        # i zamieniło „co jest do zrobienia" w kalendarz.
+        #
+        # `powtarzaj`: NULL | 'dzien' | 'tydzien' | 'miesiac' | 'rok'
+        # `powtarzaj_co`: co ile jednostek (2 + 'tydzien' = co dwa tygodnie)
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS powtarzaj TEXT")
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS "
+                    "powtarzaj_co INTEGER NOT NULL DEFAULT 1")
+
 
 # Warunek widoczności dokładany do KAŻDEGO odczytu. Zadanie prywatne nie
 # istnieje dla nikogo poza właścicielem — także w postępie zadania nadrzędnego.
 _WIDOCZNE = "household_id = %s AND (prywatne_dla IS NULL OR prywatne_dla = %s)"
 
 _POLA = """id, parent_id, tytul, opis, termin, pora, data_start, projekt,
+           powtarzaj, powtarzaj_co,
            wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
-           status, zrobione_at, kolejnosc"""
+           status, zrobione_at, kolejnosc, utworzyl"""
+
+OKRESY = ("dzien", "tydzien", "miesiac", "rok")
 
 
 def pary_gospodarstwa(household_id):
@@ -173,9 +191,10 @@ def dodaj(household_id, user_id, d) -> int:
     with get_db() as cur:
         cur.execute("""INSERT INTO task_zadania
             (household_id, parent_id, tytul, opis, termin, pora, data_start, projekt,
+             powtarzaj, powtarzaj_co,
              wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
              utworzyl, kolejnosc)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     COALESCE((SELECT MAX(kolejnosc) + 1 FROM task_zadania
                               WHERE household_id = %s AND parent_id IS NOT DISTINCT FROM %s), 0))
             RETURNING id""",
@@ -184,6 +203,7 @@ def dodaj(household_id, user_id, d) -> int:
              # Projektem może być tylko korzeń — krok w środku drzewa nie jest
              # przedsięwzięciem, tylko jego częścią.
              bool(d.get("projekt")) and not parent_id,
+             d.get("powtarzaj"), d.get("powtarzaj_co") or 1,
              d.get("wykonawca_user_id"), d.get("wykonawca_virtual_id"),
              prywatne, bool(d.get("kamien_milowy")), user_id, household_id, parent_id))
         return cur.fetchone()["id"]
@@ -222,6 +242,7 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
         cur.execute("""UPDATE task_zadania SET
               tytul = %s, opis = %s, termin = %s, pora = %s, parent_id = %s,
               data_start = %s, projekt = %s,
+              powtarzaj = %s, powtarzaj_co = %s,
               wykonawca_user_id = %s, wykonawca_virtual_id = %s,
               kamien_milowy = %s, prywatne_dla = %s,
               przypomniano_at = CASE WHEN termin IS DISTINCT FROM %s
@@ -233,6 +254,10 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
              # Podpięcie zadania pod rodzica odbiera mu status projektu:
              # przedsięwzięcie w środku innego przedsięwzięcia to etap, nie projekt.
              bool(d.get("projekt")) and not nowy_parent,
+             # Powtarzanie bez terminu nie ma od czego liczyć następnej daty,
+             # więc zdejmujemy je razem z terminem zamiast zostawiać martwe.
+             d.get("powtarzaj") if d.get("termin") else None,
+             d.get("powtarzaj_co") or 1,
              d.get("wykonawca_user_id"), d.get("wykonawca_virtual_id"),
              bool(d.get("kamien_milowy")), prywatne, d.get("termin"), d.get("pora"),
              household_id, zadanie_id))
@@ -250,10 +275,77 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
         return zmienione
 
 
+def nastepna_data(data, okres: str, co: int):
+    """Przesuwa datę o `co` jednostek `okres`. Zwraca `date` albo None.
+
+    Miesiące i lata liczymy kalendarzowo, nie w dniach: „co miesiąc 15." ma
+    wypadać piętnastego, a nie dryfować o trzy dni przy każdym powtórzeniu.
+    Gdy docelowy miesiąc jest krótszy (31 stycznia + miesiąc), cofamy się do
+    ostatniego dnia miesiąca — 31 lutego nie istnieje, a przeskok na 3 marca
+    byłby dla użytkownika niespodzianką.
+    """
+    if not data or okres not in OKRESY:
+        return None
+    d = data if isinstance(data, date) else date.fromisoformat(str(data)[:10])
+    co = max(1, int(co or 1))
+    if okres == "dzien":
+        return d + timedelta(days=co)
+    if okres == "tydzien":
+        return d + timedelta(weeks=co)
+    miesiace = co if okres == "miesiac" else co * 12
+    rok = d.year + (d.month - 1 + miesiace) // 12
+    miesiac = (d.month - 1 + miesiace) % 12 + 1
+    ostatni = calendar.monthrange(rok, miesiac)[1]
+    return date(rok, miesiac, min(d.day, ostatni))
+
+
+def _powtorz(cur, household_id: int, z: dict) -> int | None:
+    """Tworzy kolejne wystąpienie zadania cyklicznego. Zwraca jego id.
+
+    Nowy termin liczymy od TERMINU poprzedniego, a nie od chwili odhaczenia:
+    śmieci wystawiane co wtorek mają wypadać we wtorek także wtedy, gdy raz
+    zdarzy się wynieść je w czwartek. Liczenie od wykonania powodowałoby
+    dryf — po kilku spóźnieniach „co tydzień" wypadałoby w losowy dzień.
+
+    Kroki poddrzewa NIE są kopiowane. Powtarzalne są sprawy proste („wynieść
+    śmieci"); kopiowanie całych drzew przy każdym odhaczeniu mnożyłoby dane
+    i wymagało decyzji, co zrobić z krokami już zrobionymi.
+    """
+    nowy_termin = nastepna_data(z.get("termin"), z.get("powtarzaj"), z.get("powtarzaj_co"))
+    if not nowy_termin:
+        return None
+    # Początek przesuwamy o tyle samo dni, ile przesunął się termin, żeby
+    # zachować długość zadania (np. „sprzątanie: piątek–niedziela").
+    nowy_start = None
+    if z.get("data_start") and z.get("termin"):
+        stary_start = z["data_start"] if isinstance(z["data_start"], date) else date.fromisoformat(str(z["data_start"])[:10])
+        stary_termin = z["termin"] if isinstance(z["termin"], date) else date.fromisoformat(str(z["termin"])[:10])
+        nowy_start = nowy_termin - (stary_termin - stary_start)
+    cur.execute("""INSERT INTO task_zadania
+        (household_id, parent_id, tytul, opis, termin, pora, data_start, projekt,
+         powtarzaj, powtarzaj_co, wykonawca_user_id, wykonawca_virtual_id,
+         prywatne_dla, kamien_milowy, utworzyl, kolejnosc)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+        (household_id, z.get("parent_id"), z["tytul"], z.get("opis"), nowy_termin,
+         z.get("pora"), nowy_start, bool(z.get("projekt")),
+         z.get("powtarzaj"), z.get("powtarzaj_co") or 1,
+         z.get("wykonawca_user_id"), z.get("wykonawca_virtual_id"),
+         z.get("prywatne_dla"), bool(z.get("kamien_milowy")),
+         z.get("utworzyl"), z.get("kolejnosc") or 0))
+    return cur.fetchone()["id"]
+
+
 def ustaw_status(household_id, user_id, zadanie_id, zrobione, kaskada=False) -> int:
     """Zwraca liczbę zmienionych zadań. Kaskada schodzi w dół poddrzewa —
-    tu `WITH RECURSIVE` jest na miejscu, bo pytanie dotyczy całego poddrzewa."""
-    if not pobierz(household_id, user_id, zadanie_id):
+    tu `WITH RECURSIVE` jest na miejscu, bo pytanie dotyczy całego poddrzewa.
+
+    Odhaczenie zadania POWTARZALNEGO rodzi kolejne wystąpienie — patrz `_powtorz`.
+    Odznaczenie (powrót do „otwarte") już go nie usuwa: nowe zadanie mogło
+    zdążyć zmienić właściciela albo termin, a cichy `DELETE` skasowałby cudzą
+    pracę. Zdublowane wystąpienie użytkownik po prostu usuwa ręcznie.
+    """
+    biezace = pobierz(household_id, user_id, zadanie_id)
+    if not biezace:
         return 0
     status = "zrobione" if zrobione else "otwarte"
     with get_db() as cur:
@@ -271,7 +363,10 @@ def ustaw_status(household_id, user_id, zadanie_id, zrobione, kaskada=False) -> 
                        zrobione_at = CASE WHEN %s THEN now() ELSE NULL END
                 WHERE id = %s AND household_id = %s""",
                 (status, zrobione, zadanie_id, household_id))
-        return cur.rowcount
+        zmienione = cur.rowcount
+        if zrobione and zmienione and biezace.get("powtarzaj"):
+            _powtorz(cur, household_id, biezace)
+        return zmienione
 
 
 def usun(household_id, user_id, zadanie_id) -> bool:
