@@ -352,7 +352,9 @@ function wierszPlanu(poz, od, px, szer, dzis) {
   if (spozniony) klasy.push('po-czasie');
   if (z.projekt) klasy.push('projekt');
   // Kamień milowy to punkt w czasie, nie odcinek — rysujemy romb zamiast belki.
-  if (z.kamien_milowy) klasy.push('kamien');
+  // Klasa `gantt-kamien`, a NIE `kamien`: ta druga jest już zajęta przez mały
+  // romb przy tytule na liście zadań i nadpisywała belce kolor oraz szerokość.
+  if (z.kamien_milowy) klasy.push('gantt-kamien');
 
   const podpis = dlugosc * px > 54 ? `<span>${esc(dataKrotka(zakresZ.koniec))}</span>` : '';
   return `<div class="gantt-wiersz">${etykieta}

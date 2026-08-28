@@ -69,16 +69,29 @@
     .gantt-belka span { font-size: 10.5px; color: #fff; opacity: .92; white-space: nowrap; }
     .gantt-belka.projekt { background: var(--marka); height: 24px; top: 7px; }
     .gantt-belka.zrobiona { background: var(--good); opacity: .55; }
-    .gantt-belka.po-czasie { background: var(--danger); }
-    /* Kamień milowy to punkt, nie odcinek — romb zamiast paska. */
-    .gantt-belka.kamien { width: 16px !important; height: 16px; top: 11px;
-                          border-radius: 3px; transform: rotate(45deg); padding: 0; }
-    .gantt-belka.kamien span { display: none; }
+    /* SPÓŹNIENIE ROZPOZNAJE SIĘ PO PASKACH, nie po samym kolorze. W module
+       zadań `--accent` i `--danger` to praktycznie ten sam odcień czerwieni,
+       więc belka spóźniona wyglądała identycznie jak zwykła. Ukośne paski
+       działają niezależnie od motywu i od tego, jak blisko siebie są barwy. */
+    .gantt-belka.po-czasie {
+      background: var(--danger);
+      background-image: repeating-linear-gradient(45deg,
+        rgba(255,255,255,.28) 0 4px, transparent 4px 9px);
+    }
+    /* Kamień milowy to punkt, nie odcinek — romb zamiast paska.
+       Nazwa z przedrostkiem, bo samo `.kamien` jest już zajęte przez znacznik
+       przy tytule zadania na liście i nadpisywało belce kolor i szerokość. */
+    .gantt-belka.gantt-kamien { width: 16px !important; height: 16px; top: 11px;
+                                border-radius: 3px; transform: rotate(45deg); padding: 0; }
+    .gantt-belka.gantt-kamien span { display: none; }
 
     .gantt-dzis { position: absolute; top: 0; bottom: 0; width: 2px;
                   background: var(--marka); opacity: .55; pointer-events: none; z-index: 1; }
+    /* Podpis kreski dostaje tło — bez niego napis „dziś" nakładał się na belkę
+       pierwszego wiersza i obie rzeczy stawały się nieczytelne. */
     .gantt-dzis span { position: absolute; top: 0; left: 3px; font-size: 10px;
-                       color: var(--marka); font-weight: 700; }
+                       color: var(--marka); font-weight: 700; padding: 0 3px;
+                       background: var(--surface); border-radius: 0 0 4px 0; }
 
     @media (max-width: 700px) {
       /* Na telefonie nazwa dostaje mniej miejsca — inaczej na oś zostaje pasek
