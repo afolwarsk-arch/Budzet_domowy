@@ -96,6 +96,17 @@
     .gantt-belka { touch-action: none; cursor: grab; }
     .gantt-belka.ciagniona { cursor: grabbing; opacity: .85;
                              box-shadow: 0 2px 10px rgba(0,0,0,.28); }
+    /* Belka oparta o barierę wynikającą z zależności — dalej się nie da. */
+    .gantt-belka.zablokowana { outline: 2px solid var(--danger); outline-offset: 1px; }
+    /* Kropka do wyciągania zależności: pociągnij ją na inne zadanie. */
+    .lacznik { position: absolute; right: -14px; top: 50%; width: 11px; height: 11px;
+               margin-top: -5.5px; border-radius: 50%; background: var(--surface);
+               border: 2px solid var(--accent-strong); cursor: crosshair;
+               touch-action: none; opacity: 0; transition: opacity .12s; }
+    .gantt-belka:hover .lacznik, .gantt.laczy .lacznik { opacity: 1; }
+    .gantt.laczy { cursor: crosshair; }
+    .gantt-belka.cel-laczenia { outline: 3px solid var(--accent-strong); outline-offset: 2px; }
+
     .gantt-belka .uchwyt { position: absolute; top: 0; bottom: 0; width: 12px;
                            cursor: ew-resize; touch-action: none; }
     .gantt-belka .uchwyt.lewy { left: -3px; }

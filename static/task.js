@@ -518,6 +518,10 @@ function wierszPlanu(poz, od, px, szer, dzis) {
   const uchwyty = !z.kamien_milowy && z.status !== 'zrobione'
     ? '<i class="uchwyt lewy" data-uchwyt="start"></i><i class="uchwyt prawy" data-uchwyt="koniec"></i>'
     : '';
+  // Kropka do wyciągania zależności. Osobny uchwyt, a NIE zwykłe przeciąganie
+  // belki na belkę: to samo pociągnięcie musiałoby znaczyć dwie różne rzeczy
+  // („przesuń w czasie" i „połącz"), a wtedy nigdy nie wiadomo, co się stanie.
+  const lacznik = '<i class="lacznik" data-lacznik="' + z.id + '" title="Pociągnij na inne zadanie, żeby ustawić kolejność"></i>';
   return `<div class="gantt-wiersz">${etykieta}
     <div class="gantt-tor" style="width:${szer}px">
       <!-- Minimum 16 px szerokości: przy skali „cały plan" jeden dzień to
@@ -526,7 +530,7 @@ function wierszPlanu(poz, od, px, szer, dzis) {
       <div class="${klasy.join(' ')}" data-otworz="${z.id}" data-belka="${z.id}"
            style="left:${Math.round(start * px)}px; width:${Math.max(16, Math.round(dlugosc * px))}px"
            title="${esc(z.tytul)} — ${dataKrotka(zakresZ.start)} → ${dataKrotka(zakresZ.koniec)}">
-        ${uchwyty}${podpis}
+        ${uchwyty}${lacznik}${podpis}
       </div>
     </div></div>`;
 }
@@ -585,18 +589,66 @@ function strzalkiZaleznosci(wiersze, rzedy, od, px, szer) {
 // żądanie na każdy piksel ruchu zalałoby serwer i migało listą.
 let ostatnioCiagnieto = 0;
 
+// GRANICE WYNIKAJĄCE Z ZALEŻNOŚCI. Skoro „B po A", to B nie ma prawa zacząć
+// się przed końcem A — a skoro „C po B", to B nie ma prawa skończyć się po
+// starcie C. Bez tego strzałki byłyby rysunkiem: pokazywałyby powiązanie,
+// którego nic nie pilnuje.
+//
+// Zwraca daty graniczne (ISO) albo null, gdy z danej strony nic nie ogranicza.
+function graniceZadania(id) {
+  const wg = new Map(zadania.map((z) => [z.id, z]));
+  let najwczesniejszyStart = null;
+  let najpozniejszyKoniec = null;
+
+  for (const zal of zaleznosci) {
+    if (zal.zadanie_id === id) {
+      const p = wg.get(zal.poprzednik_id);
+      const zp = p && zakresZadania(p);
+      if (!zp) continue;
+      const dzien = new Date(zp.koniec.getTime() + DZIEN_MS).toISOString().slice(0, 10);
+      if (!najwczesniejszyStart || dzien > najwczesniejszyStart) najwczesniejszyStart = dzien;
+    }
+    if (zal.poprzednik_id === id) {
+      const n = wg.get(zal.zadanie_id);
+      const zn = n && zakresZadania(n);
+      if (!zn) continue;
+      const dzien = new Date(zn.start.getTime() - DZIEN_MS).toISOString().slice(0, 10);
+      if (!najpozniejszyKoniec || dzien < najpozniejszyKoniec) najpozniejszyKoniec = dzien;
+    }
+  }
+  return { od: najwczesniejszyStart, do: najpozniejszyKoniec };
+}
+
 function przeciaganieBelek(g) {
   let stan = null;
 
   const dniZPikseli = (px) => Math.round(px / planOs.px);
 
+  // ── łączenie zadań wprost na wykresie ────────────────────────────────────
+  // Pociągnięcie z kropki na końcu belki na inną belkę ustawia kolejność:
+  // „to drugie zacznie się dopiero, gdy pierwsze się skończy". Bez tego jedyną
+  // drogą było wejście w szczegóły i szukanie zadania na liście rozwijanej.
+  let laczenie = null;
+
   g.addEventListener('pointerdown', (ev) => {
+    const start = ev.target.closest('[data-lacznik]');
+    if (start) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      laczenie = { od: Number(start.dataset.lacznik), el: null };
+      g.classList.add('laczy');
+      return;
+    }
     const belka = ev.target.closest('[data-belka]');
     if (!belka) return;
     const uchwyt = ev.target.closest('[data-uchwyt]');
     const id = Number(belka.dataset.belka);
     const z = zadania.find((x) => x.id === id);
     if (!z) return;
+    // Bariery przeliczone na piksele — żeby belka zatrzymywała się już
+    // w trakcie ciągnięcia, a nie dopiero odskakiwała po puszczeniu.
+    const gr = graniceZadania(id);
+    const naX = (data) => data ? Math.round(((doDaty(data) - planOs.od) / DZIEN_MS) * planOs.px) : null;
     stan = {
       id, belka, tryb: uchwyt ? uchwyt.dataset.uchwyt : 'calosc',
       startX: ev.clientX,
@@ -604,6 +656,8 @@ function przeciaganieBelek(g) {
       szer0: parseFloat(belka.style.width) || 0,
       start0: z.data_start || z.termin,
       koniec0: z.termin || z.data_start,
+      minLewo: naX(gr.od),
+      maxPrawo: gr.do ? naX(gr.do) + planOs.px : null,
       ruszony: false,
     };
     belka.setPointerCapture(ev.pointerId);
@@ -611,25 +665,75 @@ function przeciaganieBelek(g) {
   });
 
   g.addEventListener('pointermove', (ev) => {
+    if (laczenie) {
+      // Podświetlamy belkę pod kursorem — bez tego nie wiadomo, na co się celuje.
+      const cel = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-belka]');
+      if (laczenie.el !== cel) {
+        laczenie.el?.classList.remove('cel-laczenia');
+        laczenie.el = cel && Number(cel.dataset.belka) !== laczenie.od ? cel : null;
+        laczenie.el?.classList.add('cel-laczenia');
+      }
+      return;
+    }
     if (!stan) return;
     const dx = ev.clientX - stan.startX;
     // Próg kilku pikseli: bez niego zwykłe stuknięcie w belkę (otwarcie
     // szczegółów) liczyłoby się jako przeciągnięcie o zero dni i zapisywało.
     if (!stan.ruszony && Math.abs(dx) < 4) return;
     stan.ruszony = true;
+    const przyBarierze = (jest) => stan.belka.classList.toggle('zablokowana', jest);
     if (stan.tryb === 'calosc') {
-      stan.belka.style.left = (stan.lewo0 + dx) + 'px';
+      let lewo = stan.lewo0 + dx;
+      let blok = false;
+      if (stan.minLewo != null && lewo < stan.minLewo) { lewo = stan.minLewo; blok = true; }
+      if (stan.maxPrawo != null && lewo + stan.szer0 > stan.maxPrawo) {
+        lewo = stan.maxPrawo - stan.szer0; blok = true;
+      }
+      stan.belka.style.left = lewo + 'px';
+      przyBarierze(blok);
     } else if (stan.tryb === 'start') {
       // Belka nie może zniknąć: minimalna szerokość to jeden dzień.
-      const nowaSzer = Math.max(planOs.px, stan.szer0 - dx);
-      stan.belka.style.left = (stan.lewo0 + (stan.szer0 - nowaSzer)) + 'px';
-      stan.belka.style.width = nowaSzer + 'px';
+      let lewo = stan.lewo0 + dx;
+      let blok = false;
+      if (stan.minLewo != null && lewo < stan.minLewo) { lewo = stan.minLewo; blok = true; }
+      const prawo = stan.lewo0 + stan.szer0;
+      if (lewo > prawo - planOs.px) lewo = prawo - planOs.px;
+      stan.belka.style.left = lewo + 'px';
+      stan.belka.style.width = (prawo - lewo) + 'px';
+      przyBarierze(blok);
     } else {
-      stan.belka.style.width = Math.max(planOs.px, stan.szer0 + dx) + 'px';
+      let prawo = stan.lewo0 + stan.szer0 + dx;
+      let blok = false;
+      if (stan.maxPrawo != null && prawo > stan.maxPrawo) { prawo = stan.maxPrawo; blok = true; }
+      if (prawo < stan.lewo0 + planOs.px) prawo = stan.lewo0 + planOs.px;
+      stan.belka.style.width = (prawo - stan.lewo0) + 'px';
+      przyBarierze(blok);
     }
   });
 
   const puszczono = async (ev) => {
+    if (laczenie) {
+      const cel = laczenie.el;
+      const od = laczenie.od;
+      laczenie.el?.classList.remove('cel-laczenia');
+      laczenie = null;
+      g.classList.remove('laczy');
+      ostatnioCiagnieto = Date.now();
+      if (!cel) return;
+      const doId = Number(cel.dataset.belka);
+      const r = await authFetch('/api/task/zaleznosci', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zadanie_id: doId, poprzednik_id: od }),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        toast(e.detail || 'Nie udało się połączyć zadań.', 'blad');
+        return;
+      }
+      toast('Ustawiono kolejność.', 'ok');
+      await wczytajPlan();
+      return;
+    }
     if (!stan) return;
     const s = stan;
     stan = null;
@@ -657,6 +761,36 @@ function przeciaganieBelek(g) {
     } else {
       nowyKoniec = przesun(s.koniec0, dni);
       if (nowyKoniec < nowyStart) nowyKoniec = nowyStart;
+    }
+
+    // Przycięcie do granic z zależności. Przy przesuwaniu CAŁOŚCI zachowujemy
+    // długość — dosuwamy zadanie do bariery zamiast je ściskać, bo użytkownik
+    // przesuwa termin, a nie skraca pracę.
+    const gr = graniceZadania(s.id);
+    let odbite = null;
+    if (gr.od && nowyStart < gr.od) {
+      const roznica = Math.round((doDaty(gr.od) - doDaty(nowyStart)) / DZIEN_MS);
+      nowyStart = gr.od;
+      if (s.tryb === 'calosc') nowyKoniec = przesun(nowyKoniec, roznica);
+      odbite = 'poprzednik';
+    }
+    if (gr.do && nowyKoniec > gr.do) {
+      const roznica = Math.round((doDaty(nowyKoniec) - doDaty(gr.do)) / DZIEN_MS);
+      nowyKoniec = gr.do;
+      if (s.tryb === 'calosc') nowyStart = przesun(nowyStart, -roznica);
+      odbite = 'nastepnik';
+    }
+    // Skrajny przypadek: bariery z obu stron ciaśniejsze niż długość zadania.
+    // Wtedy nie da się go zmieścić — mówimy o tym zamiast zapisywać bzdurę.
+    if (nowyStart && nowyKoniec && nowyStart > nowyKoniec) {
+      toast('Zadanie nie mieści się między zadaniami, z którymi jest powiązane.', 'blad');
+      rysujPlan();
+      return;
+    }
+    if (odbite) {
+      toast(odbite === 'poprzednik'
+        ? 'Nie może zacząć się przed końcem zadania, na które czeka.'
+        : 'Nie może skończyć się po starcie zadania, które na nie czeka.', 'ok');
     }
     if (nowyStart === s.start0 && nowyKoniec === s.koniec0) { rysujPlan(); return; }
 
