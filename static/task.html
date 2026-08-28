@@ -55,7 +55,9 @@
        KOLUMNA NAZW JEST PRZYKLEJONA, oś jedzie pod nią w poziomie. Bez tego
        przewinięcie do listopada na telefonie zostawia same belki, o których
        nie wiadomo, czego dotyczą. */
-    .gantt { --nazwa: 148px; border: 1px solid var(--border); border-radius: 12px;
+    /* Kolumna nazw: na szerokim ekranie miejsca jest dość, żeby nie ucinać
+       tytułów w połowie („Zebrać dokument…”, „Adaptacja projekt…”). */
+    .gantt { --nazwa: 230px; border: 1px solid var(--border); border-radius: 12px;
              overflow: hidden; background: var(--surface); margin-bottom: 18px; }
     .plan-narzedzia { align-items: center; gap: 12px; }
     .plan-narzedzia .skala { display: flex; align-items: center; gap: 8px;

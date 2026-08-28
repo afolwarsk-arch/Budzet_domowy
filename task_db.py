@@ -92,6 +92,49 @@ _POLA = """id, parent_id, tytul, opis, termin, pora, data_start, projekt,
 OKRESY = ("dzien", "tydzien", "miesiac", "rok")
 
 
+def postep_poddrzew(household_id: int, user_id: int) -> dict:
+    """Dla każdego zadania: ile kroków ma w środku i ile z nich zamkniętych.
+
+    LICZONE Z CAŁEJ BAZY, NIE Z WIDOCZNEJ LISTY. Postęp liczony po stronie
+    przeglądarki brał pod uwagę tylko zadania z bieżącej zakładki, a zrobione
+    kroki do „Nadchodzących" nie trafiają — więc projekt z dwoma zamkniętymi
+    krokami pokazywał „0 z 12" zamiast „2 z 14". Licznik, który zaniża postęp,
+    jest gorszy niż jego brak.
+
+    Jedno zapytanie po płaską listę i zliczanie w Pythonie: gospodarstwo ma
+    setki zadań, nie miliony, więc `WITH RECURSIVE` per wiersz byłby drogi
+    bez powodu.
+    """
+    with get_db() as cur:
+        cur.execute(
+            f"SELECT id, parent_id, status FROM task_zadania WHERE {_WIDOCZNE}",
+            (household_id, user_id))
+        wiersze = [(r["id"], r["parent_id"], r["status"]) for r in cur.fetchall()]
+
+    dzieci: dict[int, list[int]] = {}
+    status = {}
+    for zid, parent, st in wiersze:
+        status[zid] = st
+        dzieci.setdefault(parent, []).append(zid)
+
+    wynik: dict[int, dict] = {}
+
+    def policz(zid: int) -> tuple[int, int]:
+        """(wszystkie potomki, zamknięte potomki) — bez samego zadania."""
+        razem = gotowe = 0
+        for d in dzieci.get(zid, []):
+            pod_r, pod_g = policz(d)
+            razem += 1 + pod_r
+            gotowe += (1 if status[d] == "zrobione" else 0) + pod_g
+        wynik[zid] = {"razem": razem, "gotowe": gotowe}
+        return razem, gotowe
+
+    for zid in status:
+        if zid not in wynik:
+            policz(zid)
+    return wynik
+
+
 def pary_gospodarstwa(household_id):
     """(id, parent_id) całego gospodarstwa — wejście dla `wykryj_cykl`."""
     with get_db() as cur:
@@ -132,7 +175,7 @@ def lista(household_id, user_id, zakres="dzis", osoba_user_id=None):
             wiersze.extend(dorzuc)
             znane |= {w["id"] for w in dorzuc}
             brakujacy = {w["parent_id"] for w in dorzuc if w["parent_id"] and w["parent_id"] not in znane}
-        return wiersze
+        return _z_postepem(wiersze, household_id, user_id)
 
 
 def plan(household_id, user_id, pokaz_zrobione=False):
@@ -165,7 +208,19 @@ def plan(household_id, user_id, pokaz_zrobione=False):
             wiersze.extend(dorzuc)
             znane |= {w["id"] for w in dorzuc}
             brakujacy = {w["parent_id"] for w in dorzuc if w["parent_id"] and w["parent_id"] not in znane}
+        return _z_postepem(wiersze, household_id, user_id)
+
+
+def _z_postepem(wiersze: list, household_id: int, user_id: int) -> list:
+    """Dokłada do każdego zadania licznik kroków policzony z całej bazy."""
+    if not wiersze:
         return wiersze
+    postep = postep_poddrzew(household_id, user_id)
+    for w in wiersze:
+        p = postep.get(w["id"], {"razem": 0, "gotowe": 0})
+        w["krokow_razem"] = p["razem"]
+        w["krokow_gotowych"] = p["gotowe"]
+    return wiersze
 
 
 def pobierz(household_id, user_id, zadanie_id):

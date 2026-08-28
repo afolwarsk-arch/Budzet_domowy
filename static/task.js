@@ -58,12 +58,22 @@ function budujDrzewo(plaska) {
   return gora;
 }
 
-// Postęp liczony z CAŁEGO poddrzewa, nie z bezpośrednich dzieci — inaczej
-// zadanie z jednym krokiem, który ma pięć własnych kroków, pokazywałoby „0 z 1".
+// Postęp bierzemy Z SERWERA, a nie liczymy z widocznej listy. Liczenie po
+// stronie przeglądarki obejmowało wyłącznie zadania z bieżącej zakładki,
+// a zrobione kroki nie trafiają do „Nadchodzących" — projekt z dwoma
+// zamkniętymi krokami pokazywał „0 z 12" zamiast „2 z 14". Licznik, który
+// zaniża postęp, jest gorszy niż jego brak.
+//
+// Zapasowe liczenie z drzewa zostaje na wypadek starszej odpowiedzi serwera
+// (np. karta otwarta przed wdrożeniem): lepiej pokazać liczbę niepełną niż
+// zero przy zadaniu, które kroki ma.
 function postep(w) {
+  if (typeof w.krokow_razem === 'number') {
+    return { razem: w.krokow_razem, gotowe: w.krokow_gotowych || 0 };
+  }
   let razem = 0, gotowe = 0;
   const zejdz = (x) => {
-    for (const d of x.dzieci) {
+    for (const d of x.dzieci || []) {
       razem++;
       if (d.status === 'zrobione') gotowe++;
       zejdz(d);
@@ -531,6 +541,14 @@ function rysujLista() {
       pole.value = '';
       nowyId = j.id || null;
       await wczytaj();
+      // Zadanie bez terminu trafia do „Nadchodzących", więc dodane na zakładce
+      // „Dziś" znikało bez śladu i wyglądało, jakby zapis się nie udał.
+      // Przechodzimy tam, gdzie faktycznie wylądowało, i mówimy o tym.
+      if (nowyId && !zadania.some((z) => z.id === nowyId)) {
+        zakres = 'nadchodzace';
+        await wczytaj();
+        toast('Zadanie bez terminu — trafiło do „Nadchodzących".', 'ok');
+      }
     } else {
       toast('Nie udało się zapisać zadania.', 'blad');
     }
