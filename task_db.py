@@ -48,14 +48,30 @@ def init_task_db() -> None:
                     "ON task_zadania (termin, pora) "
                     "WHERE status = 'otwarte' AND przypomniano_at IS NULL")
 
+        # ── etap 2: projekty i Gantt ────────────────────────────────────────
+        # `termin` sam wystarcza zadaniu („zrób do piątku"), ale przedsięwzięcie
+        # ciągnące się miesiącami ma ROZPIĘTOŚĆ: remont zaczyna się w marcu
+        # i kończy w czerwcu. Bez daty początku belka na wykresie nie ma od
+        # czego się zacząć, a zadanie bez niej rysuje się jako sam punkt końcowy.
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS data_start DATE")
+        # Projekt to zadanie-korzeń oznaczone jawnie, a nie „takie, które ma
+        # dzieci": inaczej dopisanie pierwszego kroku do zwykłego zadania
+        # zamieniałoby je w projekt bez wiedzy użytkownika, a usunięcie
+        # ostatniego kroku — z powrotem w zadanie.
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS "
+                    "projekt BOOLEAN NOT NULL DEFAULT FALSE")
+        # Wykres pyta o zadania z jakąkolwiek datą w zadanym oknie czasu.
+        cur.execute("CREATE INDEX IF NOT EXISTS task_zadania_plan "
+                    "ON task_zadania (household_id, data_start, termin)")
+
 
 # Warunek widoczności dokładany do KAŻDEGO odczytu. Zadanie prywatne nie
 # istnieje dla nikogo poza właścicielem — także w postępie zadania nadrzędnego.
 _WIDOCZNE = "household_id = %s AND (prywatne_dla IS NULL OR prywatne_dla = %s)"
 
-_POLA = """id, parent_id, tytul, opis, termin, pora, wykonawca_user_id,
-           wykonawca_virtual_id, prywatne_dla, kamien_milowy, status,
-           zrobione_at, kolejnosc"""
+_POLA = """id, parent_id, tytul, opis, termin, pora, data_start, projekt,
+           wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
+           status, zrobione_at, kolejnosc"""
 
 
 def pary_gospodarstwa(household_id):
@@ -101,6 +117,39 @@ def lista(household_id, user_id, zakres="dzis", osoba_user_id=None):
         return wiersze
 
 
+def plan(household_id, user_id, pokaz_zrobione=False):
+    """Zadania z rozpiętością w czasie — wejście dla wykresu Gantta.
+
+    BIERZEMY WSZYSTKO, CO MA JAKĄKOLWIEK DATĘ, a nie tylko projekty: remont
+    składa się z kroków, których terminy są sensem wykresu, a projekt bez
+    rozrysowanych etapów to jedna belka i nic więcej. Zadania bez żadnej daty
+    zostają poza wykresem — nie ma ich gdzie postawić na osi czasu.
+
+    Dokładamy przodków bezdatowych, tak samo jak `lista`: krok z terminem musi
+    mieć nad sobą swój projekt, inaczej belka wisi bez podpisu, do czego należy.
+    """
+    warunki = [_WIDOCZNE, "(data_start IS NOT NULL OR termin IS NOT NULL)"]
+    p = [household_id, user_id]
+    if not pokaz_zrobione:
+        warunki.append("status = 'otwarte'")
+    with get_db() as cur:
+        cur.execute(f"SELECT {_POLA} FROM task_zadania WHERE " + " AND ".join(warunki)
+                    + " ORDER BY COALESCE(data_start, termin), termin, kolejnosc, id", p)
+        wiersze = [dict(r) for r in cur.fetchall()]
+        znane = {w["id"] for w in wiersze}
+        brakujacy = {w["parent_id"] for w in wiersze if w["parent_id"] and w["parent_id"] not in znane}
+        while brakujacy:
+            cur.execute(f"SELECT {_POLA} FROM task_zadania WHERE {_WIDOCZNE} "
+                        "AND id = ANY(%s)", (household_id, user_id, list(brakujacy)))
+            dorzuc = [dict(r) for r in cur.fetchall()]
+            if not dorzuc:
+                break
+            wiersze.extend(dorzuc)
+            znane |= {w["id"] for w in dorzuc}
+            brakujacy = {w["parent_id"] for w in dorzuc if w["parent_id"] and w["parent_id"] not in znane}
+        return wiersze
+
+
 def pobierz(household_id, user_id, zadanie_id):
     with get_db() as cur:
         cur.execute(f"SELECT {_POLA} FROM task_zadania WHERE {_WIDOCZNE} AND id = %s",
@@ -123,14 +172,19 @@ def dodaj(household_id, user_id, d) -> int:
         prywatne = rodzic["prywatne_dla"]
     with get_db() as cur:
         cur.execute("""INSERT INTO task_zadania
-            (household_id, parent_id, tytul, opis, termin, pora, wykonawca_user_id,
-             wykonawca_virtual_id, prywatne_dla, kamien_milowy, utworzyl, kolejnosc)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+            (household_id, parent_id, tytul, opis, termin, pora, data_start, projekt,
+             wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
+             utworzyl, kolejnosc)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     COALESCE((SELECT MAX(kolejnosc) + 1 FROM task_zadania
                               WHERE household_id = %s AND parent_id IS NOT DISTINCT FROM %s), 0))
             RETURNING id""",
             (household_id, parent_id, d["tytul"], d.get("opis"), d.get("termin"),
-             d.get("pora"), d.get("wykonawca_user_id"), d.get("wykonawca_virtual_id"),
+             d.get("pora"), d.get("data_start"),
+             # Projektem może być tylko korzeń — krok w środku drzewa nie jest
+             # przedsięwzięciem, tylko jego częścią.
+             bool(d.get("projekt")) and not parent_id,
+             d.get("wykonawca_user_id"), d.get("wykonawca_virtual_id"),
              prywatne, bool(d.get("kamien_milowy")), user_id, household_id, parent_id))
         return cur.fetchone()["id"]
 
@@ -167,6 +221,7 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
     with get_db() as cur:
         cur.execute("""UPDATE task_zadania SET
               tytul = %s, opis = %s, termin = %s, pora = %s, parent_id = %s,
+              data_start = %s, projekt = %s,
               wykonawca_user_id = %s, wykonawca_virtual_id = %s,
               kamien_milowy = %s, prywatne_dla = %s,
               przypomniano_at = CASE WHEN termin IS DISTINCT FROM %s
@@ -174,6 +229,10 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
                                      THEN NULL ELSE przypomniano_at END
             WHERE household_id = %s AND id = %s""",
             (d["tytul"], d.get("opis"), d.get("termin"), d.get("pora"), nowy_parent,
+             d.get("data_start"),
+             # Podpięcie zadania pod rodzica odbiera mu status projektu:
+             # przedsięwzięcie w środku innego przedsięwzięcia to etap, nie projekt.
+             bool(d.get("projekt")) and not nowy_parent,
              d.get("wykonawca_user_id"), d.get("wykonawca_virtual_id"),
              bool(d.get("kamien_milowy")), prywatne, d.get("termin"), d.get("pora"),
              household_id, zadanie_id))

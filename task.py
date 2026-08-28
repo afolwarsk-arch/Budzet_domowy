@@ -46,10 +46,16 @@ def _dane(d: dict, nowe: bool) -> dict:
         "opis": (d.get("opis") or "").strip() or None,
         "termin": d.get("termin") or None,
         "pora": d.get("pora") or None,
+        "data_start": d.get("data_start") or None,
+        "projekt": bool(d.get("projekt")),
         "wykonawca_user_id": d.get("wykonawca_user_id") or None,
         "wykonawca_virtual_id": d.get("wykonawca_virtual_id") or None,
         "kamien_milowy": bool(d.get("kamien_milowy")),
     }
+    # Data początku po terminie znaczy belkę cofniętą w czasie — wykres nie ma
+    # jak tego narysować, a użytkownik prawie na pewno pomylił pola.
+    if dane["data_start"] and dane["termin"] and dane["data_start"] > dane["termin"]:
+        raise HTTPException(400, "Początek nie może być późniejszy niż termin.")
     if nowe or "parent_id" in d:
         dane["parent_id"] = d.get("parent_id") or None
     if "prywatne" in d:
@@ -64,6 +70,17 @@ def lista_zadan(zakres: str = "dzis", osoba: int | None = None,
         raise HTTPException(400, "Nieznany zakres")
     return {"zadania": task_db.lista(_hid(current_user), current_user["user_id"],
                                      zakres, osoba)}
+
+
+@router.get("/plan")
+def plan_zadan(zrobione: bool = False, current_user: dict = Depends(get_current_user)):
+    """Zadania z datami — wejście dla wykresu Gantta.
+
+    Zrobione domyślnie poza wykresem: plan pokazuje, co przed nami. Włącza się
+    je przełącznikiem, gdy chce się zobaczyć, jak przedsięwzięcie faktycznie
+    przebiegło.
+    """
+    return {"zadania": task_db.plan(_hid(current_user), current_user["user_id"], zrobione)}
 
 
 @router.post("/zadania")
