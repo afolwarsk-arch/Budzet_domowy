@@ -79,6 +79,26 @@ def lista_zadan(zakres: str = "dzis", osoba: int | None = None,
                                      zakres, osoba)}
 
 
+@router.post("/zaleznosci")
+def nowa_zaleznosc(dane: dict, current_user: dict = Depends(get_current_user)):
+    """Zadanie ma czekać na inne (skończ, zanim zaczniesz)."""
+    try:
+        dodano = task_db.dodaj_zaleznosc(
+            _hid(current_user), current_user["user_id"],
+            int(dane.get("zadanie_id") or 0), int(dane.get("poprzednik_id") or 0))
+    except (ValueError, TypeError) as e:
+        raise HTTPException(400, str(e) if isinstance(e, ValueError) else "Nieprawidłowe dane.")
+    return {"dodano": dodano}
+
+
+@router.delete("/zaleznosci")
+def skasuj_zaleznosc(zadanie_id: int, poprzednik_id: int,
+                     current_user: dict = Depends(get_current_user)):
+    if not task_db.usun_zaleznosc(_hid(current_user), zadanie_id, poprzednik_id):
+        raise HTTPException(404, "Nie ma takiego powiązania")
+    return {"ok": True}
+
+
 @router.get("/plan")
 def plan_zadan(zrobione: bool = False, current_user: dict = Depends(get_current_user)):
     """Zadania z datami — wejście dla wykresu Gantta.
@@ -87,7 +107,9 @@ def plan_zadan(zrobione: bool = False, current_user: dict = Depends(get_current_
     je przełącznikiem, gdy chce się zobaczyć, jak przedsięwzięcie faktycznie
     przebiegło.
     """
-    return {"zadania": task_db.plan(_hid(current_user), current_user["user_id"], zrobione)}
+    hid = _hid(current_user)
+    return {"zadania": task_db.plan(hid, current_user["user_id"], zrobione),
+            "zaleznosci": task_db.zaleznosci(hid)}
 
 
 @router.post("/z-mowy")

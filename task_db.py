@@ -79,6 +79,27 @@ def init_task_db() -> None:
         cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS "
                     "powtarzaj_co INTEGER NOT NULL DEFAULT 1")
 
+        # ── zależności ─────────────────────────────────────────────────────
+        # WYŁĄCZNIE „skończ, zanim zaczniesz" (finish-to-start). Pozostałe trzy
+        # typy z podręczników (SS, FF, SF) są w domu rzadkie, a mylące zawsze —
+        # decyzja ze specyfikacji. Zadania bez powiązania są z definicji
+        # równoległe, więc „mogą iść obok siebie" nie wymaga osobnego typu.
+        #
+        # Osobna tabela, nie kolumna: zadanie może czekać na KILKA innych
+        # („wylewka" po „hydraulice" i po „elektryce").
+        cur.execute("""CREATE TABLE IF NOT EXISTS task_zaleznosci (
+            id            SERIAL PRIMARY KEY,
+            household_id  INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            zadanie_id    INTEGER NOT NULL REFERENCES task_zadania(id) ON DELETE CASCADE,
+            poprzednik_id INTEGER NOT NULL REFERENCES task_zadania(id) ON DELETE CASCADE,
+            created_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (zadanie_id, poprzednik_id)
+        )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS task_zaleznosci_zadanie "
+                    "ON task_zaleznosci (zadanie_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS task_zaleznosci_poprzednik "
+                    "ON task_zaleznosci (poprzednik_id)")
+
 
 # Warunek widoczności dokładany do KAŻDEGO odczytu. Zadanie prywatne nie
 # istnieje dla nikogo poza właścicielem — także w postępie zadania nadrzędnego.
@@ -90,6 +111,59 @@ _POLA = """id, parent_id, tytul, opis, termin, pora, data_start, projekt,
            status, zrobione_at, kolejnosc, utworzyl"""
 
 OKRESY = ("dzien", "tydzien", "miesiac", "rok")
+
+
+def zaleznosci(household_id: int) -> list[dict]:
+    """Wszystkie powiązania gospodarstwa: (zadanie czeka na poprzednika)."""
+    with get_db() as cur:
+        cur.execute("SELECT zadanie_id, poprzednik_id FROM task_zaleznosci "
+                    "WHERE household_id = %s", (household_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def dodaj_zaleznosc(household_id: int, user_id: int, zadanie_id: int,
+                    poprzednik_id: int) -> bool:
+    """Zadanie ma czekać na poprzednika. Odrzuca pętle.
+
+    PĘTLA W ZALEŻNOŚCIACH JEST GORSZA NIŻ W DRZEWIE: drzewo tylko by się nie
+    narysowało, a tu „A czeka na B, B czeka na A" znaczy, że żadne z zadań nie
+    może się nigdy zacząć, a wykres w nieskończoność przesuwałby oba w przyszłość.
+    """
+    if zadanie_id == poprzednik_id:
+        raise ValueError("Zadanie nie może czekać samo na siebie.")
+    if not pobierz(household_id, user_id, zadanie_id):
+        raise ValueError("Nie ma takiego zadania.")
+    if not pobierz(household_id, user_id, poprzednik_id):
+        raise ValueError("Nie ma takiego poprzednika.")
+
+    # Czy poprzednik (pośrednio) już czeka na to zadanie?
+    krawedzie = {}
+    for z in zaleznosci(household_id):
+        krawedzie.setdefault(z["zadanie_id"], []).append(z["poprzednik_id"])
+    odwiedzone = set()
+    stos = [poprzednik_id]
+    while stos:
+        biezacy = stos.pop()
+        if biezacy == zadanie_id:
+            raise ValueError("To zamknęłoby pętlę — te zadania czekałyby na siebie nawzajem.")
+        if biezacy in odwiedzone:
+            continue
+        odwiedzone.add(biezacy)
+        stos.extend(krawedzie.get(biezacy, []))
+
+    with get_db() as cur:
+        cur.execute("INSERT INTO task_zaleznosci (household_id, zadanie_id, poprzednik_id) "
+                    "VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+                    (household_id, zadanie_id, poprzednik_id))
+        return cur.rowcount > 0
+
+
+def usun_zaleznosc(household_id: int, zadanie_id: int, poprzednik_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("DELETE FROM task_zaleznosci WHERE household_id = %s "
+                    "AND zadanie_id = %s AND poprzednik_id = %s",
+                    (household_id, zadanie_id, poprzednik_id))
+        return cur.rowcount > 0
 
 
 def postep_poddrzew(household_id: int, user_id: int) -> dict:

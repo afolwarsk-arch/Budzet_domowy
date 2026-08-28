@@ -48,6 +48,10 @@ let planSkala = 1;          // 0 = ciasno (kwartał+), 1 = miesiąc, 2 = tydzie�
 // wskazane korzenie wraz z całą zawartością. Przy kilku przedsięwzięciach naraz
 // (dom, wesele, remont) wspólna oś zamienia się w gąszcz, w którym nic nie widać.
 let planProjekty = new Set();
+// Powiązania „skończ, zanim zaczniesz": [{zadanie_id, poprzednik_id}].
+// Zadania bez powiązania są z definicji równoległe — brak wpisu TEŻ niesie
+// informację i nie trzeba osobnego typu „może iść obok".
+let zaleznosci = [];
 // Kontekst osi zapamiętany przy rysowaniu — potrzebny przy przeciąganiu belek,
 // żeby przeliczyć piksele z powrotem na dni.
 let planOs = { od: null, px: 9 };
@@ -152,8 +156,10 @@ async function wczytaj() {
 async function wczytajPlan() {
   try {
     const r = await authFetch('/api/task/plan' + (planZrobione ? '?zrobione=true' : ''));
-    zadania = (await r.json()).zadania || [];
-  } catch { zadania = []; toast('Nie udało się wczytać planu.', 'blad'); }
+    const d = await r.json();
+    zadania = d.zadania || [];
+    zaleznosci = d.zaleznosci || [];
+  } catch { zadania = []; zaleznosci = []; toast('Nie udało się wczytać planu.', 'blad'); }
   rysuj();
 }
 
@@ -370,10 +376,15 @@ function rysujPlan() {
   const wiersze = drzewo.flatMap((w) => splaszczPlan(w, 0));
   planOs = { od, px };
 
+  // Pozycje wierszy potrzebne do narysowania strzałek zależności — numer
+  // wiersza mówi, na jakiej wysokości leży belka danego zadania.
+  const rzedy = new Map(wiersze.map((w, i) => [w.z.id, i]));
+
   box().innerHTML = naglowekPlanu() + `
     <div class="gantt" style="--szer:${szer}px">
       <div class="gantt-osie">${osCzasu(od, dni, px)}</div>
       <div class="gantt-body">
+        ${strzalkiZaleznosci(wiersze, rzedy, od, px, szer)}
         ${wiersze.map((w) => wierszPlanu(w, od, px, szer, dzis)).join('')}
         <!-- Pionowa kreska „dziś" — bez niej nie widać, co jest już za nami.
              Rysowana raz na całą wysokość, nie w każdym wierszu z osobna. -->
@@ -519,6 +530,46 @@ function wierszPlanu(poz, od, px, szer, dzis) {
 
 function dataKrotka(d) {
   return d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' });
+}
+
+const WYS_WIERSZA = 38;
+
+// Strzałki „skończ, zanim zaczniesz". Rysowane jako jedno SVG na całą siatkę,
+// a nie element per para — przy kilkunastu powiązaniach osobne elementy
+// zaczynają się rozjeżdżać przy przewijaniu.
+//
+// Powiązanie NARUSZONE (następnik zaczyna się przed końcem poprzednika)
+// rysujemy na czerwono. To jedyny moment, w którym plan sam mówi, że się nie
+// domyka — bez tego zależność byłaby ozdobą, a nie narzędziem.
+function strzalkiZaleznosci(wiersze, rzedy, od, px, szer) {
+  if (!zaleznosci.length) return '';
+  const wg = new Map(wiersze.map((w) => [w.z.id, w.z]));
+  const x = (data) => Math.round(((doDaty(data) - od) / DZIEN_MS) * px);
+
+  const linie = [];
+  for (const zal of zaleznosci) {
+    const po = wg.get(zal.zadanie_id);
+    const przed = wg.get(zal.poprzednik_id);
+    if (!po || !przed) continue;                 // poza bieżącym filtrem
+    const zPrzed = zakresZadania(przed);
+    const zPo = zakresZadania(po);
+    if (!zPrzed || !zPo) continue;
+
+    const y1 = rzedy.get(przed.id) * WYS_WIERSZA + WYS_WIERSZA / 2;
+    const y2 = rzedy.get(po.id) * WYS_WIERSZA + WYS_WIERSZA / 2;
+    const x1 = x(zPrzed.koniec) + px;             // koniec poprzednika
+    const x2 = x(zPo.start);                      // początek następnika
+    const naruszone = zPo.start < zPrzed.koniec;
+    const klasa = naruszone ? 'zal naruszona' : 'zal';
+    // Łamana: w bok od poprzednika, w pionie do wiersza następnika, w bok do niego.
+    const srodek = naruszone ? Math.min(x1, x2) - 10 : (x1 + x2) / 2;
+    linie.push(`<path class="${klasa}" d="M${x1} ${y1} H${srodek} V${y2} H${x2}"/>
+      <circle class="${klasa}-grot" cx="${x2}" cy="${y2}" r="3"/>`);
+  }
+  if (!linie.length) return '';
+  const wysokosc = wiersze.length * WYS_WIERSZA;
+  return `<svg class="gantt-zaleznosci" width="${szer}" height="${wysokosc}"
+    style="left:var(--nazwa)" aria-hidden="true">${linie.join('')}</svg>`;
 }
 
 // ── przeciąganie belek ──────────────────────────────────────────────────────
@@ -891,6 +942,44 @@ function opcjeRodzica(w) {
   return opcje.join('');
 }
 
+// Poprzedniki już ustawione — z krzyżykiem do zdjęcia. Bez tej listy jedynym
+// śladem powiązania byłaby strzałka na wykresie, a zdjęcie go wymagałoby
+// szukania w innym widoku.
+function listaPoprzednikow(w) {
+  const moje = zaleznosci.filter((z) => z.zadanie_id === w.id);
+  if (!moje.length) return '';
+  const wg = new Map(zadania.map((z) => [z.id, z]));
+  return `<div class="poprzedniki">${moje.map((z) => {
+    const p = wg.get(z.poprzednik_id);
+    return `<span class="chip wlaczony">${esc(p ? p.tytul : 'zadanie usunięte')}
+      <button type="button" data-zdejmij-zal="${z.poprzednik_id}"
+              aria-label="Zdejmij powiązanie">✕</button></span>`;
+  }).join('')}</div>`;
+}
+
+// Kandydaci na poprzednika: wszystko oprócz samego zadania i tych, które już
+// są ustawione. Pętle odrzuca serwer — tu nie da się ich policzyć wiarygodnie,
+// bo lista w przeglądarce bywa zawężona filtrem albo zakresem.
+function opcjePoprzednika(w) {
+  const juz = new Set(zaleznosci.filter((z) => z.zadanie_id === w.id)
+    .map((z) => z.poprzednik_id));
+  const opcje = ['<option value="">— wybierz zadanie —</option>'];
+  for (const z of zadania) {
+    if (z.id === w.id || juz.has(z.id)) continue;
+    opcje.push(`<option value="${z.id}">${esc(z.tytul)}</option>`);
+  }
+  return opcje.join('');
+}
+
+// Zależności trzymamy niezależnie od listy zadań, bo ekran szczegółów bywa
+// otwierany z zakładki, która ich nie pobiera (`/api/task/zadania` ich nie zna).
+async function odswiezZaleznosci() {
+  try {
+    const r = await authFetch('/api/task/plan?zrobione=true');
+    zaleznosci = r.ok ? ((await r.json()).zaleznosci || []) : [];
+  } catch { /* brak powiązań to poprawny stan */ }
+}
+
 async function wczytajHousehold() {
   if (household) return household;
   try {
@@ -902,6 +991,8 @@ async function wczytajHousehold() {
 
 async function otworzSzczegoly(id) {
   await wczytajHousehold();
+  // Powiązania mogą być nieznane, jeśli przyszliśmy z zakładki innej niż Plan.
+  if (!zaleznosci.length) await odswiezZaleznosci();
   szczegolyId = id;
   widok = 'szczegoly';
   rysuj();
@@ -963,6 +1054,14 @@ function rysujSzczegoly() {
       <select id="s-rodzic">${opcjeRodzica(w)}</select>
       <div class="uwaga">Przenosi to zadanie razem z jego krokami.</div>
     </div>
+    <!-- Zależności: „skończ, zanim zaczniesz". Zadania bez powiązania idą
+         równolegle — to stan domyślny i nie wymaga osobnego ustawienia. -->
+    <div class="pole">
+      <label for="s-poprzednik">Zacznij dopiero po</label>
+      ${listaPoprzednikow(w)}
+      <select id="s-poprzednik">${opcjePoprzednika(w)}</select>
+      <div class="uwaga">Zadania bez takiego powiązania mogą iść równolegle.</div>
+    </div>
     <div class="pole-cb">
       <label><input type="checkbox" id="s-kamien" ${w.kamien_milowy ? 'checked' : ''}> Kamień milowy</label>
     </div>
@@ -1009,6 +1108,36 @@ function rysujSzczegoly() {
     </div>`;
 
   document.getElementById('s-wroc').onclick = () => { widok = 'lista'; rysuj(); };
+
+  // Zależności zapisują się OD RAZU, nie razem z formularzem: to osobna
+  // tabela, a mieszanie jej w zapis reszty pól kazałoby użytkownikowi
+  // pamiętać, że dodanie powiązania wymaga jeszcze kliknięcia „Zapisz".
+  const selPoprz = document.getElementById('s-poprzednik');
+  if (selPoprz) selPoprz.onchange = async () => {
+    const poprzednik = Number(selPoprz.value);
+    selPoprz.value = '';
+    if (!poprzednik) return;
+    const r = await authFetch('/api/task/zaleznosci', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zadanie_id: w.id, poprzednik_id: poprzednik }),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      toast(e.detail || 'Nie udało się dodać powiązania.', 'blad');
+      return;
+    }
+    await odswiezZaleznosci();
+    rysujSzczegoly();
+  };
+  document.querySelectorAll('[data-zdejmij-zal]').forEach((b) => {
+    b.onclick = async () => {
+      const p = Number(b.dataset.zdejmijZal);
+      await authFetch(`/api/task/zaleznosci?zadanie_id=${w.id}&poprzednik_id=${p}`,
+                      { method: 'DELETE' });
+      await odswiezZaleznosci();
+      rysujSzczegoly();
+    };
+  });
 
   // Pole „co ile" ma sens dopiero, gdy wybrano okres — i musi odmieniać
   // jednostkę przez liczbę, bo „co 2 tydzień" wygląda jak usterka.
