@@ -388,12 +388,17 @@ function rysujPlan() {
   const rzedy = new Map(wiersze.map((w, i) => [w.z.id, i]));
 
   box().innerHTML = naglowekPlanu() + `
-    <div class="gantt-info" id="gantt-info" hidden></div>
     <div class="gantt${planSzerokieNazwy ? ' szerokie-nazwy' : ''}" style="--szer:${szer}px">
-      <!-- Miesiące w osobnej warstwie, żeby dało się ją przesuwać razem
-           z wykresem: sama oś ma stałą pozycję i ucina to, co poza ekranem. -->
-      <div class="gantt-osie"><div class="gantt-osie-tresc" style="width:${szer}px">${
-        osCzasu(od, dni, px)}</div></div>
+      <!-- Pasek z danymi i oś siedzą we WSPÓLNYM przyklejanym nagłówku:
+           przy przewijaniu długiego planu w dół trzeba dalej widzieć, jaki
+           to miesiąc i co się właśnie zaznaczyło. -->
+      <div class="gantt-gora">
+        <div class="gantt-info" id="gantt-info" hidden></div>
+        <!-- Miesiące w osobnej warstwie, żeby dało się ją przesuwać razem
+             z wykresem: sama oś ma stałą pozycję i ucina to, co poza ekranem. -->
+        <div class="gantt-osie"><div class="gantt-osie-tresc" style="width:${szer}px">${
+          osCzasu(od, dni, px)}</div></div>
+      </div>
       <div class="gantt-body">
         ${pasyWeekendow(od, dni, px)}
         ${strzalkiZaleznosci(wiersze, rzedy, od, px, szer)}

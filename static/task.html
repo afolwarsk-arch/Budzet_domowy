@@ -57,8 +57,15 @@
        nie wiadomo, czego dotyczą. */
     /* Kolumna nazw: na szerokim ekranie miejsca jest dość, żeby nie ucinać
        tytułów w połowie („Zebrać dokument…”, „Adaptacja projekt…”). */
+    /* BEZ `overflow: hidden` — ono unieważnia przyklejanie nagłówka w środku,
+       a bez przyklejenia przy przewijaniu długiego planu znika oś z miesiącami
+       i nie wiadomo, na co się patrzy. Zawartość i tak przycina `.gantt-body`,
+       który ma własne przewijanie w poziomie. */
     .gantt { --nazwa: 230px; border: 1px solid var(--border); border-radius: 12px;
-             overflow: hidden; background: var(--surface); margin-bottom: 18px; }
+             background: var(--surface); margin-bottom: 18px; }
+    /* 56 px to wysokość górnego paska apki, który też jest przyklejony. */
+    .gantt-gora { position: sticky; top: 56px; z-index: 6; background: var(--surface);
+                  border-radius: 12px 12px 0 0; }
     .plan-narzedzia { align-items: center; gap: 12px; }
     .plan-narzedzia .skala { display: flex; align-items: center; gap: 8px;
                              font-size: 12px; color: var(--muted); }
@@ -155,8 +162,9 @@
        którego nie da się wywołać bez kursora — pierwsze stuknięcie w belkę
        wypisuje tu daty i powiązania, dopiero drugie otwiera formularz. */
     .gantt-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-                  border: 1px solid var(--marka); border-radius: 10px;
-                  background: var(--accent-soft); padding: 10px 12px; margin-bottom: 10px; }
+                  border-bottom: 1px solid var(--marka);
+                  background: var(--accent-soft); padding: 9px 12px;
+                  border-radius: 12px 12px 0 0; }
     .gi-tytul { font-weight: 600; color: var(--heading); font-size: 14px; }
     .gi-dane { font-size: 12.5px; color: var(--accent-strong); flex: 1; min-width: 0; }
     .gi-otworz { min-height: 36px; padding: 0 14px; flex: none; }
