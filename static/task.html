@@ -89,6 +89,23 @@
                    display: flex; align-items: center; justify-content: flex-end;
                    padding: 0 6px; min-width: 6px; }
     .gantt-belka span { font-size: 10.5px; color: #fff; opacity: .92; white-space: nowrap; }
+    /* Belkę da się chwycić i przesunąć: środek przesuwa całość, krawędzie
+       zmieniają początek albo termin. `touch-action: none` jest KONIECZNE —
+       bez niego przeglądarka na telefonie potraktuje ruch palcem jako
+       przewijanie i belka nie drgnie. */
+    .gantt-belka { touch-action: none; cursor: grab; }
+    .gantt-belka.ciagniona { cursor: grabbing; opacity: .85;
+                             box-shadow: 0 2px 10px rgba(0,0,0,.28); }
+    .gantt-belka .uchwyt { position: absolute; top: 0; bottom: 0; width: 12px;
+                           cursor: ew-resize; touch-action: none; }
+    .gantt-belka .uchwyt.lewy { left: -3px; }
+    .gantt-belka .uchwyt.prawy { right: -3px; }
+    /* Uchwyt zaznacza się dopiero pod kursorem — stale widoczne kreski przy
+       kilkunastu belkach robiłyby z wykresu drabinę. */
+    .gantt-belka:hover .uchwyt::after { content: ''; position: absolute; top: 4px;
+      bottom: 4px; width: 2px; background: rgba(255,255,255,.75); border-radius: 1px; }
+    .gantt-belka:hover .uchwyt.lewy::after { left: 4px; }
+    .gantt-belka:hover .uchwyt.prawy::after { right: 4px; }
     .gantt-belka.projekt { background: var(--marka); height: 24px; top: 7px; }
     .gantt-belka.zrobiona { background: var(--good); opacity: .55; }
     /* SPÓŹNIENIE ROZPOZNAJE SIĘ PO PASKACH, nie po samym kolorze. W module

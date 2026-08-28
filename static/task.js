@@ -44,6 +44,13 @@ let nowyId = null;          // id ostatnio dodanego szybkim dodawaniem — przy 
 let household = null;       // {members, virtual_members} — wczytywane raz, przy pierwszym otwarciu formularza
 let planZrobione = false;   // czy wykres pokazuje też zadania zamknięte
 let planSkala = 1;          // 0 = ciasno (kwartał+), 1 = miesiąc, 2 = tydzień
+// Które projekty pokazywać na wykresie. Pusty zbiór = wszystko; inaczej tylko
+// wskazane korzenie wraz z całą zawartością. Przy kilku przedsięwzięciach naraz
+// (dom, wesele, remont) wspólna oś zamienia się w gąszcz, w którym nic nie widać.
+let planProjekty = new Set();
+// Kontekst osi zapamiętany przy rysowaniu — potrzebny przy przeciąganiu belek,
+// żeby przeliczyć piksele z powrotem na dni.
+let planOs = { od: null, px: 9 };
 
 const box = () => document.getElementById('tresc');
 
@@ -318,8 +325,26 @@ function zakresZadania(z) {
   return start && koniec ? { start, koniec } : null;
 }
 
+// Zadania należące do wybranych projektów (razem z całą zawartością). Pusty
+// wybór znaczy „wszystko" — filtr ma zawężać, a nie wymuszać wybór na starcie.
+function wPlanieWidoczne(lista) {
+  if (!planProjekty.size) return lista;
+  const wg = new Map(lista.map((z) => [z.id, z]));
+  const nalezy = (z) => {
+    let x = z;
+    const odwiedzone = new Set();
+    while (x && !odwiedzone.has(x.id)) {
+      if (planProjekty.has(x.id)) return true;
+      odwiedzone.add(x.id);
+      x = x.parent_id != null ? wg.get(x.parent_id) : null;
+    }
+    return false;
+  };
+  return lista.filter(nalezy);
+}
+
 function rysujPlan() {
-  const zDatami = zadania.filter(zakresZadania);
+  const zDatami = wPlanieWidoczne(zadania).filter(zakresZadania);
   if (!zDatami.length) {
     box().innerHTML = naglowekPlanu()
       + `<p class="pusto">Żadne zadanie nie ma jeszcze dat. Otwórz zadanie,
@@ -341,8 +366,9 @@ function rysujPlan() {
   const szer = Math.round(dni * px);
 
   const drzewo = budujDrzewo(zDatami.concat(
-    zadania.filter((z) => !zakresZadania(z))));   // przodkowie bez dat trzymają strukturę
+    wPlanieWidoczne(zadania).filter((z) => !zakresZadania(z))));  // przodkowie bez dat trzymają strukturę
   const wiersze = drzewo.flatMap((w) => splaszczPlan(w, 0));
+  planOs = { od, px };
 
   box().innerHTML = naglowekPlanu() + `
     <div class="gantt" style="--szer:${szer}px">
@@ -372,6 +398,7 @@ function naglowekPlanu() {
       ${ZAKRESY.map(([k, l]) => `<button class="chip" type="button" data-z="${k}"
           aria-pressed="${k === zakres}">${l}</button>`).join('')}
     </div>
+    ${filtrProjektow()}
     <div class="filtry plan-narzedzia">
       <button class="chip" type="button" id="p-zrobione" aria-pressed="${planZrobione}">
         Pokaż zrobione</button>
@@ -381,6 +408,22 @@ function naglowekPlanu() {
                aria-label="Gęstość osi czasu">
         <span>${SKALE_PLANU[planSkala].opis}</span>
       </div>
+    </div>`;
+}
+
+// Chipy z projektami — wybór wielokrotny, bo dwa przedsięwzięcia naraz często
+// chce się zobaczyć obok siebie („czy remont nie wejdzie na wesele?").
+// Pokazujemy tylko wtedy, gdy projekty w ogóle istnieją: jeden chip „Wszystko"
+// bez alternatywy byłby ozdobą.
+function filtrProjektow() {
+  const projekty = zadania.filter((z) => z.projekt && z.parent_id == null);
+  if (!projekty.length) return '';
+  return `
+    <div class="filtry" id="p-projekty">
+      <button class="chip" type="button" data-proj="" aria-pressed="${!planProjekty.size}">
+        Wszystko</button>
+      ${projekty.map((p) => `<button class="chip" type="button" data-proj="${p.id}"
+          aria-pressed="${planProjekty.has(p.id)}">${esc(p.tytul)}</button>`).join('')}
     </div>`;
 }
 
@@ -394,6 +437,16 @@ function podepnijNaglowekPlanu() {
   };
   const zr = document.getElementById('p-zrobione');
   if (zr) zr.onclick = () => { planZrobione = !planZrobione; wczytajPlan(); };
+  const fp = document.getElementById('p-projekty');
+  if (fp) fp.onclick = (ev) => {
+    const b = ev.target.closest('[data-proj]');
+    if (!b) return;
+    const id = b.dataset.proj;
+    if (!id) planProjekty.clear();                  // „Wszystko" zdejmuje zawężenie
+    else if (planProjekty.has(Number(id))) planProjekty.delete(Number(id));
+    else planProjekty.add(Number(id));
+    rysujPlan();                                     // filtr działa na już pobranych danych
+  };
   const sk = document.getElementById('p-skala');
   // Sama skala nie zmienia danych, więc przerysowujemy bez pytania serwera.
   if (sk) sk.oninput = (ev) => { planSkala = Number(ev.target.value); rysujPlan(); };
@@ -448,12 +501,18 @@ function wierszPlanu(poz, od, px, szer, dzis) {
   if (z.kamien_milowy) klasy.push('gantt-kamien');
 
   const podpis = dlugosc * px > 54 ? `<span>${esc(dataKrotka(zakresZ.koniec))}</span>` : '';
+  // Uchwyty krawędzi tylko tam, gdzie mają sens: kamień milowy jest punktem,
+  // więc nie ma czego rozciągać, a zadanie zamknięte przesuwa się rzadko
+  // i przypadkowe pociągnięcie zmieniałoby historię.
+  const uchwyty = !z.kamien_milowy && z.status !== 'zrobione'
+    ? '<i class="uchwyt lewy" data-uchwyt="start"></i><i class="uchwyt prawy" data-uchwyt="koniec"></i>'
+    : '';
   return `<div class="gantt-wiersz">${etykieta}
     <div class="gantt-tor" style="width:${szer}px">
-      <div class="${klasy.join(' ')}" data-otworz="${z.id}"
+      <div class="${klasy.join(' ')}" data-otworz="${z.id}" data-belka="${z.id}"
            style="left:${Math.round(start * px)}px; width:${Math.round(dlugosc * px)}px"
            title="${esc(z.tytul)} — ${dataKrotka(zakresZ.start)} → ${dataKrotka(zakresZ.koniec)}">
-        ${podpis}
+        ${uchwyty}${podpis}
       </div>
     </div></div>`;
 }
@@ -462,10 +521,122 @@ function dataKrotka(d) {
   return d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' });
 }
 
+// ── przeciąganie belek ──────────────────────────────────────────────────────
+//
+// Pointer Events, a NIE HTML5 drag-and-drop: to drugie nie działa na dotyku,
+// a wykres ogląda się głównie na telefonie. Jedno API obsługuje mysz i palec.
+//
+// Chwyt za środek przesuwa całość (start i termin razem, długość bez zmian),
+// chwyt za krawędź zmienia jeden koniec. Zapisujemy dopiero po puszczeniu —
+// żądanie na każdy piksel ruchu zalałoby serwer i migało listą.
+let ostatnioCiagnieto = 0;
+
+function przeciaganieBelek(g) {
+  let stan = null;
+
+  const dniZPikseli = (px) => Math.round(px / planOs.px);
+
+  g.addEventListener('pointerdown', (ev) => {
+    const belka = ev.target.closest('[data-belka]');
+    if (!belka) return;
+    const uchwyt = ev.target.closest('[data-uchwyt]');
+    const id = Number(belka.dataset.belka);
+    const z = zadania.find((x) => x.id === id);
+    if (!z) return;
+    stan = {
+      id, belka, tryb: uchwyt ? uchwyt.dataset.uchwyt : 'calosc',
+      startX: ev.clientX,
+      lewo0: parseFloat(belka.style.left) || 0,
+      szer0: parseFloat(belka.style.width) || 0,
+      start0: z.data_start || z.termin,
+      koniec0: z.termin || z.data_start,
+      ruszony: false,
+    };
+    belka.setPointerCapture(ev.pointerId);
+    belka.classList.add('ciagniona');
+  });
+
+  g.addEventListener('pointermove', (ev) => {
+    if (!stan) return;
+    const dx = ev.clientX - stan.startX;
+    // Próg kilku pikseli: bez niego zwykłe stuknięcie w belkę (otwarcie
+    // szczegółów) liczyłoby się jako przeciągnięcie o zero dni i zapisywało.
+    if (!stan.ruszony && Math.abs(dx) < 4) return;
+    stan.ruszony = true;
+    if (stan.tryb === 'calosc') {
+      stan.belka.style.left = (stan.lewo0 + dx) + 'px';
+    } else if (stan.tryb === 'start') {
+      // Belka nie może zniknąć: minimalna szerokość to jeden dzień.
+      const nowaSzer = Math.max(planOs.px, stan.szer0 - dx);
+      stan.belka.style.left = (stan.lewo0 + (stan.szer0 - nowaSzer)) + 'px';
+      stan.belka.style.width = nowaSzer + 'px';
+    } else {
+      stan.belka.style.width = Math.max(planOs.px, stan.szer0 + dx) + 'px';
+    }
+  });
+
+  const puszczono = async (ev) => {
+    if (!stan) return;
+    const s = stan;
+    stan = null;
+    s.belka.classList.remove('ciagniona');
+    if (!s.ruszony) return;              // to było stuknięcie, nie przeciągnięcie
+    ostatnioCiagnieto = Date.now();
+
+    const dx = ev.clientX - s.startX;
+    const dni = dniZPikseli(dx);
+    const przesun = (data, o) => {
+      if (!data) return null;
+      const d = new Date(String(data).slice(0, 10) + 'T00:00:00');
+      d.setDate(d.getDate() + o);
+      return d.toISOString().slice(0, 10);
+    };
+
+    let nowyStart = s.start0;
+    let nowyKoniec = s.koniec0;
+    if (s.tryb === 'calosc') {
+      nowyStart = przesun(s.start0, dni);
+      nowyKoniec = przesun(s.koniec0, dni);
+    } else if (s.tryb === 'start') {
+      nowyStart = przesun(s.start0, dni);
+      if (nowyStart > nowyKoniec) nowyStart = nowyKoniec;
+    } else {
+      nowyKoniec = przesun(s.koniec0, dni);
+      if (nowyKoniec < nowyStart) nowyKoniec = nowyStart;
+    }
+    if (nowyStart === s.start0 && nowyKoniec === s.koniec0) { rysujPlan(); return; }
+
+    const z = zadania.find((x) => x.id === s.id);
+    const ok = await zapiszSzczegoly(s.id, {
+      tytul: z.tytul, opis: z.opis || null,
+      // Zadanie, które miało sam termin, po rozciągnięciu dostaje początek —
+      // ale samo przesunięcie nie ma go dorabiać, bo punkt ma zostać punktem.
+      data_start: s.tryb === 'calosc' && !z.data_start ? null : nowyStart,
+      termin: nowyKoniec,
+      pora: z.pora || null,
+      wykonawca_user_id: z.wykonawca_user_id || null,
+      wykonawca_virtual_id: z.wykonawca_virtual_id || null,
+      kamien_milowy: !!z.kamien_milowy,
+      projekt: !!z.projekt,
+      powtarzaj: z.powtarzaj || null,
+      powtarzaj_co: z.powtarzaj_co || 1,
+    }, true);
+    if (ok) await wczytajPlan(); else rysujPlan();
+  };
+
+  g.addEventListener('pointerup', puszczono);
+  g.addEventListener('pointercancel', () => { if (stan) { stan.belka.classList.remove('ciagniona'); stan = null; rysujPlan(); } });
+}
+
 function podepnijBelki() {
   const g = document.querySelector('.gantt');
   if (!g) return;
+  przeciaganieBelek(g);
   g.onclick = (ev) => {
+    // Kliknięcie tuż po przeciągnięciu nie ma otwierać szczegółów — przeglądarka
+    // wysyła `click` po każdym `pointerup`, więc bez tego każde przesunięcie
+    // belki kończyłoby się skokiem do formularza.
+    if (Date.now() - ostatnioCiagnieto < 400) return;
     const b = ev.target.closest('[data-otworz]');
     if (b) otworzSzczegoly(Number(b.dataset.otworz));
   };
@@ -906,7 +1077,10 @@ function rysujSzczegoly() {
   };
 }
 
-async function zapiszSzczegoly(id, dane) {
+// `cicho` przy przeciąganiu belek: przy przesuwaniu kilku zadań pod rząd toast
+// „Zapisano" po każdym ruchu zasłaniałby wykres, na którym właśnie się pracuje.
+// Błędy nadal są głośne — o nieudanym zapisie trzeba wiedzieć zawsze.
+async function zapiszSzczegoly(id, dane, cicho = false) {
   try {
     const r = await authFetch(`/api/task/zadania/${id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -917,7 +1091,7 @@ async function zapiszSzczegoly(id, dane) {
       toast(e.detail || 'Nie udało się zapisać.', 'blad');
       return false;
     }
-    toast('Zapisano.', 'ok');
+    if (!cicho) toast('Zapisano.', 'ok');
     return true;
   } catch {
     toast('Błąd połączenia. Spróbuj ponownie.', 'blad');
