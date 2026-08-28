@@ -142,10 +142,71 @@ async function wczytajPlan() {
 
 window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(wczytaj));
 
+// Które zadanie ma otwarte pole dopisywania kroku. Trzymane poza rysowaniem,
+// żeby przerwać ciszę po zapisie: lista przerysowuje się po każdym dodaniu,
+// a bez tego pole znikałoby w środku serii wpisów.
+let dopisywanieW = null;
+
+function pokazDopisywanie(id) {
+  schowajDopisywanie();
+  dopisywanieW = id;
+  const box = document.getElementById('dopisz-' + id);
+  if (!box) return;
+  box.hidden = false;
+  const pole = box.querySelector('input');
+  if (pole) pole.focus();
+}
+
+function schowajDopisywanie() {
+  dopisywanieW = null;
+  document.querySelectorAll('.zad-dopisz').forEach((b) => { b.hidden = true; });
+}
+
 function podepnijPtaszki() {
+  // Po przerysowaniu przywracamy otwarte pole — inaczej dopisanie drugiego
+  // kroku pod rząd wymagałoby ponownego szukania „+”.
+  if (dopisywanieW != null) {
+    const box = document.getElementById('dopisz-' + dopisywanieW);
+    if (box) {
+      box.hidden = false;
+      const pole = box.querySelector('input');
+      if (pole) pole.focus();
+    } else {
+      dopisywanieW = null;
+    }
+  }
   const lista = document.querySelector('.zadania');
   if (!lista) return;
+  // Dopisywanie kroku w miejscu: Enter zapisuje, Escape zamyka. Pole zostaje
+  // otwarte po zapisie, bo kroki dopisuje się seriami („kredyt", „notariusz",
+  // „wypis") — zamykanie go po każdym wpisie zmuszałoby do klikania „+” za
+  // każdym razem.
+  lista.onkeydown = async (ev) => {
+    const pole = ev.target.closest('[data-pole-dodaj]');
+    if (!pole) return;
+    if (ev.key === 'Escape') { schowajDopisywanie(); return; }
+    if (ev.key !== 'Enter') return;
+    const tytul = pole.value.trim();
+    if (!tytul) { schowajDopisywanie(); return; }
+    const parent = Number(pole.dataset.poleDodaj);
+    pole.disabled = true;
+    const r = await authFetch('/api/task/zadania', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tytul, parent_id: parent }),
+    });
+    pole.disabled = false;
+    if (!r.ok) { toast('Nie udało się zapisać kroku.', 'blad'); return; }
+    pole.value = '';
+    dopisywanieW = parent;      // po przerysowaniu pole ma wrócić w to samo miejsce
+    await wczytaj();
+  };
+
   lista.onclick = async (ev) => {
+    const plus = ev.target.closest('[data-dodaj]');
+    if (plus) {
+      pokazDopisywanie(Number(plus.dataset.dodaj));
+      return;
+    }
     const wejdz = ev.target.closest('[data-wejdz]');
     if (wejdz) {
       korzen = Number(wejdz.dataset.wejdz);
@@ -422,8 +483,13 @@ function rysujLista() {
     </div>
     ${okruszki()}
     ${aktualny ? nagKorzenia(aktualny) : ''}
-    <form class="szybkie" id="szybkie">
-      <input id="sz-tytul" placeholder="Co jest do zrobienia?" autocomplete="off">
+    <!-- Pole mówi WPROST, gdzie trafi wpis. Wcześniej wyglądało tak samo
+         niezależnie od tego, czy dodaje zadanie główne, czy krok w środku
+         czegoś — i po wejściu w zadanie nie było wiadomo, co się właściwie
+         stanie z wpisanym tekstem. -->
+    <form class="szybkie${aktualny ? ' w-srodku' : ''}" id="szybkie">
+      <input id="sz-tytul" autocomplete="off"
+             placeholder="${aktualny ? `Nowy krok w: ${esc(aktualny.tytul)}` : 'Co jest do zrobienia?'}">
       ${mowaDostepna() ? `<button class="btn btn-outline btn-mikrofon" type="button"
           id="sz-mowa" title="Podyktuj zadanie" aria-label="Podyktuj zadanie">
           ${ikonaSvg('mikrofon')}</button>` : ''}
@@ -472,32 +538,47 @@ function rysujLista() {
   podepnijPtaszki();
 }
 
+// STRUKTURA JEST ZAGNIEŻDŻONA, NIE PŁASKA. Wcześniej każdy wiersz dostawał
+// tylko lewy odstęp i po dwóch poziomach wszystko wyglądało jak jedna lista —
+// nie było widać, co jest częścią czego. Teraz dzieci siedzą w osobnym
+// pojemniku z pionową linią, więc przynależność widać bez liczenia pikseli.
 function wiersz(w, poziom) {
   const p = postep(w);
   const nast = p.razem && w.status !== 'zrobione' ? nastepnyKrok(w) : {};
   const spozniony = w.termin && w.status === 'otwarte' &&
     w.termin.slice(0, 10) < dzisIso();
-  // Wcięcia tylko do trzeciego poziomu — głębiej wchodzi się w zadanie.
-  // Przy 412 px czwarty poziom zostawia na tytuł około 200 px. Liczone od
-  // BIEŻĄCEGO korzenia (poziom startuje od 0 przy każdym wejściu w zadanie),
-  // nie od korzenia całego drzewa.
-  const wciecie = Math.min(poziom, 2) * 18;
+  const maDzieci = (w.dzieci || []).length > 0;
   return `
-    <div class="zad${w.status === 'zrobione' ? ' zrobione' : ''}" style="padding-left:${wciecie}px">
-      <button class="ptaszek" type="button" data-ptaszek="${w.id}"
-              aria-label="Odhacz zadanie">${w.status === 'zrobione' ? ikonaSvg('ptaszek') : ''}</button>
-      <div class="zad-tresc">
-        <div class="zad-tytul">${w.kamien_milowy ? '<span class="kamien"></span>' : ''}${esc(w.tytul)}${
-          w.powtarzaj ? `<span class="zad-cykl" title="Po odhaczeniu wróci ${esc(opisPowtarzania(w))}">${
-            esc(opisPowtarzania(w))}</span>` : ''}</div>
-        ${nast.tytul ? `<div class="zad-nast">następne: ${esc(nast.tytul)}</div>` : ''}
-        ${w.id === nowyId ? `<button class="zad-szczegoly-btn" type="button" data-szczegoly="${w.id}">Szczegóły</button>` : ''}
+    <div class="zad-galaz">
+      <div class="zad${w.status === 'zrobione' ? ' zrobione' : ''}" data-zad="${w.id}">
+        <button class="ptaszek" type="button" data-ptaszek="${w.id}"
+                aria-label="Odhacz zadanie">${w.status === 'zrobione' ? ikonaSvg('ptaszek') : ''}</button>
+        <div class="zad-tresc">
+          <div class="zad-tytul">${w.kamien_milowy ? '<span class="kamien"></span>' : ''}${esc(w.tytul)}${
+            w.powtarzaj ? `<span class="zad-cykl" title="Po odhaczeniu wróci ${esc(opisPowtarzania(w))}">${
+              esc(opisPowtarzania(w))}</span>` : ''}</div>
+          ${nast.tytul ? `<div class="zad-nast">następne: ${esc(nast.tytul)}</div>` : ''}
+          ${w.id === nowyId ? `<button class="zad-szczegoly-btn" type="button" data-szczegoly="${w.id}">Szczegóły</button>` : ''}
+        </div>
+        ${w.termin ? `<span class="zad-termin${spozniony ? ' po-czasie' : ''}">${dataPl(w.termin)}</span>` : ''}
+        ${p.razem && !w.kamien_milowy ? `<span class="zad-postep">${p.gotowe} z ${p.razem}</span>` : ''}
+        <!-- „+” dopisuje krok BEZ opuszczania listy. Wcześniej jedyną drogą
+             było wejście strzałką w zadanie, co przy dopisywaniu trzech kroków
+             pod rząd znaczyło trzy razy wejść i wyjść. -->
+        <button class="zad-plus" type="button" data-dodaj="${w.id}"
+                aria-label="Dodaj krok w tym zadaniu" title="Dodaj krok">+</button>
+        <button class="zad-strzalka" type="button" data-wejdz="${w.id}"
+                aria-label="Pokaż tylko to zadanie">›</button>
       </div>
-      ${w.termin ? `<span class="zad-termin${spozniony ? ' po-czasie' : ''}">${dataPl(w.termin)}</span>` : ''}
-      ${p.razem && !w.kamien_milowy ? `<span class="zad-postep">${p.gotowe} z ${p.razem}</span>` : ''}
-      <button class="zad-strzalka" type="button" data-wejdz="${w.id}" aria-label="Wejdź w zadanie">›</button>
-    </div>
-    ${w.dzieci.map((d) => wiersz(d, poziom + 1)).join('')}`;
+      <div class="zad-dzieci${maDzieci ? '' : ' pusta'}">
+        <!-- Pole dopisywania kroku wskakuje TUTAJ, czyli w miejscu, w którym
+             krok faktycznie się pojawi — nie na górze ekranu. -->
+        <div class="zad-dopisz" id="dopisz-${w.id}" hidden>
+          <input placeholder="Nowy krok…" data-pole-dodaj="${w.id}" autocomplete="off">
+        </div>
+        ${(w.dzieci || []).map((d) => wiersz(d, poziom + 1)).join('')}
+      </div>
+    </div>`;
 }
 
 function dataPl(iso) {

@@ -118,8 +118,30 @@
          szerokości kciuka i nie da się nic odczytać. */
       .gantt { --nazwa: 104px; }
     }
+    /* DRZEWO Z LINIAMI. Same wcięcia nie wystarczały: po dwóch poziomach lista
+       wyglądała płasko i nie było widać, co jest częścią czego. Pionowa linia
+       przy grupie dzieci pokazuje przynależność bez liczenia pikseli. */
+    .zad-galaz { position: relative; }
+    .zad-dzieci { margin-left: 13px; padding-left: 13px;
+                  border-left: 2px solid var(--border); }
+    /* Gałąź bez dzieci nie rysuje linii donikąd — zostaje tylko miejsce na
+       pole dopisywania, które w niej wyskakuje. */
+    .zad-dzieci.pusta { border-left-color: transparent; padding-left: 13px; }
+    .zad-dopisz { padding: 8px 0; }
+    .zad-dopisz input { width: 100%; min-height: 40px; }
+
     .zad { display: flex; align-items: center; gap: 10px; padding: 12px;
            border-bottom: 1px solid var(--border-soft); }
+    /* Przycisk „+” — dopisuje krok bez opuszczania listy. Widoczny zawsze,
+       bo ukryty pod najechaniem nie istnieje dla palca na telefonie. */
+    .zad-plus { flex: none; width: 30px; height: 30px; border-radius: 8px;
+                border: 1px solid var(--border); background: var(--surface);
+                color: var(--muted); font-size: 19px; line-height: 1;
+                cursor: pointer; font-family: inherit; }
+    .zad-plus:hover { border-color: var(--marka); color: var(--marka); }
+    /* Pole szybkiego dodawania w trybie „jestem w środku zadania” — ramka
+       w kolorze modułu, żeby różnica była widoczna, a nie tylko napisana. */
+    .szybkie.w-srodku input { border-color: var(--marka); }
     .zad.zrobione .zad-tytul { text-decoration: line-through; color: var(--muted); }
     .ptaszek { flex: none; width: 26px; height: 26px; border-radius: 50%;
                border: 1.5px solid var(--border); background: none; cursor: pointer;
