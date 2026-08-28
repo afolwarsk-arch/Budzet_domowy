@@ -1344,9 +1344,20 @@ def generuj_analiza_raport(body: RaportIn, current_user: dict = Depends(get_curr
 
 @app.get("/api/kategorie")
 def get_kategorie(current_user: dict = Depends(get_current_user)):
+    """Hierarchia dla INTERFEJSU — z doklejoną kategorią systemową.
+
+    „Korekta salda" powstaje wyłącznie z inwentaryzacji konta i celowo NIE
+    siedzi w `KATEGORIE_HIERARCHIA`: stamtąd bierze się lista podawana modelowi
+    przy odczycie paragonu, a model nie ma prawa przypisać zakupu do korekty
+    salda. Interfejs musi ją jednak znać, bo listy wyboru kategorii budują się
+    z tej odpowiedzi — bez niej otwarcie takiego wydatku do edycji podmieniłoby
+    kategorię na pierwszą z listy i po cichu zepsuło zapis.
+    """
     hid = current_user["household_id"]
     custom = database.get_household_hierarchia(hid) if hid else None
-    return custom if custom is not None else ai_processor.KATEGORIE_HIERARCHIA
+    hier = dict(custom if custom is not None else ai_processor.KATEGORIE_HIERARCHIA)
+    hier.setdefault(database.KATEGORIA_KOREKTY, [database.KATEGORIA_KOREKTY])
+    return hier
 
 
 @app.put("/api/kategorie")

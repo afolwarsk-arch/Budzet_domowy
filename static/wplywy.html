@@ -133,6 +133,10 @@
         <option value="Sprzedaż">Sprzedaż</option>
         <option value="Zwrot wydatku">Zwrot wydatku</option>
         <option value="Inne">Inne</option>
+        <!-- Powstaje tylko z inwentaryzacji konta, ale MUSI tu być: bez tej
+             opcji otwarcie takiego wpływu do edycji ustawiłoby pierwszą pozycję
+             listy i zapis po cichu zmieniłby kategorię na „Wynagrodzenie". -->
+        <option value="Korekta salda">Korekta salda</option>
       </select>
     </div>
     <div class="fg"><label>Konto</label><select id="w-konto"></select></div>
