@@ -29,6 +29,14 @@
 
     /* Znacznik zadania powtarzalnego — bez niego nie widać, że sprawa wróci
        po odhaczeniu, a nagłe pojawienie się „nowego" zadania wygląda jak błąd. */
+    /* Przycisk dyktowania. W trakcie nasłuchu pulsuje — bez tego nie widać,
+       czy apka już słucha, i mówi się w próżnię. */
+    .btn-mikrofon { flex: none; padding: 0 12px; min-height: 46px; }
+    .btn-mikrofon.slucha { border-color: var(--marka); color: var(--marka);
+                           animation: mik-puls 1.1s ease-in-out infinite; }
+    @keyframes mik-puls { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+    @media (prefers-reduced-motion: reduce) { .btn-mikrofon.slucha { animation: none; } }
+
     .zad-cykl { margin-left: 7px; padding: 1px 7px; border-radius: 999px;
                 background: var(--accent-soft); color: var(--accent-strong);
                 font-size: 11px; font-weight: 600; white-space: nowrap; }

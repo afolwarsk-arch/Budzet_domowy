@@ -424,6 +424,9 @@ function rysujLista() {
     ${aktualny ? nagKorzenia(aktualny) : ''}
     <form class="szybkie" id="szybkie">
       <input id="sz-tytul" placeholder="Co jest do zrobienia?" autocomplete="off">
+      ${mowaDostepna() ? `<button class="btn btn-outline btn-mikrofon" type="button"
+          id="sz-mowa" title="Podyktuj zadanie" aria-label="Podyktuj zadanie">
+          ${ikonaSvg('mikrofon')}</button>` : ''}
       <button class="btn btn-primary" type="submit">Dodaj</button>
     </form>
     <div class="zadania">${lista.map((w) => wiersz(w, 0)).join('') ||
@@ -446,6 +449,8 @@ function rysujLista() {
   };
   const korzenBtn = document.getElementById('korzen-szczegoly');
   if (korzenBtn) korzenBtn.onclick = () => otworzSzczegoly(aktualny.id);
+  const btnMowa = document.getElementById('sz-mowa');
+  if (btnMowa) btnMowa.onclick = () => dyktuj(btnMowa);
   document.getElementById('szybkie').onsubmit = async (ev) => {
     ev.preventDefault();
     const pole = document.getElementById('sz-tytul');
@@ -501,6 +506,96 @@ function dataPl(iso) {
 }
 
 // ── formularz szczegółów ─────────────────────────────────────────────────────
+
+// ── dyktowanie zadań ────────────────────────────────────────────────────────
+//
+// Rozpoznanie mowy robi PRZEGLĄDARKA (Web Speech API) — nic nie kosztuje i nie
+// wymaga wysyłania dźwięku na serwer. Dopiero gotowy TEKST idzie do modelu,
+// który wyciąga z niego termin, godzinę i powtarzanie. Sama zamiana mowy na
+// tekst przez model byłaby wolniejsza i droższa, a nie dałaby nic więcej.
+//
+// Zapisujemy OD RAZU, bez ekranu potwierdzania: sensem dyktowania jest złapanie
+// sprawy w sekundę. Potwierdzeniem jest toast mówiący, co apka zrozumiała.
+
+function mowaDostepna() {
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+
+let nasluch = null;
+
+function dyktuj(btn) {
+  // Drugie stuknięcie w trakcie nasłuchu przerywa — bez tego jedyną drogą
+  // wyjścia byłoby odczekanie, aż przeglądarka sama się rozłączy.
+  if (nasluch) { nasluch.stop(); return; }
+
+  const Rozpoznawanie = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const r = new Rozpoznawanie();
+  r.lang = 'pl-PL';
+  r.interimResults = false;
+  r.maxAlternatives = 1;
+
+  const koniecNasluchu = () => {
+    nasluch = null;
+    btn.classList.remove('slucha');
+  };
+
+  r.onstart = () => { nasluch = r; btn.classList.add('slucha'); };
+  r.onerror = (ev) => {
+    koniecNasluchu();
+    // „aborted" to skutek naszego własnego stop() — nie ma o czym informować.
+    if (ev.error === 'aborted') return;
+    toast(ev.error === 'not-allowed'
+      ? 'Brak zgody na mikrofon. Zezwól na niego w ustawieniach strony.'
+      : 'Nie udało się nagrać polecenia.', 'blad');
+  };
+  r.onend = koniecNasluchu;
+  r.onresult = async (ev) => {
+    const tekst = ev.results[0][0].transcript;
+    koniecNasluchu();
+    await zapiszZMowy(tekst);
+  };
+
+  try { r.start(); } catch { toast('Mikrofon jest już zajęty.', 'blad'); }
+}
+
+async function zapiszZMowy(tekst) {
+  const pole = document.getElementById('sz-tytul');
+  // Rozpoznany tekst ląduje w polu na czas przetwarzania — gdyby model nie
+  // zrozumiał, słowa nie przepadają i da się je poprawić ręcznie.
+  if (pole) { pole.value = tekst; pole.disabled = true; }
+  try {
+    const r = await authFetch('/api/task/z-mowy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tekst, parent_id: korzen }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { toast(d.detail || 'Nie udało się zapisać zadania.', 'blad'); return; }
+    if (pole) pole.value = '';
+    nowyId = d.id || null;
+    toast(opisZapisanego(d.zadanie), 'ok');
+    await wczytaj();
+  } catch {
+    toast('Brak połączenia — zadanie nie zostało zapisane.', 'blad');
+  } finally {
+    if (pole) pole.disabled = false;
+  }
+}
+
+// Potwierdzenie mówi, co apka ZROZUMIAŁA, a nie tylko „zapisano" — przy
+// dyktowaniu to jedyny moment, w którym da się wyłapać pomyłkę w terminie.
+function opisZapisanego(z) {
+  if (!z) return 'Zadanie zapisane.';
+  const czesci = [z.tytul];
+  if (z.termin) {
+    const d = new Date(z.termin + 'T00:00:00');
+    const dzis = new Date(new Date().toDateString());
+    const roznica = Math.round((d - dzis) / 86400000);
+    const kiedy = roznica === 0 ? 'dziś' : roznica === 1 ? 'jutro' : dataPl(z.termin);
+    czesci.push(kiedy + (z.pora ? ` ${z.pora}` : ''));
+  }
+  if (z.powtarzaj) czesci.push(opisPowtarzania(z));
+  return czesci.join(' · ');
+}
 
 async function wczytajHousehold() {
   if (household) return household;

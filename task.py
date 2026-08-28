@@ -3,7 +3,10 @@ do `task_db`. Reguły danych (prywatność, cykl w drzewie) siedzą w bazie dany
 nie tutaj — inaczej rozjechałyby się między wywołaniami."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 
+import database
+import task_ai
 import task_db
 from auth import get_current_user
 
@@ -85,6 +88,84 @@ def plan_zadan(zrobione: bool = False, current_user: dict = Depends(get_current_
     przebiegło.
     """
     return {"zadania": task_db.plan(_hid(current_user), current_user["user_id"], zrobione)}
+
+
+@router.post("/z-mowy")
+async def zadanie_z_mowy(dane: dict, current_user: dict = Depends(get_current_user)):
+    """Podyktowane zdanie → gotowe zadanie.
+
+    ZAPISUJEMY OD RAZU, bez ekranu zatwierdzania. Sensem dyktowania jest
+    złapanie sprawy w sekundę; ekran „sprawdź i potwierdź" kasowałby całą
+    przewagę nad wpisaniem tytułu z klawiatury. Ryzyko jest małe i odwracalne:
+    źle zrozumiane zadanie poprawia się w Szczegółach albo kasuje jednym
+    ruchem — inaczej niż przy dokumentacji medycznej, gdzie zły odczyt zostaje
+    niezauważony na lata.
+
+    Zwracamy `dane`, żeby interfejs mógł powiedzieć, co dokładnie zapisał —
+    użytkownik ma usłyszeć potwierdzenie tego, co apka zrozumiała.
+    """
+    hid = _hid(current_user)
+    tekst = (dane.get("tekst") or "").strip()
+    parent_id = dane.get("parent_id") or None
+    try:
+        zrozumiane, usage = await run_in_threadpool(task_ai.zrozum, tekst)
+    except task_ai.MowaError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        print(f"[task] zrozumienie mowy padlo: {e}")
+        raise HTTPException(502, "Nie udało się zrozumieć polecenia. Spróbuj ponownie.")
+
+    # Ślad w kosztach AI — przedrostek decyduje, do którego modułu zaliczy je
+    # panel admina (patrz `_MODUL_SQL` w database.py).
+    database.log_api_usage(hid, "task-mowa", usage.get("input_tokens", 0),
+                           usage.get("output_tokens", 0), current_user.get("user_id"))
+
+    # Wykonawcę dopasowujemy po imieniu do domowników — model zwraca sam tekst,
+    # a baza potrzebuje identyfikatora. Brak dopasowania zostawia zadanie bez
+    # wykonawcy, zamiast zgadywać, kogo miał na myśli.
+    wyk_user, wyk_virtual = _dopasuj_wykonawce(hid, zrozumiane.get("wykonawca"))
+
+    d = {
+        "tytul": zrozumiane["tytul"],
+        "opis": None,
+        "termin": zrozumiane["termin"],
+        "pora": zrozumiane["pora"],
+        "data_start": None,
+        "projekt": False,
+        "powtarzaj": zrozumiane["powtarzaj"],
+        "powtarzaj_co": zrozumiane["powtarzaj_co"],
+        "wykonawca_user_id": wyk_user,
+        "wykonawca_virtual_id": wyk_virtual,
+        "kamien_milowy": False,
+        "parent_id": parent_id,
+    }
+    try:
+        nowe_id = task_db.dodaj(hid, current_user["user_id"], d)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"id": nowe_id, "zadanie": zrozumiane,
+            "wykonawca_dopasowany": bool(wyk_user or wyk_virtual)}
+
+
+def _dopasuj_wykonawce(household_id: int, imie: str | None):
+    """Imię z wypowiedzi → (user_id, virtual_id). Bez dopasowania: (None, None).
+
+    Porównujemy po PIERWSZYM CZŁONIE nazwy: w mowie pada „Ola", a w bazie może
+    stać „Aleksandra Kowalska" albo pseudonim. Brak trafienia zostawia zadanie
+    bez wykonawcy — zgadywanie, kogo miał na myśli, przypisałoby sprawę losowej
+    osobie z domu.
+    """
+    if not imie:
+        return None, None
+    szukane = imie.strip().lower()
+    for m in database.get_household_members(household_id):
+        for nazwa in (m.get("display_name"), m.get("name")):
+            if nazwa and nazwa.strip().lower().split(" ")[0] == szukane:
+                return m["id"], None
+    for m in database.get_virtual_members(household_id):
+        if (m.get("name") or "").strip().lower().split(" ")[0] == szukane:
+            return None, m["id"]
+    return None, None
 
 
 @router.post("/zadania")

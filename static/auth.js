@@ -1008,6 +1008,7 @@ const IKONY_SVG = {
   sukces: '<circle cx="12" cy="12" r="8.6"/><path class="akc" d="M8.2 12.2l2.6 2.6 5-5.4"/>',
   olowek: '<path d="M4 20l1.2-4.2L15.6 5.4a2.2 2.2 0 013.1 3.1L8.2 18.8z"/><path d="M14 7l3 3"/>',
   ptaszek: '<path d="M4.8 12.4l4.6 4.6 9.8-10.4"/>',
+  mikrofon: '<rect x="9.2" y="2.8" width="5.6" height="11.2" rx="2.8"/><path d="M5.8 11.4a6.2 6.2 0 0012.4 0"/><path d="M12 17.6v3.6"/>',
   krzyzyk: '<path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/>',
   pauza: '<path d="M9.4 5.4v13.2M14.6 5.4v13.2"/>',
   uchwyt: '<circle cx="9" cy="6.4" r="1.5"/><circle cx="15" cy="6.4" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="17.6" r="1.5"/><circle cx="15" cy="17.6" r="1.5"/>',
