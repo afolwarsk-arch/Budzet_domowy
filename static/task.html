@@ -84,8 +84,11 @@
                      border-radius: 2px; background: var(--marka); vertical-align: middle; }
     .gantt-tor { position: relative; height: 38px; flex: none; }
 
+    /* `overflow: visible`, NIE hidden: kropka łącznika wystaje poza belkę
+       i przy `hidden` była po prostu ucinana. Podpis daty i tak pokazujemy
+       tylko przy belkach dość szerokich, więc nie ma czego przycinać. */
     .gantt-belka { position: absolute; top: 9px; height: 20px; border-radius: 5px;
-                   background: var(--accent); cursor: pointer; overflow: hidden;
+                   background: var(--accent); cursor: pointer; overflow: visible;
                    display: flex; align-items: center; justify-content: flex-end;
                    padding: 0 6px; min-width: 6px; }
     .gantt-belka span { font-size: 10.5px; color: #fff; opacity: .92; white-space: nowrap; }
@@ -99,11 +102,19 @@
     /* Belka oparta o barierę wynikającą z zależności — dalej się nie da. */
     .gantt-belka.zablokowana { outline: 2px solid var(--danger); outline-offset: 1px; }
     /* Kropka do wyciągania zależności: pociągnij ją na inne zadanie. */
-    .lacznik { position: absolute; right: -14px; top: 50%; width: 11px; height: 11px;
-               margin-top: -5.5px; border-radius: 50%; background: var(--surface);
+    /* WIDOCZNA ZAWSZE, nie pod najechaniem: na telefonie nie ma kursora, więc
+       element pokazywany na :hover po prostu nie istnieje. Przygaszona, żeby
+       kilkanaście kropek nie robiło z wykresu paciorków; pod kursorem i przy
+       łączeniu rozjaśnia się do pełna. */
+    .lacznik { position: absolute; right: -15px; top: 50%; width: 13px; height: 13px;
+               margin-top: -6.5px; border-radius: 50%; background: var(--surface);
                border: 2px solid var(--accent-strong); cursor: crosshair;
-               touch-action: none; opacity: 0; transition: opacity .12s; }
+               touch-action: none; opacity: .5; transition: opacity .12s, transform .12s; }
     .gantt-belka:hover .lacznik, .gantt.laczy .lacznik { opacity: 1; }
+    .lacznik:hover { transform: scale(1.25); }
+    /* Na dotyku uchwyt musi być większy niż sam kropkowany znacznik — palec
+       ma około 40 px, a kropka 13. Powiększamy pole trafienia, nie rysunek. */
+    .lacznik::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; }
     .gantt.laczy { cursor: crosshair; }
     .gantt-belka.cel-laczenia { outline: 3px solid var(--accent-strong); outline-offset: 2px; }
 
