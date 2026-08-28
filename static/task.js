@@ -597,6 +597,30 @@ function opisZapisanego(z) {
   return czesci.join(' · ');
 }
 
+// Lista możliwych rodziców. WYKLUCZAMY SIEBIE I WŁASNE POTOMSTWO — zadanie
+// wsunięte pod własny krok tworzy pętlę, po której drzewo nie ma korzenia.
+// Baza i tak to odrzuca (`wykryj_cykl`), ale pokazywanie opcji, która kończy
+// się błędem, jest gorsze niż jej brak.
+function opcjeRodzica(w) {
+  const drzewo = budujDrzewo(zadania);
+  const wSrodku = new Set();
+  const zbierz = (x) => { wSrodku.add(x.id); (x.dzieci || []).forEach(zbierz); };
+  const ja = drzewo.flatMap(splaszcz).find((x) => x.id === w.id);
+  if (ja) zbierz(ja);
+
+  const opcje = ['<option value="">— osobne zadanie —</option>'];
+  const dodaj = (x, poziom) => {
+    if (!wSrodku.has(x.id)) {
+      const wciecie = '  '.repeat(poziom);
+      opcje.push(`<option value="${x.id}"${x.id === w.parent_id ? ' selected' : ''}>${
+        wciecie}${esc(x.tytul)}</option>`);
+    }
+    (x.dzieci || []).forEach((d) => dodaj(d, poziom + 1));
+  };
+  drzewo.forEach((x) => dodaj(x, 0));
+  return opcje.join('');
+}
+
 async function wczytajHousehold() {
   if (household) return household;
   try {
@@ -659,6 +683,15 @@ function rysujSzczegoly() {
     <div class="pole">
       <label for="s-wykonawca">Wykonawca</label>
       <select id="s-wykonawca">${opcjeWykonawcy}</select>
+    </div>
+    <!-- Przeniesienie pod inne zadanie. Baza obsługiwała to od początku
+         (z wykrywaniem pętli), ale nie było na to żadnego wejścia — sprawa,
+         która okazała się częścią większego przedsięwzięcia, wymagała
+         usunięcia i wpisania od nowa. -->
+    <div class="pole">
+      <label for="s-rodzic">Część zadania</label>
+      <select id="s-rodzic">${opcjeRodzica(w)}</select>
+      <div class="uwaga">Przenosi to zadanie razem z jego krokami.</div>
     </div>
     <div class="pole-cb">
       <label><input type="checkbox" id="s-kamien" ${w.kamien_milowy ? 'checked' : ''}> Kamień milowy</label>
@@ -754,8 +787,12 @@ function rysujSzczegoly() {
       toast('Początek nie może być późniejszy niż termin.', 'blad');
       return;
     }
-    // `parent_id` NIGDY nie jest tu dodawany — formularz szczegółów nie
-    // przenosi zadań, a wysłanie `parent_id: null` odczepiłoby je od rodzica.
+    // `parent_id` wysyłamy TYLKO gdy użytkownik faktycznie zmienił rodzica.
+    // Backend rozpoznaje zamiar przeniesienia po samej OBECNOŚCI tego klucza,
+    // więc wysyłanie go zawsze odczepiałoby zadanie przy każdej zmianie tytułu.
+    const wybranyRodzic = document.getElementById('s-rodzic').value;
+    const nowyRodzic = wybranyRodzic ? Number(wybranyRodzic) : null;
+    if (nowyRodzic !== (w.parent_id ?? null)) dane.parent_id = nowyRodzic;
     // `prywatne` dokładamy tylko wtedy, gdy przełącznik w ogóle jest aktywny
     // (zadanie bez rodzica) — przy dziecku backend i tak by go zignorował.
     if (!maRodzica) dane.prywatne = document.getElementById('s-prywatne').checked;
