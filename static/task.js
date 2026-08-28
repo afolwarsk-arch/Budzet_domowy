@@ -520,8 +520,11 @@ function wierszPlanu(poz, od, px, szer, dzis) {
     : '';
   return `<div class="gantt-wiersz">${etykieta}
     <div class="gantt-tor" style="width:${szer}px">
+      <!-- Minimum 16 px szerokości: przy skali „cały plan" jeden dzień to
+           trzy piksele, czyli kreska, której nie da się chwycić palcem ani
+           nawet zauważyć. -->
       <div class="${klasy.join(' ')}" data-otworz="${z.id}" data-belka="${z.id}"
-           style="left:${Math.round(start * px)}px; width:${Math.round(dlugosc * px)}px"
+           style="left:${Math.round(start * px)}px; width:${Math.max(16, Math.round(dlugosc * px))}px"
            title="${esc(z.tytul)} — ${dataKrotka(zakresZ.start)} → ${dataKrotka(zakresZ.koniec)}">
         ${uchwyty}${podpis}
       </div>

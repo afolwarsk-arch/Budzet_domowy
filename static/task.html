@@ -126,9 +126,11 @@
 
     /* Strzałki zależności — jedno SVG na całą siatkę, pod belkami. */
     .gantt-zaleznosci { position: absolute; top: 0; pointer-events: none; z-index: 0; }
-    .gantt-zaleznosci .zal { fill: none; stroke: var(--muted); stroke-width: 1.4;
-                             stroke-dasharray: 4 3; }
-    .gantt-zaleznosci .zal-grot { fill: var(--muted); }
+    /* Wyraźniejsze niż domyślna szarość: na tle siatki i kilkunastu belek
+       cienka przerywana linia po prostu ginęła. */
+    .gantt-zaleznosci .zal { fill: none; stroke: var(--accent-strong); stroke-width: 1.8;
+                             stroke-dasharray: 5 3; opacity: .75; }
+    .gantt-zaleznosci .zal-grot { fill: var(--accent-strong); opacity: .75; }
     /* Powiązanie naruszone: następnik zaczyna się przed końcem poprzednika.
        To jedyny moment, w którym plan sam mówi, że się nie domyka. */
     .gantt-zaleznosci .naruszona { stroke: var(--danger); stroke-width: 2;
