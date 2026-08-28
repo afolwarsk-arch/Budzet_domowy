@@ -180,9 +180,20 @@
                        color: var(--marka); font-weight: 700; padding: 0 3px;
                        background: var(--surface); border-radius: 0 0 4px 0; }
 
+    /* Kolumna nazw rozwinięta na chwilę — do przeczytania dłuższych tytułów.
+       Nazwa przestaje być ucinana i zawija się do dwóch linii; wysokość wiersza
+       zostaje bez zmian, bo od niej zależy pozycja belek i strzałek. */
+    .gantt.szerokie-nazwy { --nazwa: min(62vw, 320px); }
+    .gantt.szerokie-nazwy .gantt-nazwa {
+      white-space: normal; overflow: hidden; text-overflow: clip;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      line-height: 1.25; font-size: 12px;
+    }
+
     @media (max-width: 700px) {
       /* Na telefonie nazwa dostaje mniej miejsca — inaczej na oś zostaje pasek
-         szerokości kciuka i nie da się nic odczytać. */
+         szerokości kciuka i nie da się nic odczytać. Przycisk „Szersze nazwy"
+         rozwija ją na chwilę, gdy trzeba coś doczytać. */
       .gantt { --nazwa: 104px; }
     }
     /* DRZEWO Z LINIAMI. Same wcięcia nie wystarczały: po dwóch poziomach lista

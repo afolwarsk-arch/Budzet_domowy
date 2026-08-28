@@ -51,6 +51,10 @@ let planSkala = 1;          // 0 = ciasno (kwartał+), 1 = miesiąc, 2 = tydzie�
 // wskazane korzenie wraz z całą zawartością. Przy kilku przedsięwzięciach naraz
 // (dom, wesele, remont) wspólna oś zamienia się w gąszcz, w którym nic nie widać.
 let planProjekty = new Set();
+// Szersza kolumna nazw na chwilę. Na telefonie ma ona 104 px i dłuższe tytuły
+// („Księga wieczysta — właściciel, hipoteki…") urywają się w połowie, a wykres
+// bez podpisów jest zbiorem kolorowych pasków.
+let planSzerokieNazwy = false;
 // Powiązania „skończ, zanim zaczniesz": [{zadanie_id, poprzednik_id}].
 // Zadania bez powiązania są z definicji równoległe — brak wpisu TEŻ niesie
 // informację i nie trzeba osobnego typu „może iść obok".
@@ -384,7 +388,7 @@ function rysujPlan() {
   const rzedy = new Map(wiersze.map((w, i) => [w.z.id, i]));
 
   box().innerHTML = naglowekPlanu() + `
-    <div class="gantt" style="--szer:${szer}px">
+    <div class="gantt${planSzerokieNazwy ? ' szerokie-nazwy' : ''}" style="--szer:${szer}px">
       <div class="gantt-osie">${osCzasu(od, dni, px)}</div>
       <div class="gantt-body">
         ${strzalkiZaleznosci(wiersze, rzedy, od, px, szer)}
@@ -416,6 +420,9 @@ function naglowekPlanu() {
     <div class="filtry plan-narzedzia">
       <button class="chip" type="button" id="p-zrobione" aria-pressed="${planZrobione}">
         Pokaż zrobione</button>
+      <button class="chip" type="button" id="p-nazwy" aria-pressed="${planSzerokieNazwy}"
+              title="Poszerz kolumnę z nazwami, żeby przeczytać dłuższe tytuły">
+        ${planSzerokieNazwy ? 'Zwęź nazwy' : 'Szersze nazwy'}</button>
       <div class="skala">
         <span>gęstość</span>
         <input type="range" id="p-skala" min="0" max="2" step="1" value="${planSkala}"
@@ -451,6 +458,9 @@ function podepnijNaglowekPlanu() {
   };
   const zr = document.getElementById('p-zrobione');
   if (zr) zr.onclick = () => { planZrobione = !planZrobione; wczytajPlan(); };
+  const nz = document.getElementById('p-nazwy');
+  // Sama szerokość kolumny nie zmienia danych — przerysowujemy bez pytania serwera.
+  if (nz) nz.onclick = () => { planSzerokieNazwy = !planSzerokieNazwy; rysujPlan(); };
   const fp = document.getElementById('p-projekty');
   if (fp) fp.onclick = (ev) => {
     const b = ev.target.closest('[data-proj]');
