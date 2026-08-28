@@ -151,6 +151,17 @@
                                 border-radius: 3px; transform: rotate(45deg); padding: 0; }
     .gantt-belka.gantt-kamien span { display: none; }
 
+    /* Pasek z danymi zaznaczonego zadania. Na dotyku zastępuje dymek `title`,
+       którego nie da się wywołać bez kursora — pierwsze stuknięcie w belkę
+       wypisuje tu daty i powiązania, dopiero drugie otwiera formularz. */
+    .gantt-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+                  border: 1px solid var(--marka); border-radius: 10px;
+                  background: var(--accent-soft); padding: 10px 12px; margin-bottom: 10px; }
+    .gi-tytul { font-weight: 600; color: var(--heading); font-size: 14px; }
+    .gi-dane { font-size: 12.5px; color: var(--accent-strong); flex: 1; min-width: 0; }
+    .gi-otworz { min-height: 36px; padding: 0 14px; flex: none; }
+    .gantt-belka.zaznaczona { outline: 2px solid var(--heading); outline-offset: 2px; }
+
     /* Weekendy — najlżejszy możliwy ślad. Mają dawać rytm tygodnia, a nie
        konkurować z belkami: gdy pas jest wyraźny, oko czyta go jako zdarzenie,
        a nie jako tło. */

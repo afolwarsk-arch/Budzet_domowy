@@ -388,6 +388,7 @@ function rysujPlan() {
   const rzedy = new Map(wiersze.map((w, i) => [w.z.id, i]));
 
   box().innerHTML = naglowekPlanu() + `
+    <div class="gantt-info" id="gantt-info" hidden></div>
     <div class="gantt${planSzerokieNazwy ? ' szerokie-nazwy' : ''}" style="--szer:${szer}px">
       <!-- Miesiące w osobnej warstwie, żeby dało się ją przesuwać razem
            z wykresem: sama oś ma stałą pozycję i ucina to, co poza ekranem. -->
@@ -636,6 +637,60 @@ function strzalkiZaleznosci(wiersze, rzedy, od, px, szer) {
 // chwyt za krawędź zmienia jeden koniec. Zapisujemy dopiero po puszczeniu —
 // żądanie na każdy piksel ruchu zalałoby serwer i migało listą.
 let ostatnioCiagnieto = 0;
+let zaznaczonaBelka = null;
+let czasZaznaczenia = 0;
+
+// Pasek nad wykresem z danymi zaznaczonego zadania. Zastępuje dymek `title`,
+// którego na dotyku nie da się wywołać, i mówi to samo co najechanie myszą:
+// co to za zadanie, od kiedy do kiedy, kto je robi i na co czeka.
+function zaznaczBelke(id) {
+  zaznaczonaBelka = id;
+  czasZaznaczenia = Date.now();
+  document.querySelectorAll('.gantt-belka.zaznaczona')
+    .forEach((e) => e.classList.remove('zaznaczona'));
+  document.querySelector(`[data-belka="${id}"]`)?.classList.add('zaznaczona');
+  pokazPasekInfo(id);
+}
+
+function odznaczBelke() {
+  zaznaczonaBelka = null;
+  document.querySelectorAll('.gantt-belka.zaznaczona')
+    .forEach((e) => e.classList.remove('zaznaczona'));
+  const pasek = document.getElementById('gantt-info');
+  if (pasek) pasek.hidden = true;
+}
+
+function pokazPasekInfo(id) {
+  const pasek = document.getElementById('gantt-info');
+  const z = zadania.find((x) => x.id === id);
+  if (!pasek || !z) return;
+  const zakresZ = zakresZadania(z);
+  const czesci = [];
+  if (zakresZ) {
+    const jeden = zakresZ.start.getTime() === zakresZ.koniec.getTime();
+    czesci.push(jeden ? dataPl(z.termin || z.data_start)
+      : `${dataKrotka(zakresZ.start)} → ${dataKrotka(zakresZ.koniec)}`);
+  }
+  const wykonawca = (household?.members || []).find((m) => m.id === z.wykonawca_user_id);
+  if (wykonawca) czesci.push(wykonawca.display_name || wykonawca.name);
+  if (z.kamien_milowy) czesci.push('kamień milowy');
+  if (z.powtarzaj) czesci.push(opisPowtarzania(z));
+  // Na co czeka — to najczęstsze pytanie przy patrzeniu na belkę w planie.
+  const czekaNa = zaleznosci.filter((x) => x.zadanie_id === id)
+    .map((x) => zadania.find((y) => y.id === x.poprzednik_id)?.tytul)
+    .filter(Boolean);
+  if (czekaNa.length) czesci.push('po: ' + czekaNa.join(', '));
+
+  pasek.hidden = false;
+  pasek.innerHTML = `
+    <div class="gi-tytul">${esc(z.tytul)}</div>
+    <div class="gi-dane">${esc(czesci.join(' · '))}</div>
+    <button class="btn btn-outline gi-otworz" type="button" data-otworz-info="${id}">Otwórz</button>`;
+  pasek.querySelector('[data-otworz-info]').onclick = (e) => {
+    e.stopPropagation();
+    otworzSzczegoly(id);
+  };
+}
 
 // GRANICE WYNIKAJĄCE Z ZALEŻNOŚCI. Skoro „B po A", to B nie ma prawa zacząć
 // się przed końcem A — a skoro „C po B", to B nie ma prawa skończyć się po
@@ -937,7 +992,20 @@ function podepnijBelki() {
     }
 
     const b = ev.target.closest('[data-otworz]');
-    if (b) otworzSzczegoly(Number(b.dataset.otworz));
+    if (!b) { odznaczBelke(); return; }
+    const id = Number(b.dataset.otworz);
+
+    // PIERWSZE stuknięcie POKAZUJE, drugie OTWIERA. Na telefonie nie ma
+    // najeżdżania kursorem, więc jedynym sposobem sprawdzenia, co to za belka,
+    // było otwarcie formularza i wyjście z niego. Teraz stuknięcie zaznacza
+    // zadanie i wypisuje jego dane nad wykresem, a formularz wymaga potwierdzenia
+    // drugim stuknięciem.
+    const teraz = Date.now();
+    if (zaznaczonaBelka === id && teraz - czasZaznaczenia < 3000) {
+      otworzSzczegoly(id);
+      return;
+    }
+    zaznaczBelke(id);
   };
   // Widok startuje na dzisiejszym dniu, a nie na początku osi: plan zwykle
   // sięga wstecz, a interesuje to, co teraz i dalej.
