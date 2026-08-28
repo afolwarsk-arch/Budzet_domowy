@@ -66,12 +66,17 @@
 
     .gantt-osie { position: relative; height: 26px; margin-left: var(--nazwa);
                   border-bottom: 1px solid var(--border); overflow: hidden; }
+    /* Warstwa przesuwana razem z wykresem — patrz `zsynchronizujOs`. */
+    .gantt-osie-tresc { position: relative; height: 100%; will-change: transform; }
     .gantt-miesiac { position: absolute; top: 0; height: 26px; padding-left: 6px;
                      font-size: 11px; color: var(--muted); line-height: 26px;
                      border-left: 1px solid var(--border-soft); white-space: nowrap; }
 
+    /* `cursor: grab` mówi wprost, że tło da się chwycić i przeciągnąć w bok —
+       bez tego na komputerze nie było żadnej podpowiedzi, jak przewinąć oś. */
     .gantt-body { position: relative; overflow-x: auto; overflow-y: hidden;
-                  -webkit-overflow-scrolling: touch; }
+                  -webkit-overflow-scrolling: touch; cursor: grab; }
+    .gantt-body.przesuwany { cursor: grabbing; user-select: none; }
     .gantt-wiersz { display: flex; align-items: center; min-height: 38px;
                     border-bottom: 1px solid var(--border-soft); }
     .gantt-wiersz:last-child { border-bottom: none; }

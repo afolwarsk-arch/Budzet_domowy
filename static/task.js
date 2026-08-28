@@ -389,7 +389,10 @@ function rysujPlan() {
 
   box().innerHTML = naglowekPlanu() + `
     <div class="gantt${planSzerokieNazwy ? ' szerokie-nazwy' : ''}" style="--szer:${szer}px">
-      <div class="gantt-osie">${osCzasu(od, dni, px)}</div>
+      <!-- Miesiące w osobnej warstwie, żeby dało się ją przesuwać razem
+           z wykresem: sama oś ma stałą pozycję i ucina to, co poza ekranem. -->
+      <div class="gantt-osie"><div class="gantt-osie-tresc" style="width:${szer}px">${
+        osCzasu(od, dni, px)}</div></div>
       <div class="gantt-body">
         ${pasyWeekendow(od, dni, px)}
         ${strzalkiZaleznosci(wiersze, rzedy, od, px, szer)}
@@ -864,9 +867,48 @@ function przeciaganieBelek(g) {
   g.addEventListener('pointercancel', () => { if (stan) { stan.belka.classList.remove('ciagniona'); stan = null; rysujPlan(); } });
 }
 
+// Oś z miesiącami musi jechać RAZEM z wykresem. Stoi w osobnym pojemniku
+// (żeby nie przewijała się w pionie razem z wierszami), więc jej przesunięcie
+// trzeba dowiązać ręcznie — inaczej przy przewinięciu do listopada podpisy
+// wciąż pokazują sierpień i wykres kłamie.
+function zsynchronizujOs(g) {
+  const body = g.querySelector('.gantt-body');
+  const tresc = g.querySelector('.gantt-osie-tresc');
+  if (!body || !tresc) return;
+  const przesun = () => { tresc.style.transform = `translateX(${-body.scrollLeft}px)`; };
+  body.addEventListener('scroll', przesun, { passive: true });
+  przesun();
+}
+
+// Chwytanie TŁA i przeciąganie w bok. Na komputerze wykres nie miał żadnego
+// oczywistego sposobu przewijania: pasek jest na dole długiej strony, a kółko
+// myszy przewija stronę, nie oś. Teraz działa jak mapa.
+function przeciaganieTla(g) {
+  const body = g.querySelector('.gantt-body');
+  if (!body) return;
+  let start = null;
+
+  body.addEventListener('pointerdown', (ev) => {
+    // Belki, uchwyty i łączniki mają własną obsługę — tło to wszystko poza nimi.
+    if (ev.target.closest('[data-belka], [data-lacznik], [data-zal]')) return;
+    start = { x: ev.clientX, scroll: body.scrollLeft };
+    body.classList.add('przesuwany');
+  });
+  body.addEventListener('pointermove', (ev) => {
+    if (!start) return;
+    body.scrollLeft = start.scroll - (ev.clientX - start.x);
+  });
+  const koniec = () => { start = null; body.classList.remove('przesuwany'); };
+  body.addEventListener('pointerup', koniec);
+  body.addEventListener('pointerleave', koniec);
+  body.addEventListener('pointercancel', koniec);
+}
+
 function podepnijBelki() {
   const g = document.querySelector('.gantt');
   if (!g) return;
+  zsynchronizujOs(g);
+  przeciaganieTla(g);
   przeciaganieBelek(g);
   g.onclick = async (ev) => {
     // Kliknięcie tuż po przeciągnięciu nie ma otwierać szczegółów — przeglądarka
