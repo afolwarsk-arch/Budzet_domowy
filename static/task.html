@@ -146,7 +146,16 @@
     .gantt-body { position: relative; overflow-x: auto; overflow-y: hidden;
                   -webkit-overflow-scrolling: touch; cursor: grab; }
     .gantt-body.przesuwany { cursor: grabbing; user-select: none; }
+    /* `min-width: max-content` JEST WARUNKIEM DZIAŁANIA PRZYKLEJONEJ KOLUMNY.
+       Element `sticky` klei się wyłącznie w obrębie swojego pudełka
+       nadrzędnego. Bez tego wiersz miał szerokość ekranu (treść z niego
+       wystawała), więc po przewinięciu osi o więcej niż szerokość telefonu
+       pudełko wiersza wyjeżdżało z widoku i zabierało nazwę ze sobą — kolumna
+       chowała się za lewą krawędzią. Zmierzone: przewinięcie o 483 px
+       przesuwało nazwę z 21 px na −347 px. Teraz wiersz jest tak szeroki jak
+       cały wykres, więc nazwa ma się gdzie kleić przez całą długość osi. */
     .gantt-wiersz { display: flex; align-items: center; min-height: 38px;
+                    min-width: max-content;
                     border-bottom: 1px solid var(--border-soft); }
     .gantt-wiersz:last-child { border-bottom: none; }
     .gantt-nazwa { position: sticky; left: 0; z-index: 2; flex: none;
