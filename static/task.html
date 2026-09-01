@@ -251,6 +251,26 @@
          rozwija ją na chwilę, gdy trzeba coś doczytać. */
       .gantt { --nazwa: 104px; }
     }
+    /* Panel przedsięwzięć. Kafelki zamiast listy, bo projekt ma trzy liczby
+       naraz (postęp, termin, zaległości) i w wierszu listy nie mieszczą się
+       tak, żeby dało się je porównać między projektami. */
+    .projekty { display: grid; gap: 10px; margin-bottom: 16px;
+                grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+    .projekt-kafel { text-align: left; font: inherit; cursor: pointer;
+                     border: 1px solid var(--border); border-radius: 12px;
+                     background: var(--surface); padding: 12px 14px; color: var(--text); }
+    .projekt-kafel:hover { border-color: var(--marka); }
+    .pk-gora { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+    .pk-nazwa { font-weight: 600; color: var(--heading); flex: 1; min-width: 0;
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pk-termin { font-size: 12px; color: var(--muted); flex: none; }
+    .pk-pasek { height: 6px; border-radius: 3px; background: var(--surface-3);
+                overflow: hidden; margin-bottom: 6px; }
+    .pk-pasek i { display: block; height: 100%; background: var(--marka); }
+    .pk-dol { display: flex; justify-content: space-between; gap: 8px;
+              font-size: 12px; color: var(--muted); }
+    .pk-spoznione { color: var(--danger); font-weight: 600; }
+
     /* DRZEWO Z LINIAMI. Same wcięcia nie wystarczały: po dwóch poziomach lista
        wyglądała płasko i nie było widać, co jest częścią czego. Pionowa linia
        przy grupie dzieci pokazuje przynależność bez liczenia pikseli. */

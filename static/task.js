@@ -1098,6 +1098,7 @@ function rysujLista() {
           aria-pressed="${k === zakres}">${l}</button>`).join('')}
     </div>
     ${okruszki()}
+    ${korzen == null ? panelProjektow() : ''}
     ${aktualny ? nagKorzenia(aktualny) : ''}
     <!-- Pole mówi WPROST, gdzie trafi wpis. Wcześniej wyglądało tak samo
          niezależnie od tego, czy dodaje zadanie główne, czy krok w środku
@@ -1126,6 +1127,14 @@ function rysujLista() {
     const b = ev.target.closest('[data-okr]');
     if (!b) return;
     korzen = b.dataset.okr ? Number(b.dataset.okr) : null;
+    nowyId = null;
+    rysuj();
+  };
+  const panel = document.querySelector('.projekty');
+  if (panel) panel.onclick = (ev) => {
+    const b = ev.target.closest('[data-projekt]');
+    if (!b) return;
+    korzen = Number(b.dataset.projekt);   // wejście w projekt, jak strzałką
     nowyId = null;
     rysuj();
   };
@@ -1166,6 +1175,54 @@ function rysujLista() {
 // tylko lewy odstęp i po dwóch poziomach wszystko wyglądało jak jedna lista —
 // nie było widać, co jest częścią czego. Teraz dzieci siedzą w osobnym
 // pojemniku z pionową linią, więc przynależność widać bez liczenia pikseli.
+// Przegląd przedsięwzięć na górze listy. Bez niego projekt jest jednym
+// z wielu wierszy i ginie między pojedynczymi sprawami, a najczęstsze pytanie
+// brzmi „jak stoi remont", nie „co jest na liście".
+//
+// Pokazujemy tylko na najwyższym poziomie: w środku projektu byłby powtórzeniem
+// tego, w czym użytkownik właśnie siedzi.
+function panelProjektow() {
+  const projekty = zadania.filter((z) => z.projekt && z.parent_id == null);
+  if (!projekty.length) return '';
+  const dzis = dzisIso();
+  return `
+    <div class="projekty">
+      ${projekty.map((p) => {
+        const post = postep(p);
+        const proc = post.razem ? Math.round((post.gotowe / post.razem) * 100) : 0;
+        // Ile kroków w środku jest już po terminie — to jedyna liczba, która
+        // mówi, czy projekt wymaga uwagi DZIŚ, a nie kiedyś.
+        const spoznione = zadania.filter((z) => z.status === 'otwarte' && z.termin
+          && String(z.termin).slice(0, 10) < dzis && naleziDo(z, p.id)).length;
+        return `
+          <button class="projekt-kafel" type="button" data-projekt="${p.id}">
+            <div class="pk-gora">
+              <span class="pk-nazwa">${esc(p.tytul)}</span>
+              ${p.termin ? `<span class="pk-termin">${dataPl(p.termin)}</span>` : ''}
+            </div>
+            <div class="pk-pasek"><i style="width:${proc}%"></i></div>
+            <div class="pk-dol">
+              <span>${post.gotowe} z ${post.razem} · ${proc}%</span>
+              ${spoznione ? `<span class="pk-spoznione">${spoznione} po terminie</span>` : ''}
+            </div>
+          </button>`;
+      }).join('')}
+    </div>`;
+}
+
+// Czy zadanie leży w poddrzewie danego projektu.
+function naleziDo(z, projektId) {
+  const wg = new Map(zadania.map((x) => [x.id, x]));
+  let x = z;
+  const widziane = new Set();
+  while (x && !widziane.has(x.id)) {
+    if (x.id === projektId) return true;
+    widziane.add(x.id);
+    x = x.parent_id != null ? wg.get(x.parent_id) : null;
+  }
+  return false;
+}
+
 function wiersz(w, poziom) {
   const p = postep(w);
   const nast = p.razem && w.status !== 'zrobione' ? nastepnyKrok(w) : {};
