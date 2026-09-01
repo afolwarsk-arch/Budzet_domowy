@@ -74,11 +74,12 @@ def _dane(d: dict, nowe: bool) -> dict:
 
 @router.get("/zadania")
 def lista_zadan(zakres: str = "dzis", osoba: int | None = None,
+                strefa: int | None = None,
                 current_user: dict = Depends(get_current_user)):
     if zakres not in ("dzis", "nadchodzace", "wszystkie", "zrobione"):
         raise HTTPException(400, "Nieznany zakres")
     return {"zadania": task_db.lista(_hid(current_user), current_user["user_id"],
-                                     zakres, osoba)}
+                                     zakres, osoba, strefa)}
 
 
 @router.get("/zadania/{zadanie_id}/komentarze")
@@ -143,9 +144,68 @@ def plan_zadan(zrobione: bool = False, current_user: dict = Depends(get_current_
 
 
 @router.get("/drzewo")
-def drzewo(current_user: dict = Depends(get_current_user)):
+def drzewo(strefa: int | None = None, current_user: dict = Depends(get_current_user)):
     """Chuda lista otwartych zadań — wejście dla wybieraka w szybkim dodawaniu."""
-    return {"zadania": task_db.drzewo_do_wyboru(_hid(current_user), current_user["user_id"])}
+    return {"zadania": task_db.drzewo_do_wyboru(_hid(current_user), current_user["user_id"],
+                                                strefa)}
+
+
+# ── strefy ──────────────────────────────────────────────────────────────────
+
+@router.get("/strefy")
+def lista_stref(current_user: dict = Depends(get_current_user)):
+    """Strefy gospodarstwa. Przy pierwszym wejściu zakłada zestaw startowy —
+    pusty przełącznik nie tłumaczy sam siebie, a cztery przykładowe nazwy
+    pokazują, do czego to służy, i zmienia się je jednym stuknięciem."""
+    hid, uid = _hid(current_user), current_user["user_id"]
+    zalozone = task_db.zaloz_strefy_startowe(hid, uid)
+    return {"strefy": task_db.strefy(hid, uid), "zalozone_teraz": zalozone}
+
+
+@router.post("/strefy", status_code=201)
+def nowa_strefa(dane: dict, current_user: dict = Depends(get_current_user)):
+    s = task_db.dodaj_strefe(_hid(current_user), current_user["user_id"], dane.get("nazwa"))
+    if not s:
+        raise HTTPException(400, "Podaj nazwę strefy.")
+    return s
+
+
+@router.put("/strefy/{strefa_id}")
+def zmien_strefe(strefa_id: int, dane: dict,
+                 current_user: dict = Depends(get_current_user)):
+    if not task_db.zmien_nazwe_strefy(_hid(current_user), strefa_id, dane.get("nazwa")):
+        raise HTTPException(400, "Nie udało się zmienić nazwy.")
+    return {"ok": True}
+
+
+@router.delete("/strefy/{strefa_id}")
+def skasuj_strefe(strefa_id: int, current_user: dict = Depends(get_current_user)):
+    """Kasuje strefę. Zadania wracają do „bez strefy" — szuflada znika,
+    zawartość zostaje."""
+    if not task_db.usun_strefe(_hid(current_user), strefa_id):
+        raise HTTPException(404, "Nie ma takiej strefy")
+    return {"ok": True}
+
+
+@router.put("/strefy/{strefa_id}/moja")
+def moja_strefa(strefa_id: int, dane: dict,
+                current_user: dict = Depends(get_current_user)):
+    """Włącza albo wyłącza strefę DLA TEJ OSOBY. Wyłączona przestaje istnieć
+    w jej widoku — to nie tajemnica, tylko cudza część życia."""
+    if not task_db.ustaw_moja_strefe(_hid(current_user), current_user["user_id"],
+                                     strefa_id, bool(dane.get("moja"))):
+        raise HTTPException(404, "Nie ma takiej strefy")
+    return {"ok": True}
+
+
+@router.put("/zadania/{zadanie_id}/strefa")
+def strefa_zadania(zadanie_id: int, dane: dict,
+                   current_user: dict = Depends(get_current_user)):
+    """Przypisuje zadanie do strefy razem z całym poddrzewem."""
+    if not task_db.przypisz_strefe(_hid(current_user), current_user["user_id"],
+                                   zadanie_id, dane.get("strefa_id")):
+        raise HTTPException(404, "Nie ma takiego zadania albo strefy")
+    return {"ok": True}
 
 
 @router.post("/rozumiem")

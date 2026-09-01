@@ -131,12 +131,21 @@ function sciezkaDo(id) {
   return droga;
 }
 
+// Droga powrotna. Wcześniej był to szary ciąg tekstu „Zadania › Urlop Malaga
+// 2026" — Adam napisał wprost, że w życiu by nie zgadł, że to guziki. Miał
+// rację dwa razy: nic w tym nie wyglądało na klikalne, a ostatni człon i tak
+// powtarzał nazwę z karty tuż poniżej.
+//
+// Teraz to obwiedzione przyciski ze strzałką powrotu, i BEZ bieżącego poziomu
+// — jedyne, co tu jest, prowadzi gdzieś indziej.
 function okruszki() {
   if (korzen == null) return '';
   const droga = sciezkaDo(korzen);
+  const wyzej = [{ id: '', tytul: 'Wszystkie zadania' },
+                 ...droga.slice(0, -1).map((z) => ({ id: z.id, tytul: z.tytul }))];
   return `<nav class="okruszki">
-    <button type="button" data-okr="">Zadania</button>
-    ${droga.map((z) => `<span>›</span><button type="button" data-okr="${z.id}">${esc(z.tytul)}</button>`).join('')}
+    ${wyzej.map((z, i) => `<button type="button" class="okruch" data-okr="${z.id}">${
+      i === 0 ? '<span class="okruch-strzal">‹</span>' : ''}${esc(z.tytul)}</button>`).join('')}
   </nav>`;
 }
 
@@ -419,8 +428,8 @@ function podepnijPtaszki() {
 // 360 px zostają 332 — dwa piksele zapasu znika przy innym kroju albo
 // powiększonej czcionce systemowej i pasek łamie się na dwa rzędy (84 px
 // zamiast 38). Ze skróconą etykietą jeden rząd trzyma się do 320 px.
-const ZAKRESY = [['dzis', 'Dziś'], ['nadchodzace', 'Wkrótce'],
-                 ['wszystkie', 'Wszystkie'], ['zrobione', 'Zrobione']];
+const ZAKRESY = [['wszystkie', 'Wszystkie'], ['dzis', 'Dziś'],
+                 ['nadchodzace', 'Wkrótce'], ['zrobione', 'Zrobione']];
 
 const OKRESY = [['dzien', 'codziennie'], ['tydzien', 'co tydzień'],
                 ['miesiac', 'co miesiąc'], ['rok', 'co rok']];

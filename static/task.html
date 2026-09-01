@@ -401,13 +401,17 @@
     .pusto { color: var(--muted); font-size: 13px; text-align: center; padding: 28px 12px; }
 
     /* ── wejście w zadanie: okruszki, karta bieżącego zadania, strzałka ── */
-    .okruszki { display: flex; flex-wrap: wrap; align-items: center; gap: 2px;
-                margin-bottom: 12px; font-size: 12.5px; }
-    .okruszki button { background: none; border: none; font: inherit; font-size: 12.5px;
-                        color: var(--muted); cursor: pointer; padding: 10px 3px; min-height: 44px; }
-    .okruszki button:hover { color: var(--marka); }
-    .okruszki button:last-child { color: var(--heading); font-weight: 600; pointer-events: none; }
-    .okruszki span { color: var(--border); padding: 0 1px; }
+    /* Droga powrotna jako PRZYCISKI, nie szary tekst z „›". Ciąg okruszków
+       czyta się jak nagłówek i nic w nim nie zapowiada, że da się w to
+       stuknąć — obwódka i strzałka mówią to bez tłumaczenia. */
+    .okruszki { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+                margin-bottom: 12px; }
+    .okruch { display: inline-flex; align-items: center; gap: 5px; min-height: 34px;
+              padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
+              background: var(--surface); font: inherit; font-size: 12.5px;
+              color: var(--muted); cursor: pointer; }
+    .okruch:hover { border-color: var(--marka); color: var(--marka); }
+    .okruch-strzal { font-size: 15px; line-height: 1; margin-left: -2px; }
 
     .zad-korzen { display: flex; align-items: center; justify-content: space-between; gap: 10px;
                   border: 1px solid var(--border); border-radius: 12px; background: var(--surface);

@@ -117,13 +117,63 @@ def init_task_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS task_komentarze_zadanie "
                     "ON task_komentarze (zadanie_id, created_at)")
 
+        # ── strefy ─────────────────────────────────────────────────────────
+        # Poziom NAD projektami: „Praca", „Dom", „Własna działalność",
+        # „Studia". Projekt należy do strefy, luźne wrzutki też.
+        #
+        # DLACZEGO NIE ZWYKŁY PROJEKT-KORZEŃ: strefy się nie kończą. „Praca"
+        # nigdy nie będzie zrobiona, a jako projekt dostałaby licznik postępu
+        # („3 z 40") i belkę na wykresie Gantta ciągnącą się w nieskończoność.
+        # Projekt to praca z końcem, strefa to część życia.
+        cur.execute("""CREATE TABLE IF NOT EXISTS task_strefy (
+            id           SERIAL PRIMARY KEY,
+            household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            nazwa        TEXT NOT NULL,
+            kolejnosc    INTEGER NOT NULL DEFAULT 0,
+            created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )""")
+        # Kto z której strefy korzysta. Nie każdy domownik studiuje i nie każdy
+        # prowadzi firmę — bez tej tabeli cudze sprawy zawodowe zaśmiecałyby
+        # widok osobie, której w ogóle nie dotyczą.
+        cur.execute("""CREATE TABLE IF NOT EXISTS task_strefy_osob (
+            strefa_id INTEGER NOT NULL REFERENCES task_strefy(id) ON DELETE CASCADE,
+            user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            PRIMARY KEY (strefa_id, user_id)
+        )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS task_strefy_osob_user "
+                    "ON task_strefy_osob (user_id)")
+        # NULL znaczy „bez strefy" i jest widoczne dla wszystkich. To jednocześnie
+        # ścieżka migracji: wszystko, co powstało przed strefami, zostaje na
+        # wierzchu, zamiast zniknąć komuś z oczu przy wdrożeniu.
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS "
+                    "strefa_id INTEGER REFERENCES task_strefy(id) ON DELETE SET NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS task_zadania_strefa "
+                    "ON task_zadania (household_id, strefa_id)")
+
 
 # Warunek widoczności dokładany do KAŻDEGO odczytu. Zadanie prywatne nie
 # istnieje dla nikogo poza właścicielem — także w postępie zadania nadrzędnego.
-_WIDOCZNE = "household_id = %s AND (prywatne_dla IS NULL OR prywatne_dla = %s)"
+# Zadanie ze strefy, której ktoś nie używa, też dla niego nie istnieje: to nie
+# tajemnica, tylko cudza część życia, i ma nie zaśmiecać widoku. Włączenie
+# strefy przywraca je natychmiast, więc nic nie ginie bezpowrotnie.
+_WIDOCZNE = ("household_id = %s AND (prywatne_dla IS NULL OR prywatne_dla = %s) "
+             "AND (strefa_id IS NULL OR strefa_id IN "
+             "(SELECT strefa_id FROM task_strefy_osob WHERE user_id = %s))")
+
+
+def _p(household_id, user_id, *reszta):
+    """Parametry pod `_WIDOCZNE`, w jego kolejności.
+
+    `user_id` wchodzi DWA razy — raz do prywatności, raz do stref — a psycopg2
+    podstawia parametry pozycyjnie. Osobna funkcja zamiast powtarzania krotki
+    przy każdym zapytaniu, bo pomyłka w liczbie parametrów wychodzi dopiero
+    w czasie działania, i to komunikatem, który nie mówi, gdzie jej szukać.
+    """
+    return (household_id, user_id, user_id, *reszta)
+
 
 _POLA = """id, parent_id, tytul, opis, termin, pora, data_start, projekt,
-           powtarzaj, powtarzaj_co,
+           powtarzaj, powtarzaj_co, strefa_id,
            wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
            status, zrobione_at, kolejnosc, utworzyl"""
 
@@ -246,7 +296,7 @@ def postep_poddrzew(household_id: int, user_id: int) -> dict:
     with get_db() as cur:
         cur.execute(
             f"SELECT id, parent_id, status FROM task_zadania WHERE {_WIDOCZNE}",
-            (household_id, user_id))
+            _p(household_id, user_id))
         wiersze = [(r["id"], r["parent_id"], r["status"]) for r in cur.fetchall()]
 
     dzieci: dict[int, list[int]] = {}
@@ -281,14 +331,22 @@ def pary_gospodarstwa(household_id):
         return [(r["id"], r["parent_id"]) for r in cur.fetchall()]
 
 
-def lista(household_id, user_id, zakres="dzis", osoba_user_id=None):
+def lista(household_id, user_id, zakres="dzis", osoba_user_id=None, strefa=None):
     """Płaska lista zadań. Drzewo składa front — patrz nagłówek pliku.
 
     UWAGA: zwracamy też przodków zadań pasujących do zakresu, inaczej krok
     z terminem na dziś wisiałby na liście bez rodzica i bez kontekstu.
+
+    `strefa`: None to wszystkie strefy, do których mam dostęp; liczba zawęża
+    do jednej. Zadania „bez strefy" (NULL) przy zawężeniu NIE wchodzą — należą
+    do wszystkiego i do niczego, a mieszanie ich w każdy widok odbierałoby
+    strefom sens.
     """
     warunki = [_WIDOCZNE]
-    p = [household_id, user_id]
+    p = list(_p(household_id, user_id))
+    if strefa:
+        warunki.append("strefa_id = %s")
+        p.append(strefa)
     if zakres == "dzis":
         warunki.append("status = 'otwarte' AND termin IS NOT NULL AND termin <= CURRENT_DATE")
     elif zakres == "nadchodzace":
@@ -311,7 +369,7 @@ def lista(household_id, user_id, zakres="dzis", osoba_user_id=None):
         brakujacy = {w["parent_id"] for w in wiersze if w["parent_id"] and w["parent_id"] not in znane}
         while brakujacy:
             cur.execute(f"SELECT {_POLA} FROM task_zadania WHERE {_WIDOCZNE} "
-                        "AND id = ANY(%s)", (household_id, user_id, list(brakujacy)))
+                        "AND id = ANY(%s)", _p(household_id, user_id, list(brakujacy)))
             dorzuc = [dict(r) for r in cur.fetchall()]
             if not dorzuc:
                 break
@@ -321,7 +379,7 @@ def lista(household_id, user_id, zakres="dzis", osoba_user_id=None):
         return _z_postepem(wiersze, household_id, user_id)
 
 
-def plan(household_id, user_id, pokaz_zrobione=False):
+def plan(household_id, user_id, pokaz_zrobione=False, strefa=None):
     """Zadania z rozpiętością w czasie — wejście dla wykresu Gantta.
 
     BIERZEMY WSZYSTKO, CO MA JAKĄKOLWIEK DATĘ, a nie tylko projekty: remont
@@ -333,7 +391,10 @@ def plan(household_id, user_id, pokaz_zrobione=False):
     mieć nad sobą swój projekt, inaczej belka wisi bez podpisu, do czego należy.
     """
     warunki = [_WIDOCZNE, "(data_start IS NOT NULL OR termin IS NOT NULL)"]
-    p = [household_id, user_id]
+    p = list(_p(household_id, user_id))
+    if strefa:
+        warunki.append("strefa_id = %s")
+        p.append(strefa)
     if not pokaz_zrobione:
         warunki.append("status = 'otwarte'")
     with get_db() as cur:
@@ -344,7 +405,7 @@ def plan(household_id, user_id, pokaz_zrobione=False):
         brakujacy = {w["parent_id"] for w in wiersze if w["parent_id"] and w["parent_id"] not in znane}
         while brakujacy:
             cur.execute(f"SELECT {_POLA} FROM task_zadania WHERE {_WIDOCZNE} "
-                        "AND id = ANY(%s)", (household_id, user_id, list(brakujacy)))
+                        "AND id = ANY(%s)", _p(household_id, user_id, list(brakujacy)))
             dorzuc = [dict(r) for r in cur.fetchall()]
             if not dorzuc:
                 break
@@ -354,7 +415,134 @@ def plan(household_id, user_id, pokaz_zrobione=False):
         return _z_postepem(wiersze, household_id, user_id)
 
 
-def drzewo_do_wyboru(household_id, user_id) -> list[dict]:
+# ── strefy ──────────────────────────────────────────────────────────────────
+
+# Nazwy zaproponowane przy pierwszym wejściu. Zakładamy je RAZ i tylko wtedy,
+# gdy gospodarstwo nie ma jeszcze żadnej strefy — potem to już wyłącznie
+# własność użytkownika: może je zmienić, skasować i dodać swoje.
+STREFY_STARTOWE = ("Praca", "Dom", "Własna działalność", "Studia i nauka")
+
+
+def strefy(household_id, user_id) -> list[dict]:
+    """Strefy gospodarstwa ze znacznikiem, czy TA osoba z nich korzysta."""
+    with get_db() as cur:
+        cur.execute(
+            "SELECT s.id, s.nazwa, s.kolejnosc, "
+            "       (o.user_id IS NOT NULL) AS moja, "
+            "       (SELECT COUNT(*) FROM task_zadania z "
+            "        WHERE z.strefa_id = s.id AND z.status = 'otwarte') AS otwartych "
+            "FROM task_strefy s "
+            "LEFT JOIN task_strefy_osob o ON o.strefa_id = s.id AND o.user_id = %s "
+            "WHERE s.household_id = %s ORDER BY s.kolejnosc, s.id",
+            (user_id, household_id))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def zaloz_strefy_startowe(household_id, user_id) -> bool:
+    """Zakłada strefy startowe, jeśli gospodarstwo nie ma jeszcze żadnej.
+
+    Wszystkie włączone dla zakładającego — łatwiej wyłączyć niepotrzebną niż
+    domyślić się, że przełącznik jest pusty, bo nikt niczego nie zaznaczył.
+    """
+    with get_db() as cur:
+        cur.execute("SELECT 1 FROM task_strefy WHERE household_id = %s LIMIT 1",
+                    (household_id,))
+        if cur.fetchone():
+            return False
+        for i, nazwa in enumerate(STREFY_STARTOWE):
+            cur.execute("INSERT INTO task_strefy (household_id, nazwa, kolejnosc) "
+                        "VALUES (%s,%s,%s) RETURNING id", (household_id, nazwa, i))
+            cur.execute("INSERT INTO task_strefy_osob (strefa_id, user_id) VALUES (%s,%s)",
+                        (cur.fetchone()["id"], user_id))
+        return True
+
+
+def dodaj_strefe(household_id, user_id, nazwa: str) -> dict | None:
+    nazwa = (nazwa or "").strip()
+    if not nazwa:
+        return None
+    with get_db() as cur:
+        cur.execute("SELECT COALESCE(MAX(kolejnosc), -1) + 1 AS n FROM task_strefy "
+                    "WHERE household_id = %s", (household_id,))
+        cur.execute("INSERT INTO task_strefy (household_id, nazwa, kolejnosc) "
+                    "VALUES (%s,%s,(SELECT COALESCE(MAX(kolejnosc), -1) + 1 "
+                    "FROM task_strefy WHERE household_id = %s)) RETURNING id, nazwa",
+                    (household_id, nazwa[:60], household_id))
+        s = dict(cur.fetchone())
+        # Kto zakłada strefę, ten jej używa — inaczej znikałaby mu z oczu
+        # w chwili utworzenia.
+        cur.execute("INSERT INTO task_strefy_osob (strefa_id, user_id) VALUES (%s,%s) "
+                    "ON CONFLICT DO NOTHING", (s["id"], user_id))
+        s["moja"] = True
+        return s
+
+
+def zmien_nazwe_strefy(household_id, strefa_id, nazwa: str) -> bool:
+    nazwa = (nazwa or "").strip()
+    if not nazwa:
+        return False
+    with get_db() as cur:
+        cur.execute("UPDATE task_strefy SET nazwa = %s WHERE id = %s AND household_id = %s",
+                    (nazwa[:60], strefa_id, household_id))
+        return cur.rowcount > 0
+
+
+def usun_strefe(household_id, strefa_id) -> bool:
+    """Kasuje strefę. Zadania NIE giną — wracają do „bez strefy".
+
+    `ON DELETE SET NULL` przy `strefa_id` robi to samo, ale zapisane wprost,
+    bo to jest właśnie ta obietnica: skasowanie szuflady nie kasuje jej
+    zawartości.
+    """
+    with get_db() as cur:
+        cur.execute("DELETE FROM task_strefy WHERE id = %s AND household_id = %s",
+                    (strefa_id, household_id))
+        return cur.rowcount > 0
+
+
+def ustaw_moja_strefe(household_id, user_id, strefa_id, moja: bool) -> bool:
+    with get_db() as cur:
+        cur.execute("SELECT 1 FROM task_strefy WHERE id = %s AND household_id = %s",
+                    (strefa_id, household_id))
+        if not cur.fetchone():
+            return False
+        if moja:
+            cur.execute("INSERT INTO task_strefy_osob (strefa_id, user_id) VALUES (%s,%s) "
+                        "ON CONFLICT DO NOTHING", (strefa_id, user_id))
+        else:
+            cur.execute("DELETE FROM task_strefy_osob WHERE strefa_id = %s AND user_id = %s",
+                        (strefa_id, user_id))
+        return True
+
+
+def przypisz_strefe(household_id, user_id, zadanie_id, strefa_id) -> bool:
+    """Ustawia strefę zadania RAZEM Z CAŁYM PODDRZEWEM.
+
+    Bez kaskady przeniesienie projektu do innej strefy zostawiałoby jego kroki
+    w starej — a że lista filtruje po strefie, projekt pokazywałby się pusty
+    w nowym miejscu i osierocone kroki w starym. Strefa jest cechą całej
+    gałęzi, nie pojedynczego wiersza.
+    """
+    if not pobierz(household_id, user_id, zadanie_id):
+        return False
+    with get_db() as cur:
+        if strefa_id:
+            cur.execute("SELECT 1 FROM task_strefy WHERE id = %s AND household_id = %s",
+                        (strefa_id, household_id))
+            if not cur.fetchone():
+                return False
+        cur.execute("""
+            WITH RECURSIVE galaz AS (
+                SELECT id FROM task_zadania WHERE id = %s AND household_id = %s
+                UNION ALL
+                SELECT z.id FROM task_zadania z JOIN galaz g ON z.parent_id = g.id
+            )
+            UPDATE task_zadania SET strefa_id = %s WHERE id IN (SELECT id FROM galaz)
+        """, (zadanie_id, household_id, strefa_id or None))
+        return True
+
+
+def drzewo_do_wyboru(household_id, user_id, strefa=None) -> list[dict]:
     """Płaska lista otwartych zadań — wejście dla wybieraka miejsca w szybkim
     dodawaniu.
 
@@ -368,10 +556,11 @@ def drzewo_do_wyboru(household_id, user_id) -> list[dict]:
     """
     with get_db() as cur:
         cur.execute(
-            f"SELECT id, tytul, parent_id, projekt FROM task_zadania "
-            f"WHERE {_WIDOCZNE} AND status = 'otwarte' "
-            "ORDER BY projekt DESC, kolejnosc, id",
-            (household_id, user_id))
+            f"SELECT id, tytul, parent_id, projekt, strefa_id FROM task_zadania "
+            f"WHERE {_WIDOCZNE} AND status = 'otwarte'"
+            + (" AND strefa_id = %s" if strefa else "")
+            + " ORDER BY projekt DESC, kolejnosc, id",
+            _p(household_id, user_id, strefa) if strefa else _p(household_id, user_id))
         return [dict(r) for r in cur.fetchall()]
 
 
@@ -392,7 +581,7 @@ def _z_postepem(wiersze: list, household_id: int, user_id: int) -> list:
 def pobierz(household_id, user_id, zadanie_id):
     with get_db() as cur:
         cur.execute(f"SELECT {_POLA} FROM task_zadania WHERE {_WIDOCZNE} AND id = %s",
-                    (household_id, user_id, zadanie_id))
+                    _p(household_id, user_id, zadanie_id))
         r = cur.fetchone()
         return dict(r) if r else None
 
@@ -409,13 +598,19 @@ def dodaj(household_id, user_id, d) -> int:
         # Dziecko dziedziczy prywatność rodzica — inaczej tytuły dzieci
         # zdradzają treść prywatnego rodzica.
         prywatne = rodzic["prywatne_dla"]
+        # Strefę też. Krok nie należy do innej części życia niż sprawa, której
+        # jest częścią, a gdyby należał, zniknąłby z listy razem z projektem
+        # przy zawężeniu do strefy.
+        strefa = rodzic.get("strefa_id")
+    else:
+        strefa = d.get("strefa_id") or None
     with get_db() as cur:
         cur.execute("""INSERT INTO task_zadania
             (household_id, parent_id, tytul, opis, termin, pora, data_start, projekt,
-             powtarzaj, powtarzaj_co,
+             powtarzaj, powtarzaj_co, strefa_id,
              wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
              utworzyl, kolejnosc)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     COALESCE((SELECT MAX(kolejnosc) + 1 FROM task_zadania
                               WHERE household_id = %s AND parent_id IS NOT DISTINCT FROM %s), 0))
             RETURNING id""",
@@ -424,7 +619,7 @@ def dodaj(household_id, user_id, d) -> int:
              # Projektem może być tylko korzeń — krok w środku drzewa nie jest
              # przedsięwzięciem, tylko jego częścią.
              bool(d.get("projekt")) and not parent_id,
-             d.get("powtarzaj"), d.get("powtarzaj_co") or 1,
+             d.get("powtarzaj"), d.get("powtarzaj_co") or 1, strefa,
              d.get("wykonawca_user_id"), d.get("wykonawca_virtual_id"),
              prywatne, bool(d.get("kamien_milowy")), user_id, household_id, parent_id))
         return cur.fetchone()["id"]
