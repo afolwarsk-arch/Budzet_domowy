@@ -26,3 +26,8 @@ budzet_PELNY_*.json
 # samodzielne strony informacyjne (niepodlinkowane, nie serwować z apki)
 static/architektura.html
 static/edukacja.html
+
+# Prywatne materialy robocze (wyciagi, notatki) - NIGDY do repo
+1.pdf
+1.txt
+*.pdf
