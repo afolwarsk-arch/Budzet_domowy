@@ -185,14 +185,103 @@ window.addEventListener('DOMContentLoaded', () =>
 // a bez tego pole znikałoby w środku serii wpisów.
 let dopisywanieW = null;
 
+// Plusik PRZEŁĄCZA: drugie kliknięcie zamyka pole. Bez tego jedyną drogą
+// wyjścia było wpisanie czegoś albo Escape — czyli znowu wiedza tajemna.
 function pokazDopisywanie(id) {
+  const juzOtwarte = dopisywanieW === id;
   schowajDopisywanie();
+  if (juzOtwarte) return;
   dopisywanieW = id;
   const box = document.getElementById('dopisz-' + id);
   if (!box) return;
   box.hidden = false;
   const pole = box.querySelector('input');
   if (pole) pole.focus();
+}
+
+// ── dziennik zadania ────────────────────────────────────────────────────────
+// Komentarze to LOGI: każdy wpis ma datę i zostaje na zawsze. Opis zadania mówi,
+// co jest do zrobienia; dziennik mówi, co się po drodze wydarzyło. Przy sprawach
+// ciągnących się miesiącami to on odpowiada na pytanie „czemu to się przesunęło".
+async function przelaczDziennik(id) {
+  const box = document.getElementById('dziennik-' + id);
+  if (!box) return;
+  // Stan czytamy Z DOM-u, nie ze zmiennej: lista przerysowuje się po każdym
+  // dodanym kroku i zamyka dziennik, a zapamiętane „otwarte" kazałoby wtedy
+  // pierwszemu kliknięciu zamykać coś, czego już nie widać.
+  if (!box.hidden) { box.hidden = true; return; }
+  document.querySelectorAll('.zad-dziennik').forEach((e) => { e.hidden = true; });
+  box.hidden = false;
+  box.innerHTML = '<div class="dz-laduje">Wczytuję…</div>';
+  await odswiezDziennik(id);
+}
+
+async function odswiezDziennik(id) {
+  const box = document.getElementById('dziennik-' + id);
+  if (!box) return;
+  let wpisy = [];
+  try {
+    const r = await authFetch(`/api/task/zadania/${id}/komentarze`);
+    wpisy = r.ok ? ((await r.json()).komentarze || []) : [];
+  } catch { /* pusty dziennik jest poprawnym stanem */ }
+
+  odswiezLicznik(id, wpisy.length);
+  box.innerHTML = `
+    ${wpisy.length ? `<ol class="dz-lista">${wpisy.map((k) => `
+      <li>
+        <div class="dz-meta">${esc(dataCzas(k.created_at))}${
+          k.autor ? ' · ' + esc(k.autor) : ''}
+          <button type="button" class="dz-usun" data-usun-kom="${k.id}"
+                  aria-label="Usuń wpis">✕</button>
+        </div>
+        <div class="dz-tresc">${esc(k.tresc)}</div>
+      </li>`).join('')}</ol>` : '<p class="dz-pusto">Brak wpisów. Zapisz, co się wydarzyło.</p>'}
+    <div class="dz-nowy">
+      <input placeholder="Co się wydarzyło?" data-kom-pole="${id}" autocomplete="off">
+      <button class="btn btn-primary btn-dopisz" type="button" data-kom-dodaj="${id}">Zapisz</button>
+    </div>`;
+
+  const pole = box.querySelector('[data-kom-pole]');
+  const zapisz = async () => {
+    const tresc = pole.value.trim();
+    if (!tresc) return;
+    pole.disabled = true;
+    const r = await authFetch(`/api/task/zadania/${id}/komentarze`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tresc }),
+    });
+    pole.disabled = false;
+    if (!r.ok) { toast('Nie udało się zapisać wpisu.', 'blad'); return; }
+    await odswiezDziennik(id);
+  };
+  box.querySelector('[data-kom-dodaj]').onclick = zapisz;
+  pole.onkeydown = (e) => { if (e.key === 'Enter') zapisz(); };
+  box.querySelectorAll('[data-usun-kom]').forEach((b) => {
+    b.onclick = async () => {
+      if (!(await potwierdz({ tytul: 'Usunąć wpis?', tresc: 'Zniknie z historii zadania.',
+                              tak: 'Usuń', groznie: true }))) return;
+      await authFetch(`/api/task/komentarze/${b.dataset.usunKom}`, { method: 'DELETE' });
+      await odswiezDziennik(id);
+    };
+  });
+}
+
+// Licznik przy ikonie odświeżamy PUNKTOWO, bez przerysowania listy — inaczej
+// dziennik zamykałby się po każdym wpisie, a zwykle dopisuje się kilka naraz.
+function odswiezLicznik(id, ile) {
+  const z = zadania.find((w) => w.id === id);
+  if (z) z.ile_komentarzy = ile;
+  const btn = document.querySelector(`[data-komentarze="${id}"]`);
+  if (!btn) return;
+  btn.classList.toggle('jest', ile > 0);
+  btn.innerHTML = ile > 0 ? String(ile) : ikonaSvg('notatka');
+}
+
+function dataCzas(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: '2-digit',
+                                     hour: '2-digit', minute: '2-digit' });
 }
 
 function schowajDopisywanie() {
@@ -266,6 +355,11 @@ function podepnijPtaszki() {
     const plus = ev.target.closest('[data-dodaj]');
     if (plus) {
       pokazDopisywanie(Number(plus.dataset.dodaj));
+      return;
+    }
+    const dz = ev.target.closest('[data-komentarze]');
+    if (dz) {
+      przelaczDziennik(Number(dz.dataset.komentarze));
       return;
     }
     const wejdz = ev.target.closest('[data-wejdz]');
@@ -1260,6 +1354,10 @@ function wiersz(w, poziom) {
              pod rząd znaczyło trzy razy wejść i wyjść. -->
         <button class="zad-plus" type="button" data-dodaj="${w.id}"
                 aria-label="Dodaj krok w tym zadaniu" title="Dodaj krok">+</button>
+        <button class="zad-plus zad-komentarz${w.ile_komentarzy ? ' jest' : ''}" type="button"
+                data-komentarze="${w.id}" title="Dziennik zadania"
+                aria-label="Dziennik zadania">${
+          w.ile_komentarzy ? w.ile_komentarzy : ikonaSvg('notatka')}</button>
         <button class="zad-strzalka" type="button" data-wejdz="${w.id}"
                 aria-label="Pokaż tylko to zadanie">›</button>
       </div>
@@ -1273,6 +1371,10 @@ function wiersz(w, poziom) {
           <button class="btn btn-primary btn-dopisz" type="button"
                   data-zatwierdz-dodaj="${w.id}">Dodaj</button>
         </div>
+        <!-- Dziennik: wpisy z datami, od najstarszego. Treść dociągana przy
+             otwarciu, żeby lista nie wołała serwera o komentarze wszystkich
+             zadań naraz. -->
+        <div class="zad-dziennik" id="dziennik-${w.id}" hidden></div>
         ${(w.dzieci || []).map((d) => wiersz(d, poziom + 1)).join('')}
       </div>
     </div>`;

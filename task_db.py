@@ -100,6 +100,23 @@ def init_task_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS task_zaleznosci_poprzednik "
                     "ON task_zaleznosci (poprzednik_id)")
 
+        # ── komentarze ─────────────────────────────────────────────────────
+        # DZIENNIK, NIE POLE. Opis zadania mówi, co jest do zrobienia; komentarze
+        # mówią, co się po drodze wydarzyło („bank poprosił o dodatkowy dokument",
+        # „właściciel przesunął spotkanie"). Nadpisywanie jednego pola gubiłoby
+        # tę historię, a przy sprawach ciągnących się miesiącami to ona jest
+        # najcenniejsza — po pół roku nikt nie pamięta, czemu termin się przesunął.
+        cur.execute("""CREATE TABLE IF NOT EXISTS task_komentarze (
+            id           SERIAL PRIMARY KEY,
+            household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            zadanie_id   INTEGER NOT NULL REFERENCES task_zadania(id) ON DELETE CASCADE,
+            tresc        TEXT NOT NULL,
+            autor_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS task_komentarze_zadanie "
+                    "ON task_komentarze (zadanie_id, created_at)")
+
 
 # Warunek widoczności dokładany do KAŻDEGO odczytu. Zadanie prywatne nie
 # istnieje dla nikogo poza właścicielem — także w postępie zadania nadrzędnego.
@@ -164,6 +181,53 @@ def usun_zaleznosc(household_id: int, zadanie_id: int, poprzednik_id: int) -> bo
                     "AND zadanie_id = %s AND poprzednik_id = %s",
                     (household_id, zadanie_id, poprzednik_id))
         return cur.rowcount > 0
+
+
+def komentarze(household_id: int, user_id: int, zadanie_id: int) -> list[dict]:
+    """Dziennik zadania, od najstarszego wpisu. Kolejność ma znaczenie: to
+    historia, a nie zbiór notatek."""
+    if not pobierz(household_id, user_id, zadanie_id):
+        return []
+    with get_db() as cur:
+        cur.execute(
+            "SELECT k.id, k.tresc, k.created_at, "
+            "       COALESCE(u.display_name, u.name) AS autor "
+            "FROM task_komentarze k LEFT JOIN users u ON u.id = k.autor_id "
+            "WHERE k.zadanie_id = %s AND k.household_id = %s "
+            "ORDER BY k.created_at, k.id",
+            (zadanie_id, household_id))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def dodaj_komentarz(household_id: int, user_id: int, zadanie_id: int, tresc: str) -> dict | None:
+    tresc = (tresc or "").strip()
+    if not tresc:
+        return None
+    if not pobierz(household_id, user_id, zadanie_id):
+        raise ValueError("Nie ma takiego zadania.")
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO task_komentarze (household_id, zadanie_id, tresc, autor_id) "
+            "VALUES (%s,%s,%s,%s) RETURNING id, tresc, created_at",
+            (household_id, zadanie_id, tresc[:2000], user_id))
+        return dict(cur.fetchone())
+
+
+def usun_komentarz(household_id: int, komentarz_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("DELETE FROM task_komentarze WHERE id = %s AND household_id = %s",
+                    (komentarz_id, household_id))
+        return cur.rowcount > 0
+
+
+def liczniki_komentarzy(household_id: int, user_id: int) -> dict:
+    """Ile komentarzy ma każde zadanie — do znacznika na liście, żeby dziennik
+    nie był niewidoczny, dopóki się go nie otworzy."""
+    with get_db() as cur:
+        cur.execute(
+            "SELECT zadanie_id, COUNT(*) AS ile FROM task_komentarze "
+            "WHERE household_id = %s GROUP BY zadanie_id", (household_id,))
+        return {r["zadanie_id"]: r["ile"] for r in cur.fetchall()}
 
 
 def postep_poddrzew(household_id: int, user_id: int) -> dict:
@@ -290,10 +354,12 @@ def _z_postepem(wiersze: list, household_id: int, user_id: int) -> list:
     if not wiersze:
         return wiersze
     postep = postep_poddrzew(household_id, user_id)
+    komentarzy = liczniki_komentarzy(household_id, user_id)
     for w in wiersze:
         p = postep.get(w["id"], {"razem": 0, "gotowe": 0})
         w["krokow_razem"] = p["razem"]
         w["krokow_gotowych"] = p["gotowe"]
+        w["ile_komentarzy"] = komentarzy.get(w["id"], 0)
     return wiersze
 
 

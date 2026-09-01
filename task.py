@@ -79,6 +79,34 @@ def lista_zadan(zakres: str = "dzis", osoba: int | None = None,
                                      zakres, osoba)}
 
 
+@router.get("/zadania/{zadanie_id}/komentarze")
+def lista_komentarzy(zadanie_id: int, current_user: dict = Depends(get_current_user)):
+    return {"komentarze": task_db.komentarze(_hid(current_user), current_user["user_id"],
+                                             zadanie_id)}
+
+
+@router.post("/zadania/{zadanie_id}/komentarze", status_code=201)
+def nowy_komentarz(zadanie_id: int, dane: dict,
+                   current_user: dict = Depends(get_current_user)):
+    """Dopisuje wpis do dziennika zadania. Wpisów nie edytujemy — historia,
+    którą da się zmienić po fakcie, przestaje być historią."""
+    try:
+        k = task_db.dodaj_komentarz(_hid(current_user), current_user["user_id"],
+                                    zadanie_id, dane.get("tresc"))
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    if not k:
+        raise HTTPException(400, "Pusty komentarz.")
+    return k
+
+
+@router.delete("/komentarze/{komentarz_id}")
+def skasuj_komentarz(komentarz_id: int, current_user: dict = Depends(get_current_user)):
+    if not task_db.usun_komentarz(_hid(current_user), komentarz_id):
+        raise HTTPException(404, "Nie ma takiego komentarza")
+    return {"ok": True}
+
+
 @router.post("/zaleznosci")
 def nowa_zaleznosc(dane: dict, current_user: dict = Depends(get_current_user)):
     """Zadanie ma czekać na inne (skończ, zanim zaczniesz)."""
