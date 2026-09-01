@@ -161,6 +161,16 @@ let IKONY_STREF = [];
 // dwa różne konteksty i wymuszanie na nich jednej strefy byłoby uciążliwe.
 let strefa = Number(localStorage.getItem('task_strefa')) || null;
 
+// „1 otwartych" kłuje w oczy. Polski ma trzy formy i wybiera je po ostatniej
+// cyfrze, z wyjątkiem nastek: 12, 13, 14 idą jak liczby duże.
+function odmienOtwarte(n) {
+  const ost = n % 10;
+  const dwie = n % 100;
+  if (n === 1) return 'otwarte';
+  if (ost >= 2 && ost <= 4 && !(dwie >= 12 && dwie <= 14)) return 'otwarte';
+  return 'otwartych';
+}
+
 function biezacaStrefa() {
   return STREFY.find((x) => x.id === strefa) || null;
 }
@@ -2239,7 +2249,7 @@ function strefyEkranWyboru() {
         <span class="strefa-znak">${s.ikona ? ikonaSvg(s.ikona) : ''}</span>
         <span class="nazwa">${esc(s.nazwa)}</span>
         <span class="ile">${s.id === strefa ? 'teraz'
-          : (s.otwartych ? s.otwartych + ' otwartych' : '')}</span>
+          : (s.otwartych ? s.otwartych + ' ' + odmienOtwarte(s.otwartych) : '')}</span>
       </button>`).join('')}
     </div>
     ${moje.length ? '' : `<p class="lap-pod">Nie masz włączonego żadnego obszaru —
