@@ -261,6 +261,10 @@
        pole dopisywania, które w niej wyskakuje. */
     .zad-dzieci.pusta { border-left-color: transparent; padding-left: 13px; }
     .zad-dopisz { padding: 8px 0; display: flex; gap: 8px; }
+    /* `display: flex` nadpisuje atrybut `hidden` (on ustawia tylko display:none
+       z arkusza przeglądarki, który przegrywa ze zwykłą regułą) — bez tego pole
+       dopisywania stało otwarte przy KAŻDYM zadaniu naraz. */
+    .zad-dopisz[hidden] { display: none; }
     .zad-dopisz input { flex: 1; min-width: 0; min-height: 40px; }
     .btn-dopisz { flex: none; min-height: 40px; padding: 0 14px; }
 
@@ -273,7 +277,10 @@
                           border: 1px solid var(--border); border-radius: 8px;
                           font-size: 11.5px; color: var(--muted); cursor: pointer;
                           white-space: nowrap; }
-    .zad-data.jest, .zad-kto.jest { border-color: var(--marka); color: var(--text);
+    /* Ustawiona data jest ZWYCZAJNA, nie wyróżniona kolorem modułu: koralowa
+       ramka przy każdym terminie czytała się jak ostrzeżenie, przez co
+       naprawdę spóźnione zadania przestawały się wyróżniać. */
+    .zad-data.jest, .zad-kto.jest { border-color: var(--border); color: var(--text);
                                     font-weight: 600; }
     .zad-data.po-czasie { border-color: var(--danger); color: var(--danger); font-weight: 600; }
     .zad-data input, .zad-kto select { position: absolute; inset: 0; opacity: 0;
