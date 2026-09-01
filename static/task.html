@@ -260,8 +260,26 @@
     /* Gałąź bez dzieci nie rysuje linii donikąd — zostaje tylko miejsce na
        pole dopisywania, które w niej wyskakuje. */
     .zad-dzieci.pusta { border-left-color: transparent; padding-left: 13px; }
-    .zad-dopisz { padding: 8px 0; }
-    .zad-dopisz input { width: 100%; min-height: 40px; }
+    .zad-dopisz { padding: 8px 0; display: flex; gap: 8px; }
+    .zad-dopisz input { flex: 1; min-width: 0; min-height: 40px; }
+    .btn-dopisz { flex: none; min-height: 40px; padding: 0 14px; }
+
+    /* SZYBKIE POLA przy zadaniu. Natywny `input[type=date]` i `select` leżą
+       przezroczyste NA etykiecie: stuknięcie otwiera systemowy wybór daty albo
+       listę osób, bez pisania własnego okienka i bez wchodzenia w formularz. */
+    .zad-data, .zad-kto { position: relative; flex: none; display: inline-flex;
+                          align-items: center; justify-content: center;
+                          min-width: 34px; height: 30px; padding: 0 7px;
+                          border: 1px solid var(--border); border-radius: 8px;
+                          font-size: 11.5px; color: var(--muted); cursor: pointer;
+                          white-space: nowrap; }
+    .zad-data.jest, .zad-kto.jest { border-color: var(--marka); color: var(--text);
+                                    font-weight: 600; }
+    .zad-data.po-czasie { border-color: var(--danger); color: var(--danger); font-weight: 600; }
+    .zad-data input, .zad-kto select { position: absolute; inset: 0; opacity: 0;
+                                       width: 100%; height: 100%; cursor: pointer;
+                                       border: none; padding: 0; }
+    .zad-data .ikona svg, .zad-kto .ikona svg { width: 16px; height: 16px; }
 
     .zad { display: flex; align-items: center; gap: 10px; padding: 12px;
            border-bottom: 1px solid var(--border-soft); }

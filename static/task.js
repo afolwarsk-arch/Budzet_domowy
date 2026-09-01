@@ -175,7 +175,10 @@ async function wczytajPlan() {
   rysuj();
 }
 
-window.addEventListener('DOMContentLoaded', () => authRequireHousehold().then(wczytaj));
+// Domowników wczytujemy OD RAZU, nie dopiero przy otwarciu formularza:
+// skrót wykonawcy przy każdym zadaniu potrzebuje ich do narysowania listy.
+window.addEventListener('DOMContentLoaded', () =>
+  authRequireHousehold().then(wczytajHousehold).then(wczytaj));
 
 // Które zadanie ma otwarte pole dopisywania kroku. Trzymane poza rysowaniem,
 // żeby przerwać ciszę po zapisie: lista przerysowuje się po każdym dodaniu,
@@ -236,7 +239,30 @@ function podepnijPtaszki() {
     await wczytaj();
   };
 
+  // Szybkie pola: termin i wykonawca zapisują się od razu po wyborze.
+  lista.onchange = async (ev) => {
+    const data = ev.target.closest('[data-termin]');
+    if (data) {
+      await zapiszSzybko(Number(data.dataset.termin), { termin: data.value || null });
+      return;
+    }
+    const kto = ev.target.closest('[data-wykonawca]');
+    if (kto) {
+      const v = kto.value;
+      await zapiszSzybko(Number(kto.dataset.wykonawca), {
+        wykonawca_user_id: v.startsWith('u:') ? Number(v.slice(2)) : null,
+        wykonawca_virtual_id: v.startsWith('v:') ? Number(v.slice(2)) : null,
+      });
+    }
+  };
+
   lista.onclick = async (ev) => {
+    const zatwierdz = ev.target.closest('[data-zatwierdz-dodaj]');
+    if (zatwierdz) {
+      const pole = document.querySelector(`[data-pole-dodaj="${zatwierdz.dataset.zatwierdzDodaj}"]`);
+      if (pole) pole.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      return;
+    }
     const plus = ev.target.closest('[data-dodaj]');
     if (plus) {
       pokazDopisywanie(Number(plus.dataset.dodaj));
@@ -1158,8 +1184,20 @@ function wiersz(w, poziom) {
           ${nast.tytul ? `<div class="zad-nast">następne: ${esc(nast.tytul)}</div>` : ''}
           ${w.id === nowyId ? `<button class="zad-szczegoly-btn" type="button" data-szczegoly="${w.id}">Szczegóły</button>` : ''}
         </div>
-        ${w.termin ? `<span class="zad-termin${spozniony ? ' po-czasie' : ''}">${dataPl(w.termin)}</span>` : ''}
         ${p.razem && !w.kamien_milowy ? `<span class="zad-postep">${p.gotowe} z ${p.razem}</span>` : ''}
+        <!-- SZYBKIE POLA bez wchodzenia w formularz. Termin i wykonawca to
+             dwie rzeczy ustawiane najczęściej, a dotąd wymagały otwarcia
+             szczegółów i przewijania. Data jest jednocześnie etykietą: gdy jest
+             ustawiona, widać ją zamiast ikony. -->
+        <label class="zad-data${w.termin ? (spozniony ? ' po-czasie' : ' jest') : ''}"
+               title="Termin">
+          ${w.termin ? dataPl(w.termin) : ikonaSvg('kalendarz')}
+          <input type="date" data-termin="${w.id}" value="${esc((w.termin || '').slice(0, 10))}">
+        </label>
+        <label class="zad-kto${w.wykonawca_user_id ? ' jest' : ''}" title="Wykonawca">
+          ${skrotWykonawcy(w)}
+          <select data-wykonawca="${w.id}">${opcjeWykonawcyKrotkie(w)}</select>
+        </label>
         <!-- „+” dopisuje krok BEZ opuszczania listy. Wcześniej jedyną drogą
              było wejście strzałką w zadanie, co przy dopisywaniu trzech kroków
              pod rząd znaczyło trzy razy wejść i wyjść. -->
@@ -1171,12 +1209,62 @@ function wiersz(w, poziom) {
       <div class="zad-dzieci${maDzieci ? '' : ' pusta'}">
         <!-- Pole dopisywania kroku wskakuje TUTAJ, czyli w miejscu, w którym
              krok faktycznie się pojawi — nie na górze ekranu. -->
+        <!-- Przycisk obok pola, nie sam Enter: „wpisz i naciśnij Enter" to
+             wiedza, której nikt nie ma, dopóki mu się nie powie. -->
         <div class="zad-dopisz" id="dopisz-${w.id}" hidden>
           <input placeholder="Nowy krok…" data-pole-dodaj="${w.id}" autocomplete="off">
+          <button class="btn btn-primary btn-dopisz" type="button"
+                  data-zatwierdz-dodaj="${w.id}">Dodaj</button>
         </div>
         ${(w.dzieci || []).map((d) => wiersz(d, poziom + 1)).join('')}
       </div>
     </div>`;
+}
+
+// Inicjały wykonawcy albo ikona osoby, gdy nikt nie przypisany. Pełne imię
+// nie mieści się w wierszu obok tytułu, a i tak najczęściej wystarczy wiedzieć,
+// czy to Ty, czy ktoś inny.
+function skrotWykonawcy(w) {
+  const osoby = household?.members || [];
+  const m = osoby.find((x) => x.id === w.wykonawca_user_id);
+  if (m) {
+    const nazwa = m.display_name || m.name || '';
+    return esc(nazwa.trim().slice(0, 2).toUpperCase());
+  }
+  const v = (household?.virtual_members || []).find((x) => x.id === w.wykonawca_virtual_id);
+  if (v) return esc((v.name || '').trim().slice(0, 2).toUpperCase());
+  return ikonaSvg('osoby');
+}
+
+function opcjeWykonawcyKrotkie(w) {
+  const h = household || { members: [], virtual_members: [] };
+  const opcje = [`<option value=""${!w.wykonawca_user_id && !w.wykonawca_virtual_id ? ' selected' : ''}>— nikt —</option>`];
+  for (const m of h.members || []) {
+    opcje.push(`<option value="u:${m.id}"${m.id === w.wykonawca_user_id ? ' selected' : ''}>${
+      esc(m.display_name || m.name)}</option>`);
+  }
+  for (const m of h.virtual_members || []) {
+    opcje.push(`<option value="v:${m.id}"${m.id === w.wykonawca_virtual_id ? ' selected' : ''}>${
+      esc(m.name)}</option>`);
+  }
+  return opcje.join('');
+}
+
+// Zapis pojedynczego pola bez otwierania formularza. Wysyłamy komplet, bo
+// serwer nadpisuje wszystkie pola — pominięcie któregoś skasowałoby je.
+async function zapiszSzybko(id, zmiany) {
+  const z = zadania.find((x) => x.id === id);
+  if (!z) return;
+  const dane = {
+    tytul: z.tytul, opis: z.opis || null,
+    termin: z.termin || null, data_start: z.data_start || null, pora: z.pora || null,
+    wykonawca_user_id: z.wykonawca_user_id || null,
+    wykonawca_virtual_id: z.wykonawca_virtual_id || null,
+    kamien_milowy: !!z.kamien_milowy, projekt: !!z.projekt,
+    powtarzaj: z.powtarzaj || null, powtarzaj_co: z.powtarzaj_co || 1,
+    ...zmiany,
+  };
+  if (await zapiszSzczegoly(id, dane, true)) await wczytaj();
 }
 
 function dataPl(iso) {
