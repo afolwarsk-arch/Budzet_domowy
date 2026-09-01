@@ -1621,7 +1621,7 @@ function lapRysuj() {
   box.innerHTML = {
     jak: lapKrokJak, pisz: lapKrokPisz, slucham: lapKrokSlucham,
     mysli: lapKrokMysli, gdzie: lapKrokGdzie, projekty: lapKrokProjekty,
-    miejsce: lapKrokMiejsce,
+    miejsce: lapKrokMiejsce, kroki: lapKrokKroki,
   }[lap.krok]();
   const pole = box.querySelector('textarea');
   if (pole) pole.focus();
@@ -1632,7 +1632,7 @@ function lapRysuj() {
 // byłby ozdobą.
 function lapRysujSciezke() {
   const el = document.getElementById('lap-sciezka');
-  if (!['miejsce', 'projekty'].includes(lap.krok) || !lap.sciezka.length) {
+  if (!['miejsce', 'projekty', 'kroki'].includes(lap.krok) || !lap.sciezka.length) {
     el.innerHTML = '';
     return;
   }
@@ -1754,6 +1754,11 @@ function lapKrokProjekty() {
 // Miejsce wskazane — zostaje pytanie „tutaj czy głębiej". Kafelek „głębiej"
 // pokazujemy TYLKO wtedy, gdy naprawdę jest gdzie wejść: martwy przycisk uczy,
 // że stukanie w kafelki bywa bez skutku.
+//
+// „Osobne zadanie" stoi tu na równych prawach z zapisem w projekcie, a nie jako
+// blady odnośnik na dole. Gdy model sam wskazał projekt ze zdania, odmowa musi
+// być równie łatwa jak zgoda — inaczej trafne w 90% przypadków dopasowanie
+// zaczyna wpychać te 10% tam, gdzie nie trzeba.
 function lapKrokMiejsce() {
   const teraz = lapTeraz();
   const dzieci = lapDzieci(teraz.id);
@@ -1763,7 +1768,10 @@ function lapKrokMiejsce() {
       <strong>${esc(teraz.tytul)}</strong>.</p>` : ''}
     <p class="lap-pyt">Zapisać w „${esc(teraz.tytul)}"?</p>
     <div class="lap-kafle">
-      <button type="button" class="lap-kafel mocny" data-lap="zapisz">
+      <!-- Bez kroków w środku „Zapisz tutaj" zostaje samo w rzędzie i połowa
+           szerokości świeci pustką — wtedy bierze cały rząd. -->
+      <button type="button" class="lap-kafel mocny${dzieci.length ? '' : ' pelny'}"
+              data-lap="zapisz">
         Zapisz tutaj
         ${lap.zapisuje ? '<small>zapisuję…</small>' : ''}
       </button>
@@ -1771,8 +1779,25 @@ function lapKrokMiejsce() {
         Wejdź głębiej
         <small>${dzieci.length} ${dzieci.length === 1 ? 'krok' : 'kroków'} w środku</small>
       </button>` : ''}
+      <button type="button" class="lap-kafel pelny" data-lap="osobno">
+        Osobne zadanie
+        <small>nie w tym projekcie</small>
+      </button>
     </div>
-    ${dzieci.length ? `<div class="lap-lista" id="lap-glebiej" hidden>
+    <button type="button" class="lap-inne" data-lap="projekty">Wybierz inny projekt</button>`;
+}
+
+// Kroki wybranego zadania — osobny ekran, nie rozwijanie w miejscu. Lista
+// wyskakująca pod kafelkiem „Wejdź głębiej" wyglądała jak doklejona: kafelek
+// stał po prawej, a odpowiedź na niego pojawiała się niżej i na całą szerokość.
+// Każdy inny wybór w tym przepływie zajmuje własny ekran, więc i ten zajmuje.
+function lapKrokKroki() {
+  const teraz = lapTeraz();
+  const dzieci = lapDzieci(teraz.id);
+  return `
+    ${lapCytat()}
+    <p class="lap-pyt">W którym kroku?</p>
+    <div class="lap-lista">
       ${dzieci.map((d) => {
         const ile = lapDzieci(d.id).length;
         return `<button type="button" class="lap-poz" data-lap-wejdz="${d.id}">
@@ -1780,8 +1805,10 @@ function lapKrokMiejsce() {
           ${ile ? `<span class="ile">${ile} w środku</span>` : ''}
         </button>`;
       }).join('')}
-    </div>` : ''}
-    <button type="button" class="lap-inne" data-lap="projekty">Wybierz inne miejsce</button>`;
+    </div>
+    <button type="button" class="lap-inne" data-lap="tutaj">
+      Jednak wprost w „${esc(teraz.tytul)}"
+    </button>`;
 }
 
 // ── kroki przepływu ──
@@ -1878,7 +1905,9 @@ async function lapZapisz() {
 }
 
 function lapCofnij() {
-  if (lap.krok === 'miejsce') {
+  if (lap.krok === 'kroki') {
+    lap.krok = 'miejsce';
+  } else if (lap.krok === 'miejsce') {
     lap.sciezka.pop();
     lap.zgadniete = false;
     if (!lap.sciezka.length) lap.krok = lapProjekty().length ? 'projekty' : 'gdzie';
@@ -1934,12 +1963,8 @@ function lapPodepnij() {
       'w-projekcie': () => { lap.krok = 'projekty'; lapRysuj(); },
       projekty: () => { lap.sciezka = []; lap.zgadniete = false;
                         lap.krok = 'projekty'; lapRysuj(); },
-      // „Głębiej" tylko odsłania listę kroków — bez przerysowania, żeby
-      // pytanie i odpowiedź zostały na jednym ekranie.
-      glebiej: () => {
-        const lista = document.getElementById('lap-glebiej');
-        if (lista) lista.hidden = !lista.hidden;
-      },
+      glebiej: () => { lap.krok = 'kroki'; lapRysuj(); },
+      tutaj: () => { lap.krok = 'miejsce'; lapRysuj(); },
       zapisz: lapZapisz,
     }[b.dataset.lap] || (() => {}))();
   };
