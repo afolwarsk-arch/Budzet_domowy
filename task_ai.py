@@ -39,7 +39,8 @@ Odpowiedź czyta program, nie człowiek.
   "pora": "18:00",
   "powtarzaj": null,
   "powtarzaj_co": 1,
-  "wykonawca": null
+  "wykonawca": null,
+  "gdzie": null
 }
 
 ZASADY:
@@ -73,6 +74,17 @@ powtarzaniem.
 
 WYKONAWCA: imię osoby, jeśli padło („niech Ola kupi mleko" → "Ola"), w innym
 razie null. Nie wymyślaj imion.
+
+GDZIE: nazwa projektu albo zadania, do którego to należy, jeśli padła —
+„dopisz do urlopu w Maladze kupno biletów" → "urlop w Maladze", „w zakupie
+działki umów notariusza" → "zakup działki". Przepisz to, co usłyszałeś, nie
+poprawiaj odmiany ani nie skracaj; dopasowaniem do istniejących projektów
+zajmuje się program. Gdy nie padła żadna wskazówka przynależności, wpisz null
+— NIE zgaduj po temacie. „Kupić bilety" bez wymienienia projektu to null,
+nawet jeśli w apce istnieje projekt o biletach.
+
+TYTUŁ nie zawiera nazwy projektu. Ze zdania „w zakupie działki umów notariusza"
+tytuł brzmi „Umówić notariusza", a „zakup działki" idzie do GDZIE.
 
 Gdy zdanie nie zawiera żadnej czynności do zrobienia (samo „yyy", cisza,
 przypadkowe słowo), zwróć {"tytul": null}."""
@@ -150,6 +162,7 @@ def _czysc(dane: dict) -> dict:
         "powtarzaj": powtarzaj,
         "powtarzaj_co": min(max(co, 1), 99),
         "wykonawca": (dane.get("wykonawca") or "").strip() or None,
+        "gdzie": (dane.get("gdzie") or "").strip()[:120] or None,
     }
 
 

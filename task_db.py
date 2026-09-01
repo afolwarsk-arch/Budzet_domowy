@@ -349,6 +349,27 @@ def plan(household_id, user_id, pokaz_zrobione=False):
         return _z_postepem(wiersze, household_id, user_id)
 
 
+def drzewo_do_wyboru(household_id, user_id) -> list[dict]:
+    """Płaska lista otwartych zadań — wejście dla wybieraka miejsca w szybkim
+    dodawaniu.
+
+    ŚWIADOMIE CHUDA: id, tytuł, rodzic, znacznik projektu i nic więcej. Wybierak
+    otwiera się w trakcie łapania zadania, więc liczy się czas odpowiedzi, a nie
+    komplet danych. Postępu ani komentarzy tu nie ma, bo w kafelku wyboru i tak
+    nie byłoby ich gdzie pokazać.
+
+    Zrobione pomijamy: dokładanie kroku do zamkniętej sprawy to pomyłka, a nie
+    zamiar, i nie ma powodu zaśmiecać nimi listy wyboru.
+    """
+    with get_db() as cur:
+        cur.execute(
+            f"SELECT id, tytul, parent_id, projekt FROM task_zadania "
+            f"WHERE {_WIDOCZNE} AND status = 'otwarte' "
+            "ORDER BY projekt DESC, kolejnosc, id",
+            (household_id, user_id))
+        return [dict(r) for r in cur.fetchall()]
+
+
 def _z_postepem(wiersze: list, household_id: int, user_id: int) -> list:
     """Dokłada do każdego zadania licznik kroków policzony z całej bazy."""
     if not wiersze:

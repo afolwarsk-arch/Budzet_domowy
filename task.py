@@ -2,6 +2,8 @@
 do `task_db`. Reguły danych (prywatność, cykl w drzewie) siedzą w bazie danych,
 nie tutaj — inaczej rozjechałyby się między wywołaniami."""
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 
@@ -138,6 +140,88 @@ def plan_zadan(zrobione: bool = False, current_user: dict = Depends(get_current_
     hid = _hid(current_user)
     return {"zadania": task_db.plan(hid, current_user["user_id"], zrobione),
             "zaleznosci": task_db.zaleznosci(hid)}
+
+
+@router.get("/drzewo")
+def drzewo(current_user: dict = Depends(get_current_user)):
+    """Chuda lista otwartych zadań — wejście dla wybieraka w szybkim dodawaniu."""
+    return {"zadania": task_db.drzewo_do_wyboru(_hid(current_user), current_user["user_id"])}
+
+
+@router.post("/rozumiem")
+async def rozumiem(dane: dict, current_user: dict = Depends(get_current_user)):
+    """Podyktowane zdanie → rozpoznane zadanie, BEZ ZAPISU.
+
+    Bliźniak `/z-mowy`, ale z odwróconą umową: tamten zapisuje od razu i mówi,
+    co zrozumiał, a ten oddaje rozpoznane pola do ręki interfejsowi, bo szybkie
+    dodawanie pyta jeszcze, GDZIE zadanie ma trafić. Zapis idzie zwykłym
+    `POST /zadania` z wybranym `parent_id`.
+
+    Dwa endpointy zamiast jednego z przełącznikiem, bo różnią się tym, co
+    zostaje po nieudanym żądaniu: tam zadanie w bazie, tu nic.
+    """
+    hid = _hid(current_user)
+    tekst = (dane.get("tekst") or "").strip()
+    try:
+        zrozumiane, usage = await run_in_threadpool(task_ai.zrozum, tekst)
+    except task_ai.MowaError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        print(f"[task] zrozumienie mowy padlo: {e}")
+        raise HTTPException(502, "Nie udało się zrozumieć polecenia. Spróbuj ponownie.")
+
+    database.log_api_usage(hid, "task-mowa", usage.get("input_tokens", 0),
+                           usage.get("output_tokens", 0), current_user.get("user_id"))
+
+    wyk_user, wyk_virtual = _dopasuj_wykonawce(hid, zrozumiane.get("wykonawca"))
+    cel = _dopasuj_miejsce(task_db.drzewo_do_wyboru(hid, current_user["user_id"]),
+                           zrozumiane.get("gdzie"))
+    return {
+        "zadanie": zrozumiane,
+        "wykonawca_user_id": wyk_user,
+        "wykonawca_virtual_id": wyk_virtual,
+        # Trafione miejsce albo null. Interfejs pokazuje je do POTWIERDZENIA,
+        # nigdy nie zapisuje po cichu — dopasowanie po nazwie bywa pewne w 90%
+        # przypadków, a te 10% wpadałoby do losowego projektu bez śladu.
+        "cel": cel,
+    }
+
+
+def _slowa(tekst: str) -> set:
+    """Słowa znaczące, przycięte do czterech liter.
+
+    Polska odmiana zmienia KOŃCÓWKI, więc porównywanie początków słów łapie
+    „urlopu" z „urlop" i „Maladze" z „Malaga" bez tablicy form. Cztery litery
+    to kompromis: przy trzech „dzia" zlewa się ze zbyt wieloma słowami, przy
+    pięciu „malag" i „malad" przestają być tym samym.
+    """
+    return {s[:4] for s in re.findall(r"\w+", (tekst or "").lower()) if len(s) >= 3}
+
+
+def _dopasuj_miejsce(kandydaci: list, fraza: str | None) -> dict | None:
+    """Wypowiedziana nazwa projektu → konkretne zadanie z bazy albo None.
+
+    Wymagamy, żeby trafiła POŁOWA wypowiedzianych słów znaczących. Pojedyncze
+    trafienie wystarczyłoby, żeby „kup mleko do domu" wpadło do projektu
+    „Remont domu" — a zadanie w cudzym projekcie jest gorsze niż zadanie luzem,
+    bo znika z oczu.
+    """
+    szukane = _slowa(fraza)
+    if not szukane:
+        return None
+    najlepszy, najlepiej = None, 0
+    for k in kandydaci:
+        trafione = len(szukane & _slowa(k["tytul"]))
+        if not trafione:
+            continue
+        # Projekt wygrywa remis: mówiąc „dopisz do zakupu działki" ma się na
+        # myśli przedsięwzięcie, a nie krok o podobnej nazwie w jego środku.
+        wynik = trafione * 2 + (1 if k.get("projekt") else 0)
+        if wynik > najlepiej:
+            najlepszy, najlepiej = k, wynik
+    if najlepszy and len(szukane & _slowa(najlepszy["tytul"])) * 2 >= len(szukane):
+        return {"id": najlepszy["id"], "tytul": najlepszy["tytul"]}
+    return None
 
 
 @router.post("/z-mowy")

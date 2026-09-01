@@ -178,7 +178,7 @@ async function wczytajPlan() {
 // Domowników wczytujemy OD RAZU, nie dopiero przy otwarciu formularza:
 // skrót wykonawcy przy każdym zadaniu potrzebuje ich do narysowania listy.
 window.addEventListener('DOMContentLoaded', () =>
-  authRequireHousehold().then(wczytajHousehold).then(wczytaj));
+  authRequireHousehold().then(wczytajHousehold).then(wczytaj).then(lapPodepnij));
 
 // Które zadanie ma otwarte pole dopisywania kroku. Trzymane poza rysowaniem,
 // żeby przerwać ciszę po zapisie: lista przerysowuje się po każdym dodaniu,
@@ -1556,6 +1556,401 @@ function opisZapisanego(z) {
   }
   if (z.powtarzaj) czesci.push(opisPowtarzania(z));
   return czesci.join(' · ');
+}
+
+// ── łapanie zadania ─────────────────────────────────────────────────────────
+//
+// Osobna droga od pola „Co jest do zrobienia?" na górze listy, dla innej
+// sytuacji: stoisz gdzieś, coś Ci się przypomina i masz wolny jeden kciuk.
+// Pole na górze wymaga celowania i klawiatury; ten przepływ wymaga stuknięć.
+//
+// ZASADA: jeden krok = jedno pytanie = najwyżej dwa duże kafelki. Nigdzie nie
+// ma formularza, bo wypełnianie formularza na stojąco jest dokładnie tym, przed
+// czym ta droga ma uciec. Reszta pól zostaje w Szczegółach, dla spokojnej chwili.
+//
+// Zapis następuje DOPIERO po wskazaniu miejsca — inaczej niż w `/api/task/z-mowy`,
+// które zapisuje od razu. Dlatego rozpoznanie idzie do `/api/task/rozumiem`,
+// które niczego nie zapisuje.
+
+const lap = {
+  krok: 'jak',        // jak | pisz | slucham | mysli | gdzie | projekty | miejsce
+  zadanie: null,      // rozpoznane pola z modelu
+  wyk: {},            // dopasowany wykonawca (id-ki gotowe do zapisu)
+  sciezka: [],        // [{id, tytul}] — droga w drzewie, ostatni to miejsce zapisu
+  drzewo: [],         // płaska lista zadań do wybierania
+  zapisuje: false,
+};
+
+function lapOtworz() {
+  lap.krok = 'jak';
+  lap.zadanie = null;
+  lap.wyk = {};
+  lap.sciezka = [];
+  lap.zgadniete = false;
+  lap.zapisuje = false;
+  document.getElementById('lap-tlo').hidden = false;
+  lapRysuj();
+  // Drzewo ściągamy w tle już teraz: gdy dojdzie do wyboru projektu, ma być
+  // gotowe, a nie dopiero wtedy zamawiane.
+  lapWczytajDrzewo();
+}
+
+function lapZamknij() {
+  if (window.Dyktowanie) Dyktowanie.stop();
+  document.getElementById('lap-tlo').hidden = true;
+}
+
+async function lapWczytajDrzewo() {
+  try {
+    const r = await authFetch('/api/task/drzewo');
+    lap.drzewo = (await r.json()).zadania || [];
+  } catch { lap.drzewo = []; }
+}
+
+const lapProjekty = () => lap.drzewo.filter((z) => z.projekt);
+const lapDzieci = (id) => lap.drzewo.filter((z) => z.parent_id === id);
+const lapTeraz = () => lap.sciezka[lap.sciezka.length - 1] || null;
+
+function lapRysuj() {
+  const box = document.getElementById('lap-krok');
+  const wroc = document.getElementById('lap-wroc');
+  // Wracać nie ma z czego na pierwszym kroku ani w trakcie pracy modelu —
+  // przerwanie w połowie zostawiłoby zapytanie bez odbiorcy.
+  wroc.hidden = ['jak', 'mysli'].includes(lap.krok);
+  lapRysujSciezke();
+  box.innerHTML = {
+    jak: lapKrokJak, pisz: lapKrokPisz, slucham: lapKrokSlucham,
+    mysli: lapKrokMysli, gdzie: lapKrokGdzie, projekty: lapKrokProjekty,
+    miejsce: lapKrokMiejsce,
+  }[lap.krok]();
+  const pole = box.querySelector('textarea');
+  if (pole) pole.focus();
+}
+
+// Ścieżka pokazuje, gdzie zadanie wyląduje, i cofa do dowolnego poziomu.
+// Pojawia się dopiero, gdy jest co pokazać — pusty pasek na pierwszym ekranie
+// byłby ozdobą.
+function lapRysujSciezke() {
+  const el = document.getElementById('lap-sciezka');
+  if (!['miejsce', 'projekty'].includes(lap.krok) || !lap.sciezka.length) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = lap.sciezka.map((w, i) => {
+    const ostatni = i === lap.sciezka.length - 1;
+    return `${i ? '<span class="strzal">›</span>' : ''}<button type="button"${
+      ostatni ? ' class="teraz"' : ''} data-lap-poziom="${i}">${esc(w.tytul)}</button>`;
+  }).join('');
+}
+
+function lapKrokJak() {
+  return `
+    <p class="lap-pyt">Złap zadanie</p>
+    <div class="lap-kafle">
+      <button type="button" class="lap-kafel" data-lap="mow">
+        ${ikonaSvg('mikrofon')}Mów
+        <small>powiedz jednym zdaniem</small>
+      </button>
+      <button type="button" class="lap-kafel" data-lap="pisz">
+        ${ikonaSvg('olowek')}Pisz
+        <small>wpisz z klawiatury</small>
+      </button>
+    </div>`;
+}
+
+function lapKrokPisz() {
+  return `
+    <p class="lap-pyt">Co jest do zrobienia?</p>
+    <p class="lap-pod">Możesz od razu dopisać kiedy i dla kogo —
+      „umówić notariusza w piątek o dziesiątej".</p>
+    <div class="lap-pisz">
+      <textarea id="lap-pole" placeholder="Umówić notariusza w piątek…"></textarea>
+      <button type="button" class="lap-kafel pelny mocny" data-lap="rozumiem">Dalej</button>
+    </div>`;
+}
+
+function lapKrokSlucham() {
+  return `
+    <div class="lap-mikrofon">
+      <button type="button" class="lap-krag" data-lap="stop" aria-label="Zakończ nagrywanie">
+        ${ikonaSvg('mikrofon')}
+      </button>
+      <div class="lap-stan">Słucham…</div>
+      <p class="lap-pod">Powiedz, co masz zrobić. Stuknij mikrofon, gdy skończysz.</p>
+    </div>`;
+}
+
+function lapKrokMysli() {
+  return `
+    <div class="lap-czeka">
+      <div class="lap-kropki"><i></i><i></i><i></i></div>
+      Zamieniam na zadanie…
+    </div>`;
+}
+
+// Rozpoznane zdanie jest CYTATEM tego, co przed chwilą powiedziałeś — dlatego
+// dostaje rozmiar i cudzysłów, a nie etykietę „Tytuł". To jedyny moment, w
+// którym da się wyłapać, że model usłyszał co innego.
+function lapCytat() {
+  const z = lap.zadanie || {};
+  const chipy = [];
+  if (z.termin) {
+    chipy.push(`<span class="lap-chip">${ikonaSvg('kalendarz')}${
+      esc(dataKrotka(z.termin))}${z.pora ? ' ' + esc(z.pora) : ''}</span>`);
+  }
+  if (z.powtarzaj) {
+    chipy.push(`<span class="lap-chip">${ikonaSvg('wymiana')}${esc(opisPowtarzania(z))}</span>`);
+  }
+  if (z.wykonawca) {
+    chipy.push(`<span class="lap-chip">${ikonaSvg('osoby')}${esc(z.wykonawca)}${
+      lap.wyk.wykonawca_user_id || lap.wyk.wykonawca_virtual_id ? '' : ' (nie znam)'}</span>`);
+  }
+  return `<p class="lap-cytat">${esc(z.tytul || '')}</p>${
+    chipy.length ? `<div class="lap-chipy">${chipy.join('')}</div>` : ''}`;
+}
+
+function lapKrokGdzie() {
+  const brakProjektow = !lapProjekty().length;
+  return `
+    ${lapCytat()}
+    <p class="lap-pyt">Gdzie to zapisać?</p>
+    <div class="lap-kafle">
+      <button type="button" class="lap-kafel mocny" data-lap="osobno">
+        Osobne zadanie
+        <small>na wierzchu listy</small>
+      </button>
+      <button type="button" class="lap-kafel" data-lap="w-projekcie"${
+        brakProjektow ? ' disabled style="opacity:.45;cursor:default"' : ''}>
+        W projekcie
+        <small>${brakProjektow ? 'nie masz jeszcze projektów' : 'jako krok większej sprawy'}</small>
+      </button>
+    </div>`;
+}
+
+function lapKrokProjekty() {
+  const projekty = lapProjekty();
+  if (!projekty.length) {
+    return `${lapCytat()}
+      <p class="lap-pyt">Nie masz jeszcze projektów</p>
+      <p class="lap-pod">Projekt to zadanie oznaczone jako przedsięwzięcie
+        w Szczegółach. Na razie zapiszę to osobno.</p>
+      <button type="button" class="lap-kafel pelny mocny" data-lap="osobno">Zapisz osobno</button>`;
+  }
+  return `
+    ${lapCytat()}
+    <p class="lap-pyt">Który projekt?</p>
+    <div class="lap-lista">
+      ${projekty.map((p) => {
+        const ile = lapDzieci(p.id).length;
+        return `<button type="button" class="lap-poz" data-lap-wejdz="${p.id}">
+          <span class="nazwa">${esc(p.tytul)}</span>
+          ${ile ? `<span class="ile">${ile} ${ile === 1 ? 'krok' : 'kroków'}</span>` : ''}
+        </button>`;
+      }).join('')}
+    </div>
+    <button type="button" class="lap-inne" data-lap="osobno">Jednak osobne zadanie</button>`;
+}
+
+// Miejsce wskazane — zostaje pytanie „tutaj czy głębiej". Kafelek „głębiej"
+// pokazujemy TYLKO wtedy, gdy naprawdę jest gdzie wejść: martwy przycisk uczy,
+// że stukanie w kafelki bywa bez skutku.
+function lapKrokMiejsce() {
+  const teraz = lapTeraz();
+  const dzieci = lapDzieci(teraz.id);
+  return `
+    ${lapCytat()}
+    ${lap.zgadniete ? `<p class="lap-pod">Usłyszałem, że to należy do
+      <strong>${esc(teraz.tytul)}</strong>.</p>` : ''}
+    <p class="lap-pyt">Zapisać w „${esc(teraz.tytul)}"?</p>
+    <div class="lap-kafle">
+      <button type="button" class="lap-kafel mocny" data-lap="zapisz">
+        Zapisz tutaj
+        ${lap.zapisuje ? '<small>zapisuję…</small>' : ''}
+      </button>
+      ${dzieci.length ? `<button type="button" class="lap-kafel" data-lap="glebiej">
+        Wejdź głębiej
+        <small>${dzieci.length} ${dzieci.length === 1 ? 'krok' : 'kroków'} w środku</small>
+      </button>` : ''}
+    </div>
+    ${dzieci.length ? `<div class="lap-lista" id="lap-glebiej" hidden>
+      ${dzieci.map((d) => {
+        const ile = lapDzieci(d.id).length;
+        return `<button type="button" class="lap-poz" data-lap-wejdz="${d.id}">
+          <span class="nazwa">${esc(d.tytul)}</span>
+          ${ile ? `<span class="ile">${ile} w środku</span>` : ''}
+        </button>`;
+      }).join('')}
+    </div>` : ''}
+    <button type="button" class="lap-inne" data-lap="projekty">Wybierz inne miejsce</button>`;
+}
+
+// ── kroki przepływu ──
+
+function lapMow() {
+  if (!window.Dyktowanie || !Dyktowanie.dostepne()) {
+    toast('Ta przeglądarka nie obsługuje dyktowania. Wybierz „Pisz".', 'blad');
+    return;
+  }
+  lap.krok = 'slucham';
+  lapRysuj();
+  Dyktowanie.start({
+    onTekst: (tekst) => lapRozumiem(tekst),
+    onBlad: (t) => { toast(t, 'blad'); lap.krok = 'jak'; lapRysuj(); },
+    // Koniec nasłuchu BEZ tekstu (cisza, przerwanie) wraca na start zamiast
+    // zostawiać ekran „Słucham…", w którym nic już nie słucha.
+    onStan: (slucha) => {
+      if (!slucha && lap.krok === 'slucham') { lap.krok = 'jak'; lapRysuj(); }
+    },
+  });
+}
+
+async function lapRozumiem(tekst) {
+  tekst = (tekst || '').trim();
+  if (!tekst) { toast('Nie usłyszałem nic do zapisania.', 'blad'); return; }
+  lap.krok = 'mysli';
+  lapRysuj();
+  let d;
+  try {
+    const r = await authFetch('/api/task/rozumiem', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tekst }),
+    });
+    d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || 'Nie udało się zrozumieć polecenia.');
+  } catch (e) {
+    toast(e.message || 'Brak połączenia.', 'blad');
+    lap.krok = 'jak';
+    lapRysuj();
+    return;
+  }
+
+  lap.zadanie = d.zadanie;
+  lap.wyk = {
+    wykonawca_user_id: d.wykonawca_user_id || null,
+    wykonawca_virtual_id: d.wykonawca_virtual_id || null,
+  };
+
+  // Gdy w zdaniu padła nazwa projektu i dało się ją dopasować, pomijamy pytanie
+  // „gdzie" i od razu stajemy w tym projekcie — ale POKAZUJEMY to i zostawiamy
+  // wyjście. Ciche wrzucenie do źle dopasowanego projektu chowa zadanie tak, że
+  // nikt go nie znajduje.
+  if (d.cel) {
+    if (!lap.drzewo.length) await lapWczytajDrzewo();
+    lap.sciezka = [d.cel];
+    lap.zgadniete = true;
+    lap.krok = 'miejsce';
+  } else {
+    lap.zgadniete = false;
+    lap.krok = 'gdzie';
+  }
+  lapRysuj();
+}
+
+async function lapZapisz() {
+  if (lap.zapisuje) return;          // podwójne stuknięcie = jedno zadanie
+  lap.zapisuje = true;
+  lapRysuj();
+  const z = lap.zadanie || {};
+  const teraz = lapTeraz();
+  try {
+    const r = await authFetch('/api/task/zadania', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tytul: z.tytul, termin: z.termin, pora: z.pora,
+        powtarzaj: z.powtarzaj, powtarzaj_co: z.powtarzaj_co,
+        ...lap.wyk,
+        parent_id: teraz ? teraz.id : null,
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { toast(d.detail || 'Nie udało się zapisać zadania.', 'blad'); return; }
+    nowyId = d.id || null;
+    // Potwierdzenie mówi i CO zapisano, i GDZIE — samo „zapisano" nie pozwala
+    // wyłapać, że zadanie wylądowało w niewłaściwym projekcie.
+    toast(opisZapisanego(z) + (teraz ? ` → ${teraz.tytul}` : ''), 'ok');
+    lapZamknij();
+    await wczytaj();
+  } catch {
+    toast('Brak połączenia — zadanie nie zostało zapisane.', 'blad');
+  } finally {
+    lap.zapisuje = false;
+  }
+}
+
+function lapCofnij() {
+  if (lap.krok === 'miejsce') {
+    lap.sciezka.pop();
+    lap.zgadniete = false;
+    if (!lap.sciezka.length) lap.krok = lapProjekty().length ? 'projekty' : 'gdzie';
+  } else if (lap.krok === 'projekty') {
+    lap.krok = 'gdzie';
+  } else {
+    lap.krok = 'jak';
+  }
+  lapRysuj();
+}
+
+function lapPodepnij() {
+  const tlo = document.getElementById('lap-tlo');
+  if (!tlo) return;                  // strona planu nie ma tego arkusza
+  document.getElementById('fab-lap').onclick = lapOtworz;
+  document.getElementById('lap-zamknij').onclick = lapZamknij;
+  document.getElementById('lap-wroc').onclick = lapCofnij;
+  // Stuknięcie w tło zamyka — na telefonie to szybsze niż celowanie w ✕.
+  tlo.onclick = (ev) => { if (ev.target === tlo) lapZamknij(); };
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !tlo.hidden) lapZamknij();
+  });
+
+  document.getElementById('lap-sciezka').onclick = (ev) => {
+    const b = ev.target.closest('[data-lap-poziom]');
+    if (!b) return;
+    lap.sciezka = lap.sciezka.slice(0, Number(b.dataset.lapPoziom) + 1);
+    lap.zgadniete = false;
+    lap.krok = 'miejsce';
+    lapRysuj();
+  };
+
+  document.getElementById('lap-krok').onclick = (ev) => {
+    const wejdz = ev.target.closest('[data-lap-wejdz]');
+    if (wejdz) {
+      const id = Number(wejdz.dataset.lapWejdz);
+      const z = lap.drzewo.find((x) => x.id === id);
+      if (!z) return;
+      lap.sciezka.push({ id: z.id, tytul: z.tytul });
+      lap.zgadniete = false;
+      lap.krok = 'miejsce';
+      lapRysuj();
+      return;
+    }
+    const b = ev.target.closest('[data-lap]');
+    if (!b) return;
+    ({
+      mow: lapMow,
+      pisz: () => { lap.krok = 'pisz'; lapRysuj(); },
+      stop: () => Dyktowanie.stop(),
+      rozumiem: () => lapRozumiem(document.getElementById('lap-pole').value),
+      osobno: () => { lap.sciezka = []; lapZapisz(); },
+      'w-projekcie': () => { lap.krok = 'projekty'; lapRysuj(); },
+      projekty: () => { lap.sciezka = []; lap.zgadniete = false;
+                        lap.krok = 'projekty'; lapRysuj(); },
+      // „Głębiej" tylko odsłania listę kroków — bez przerysowania, żeby
+      // pytanie i odpowiedź zostały na jednym ekranie.
+      glebiej: () => {
+        const lista = document.getElementById('lap-glebiej');
+        if (lista) lista.hidden = !lista.hidden;
+      },
+      zapisz: lapZapisz,
+    }[b.dataset.lap] || (() => {}))();
+  };
+
+  // Enter w polu pisania idzie dalej; Shift+Enter zostawiamy na nową linijkę.
+  document.getElementById('lap-krok').addEventListener('keydown', (ev) => {
+    if (ev.target.id === 'lap-pole' && ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault();
+      lapRozumiem(ev.target.value);
+    }
+  });
 }
 
 // Lista możliwych rodziców. WYKLUCZAMY SIEBIE I WŁASNE POTOMSTWO — zadanie
