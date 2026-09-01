@@ -145,26 +145,30 @@ function sciezkaDo(id) {
 // w chwili wychodzenia z pracy nie da się nie zauważyć, w którym świecie się
 // jest.
 let STREFY = [];
+let IKONY_STREF = [];
 // Wybór trzymamy w przeglądarce, nie na koncie: telefon i laptop służbowy to
 // dwa różne konteksty i wymuszanie na nich jednej strefy byłoby uciążliwe.
 let strefa = Number(localStorage.getItem('task_strefa')) || null;
 
-function nazwaStrefy() {
-  const s = STREFY.find((x) => x.id === strefa);
-  return s ? s.nazwa : 'Wszystkie strefy';
+function biezacaStrefa() {
+  return STREFY.find((x) => x.id === strefa) || null;
 }
 
 function naglowekStrefy() {
+  const s = biezacaStrefa();
   return `<button type="button" class="strefa-tytul" id="strefa-tytul"
                   aria-label="Zmień strefę">
-    <h1>${esc(nazwaStrefy())}</h1><span class="strefa-daszek">▾</span>
+    ${s && s.ikona ? ikonaSvg(s.ikona) : ''}
+    <h1>${esc(s ? s.nazwa : 'Wszystkie strefy')}</h1><span class="strefa-daszek">▾</span>
   </button>`;
 }
 
 async function wczytajStrefy() {
   try {
     const r = await authFetch('/api/task/strefy');
-    STREFY = (await r.json()).strefy || [];
+    const d = await r.json();
+    STREFY = d.strefy || [];
+    IKONY_STREF = d.ikony || [];
   } catch { STREFY = []; }
   // Strefa, której już nie ma (skasowana albo wyłączona), przestaje obowiązywać
   // — inaczej lista byłaby pusta bez wyjaśnienia dlaczego.
@@ -184,26 +188,35 @@ function ustawStrefe(id) {
 //
 // Teraz to obwiedzione przyciski ze strzałką powrotu, i BEZ bieżącego poziomu
 // — jedyne, co tu jest, prowadzi gdzieś indziej.
-function okruszki() {
-  if (korzen == null) return '';
+// Dokąd prowadzi powrót o jeden poziom: nadrzędne zadanie albo wyjście na
+// listę/projekty. Zwraca `{ id, tytul }` — `id` puste znaczy „na wierzch".
+function poziomWyzej() {
   const droga = sciezkaDo(korzen);
-  const wyzej = [{ id: '', tytul: TRYB_PROJEKTY ? 'Projekty' : 'Wszystkie zadania' },
-                 ...droga.slice(0, -1).map((z) => ({ id: z.id, tytul: z.tytul }))];
-  return `<nav class="okruszki">
-    ${wyzej.map((z, i) => `<button type="button" class="okruch" data-okr="${z.id}">${
-      i === 0 ? '<span class="okruch-strzal">‹</span>' : ''}${esc(z.tytul)}</button>`).join('')}
-  </nav>`;
+  const rodzic = droga[droga.length - 2];
+  if (rodzic) return { id: rodzic.id, tytul: rodzic.tytul };
+  return { id: '', tytul: TRYB_PROJEKTY ? 'Projekty' : 'Wszystkie zadania' };
 }
 
-// Karta bieżącego zadania nad jego krokami — tytuł, postęp i wejście do
-// pełnego formularza. Bez niej wejście strzałką pokazywałoby wyłącznie listę
-// dzieci, bez sposobu, żeby dobrać się do szczegółów SAMEGO zadania.
+// Karta bieżącego zadania nad jego krokami — powrót, tytuł, postęp i wejście
+// do pełnego formularza.
+//
+// POWRÓT SIEDZI W KARCIE, nie w osobnym pasku nad nią. Wcześniej była to
+// oddzielna listwa z okruszkami i Adam dwa razy napisał, że jest dziwna i nie
+// wiadomo, co to jest. Miał rację: pasek pojawiał się znikąd przy wejściu
+// w projekt i nie było widać, do czego należy. Strzałka przyklejona z lewej
+// do nazwy miejsca, w którym się jest, nie wymaga tłumaczenia — tak wygląda
+// cofanie w każdej apce na telefonie.
 function nagKorzenia(w) {
   const p = postep(w);
+  const wyzej = poziomWyzej();
   return `<div class="zad-korzen">
+    <button class="korzen-wroc" type="button" data-okr="${wyzej.id}"
+            title="Wróć do: ${esc(wyzej.tytul)}"
+            aria-label="Wróć do: ${esc(wyzej.tytul)}">‹</button>
     <div>
       <div class="zad-korzen-tytul">${w.kamien_milowy ? '<span class="kamien"></span>' : ''}${esc(w.tytul)}</div>
-      ${p.razem ? `<div class="zad-korzen-postep">${p.gotowe} z ${p.razem}</div>` : ''}
+      <div class="zad-korzen-postep">${p.razem ? `${p.gotowe} z ${p.razem} · ` : ''}${
+        esc(wyzej.tytul)}</div>
     </div>
     <button class="btn btn-outline" type="button" id="korzen-szczegoly">Szczegóły</button>
   </div>`;
@@ -1297,7 +1310,6 @@ function rysujLista() {
       ${ZAKRESY.map(([k, l]) => `<button class="chip" type="button" data-z="${k}"
           aria-pressed="${k === zakres}">${l}</button>`).join('')}
     </div>
-    ${okruszki()}
     ${aktualny ? nagKorzenia(aktualny) : ''}
     <!-- Pole mówi WPROST, gdzie trafi wpis. Wcześniej wyglądało tak samo
          niezależnie od tego, czy dodaje zadanie główne, czy krok w środku
@@ -1323,11 +1335,9 @@ function rysujLista() {
     nowyId = null;
     wczytaj();
   };
-  const okr = document.querySelector('.okruszki');
-  if (okr) okr.onclick = (ev) => {
-    const b = ev.target.closest('[data-okr]');
-    if (!b) return;
-    korzen = b.dataset.okr ? Number(b.dataset.okr) : null;
+  const wroc = document.querySelector('[data-okr]');
+  if (wroc) wroc.onclick = () => {
+    korzen = wroc.dataset.okr ? Number(wroc.dataset.okr) : null;
     nowyId = null;
     rysuj();
   };
@@ -2047,6 +2057,7 @@ function strefyEkranWyboru() {
       </button>
       ${moje.map((s) => `<button type="button" class="lap-poz${
         s.id === strefa ? ' wybrana' : ''}" data-strefa="${s.id}">
+        <span class="strefa-znak">${s.ikona ? ikonaSvg(s.ikona) : ''}</span>
         <span class="nazwa">${esc(s.nazwa)}</span>
         <span class="ile">${s.id === strefa ? 'teraz'
           : (s.otwartych ? s.otwartych + ' otwartych' : '')}</span>
@@ -2069,10 +2080,19 @@ function strefyEkranZarzadzania() {
         <label class="strefa-uzywam">
           <input type="checkbox" data-strefa-moja="${s.id}" ${s.moja ? 'checked' : ''}>
         </label>
+        <!-- Ikona jest przyciskiem: stuknięcie rozwija wybór POD tym wierszem,
+             zamiast otwierać kolejne okno nad oknem. -->
+        <button type="button" class="strefa-ikona" data-strefa-ikony="${s.id}"
+                aria-label="Zmień ikonę">${ikonaSvg(s.ikona || 'lista')}</button>
         <input class="strefa-nazwa" value="${esc(s.nazwa)}" data-strefa-nazwa="${s.id}"
                aria-label="Nazwa strefy">
         <button type="button" class="strefa-kasuj" data-strefa-usun="${s.id}"
                 aria-label="Usuń strefę" title="Usuń strefę">✕</button>
+      </div>
+      <div class="strefa-paleta" id="paleta-${s.id}" hidden>
+        ${IKONY_STREF.map((i) => `<button type="button" class="strefa-wybor${
+          i === s.ikona ? ' teraz' : ''}" data-strefa-ustaw="${s.id}" data-ikona="${i}"
+          aria-label="${i}">${ikonaSvg(i)}</button>`).join('')}
       </div>`).join('')}
     </div>
     <div class="dz-nowy" style="margin-top:10px">
@@ -2121,6 +2141,25 @@ function strefyPodepnij() {
         body: JSON.stringify({ nazwa }),
       });
       if (!r.ok) { toast('Nie udało się dodać strefy.', 'blad'); return; }
+      await strefyOdswiez();
+      return;
+    }
+    const rozwin = ev.target.closest('[data-strefa-ikony]');
+    if (rozwin) {
+      const p = document.getElementById('paleta-' + rozwin.dataset.strefaIkony);
+      // Jedna paleta naraz — dwie otwarte robią z listy stref ścianę ikon.
+      document.querySelectorAll('.strefa-paleta').forEach((x) => {
+        if (x !== p) x.hidden = true;
+      });
+      if (p) p.hidden = !p.hidden;
+      return;
+    }
+    const ust = ev.target.closest('[data-strefa-ustaw]');
+    if (ust) {
+      await authFetch(`/api/task/strefy/${ust.dataset.strefaUstaw}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ikona: ust.dataset.ikona }),
+      });
       await strefyOdswiez();
       return;
     }

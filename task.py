@@ -164,12 +164,14 @@ def lista_stref(current_user: dict = Depends(get_current_user)):
     pokazują, do czego to służy, i zmienia się je jednym stuknięciem."""
     hid, uid = _hid(current_user), current_user["user_id"]
     zalozone = task_db.zaloz_strefy_startowe(hid, uid)
-    return {"strefy": task_db.strefy(hid, uid), "zalozone_teraz": zalozone}
+    return {"strefy": task_db.strefy(hid, uid), "zalozone_teraz": zalozone,
+            "ikony": list(task_db.IKONY_STREF)}
 
 
 @router.post("/strefy", status_code=201)
 def nowa_strefa(dane: dict, current_user: dict = Depends(get_current_user)):
-    s = task_db.dodaj_strefe(_hid(current_user), current_user["user_id"], dane.get("nazwa"))
+    s = task_db.dodaj_strefe(_hid(current_user), current_user["user_id"],
+                             dane.get("nazwa"), dane.get("ikona"))
     if not s:
         raise HTTPException(400, "Podaj nazwę strefy.")
     return s
@@ -178,8 +180,9 @@ def nowa_strefa(dane: dict, current_user: dict = Depends(get_current_user)):
 @router.put("/strefy/{strefa_id}")
 def zmien_strefe(strefa_id: int, dane: dict,
                  current_user: dict = Depends(get_current_user)):
-    if not task_db.zmien_nazwe_strefy(_hid(current_user), strefa_id, dane.get("nazwa")):
-        raise HTTPException(400, "Nie udało się zmienić nazwy.")
+    if not task_db.zmien_strefe(_hid(current_user), strefa_id,
+                                dane.get("nazwa"), dane.get("ikona")):
+        raise HTTPException(400, "Nie udało się zapisać zmiany.")
     return {"ok": True}
 
 

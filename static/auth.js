@@ -1013,6 +1013,11 @@ const IKONY_SVG = {
   krzyzyk: '<path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/>',
   pauza: '<path d="M9.4 5.4v13.2M14.6 5.4v13.2"/>',
   uchwyt: '<circle cx="9" cy="6.4" r="1.5"/><circle cx="15" cy="6.4" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="17.6" r="1.5"/><circle cx="15" cy="17.6" r="1.5"/>',
+  // Ikony stref. W zestawie nie było ani domu, ani teczki, ani serca — a to
+  // pierwsze trzy rzeczy, po które sięga się, nazywając części własnego życia.
+  dom: '<path d="M3.6 10.4L12 3.8l8.4 6.6V20a.6.6 0 01-.6.6H4.2a.6.6 0 01-.6-.6z"/><path class="akc" d="M9.6 20.6v-6h4.8v6"/>',
+  teczka: '<rect x="3.4" y="7.4" width="17.2" height="12.6" rx="2"/><path d="M9 7.4V5.8a1.6 1.6 0 011.6-1.6h2.8A1.6 1.6 0 0115 5.8v1.6"/><path class="akc" d="M3.4 12.6h17.2"/>',
+  serce: '<path d="M12 20.2l-7.1-7.1a4.4 4.4 0 016.2-6.2l.9.9.9-.9a4.4 4.4 0 016.2 6.2z"/>',
   // Kropki wypełnione, nie obwódki: przy 18 px pierścień o promieniu 1,7
   // rozmywa się w szarą plamę. `fill` w atrybucie wygrywa z dziedziczonym
   // `fill: none` z .ikona svg, bo dziedziczenie przegrywa z deklaracją na

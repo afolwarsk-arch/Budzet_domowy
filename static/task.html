@@ -400,23 +400,21 @@
               background: var(--marka); transform: rotate(45deg); }
     .pusto { color: var(--muted); font-size: 13px; text-align: center; padding: 28px 12px; }
 
-    /* ── wejście w zadanie: okruszki, karta bieżącego zadania, strzałka ── */
-    /* Droga powrotna jako PRZYCISKI, nie szary tekst z „›". Ciąg okruszków
-       czyta się jak nagłówek i nic w nim nie zapowiada, że da się w to
-       stuknąć — obwódka i strzałka mówią to bez tłumaczenia. */
-    .okruszki { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-                margin-bottom: 12px; }
-    .okruch { display: inline-flex; align-items: center; gap: 5px; min-height: 34px;
-              padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
-              background: var(--surface); font: inherit; font-size: 12.5px;
-              color: var(--muted); cursor: pointer; }
-    .okruch:hover { border-color: var(--marka); color: var(--marka); }
-    .okruch-strzal { font-size: 15px; line-height: 1; margin-left: -2px; }
+    /* ── wejście w zadanie: karta bieżącego zadania z powrotem ── */
+    /* Powrót SIEDZI W KARCIE zadania, nie w osobnym pasku nad nią. Oddzielna
+       listwa z okruszkami pojawiała się znikąd przy wejściu w projekt i nie
+       było widać, do czego należy. Strzałka przyklejona z lewej do nazwy
+       miejsca, w którym się jest, nie wymaga tłumaczenia. */
+    .korzen-wroc { flex: none; width: 34px; height: 44px; margin-left: -6px;
+                   border: none; background: none; color: var(--muted);
+                   font-size: 24px; line-height: 1; cursor: pointer;
+                   display: flex; align-items: center; justify-content: center; }
+    .korzen-wroc:hover { color: var(--marka); }
 
     .zad-korzen { display: flex; align-items: center; justify-content: space-between; gap: 10px;
                   border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
                   padding: 12px 14px; margin-bottom: 14px; }
-    .zad-korzen > div:first-child { min-width: 0; flex: 1; }
+    .zad-korzen > div { min-width: 0; flex: 1; }
     .zad-korzen-tytul { font-size: 15px; font-weight: 600; color: var(--heading);
                          overflow-wrap: break-word; }
     .zad-korzen-postep { font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -491,7 +489,31 @@
     .strefa-uzywam { flex: none; display: flex; align-items: center; }
     .strefa-uzywam input { width: 20px; height: 20px; accent-color: var(--marka);
                            cursor: pointer; }
+    .strefa-tytul .ikona svg { width: 21px; height: 21px; }
+    .strefa-znak { flex: none; display: flex; color: var(--marka); }
+    .strefa-znak .ikona svg { width: 18px; height: 18px; }
+
     .strefa-nazwa { flex: 1; min-width: 0; min-height: 42px; font-size: 14px; }
+    .strefa-ikona { flex: none; width: 38px; height: 38px; display: flex;
+                    align-items: center; justify-content: center; cursor: pointer;
+                    border: 1px solid var(--border); border-radius: 9px;
+                    background: var(--surface); color: var(--marka); }
+    .strefa-ikona:hover { border-color: var(--marka); }
+    .strefa-ikona .ikona svg { width: 18px; height: 18px; }
+
+    /* Paleta rozwija się POD wierszem strefy, zamiast otwierać kolejne okno
+       nad oknem — arkusz jest już warstwą modalną i druga byłaby o jedną
+       za dużo. */
+    .strefa-paleta { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
+                     padding: 8px 0 4px 47px; }
+    .strefa-paleta[hidden] { display: none; }
+    .strefa-wybor { display: flex; align-items: center; justify-content: center;
+                    min-height: 40px; border: 1px solid var(--border); border-radius: 9px;
+                    background: var(--surface); color: var(--muted); cursor: pointer; }
+    .strefa-wybor:hover { border-color: var(--marka); color: var(--marka); }
+    .strefa-wybor.teraz { border-color: var(--marka); color: var(--marka);
+                          background: var(--surface-2); }
+    .strefa-wybor .ikona svg { width: 18px; height: 18px; }
     .strefa-kasuj { flex: none; width: 34px; height: 34px; border: none; background: none;
                     color: var(--muted); font-size: 14px; cursor: pointer;
                     border-radius: 8px; }

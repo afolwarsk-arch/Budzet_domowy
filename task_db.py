@@ -142,6 +142,10 @@ def init_task_db() -> None:
         )""")
         cur.execute("CREATE INDEX IF NOT EXISTS task_strefy_osob_user "
                     "ON task_strefy_osob (user_id)")
+        # Nazwa ikony z `IKONY_SVG`, nie sam rysunek — dzięki temu strefy biorą
+        # kolor modułu i motyw tak samo jak reszta apki, a zmiana kroju ikon
+        # przechodzi wszędzie naraz.
+        cur.execute("ALTER TABLE task_strefy ADD COLUMN IF NOT EXISTS ikona TEXT")
         # NULL znaczy „bez strefy" i jest widoczne dla wszystkich. To jednocześnie
         # ścieżka migracji: wszystko, co powstało przed strefami, zostaje na
         # wierzchu, zamiast zniknąć komuś z oczu przy wdrożeniu.
@@ -420,14 +424,21 @@ def plan(household_id, user_id, pokaz_zrobione=False, strefa=None):
 # Nazwy zaproponowane przy pierwszym wejściu. Zakładamy je RAZ i tylko wtedy,
 # gdy gospodarstwo nie ma jeszcze żadnej strefy — potem to już wyłącznie
 # własność użytkownika: może je zmienić, skasować i dodać swoje.
-STREFY_STARTOWE = ("Praca", "Dom", "Własna działalność", "Studia i nauka")
+STREFY_STARTOWE = (("Praca", "teczka"), ("Dom", "dom"),
+                   ("Własna działalność", "moneta"), ("Studia i nauka", "ksiazka"))
+
+# Ikony do wyboru. Świadomie krótka lista: sto ikon zamienia wybór w przeglądanie
+# katalogu, a strefy zakłada się raz. Te dwanaście pokrywa to, na co ludzie dzielą
+# życie — praca, dom, pieniądze, nauka, ludzie, zdrowie, pasja, projekt.
+IKONY_STREF = ("teczka", "dom", "moneta", "ksiazka", "osoby", "serce",
+               "zdrowie", "gwiazdka", "zarowka", "kompas", "jablko", "lista")
 
 
 def strefy(household_id, user_id) -> list[dict]:
     """Strefy gospodarstwa ze znacznikiem, czy TA osoba z nich korzysta."""
     with get_db() as cur:
         cur.execute(
-            "SELECT s.id, s.nazwa, s.kolejnosc, "
+            "SELECT s.id, s.nazwa, s.ikona, s.kolejnosc, "
             "       (o.user_id IS NOT NULL) AS moja, "
             "       (SELECT COUNT(*) FROM task_zadania z "
             "        WHERE z.strefa_id = s.id AND z.status = 'otwarte') AS otwartych "
@@ -449,25 +460,25 @@ def zaloz_strefy_startowe(household_id, user_id) -> bool:
                     (household_id,))
         if cur.fetchone():
             return False
-        for i, nazwa in enumerate(STREFY_STARTOWE):
-            cur.execute("INSERT INTO task_strefy (household_id, nazwa, kolejnosc) "
-                        "VALUES (%s,%s,%s) RETURNING id", (household_id, nazwa, i))
+        for i, (nazwa, ikona) in enumerate(STREFY_STARTOWE):
+            cur.execute("INSERT INTO task_strefy (household_id, nazwa, ikona, kolejnosc) "
+                        "VALUES (%s,%s,%s,%s) RETURNING id",
+                        (household_id, nazwa, ikona, i))
             cur.execute("INSERT INTO task_strefy_osob (strefa_id, user_id) VALUES (%s,%s)",
                         (cur.fetchone()["id"], user_id))
         return True
 
 
-def dodaj_strefe(household_id, user_id, nazwa: str) -> dict | None:
+def dodaj_strefe(household_id, user_id, nazwa: str, ikona: str | None = None) -> dict | None:
     nazwa = (nazwa or "").strip()
     if not nazwa:
         return None
     with get_db() as cur:
-        cur.execute("SELECT COALESCE(MAX(kolejnosc), -1) + 1 AS n FROM task_strefy "
-                    "WHERE household_id = %s", (household_id,))
-        cur.execute("INSERT INTO task_strefy (household_id, nazwa, kolejnosc) "
-                    "VALUES (%s,%s,(SELECT COALESCE(MAX(kolejnosc), -1) + 1 "
-                    "FROM task_strefy WHERE household_id = %s)) RETURNING id, nazwa",
-                    (household_id, nazwa[:60], household_id))
+        cur.execute("INSERT INTO task_strefy (household_id, nazwa, ikona, kolejnosc) "
+                    "VALUES (%s,%s,%s,(SELECT COALESCE(MAX(kolejnosc), -1) + 1 "
+                    "FROM task_strefy WHERE household_id = %s)) RETURNING id, nazwa, ikona",
+                    (household_id, nazwa[:60],
+                     ikona if ikona in IKONY_STREF else "lista", household_id))
         s = dict(cur.fetchone())
         # Kto zakłada strefę, ten jej używa — inaczej znikałaby mu z oczu
         # w chwili utworzenia.
@@ -477,13 +488,22 @@ def dodaj_strefe(household_id, user_id, nazwa: str) -> dict | None:
         return s
 
 
-def zmien_nazwe_strefy(household_id, strefa_id, nazwa: str) -> bool:
+def zmien_strefe(household_id, strefa_id, nazwa=None, ikona=None) -> bool:
+    """Zmienia nazwę, ikonę albo obie. Pominięte pole zostaje bez zmian —
+    wybranie ikony nie ma prawa skasować nazwy i odwrotnie."""
+    zmiany, p = [], []
     nazwa = (nazwa or "").strip()
-    if not nazwa:
+    if nazwa:
+        zmiany.append("nazwa = %s")
+        p.append(nazwa[:60])
+    if ikona in IKONY_STREF:
+        zmiany.append("ikona = %s")
+        p.append(ikona)
+    if not zmiany:
         return False
     with get_db() as cur:
-        cur.execute("UPDATE task_strefy SET nazwa = %s WHERE id = %s AND household_id = %s",
-                    (nazwa[:60], strefa_id, household_id))
+        cur.execute(f"UPDATE task_strefy SET {', '.join(zmiany)} "
+                    "WHERE id = %s AND household_id = %s", (*p, strefa_id, household_id))
         return cur.rowcount > 0
 
 
