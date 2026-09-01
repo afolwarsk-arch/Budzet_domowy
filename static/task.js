@@ -47,7 +47,12 @@ const TRYB_PLANU = location.pathname.replace(/\/$/, '') === '/plan';
 // w dół — a przedsięwzięcia przegląda się w zupełnie innym momencie niż
 // „co mam dziś do zrobienia".
 const TRYB_PROJEKTY = location.pathname.replace(/\/$/, '') === '/projekty';
-let zakres = TRYB_PLANU ? 'plan' : (TRYB_PROJEKTY ? 'wszystkie' : 'dzis');
+// Wybrany zakres PRZEŻYWA odświeżenie strony. Bez tego każde wejście
+// w szczegóły i powrót wracało do „Dziś", więc praca nad czymś odległym
+// w czasie znaczyła przestawianie filtra po każdej zmianie.
+// Domyślnie „Wszystkie": po wejściu ma być widać całość, a nie wycinek.
+let zakres = TRYB_PLANU ? 'plan'
+  : (TRYB_PROJEKTY ? 'wszystkie' : (localStorage.getItem('task_zakres') || 'wszystkie'));
 let zadania = [];           // płasko, jak z serwera
 let korzen = null;          // null = widok listy; liczba = wejście w zadanie
 let widok = 'lista';        // lista | szczegoly
@@ -266,6 +271,8 @@ window.addEventListener('DOMContentLoaded', () =>
 // żeby przerwać ciszę po zapisie: lista przerysowuje się po każdym dodaniu,
 // a bez tego pole znikałoby w środku serii wpisów.
 let dopisywanieW = null;
+// Czy po przerysowaniu ustawić kursor w polu dopisywania. Patrz `podepnijPtaszki`.
+let wracajKursorem = false;
 
 // Które zadania mają zwinięte kroki. Trzymane poza rysowaniem, bo lista
 // przerysowuje się po każdej zmianie — inaczej wszystko rozwijałoby się z
@@ -285,8 +292,9 @@ function pokazDopisywanie(id) {
   const box = document.getElementById('dopisz-' + id);
   if (!box) return;
   box.hidden = false;
-  const pole = box.querySelector('input');
-  if (pole) pole.focus();
+  // BEZ `focus()`. Ustawienie kursora wyrzuca na telefonie klawiaturę, która
+  // zasłania pół ekranu — a plusik naciska się też po to, żeby zobaczyć, co
+  // zadanie ma w środku. Klawiatura ma wychodzić, gdy ktoś stuknie w pole.
 }
 
 // ── dziennik zadania ────────────────────────────────────────────────────────
@@ -386,8 +394,14 @@ function podepnijPtaszki() {
     const box = document.getElementById('dopisz-' + dopisywanieW);
     if (box) {
       box.hidden = false;
-      const pole = box.querySelector('input');
-      if (pole) pole.focus();
+      // Kursor wraca do pola TYLKO po faktycznym zapisaniu kroku, bo wtedy
+      // ktoś pisze serię i klawiatura jest mu potrzebna. Przy każdym innym
+      // przerysowaniu (odhaczenie, zmiana daty) ustawianie kursora wyrzucałoby
+      // klawiaturę bez powodu.
+      if (wracajKursorem) {
+        const pole = box.querySelector('input');
+        if (pole) pole.focus();
+      }
     } else {
       dopisywanieW = null;
     }
@@ -415,7 +429,9 @@ function podepnijPtaszki() {
     if (!r.ok) { toast('Nie udało się zapisać kroku.', 'blad'); return; }
     pole.value = '';
     dopisywanieW = parent;      // po przerysowaniu pole ma wrócić w to samo miejsce
+    wracajKursorem = true;      // …i z kursorem, bo kroki dopisuje się seriami
     await wczytaj();
+    wracajKursorem = false;
   };
 
   // Szybkie pola: termin i wykonawca zapisują się od razu po wyborze.
@@ -642,6 +658,15 @@ function rysujPlan() {
            to miesiąc i co się właśnie zaznaczyło. -->
       <div class="gantt-gora">
         <div class="gantt-info" id="gantt-info" hidden></div>
+        <!-- Szerokość kolumny nazw zmienia się PRZY SAMEJ KOLUMNIE, a nie
+             w panelu filtrów. Leżała tam obok filtrów danych, wyglądając tak
+             samo jak one, choć nie zmienia tego, CO widać, tylko JAK. Przycisk
+             stojący nad kolumną, którą rozszerza, nie wymaga tłumaczenia. -->
+        <button type="button" class="gantt-szer" id="p-nazwy"
+                aria-pressed="${planSzerokieNazwy}"
+                title="${planSzerokieNazwy ? 'Zwęź kolumnę nazw' : 'Poszerz kolumnę nazw'}"
+                aria-label="${planSzerokieNazwy ? 'Zwęź kolumnę nazw' : 'Poszerz kolumnę nazw'}"
+        >${planSzerokieNazwy ? '⇤' : '⇥'}</button>
         <!-- Miesiące w osobnej warstwie, żeby dało się ją przesuwać razem
              z wykresem: sama oś ma stałą pozycję i ucina to, co poza ekranem. -->
         <div class="gantt-osie"><div class="gantt-osie-tresc" style="width:${szer}px">${
@@ -664,6 +689,10 @@ function rysujPlan() {
 // Spłaszczenie z zachowaniem poziomu zagnieżdżenia — na wykresie wcięcie
 // zastępuje strzałki wchodzenia w głąb, bo cała struktura jest widoczna naraz.
 function splaszczPlan(w, poziom) {
+  // Zwinięte zadanie oddaje sam siebie — cała gałąź pod nim znika z wykresu.
+  // Stan trzymamy w tym samym `zwiniete` co lista, więc zwinięty etap zostaje
+  // zwinięty przy przejściu między zakładkami.
+  if (zwiniete.has(w.id)) return [{ z: w, poziom }];
   return [{ z: w, poziom }].concat((w.dzieci || []).flatMap((d) => splaszczPlan(d, poziom + 1)));
 }
 
@@ -694,26 +723,43 @@ function naglowekPlanu() {
 // jest schowane, zanim użytkownik zacznie się zastanawiać, czemu wykres
 // wygląda inaczej, niż pamięta.
 function ileUstawienWidoku() {
-  return planProjekty.size + (planZrobione ? 1 : 0) + (planSzerokieNazwy ? 1 : 0);
+  return planProjekty.size + (planZrobione ? 1 : 0);
 }
 
+// Panel mówi, CO ma być na wykresie — i tylko to.
+//
+// Wcześniej leżały tu obok siebie, wyglądając identycznie, trzy różne rodzaje
+// rzeczy: „Szersze nazwy" (układ ekranu), „Zrobione" (filtr po statusie)
+// i nazwy projektów (zakres danych). Adam napisał wprost, że da się w tym
+// pogubić — i miał rację: jednakowe pastylki obiecują, że robią to samo.
+//
+// Teraz projekty to lista z ptaszkami (wybór wielokrotny widać po samym
+// kształcie), „zrobione" siedzi pod kreską jako osobne pytanie, a szerokość
+// kolumny nazw wyprowadziliśmy stąd na samą kolumnę — patrz `naglowekKolumny`.
 function panelWidoku() {
   const projekty = zadania.filter((z) => z.projekt && z.parent_id == null);
   return `
     <div class="panel-widoku">
-      <div class="filtry">
-        <button class="chip" type="button" id="p-zrobione" aria-pressed="${planZrobione}">
-          Zrobione</button>
-        <button class="chip" type="button" id="p-nazwy" aria-pressed="${planSzerokieNazwy}">
-          Szersze nazwy</button>
-      </div>
       ${projekty.length ? `
-        <div class="filtry" id="p-projekty">
-          <button class="chip" type="button" data-proj="" aria-pressed="${!planProjekty.size}">
-            Wszystko</button>
-          ${projekty.map((p) => `<button class="chip" type="button" data-proj="${p.id}"
-              aria-pressed="${planProjekty.has(p.id)}">${esc(p.tytul)}</button>`).join('')}
+        <div class="pw-grupa" id="p-projekty">
+          <div class="pw-tytul">Które przedsięwzięcia</div>
+          <button class="pw-poz" type="button" data-proj=""
+                  aria-pressed="${!planProjekty.size}">
+            <span class="pw-ptaszek">${planProjekty.size ? '' : ikonaSvg('ptaszek')}</span>
+            <span class="pw-nazwa">Wszystkie</span>
+          </button>
+          ${projekty.map((p) => `<button class="pw-poz" type="button" data-proj="${p.id}"
+              aria-pressed="${planProjekty.has(p.id)}">
+            <span class="pw-ptaszek">${planProjekty.has(p.id) ? ikonaSvg('ptaszek') : ''}</span>
+            <span class="pw-nazwa">${esc(p.tytul)}</span>
+          </button>`).join('')}
         </div>` : ''}
+      <div class="pw-grupa pw-osobno">
+        <label class="pw-przelacznik">
+          <input type="checkbox" id="p-zrobione" ${planZrobione ? 'checked' : ''}>
+          <span>Pokaż też zadania zrobione</span>
+        </label>
+      </div>
     </div>`;
 }
 
@@ -724,10 +770,7 @@ function podepnijNaglowekPlanu() {
   const widokBtn = document.getElementById('p-widok');
   if (widokBtn) widokBtn.onclick = () => { planPanelOtwarty = !planPanelOtwarty; rysujPlan(); };
   const zr = document.getElementById('p-zrobione');
-  if (zr) zr.onclick = () => { planZrobione = !planZrobione; wczytajPlan(); };
-  const nz = document.getElementById('p-nazwy');
-  // Sama szerokość kolumny nie zmienia danych — przerysowujemy bez pytania serwera.
-  if (nz) nz.onclick = () => { planSzerokieNazwy = !planSzerokieNazwy; rysujPlan(); };
+  if (zr) zr.onchange = () => { planZrobione = zr.checked; wczytajPlan(); };
   const fp = document.getElementById('p-projekty');
   if (fp) fp.onclick = (ev) => {
     const b = ev.target.closest('[data-proj]');
@@ -788,9 +831,20 @@ function wierszPlanu(poz, od, px, szer, dzis) {
   const z = poz.z;
   const zakresZ = zakresZadania(z);
   const wciecie = Math.min(poz.poziom, 3) * 12;
-  const etykieta = `<div class="gantt-nazwa" style="padding-left:${8 + wciecie}px"
-      data-otworz="${z.id}" title="${esc(z.tytul)}">${
-    z.projekt ? '<span class="gantt-projekt"></span>' : ''}${esc(z.tytul)}</div>`;
+  // Daszek zwijania PRZED nazwą, tylko przy zadaniach, które coś mają w środku.
+  // Zwijanie jest piętrowe: schowany etap chowa też wszystko pod sobą, bo plan
+  // na trzydzieści kroków ogląda się z góry, a nie po jednym wierszu.
+  const maDzieci = (z.dzieci || []).length > 0;
+  const daszek = maDzieci
+    ? `<button type="button" class="gantt-zwin${zwiniete.has(z.id) ? ' zwiniety' : ''}"
+         data-zwin-plan="${z.id}"
+         aria-label="${zwiniete.has(z.id) ? 'Rozwiń kroki' : 'Zwiń kroki'}"
+         title="${zwiniete.has(z.id) ? 'Rozwiń kroki' : 'Zwiń kroki'}">›</button>`
+    : '<span class="gantt-zwin pusty"></span>';
+  const etykieta = `<div class="gantt-nazwa" style="padding-left:${4 + wciecie}px"
+      title="${esc(z.tytul)}">${daszek}<span class="gantt-nazwa-tekst"
+      data-otworz="${z.id}">${
+    z.projekt ? '<span class="gantt-projekt"></span>' : ''}${esc(z.tytul)}</span></div>`;
 
   if (!zakresZ) {
     // Przodek bez własnych dat: pokazujemy nazwę, żeby dzieci miały kontekst,
@@ -953,11 +1007,58 @@ function pokazPasekInfo(id) {
         <button type="button" data-zdejmij="${p.id}"
                 aria-label="Usuń powiązanie z: ${esc(p.tytul)}">✕</button></span>`).join('')}
     </div>` : ''}
-    <button class="btn btn-outline gi-otworz" type="button" data-otworz-info="${id}">Otwórz</button>`;
+    <!-- TE SAME KAFELKI CO NA LIŚCIE. Wcześniej stąd prowadziła jedna droga:
+         „Otwórz", czyli pełny formularz. A na wykresie najczęściej chce się
+         zrobić dokładnie to samo co na liście — przypisać kogoś, dopisać
+         wpis do dziennika albo dorzucić krok. Dwa różne ekrany na te same
+         czynności każą uczyć się apki dwa razy. -->
+    <div class="gi-akcje">
+      <label class="zad-data${z.termin ? ' jest' : ''}" title="Termin">
+        ${z.termin ? dataKrotka(z.termin) : ikonaSvg('kalendarz')}
+        <input type="date" data-gi-termin="${id}" value="${esc((z.termin || '').slice(0, 10))}">
+      </label>
+      <label class="zad-kto${z.wykonawca_user_id ? ' jest' : ''}" title="Wykonawca">
+        ${skrotWykonawcy(z)}
+        <select data-gi-wykonawca="${id}">${opcjeWykonawcyKrotkie(z)}</select>
+      </label>
+      <button class="zad-plus" type="button" data-gi-krok="${id}"
+              title="Dodaj krok" aria-label="Dodaj krok">+</button>
+      <button class="zad-plus zad-komentarz${z.ile_komentarzy ? ' jest' : ''}" type="button"
+              data-gi-dziennik="${id}" title="Dziennik zadania" aria-label="Dziennik zadania">${
+        z.ile_komentarzy ? z.ile_komentarzy : ikonaSvg('notatka')}</button>
+      <button class="btn btn-outline gi-otworz" type="button" data-otworz-info="${id}">Otwórz</button>
+    </div>`;
 
   pasek.querySelector('[data-otworz-info]').onclick = (e) => {
     e.stopPropagation();
     otworzSzczegoly(id);
+  };
+  // Szybkie pola zapisują się od razu, tak samo jak na liście.
+  const dt = pasek.querySelector('[data-gi-termin]');
+  dt.onclick = (e) => e.stopPropagation();
+  dt.onchange = async () => {
+    await zapiszSzybko(id, { termin: dt.value || null });
+    await wczytajPlan();
+  };
+  const kto = pasek.querySelector('[data-gi-wykonawca]');
+  kto.onclick = (e) => e.stopPropagation();
+  kto.onchange = async () => {
+    const v = kto.value;
+    await zapiszSzybko(id, {
+      wykonawca_user_id: v.startsWith('u:') ? Number(v.slice(2)) : null,
+      wykonawca_virtual_id: v.startsWith('v:') ? Number(v.slice(2)) : null,
+    });
+    await wczytajPlan();
+  };
+  // Krok i dziennik wymagają pola tekstowego, którego nad wykresem nie ma gdzie
+  // postawić — otwieramy je w arkuszu, tym samym co przy łapaniu zadania.
+  pasek.querySelector('[data-gi-krok]').onclick = (e) => {
+    e.stopPropagation();
+    krokWArkuszu(id, z.tytul);
+  };
+  pasek.querySelector('[data-gi-dziennik]').onclick = (e) => {
+    e.stopPropagation();
+    dziennikWArkuszu(id, z.tytul);
   };
   pasek.querySelectorAll('[data-zdejmij]').forEach((b) => {
     b.onclick = async (e) => {
@@ -1261,10 +1362,22 @@ function przeciaganieTla(g) {
 function podepnijBelki() {
   const g = document.querySelector('.gantt');
   if (!g) return;
+  // Sama szerokość kolumny nie zmienia danych — przerysowujemy bez pytania serwera.
+  const nz = document.getElementById('p-nazwy');
+  if (nz) nz.onclick = () => { planSzerokieNazwy = !planSzerokieNazwy; rysujPlan(); };
   zsynchronizujOs(g);
   przeciaganieTla(g);
   przeciaganieBelek(g);
   g.onclick = async (ev) => {
+    // Zwijanie sprawdzamy PRZED blokadą po przeciąganiu: daszek leży w kolumnie
+    // nazw, więc nie da się go trafić w trakcie ciągnięcia belki.
+    const zw = ev.target.closest('[data-zwin-plan]');
+    if (zw) {
+      const id = Number(zw.dataset.zwinPlan);
+      if (zwiniete.has(id)) zwiniete.delete(id); else zwiniete.add(id);
+      rysujPlan();
+      return;
+    }
     // Kliknięcie tuż po przeciągnięciu nie ma otwierać szczegółów — przeglądarka
     // wysyła `click` po każdym `pointerup`, więc bez tego każde przesunięcie
     // belki kończyłoby się skokiem do formularza.
@@ -1356,6 +1469,7 @@ function rysujLista() {
     const b = ev.target.closest('[data-z]');
     if (!b) return;
     zakres = b.dataset.z;
+    localStorage.setItem('task_zakres', zakres);
     nowyId = null;
     wczytaj();
   };
@@ -2139,6 +2253,51 @@ async function strefyOdswiez() {
   strefyRysuj();
 }
 
+// ── krok i dziennik z poziomu wykresu ───────────────────────────────────────
+//
+// Na liście oba wskakują pod wiersz zadania. Nad wykresem nie ma na to miejsca
+// — pasek informacyjny jest przyklejony i wąski — więc pokazujemy je w arkuszu
+// stref, który już istnieje i już umie być oknem nad treścią.
+
+function krokWArkuszu(id, tytul) {
+  const tlo = document.getElementById('strefy-tlo');
+  if (!tlo) return;
+  tlo.hidden = false;
+  document.getElementById('strefy-krok').innerHTML = `
+    <p class="lap-pyt">Nowy krok w „${esc(tytul)}"</p>
+    <div class="dz-nowy">
+      <input id="gi-pole-krok" placeholder="Co jest do zrobienia?" autocomplete="off">
+      <button class="btn btn-primary btn-dopisz" type="button" id="gi-zapisz-krok">Dodaj</button>
+    </div>`;
+  const pole = document.getElementById('gi-pole-krok');
+  const zapisz = async () => {
+    const t = pole.value.trim();
+    if (!t) return;
+    pole.disabled = true;
+    const r = await authFetch('/api/task/zadania', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tytul: t, parent_id: id }),
+    });
+    pole.disabled = false;
+    if (!r.ok) { toast('Nie udało się zapisać kroku.', 'blad'); return; }
+    strefyZamknij();
+    toast('Krok dodany.', 'ok');
+    await wczytajPlan();
+  };
+  document.getElementById('gi-zapisz-krok').onclick = zapisz;
+  pole.onkeydown = (e) => { if (e.key === 'Enter') zapisz(); };
+}
+
+async function dziennikWArkuszu(id, tytul) {
+  const tlo = document.getElementById('strefy-tlo');
+  if (!tlo) return;
+  tlo.hidden = false;
+  const box = document.getElementById('strefy-krok');
+  box.innerHTML = `<p class="lap-pyt">Dziennik: „${esc(tytul)}"</p>
+    <div class="zad-dziennik" id="dziennik-${id}"></div>`;
+  await odswiezDziennik(id);
+}
+
 function strefyPodepnij() {
   const tlo = document.getElementById('strefy-tlo');
   if (!tlo) return;
@@ -2236,9 +2395,34 @@ function strefyPodepnij() {
   }, true);
 }
 
+// Pływający guzik chowa się na czas pisania. Na zrzucie od Adama zasłaniał
+// „Zapisz" w dzienniku przy otwartej klawiaturze — a łapanie nowego zadania
+// w trakcie wpisywania innego i tak nie ma sensu.
+//
+// Słuchamy focusin/focusout na dokumencie, a nie zdarzeń klawiatury: te drugie
+// nie istnieją w przeglądarce, a `visualViewport` daje różne wyniki na
+// Androidzie i iOS. Kursor w polu tekstowym to jedyny pewny sygnał.
+function pilnujKlawiatury() {
+  const fab = document.getElementById('fab-lap');
+  if (!fab) return;
+  const pisze = (el) => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')
+    && !['checkbox', 'radio', 'range'].includes(el.type);
+  document.addEventListener('focusin', (ev) => {
+    if (pisze(ev.target)) fab.classList.add('schowany');
+  });
+  document.addEventListener('focusout', () => {
+    // Krótka zwłoka: przy przeskoku z pola na przycisk „Zapisz" focusout leci
+    // przed focusin i bez niej guzik mrugałby przy każdym stuknięciu.
+    setTimeout(() => {
+      if (!pisze(document.activeElement)) fab.classList.remove('schowany');
+    }, 120);
+  });
+}
+
 function lapPodepnij() {
   const tlo = document.getElementById('lap-tlo');
   if (!tlo) return;                  // strona planu nie ma tego arkusza
+  pilnujKlawiatury();
   document.getElementById('fab-lap').onclick = lapOtworz;
   document.getElementById('lap-zamknij').onclick = lapZamknij;
   document.getElementById('lap-wroc').onclick = lapCofnij;

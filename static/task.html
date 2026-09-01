@@ -73,12 +73,57 @@
     .plan-narzedzia .skala { display: flex; align-items: center; gap: 8px;
                              font-size: 12px; color: var(--muted); flex: 1; min-width: 130px; }
     .plan-narzedzia .skala input { flex: 1; min-width: 80px; accent-color: var(--marka); }
+    /* Panel mówi, CO ma być na wykresie. Wcześniej leżały w nim obok siebie,
+       wyglądając identycznie, trzy różne rodzaje rzeczy: układ ekranu, filtr
+       po statusie i zakres danych. Jednakowe pastylki obiecują, że robią to
+       samo — więc każdy rodzaj dostał własny kształt: projekty to lista
+       z ptaszkami, „zrobione" to przełącznik pod kreską, a szerokość kolumny
+       wyszła stąd na samą kolumnę. */
     .panel-widoku { border: 1px solid var(--border); border-radius: 10px;
-                    padding: 10px; margin-bottom: 10px; background: var(--surface-2); }
-    .panel-widoku .filtry { margin-bottom: 0; }
-    .panel-widoku .filtry + .filtry { margin-top: 8px; padding-top: 8px;
-                                      border-top: 1px solid var(--border-soft); }
+                    padding: 4px 10px 10px; margin-bottom: 10px;
+                    background: var(--surface-2); }
+    .pw-tytul { font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+                color: var(--muted); margin: 8px 0 4px; }
+    .pw-poz { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 40px;
+              padding: 6px 4px; border: none; background: none; font: inherit;
+              font-size: 13.5px; color: var(--text); cursor: pointer; text-align: left; }
+    .pw-poz:hover { color: var(--marka); }
+    .pw-ptaszek { flex: none; width: 18px; height: 18px; border: 1.5px solid var(--border);
+                  border-radius: 5px; display: flex; align-items: center;
+                  justify-content: center; color: #fff; }
+    .pw-poz[aria-pressed="true"] .pw-ptaszek { border-color: transparent;
+      background: color-mix(in srgb, var(--marka) 82%, #000); }
+    .pw-ptaszek .ikona svg { width: 12px; height: 12px; stroke-width: 2.6; }
+    .pw-nazwa { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                white-space: nowrap; }
+    /* Kreska oddziela pytanie o ZAKRES od pytania o STATUS — to dwie różne
+       rzeczy i nie mają wyglądać jak jedna lista. */
+    .pw-osobno { margin-top: 8px; padding-top: 8px;
+                 border-top: 1px solid var(--border-soft); }
+    .pw-przelacznik { display: flex; align-items: center; gap: 10px; min-height: 40px;
+                      font-size: 13.5px; cursor: pointer; }
+    .pw-przelacznik input { width: 18px; height: 18px; accent-color: var(--marka);
+                            cursor: pointer; }
 
+    /* Przycisk szerokości kolumny nazw stoi NAD tą kolumną, czyli nad tym, co
+       zmienia. W panelu filtrów wyglądał jak filtr danych, którym nie jest. */
+    .gantt-szer { position: absolute; left: 0; top: 0; width: var(--nazwa); height: 26px;
+                  z-index: 3; border: none; border-right: 1px solid var(--border);
+                  background: var(--surface); color: var(--muted); cursor: pointer;
+                  font-size: 14px; line-height: 26px; text-align: right;
+                  padding-right: 8px; }
+    .gantt-szer:hover { color: var(--marka); }
+
+    /* Kafelki akcji w pasku nad wykresem — te same co przy zadaniu na liście,
+       żeby nie trzeba się było uczyć apki dwa razy. */
+    .gi-akcje { display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+                margin-top: 8px; }
+    .gi-akcje .zad-data, .gi-akcje .zad-kto,
+    .gi-akcje .zad-plus { height: 30px; min-width: 32px; }
+    .gi-akcje .gi-otworz { margin-left: auto; min-height: 34px; padding: 0 14px;
+                           font-size: 12.5px; }
+
+    .gantt-gora { position: relative; }
     .gantt-osie { position: relative; height: 26px; margin-left: var(--nazwa);
                   border-bottom: 1px solid var(--border); overflow: hidden; }
     /* Warstwa przesuwana razem z wykresem — patrz `zsynchronizujOs`. */
@@ -97,9 +142,22 @@
     .gantt-wiersz:last-child { border-bottom: none; }
     .gantt-nazwa { position: sticky; left: 0; z-index: 2; flex: none;
                    width: var(--nazwa); padding-right: 8px; font-size: 12.5px;
-                   background: var(--surface); cursor: pointer;
-                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                   background: var(--surface);
+                   display: flex; align-items: center; gap: 2px;
                    border-right: 1px solid var(--border); }
+    .gantt-nazwa-tekst { flex: 1; min-width: 0; cursor: pointer;
+                         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Daszek zwijania. Piętrowo: schowany etap chowa też wszystko pod sobą. */
+    .gantt-zwin { flex: none; width: 18px; height: 30px; border: none; background: none;
+                  color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer;
+                  padding: 0; display: flex; align-items: center; justify-content: center;
+                  transform: rotate(90deg); transition: transform .15s; }
+    .gantt-zwin.zwiniety { transform: rotate(0deg); }
+    .gantt-zwin:hover { color: var(--marka); }
+    /* Puste miejsce przy zadaniach bez kroków — żeby nazwy nie skakały w lewo
+       i w prawo zależnie od tego, czy dane zadanie coś w sobie ma. */
+    .gantt-zwin.pusty { cursor: default; }
+    @media (prefers-reduced-motion: reduce) { .gantt-zwin { transition: none; } }
     .gantt-projekt { display: inline-block; width: 7px; height: 7px; margin-right: 5px;
                      border-radius: 2px; background: var(--marka); vertical-align: middle; }
     .gantt-tor { position: relative; height: 38px; flex: none; }
@@ -526,9 +584,18 @@
     .fab-lap svg { width: 26px; height: 26px; stroke: currentColor; stroke-width: 2.2;
                    stroke-linecap: round; fill: none; }
     .fab-lap:active { transform: scale(.94); }
+    /* Guzik ZNIKA, gdy ktoś pisze. Przy otwartej klawiaturze zasłaniał
+       „Zapisz" w dzienniku, a łapanie nowego zadania w trakcie wpisywania
+       innego i tak nie ma sensu. Klasę zdejmuje i nakłada `pilnujKlawiatury`. */
+    .fab-lap.schowany { opacity: 0; pointer-events: none; transform: scale(.8); }
+    .fab-lap { transition: opacity .15s, transform .15s; }
     @media (max-width: 700px) {
       .fab-lap { bottom: calc(78px + env(safe-area-inset-bottom)); right: 14px; }
     }
+    /* Miejsce POD listą na wysokość guzika: bez niego ostatni wiersz zostawał
+       pod nim na stałe i nie dało się dosięgnąć jego trzech kropek. */
+    main { padding-bottom: 84px; }
+    @media (prefers-reduced-motion: reduce) { .fab-lap { transition: none; } }
 
     /* Warstwa NAD dolnym paskiem nawigacji (`z-index: 200`), ale POD oknem
        potwierdzenia (`.pyt-tlo`, 10060) — pytanie zadane z wnętrza arkusza musi
