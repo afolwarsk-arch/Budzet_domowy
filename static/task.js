@@ -131,6 +131,47 @@ function sciezkaDo(id) {
   return droga;
 }
 
+// ── strefy ──────────────────────────────────────────────────────────────────
+//
+// Strefa to TRYB, nie pole do wypełnienia: „jestem w robocie" albo „skończyłem
+// i wracam do domu". Dlatego przełącznikiem jest sam TYTUŁ STRONY, a nie
+// kolejny rząd pastylek. Dwa powody: rząd pastylek zjadałby 46 px, na które
+// Adam narzekał dwa razy, a tytuł jest największym napisem na ekranie — czyli
+// w chwili wychodzenia z pracy nie da się nie zauważyć, w którym świecie się
+// jest.
+let STREFY = [];
+// Wybór trzymamy w przeglądarce, nie na koncie: telefon i laptop służbowy to
+// dwa różne konteksty i wymuszanie na nich jednej strefy byłoby uciążliwe.
+let strefa = Number(localStorage.getItem('task_strefa')) || null;
+
+function nazwaStrefy() {
+  const s = STREFY.find((x) => x.id === strefa);
+  return s ? s.nazwa : 'Wszystkie strefy';
+}
+
+function naglowekStrefy() {
+  return `<button type="button" class="strefa-tytul" id="strefa-tytul"
+                  aria-label="Zmień strefę">
+    <h1>${esc(nazwaStrefy())}</h1><span class="strefa-daszek">▾</span>
+  </button>`;
+}
+
+async function wczytajStrefy() {
+  try {
+    const r = await authFetch('/api/task/strefy');
+    STREFY = (await r.json()).strefy || [];
+  } catch { STREFY = []; }
+  // Strefa, której już nie ma (skasowana albo wyłączona), przestaje obowiązywać
+  // — inaczej lista byłaby pusta bez wyjaśnienia dlaczego.
+  if (strefa && !STREFY.some((s) => s.id === strefa && s.moja)) ustawStrefe(null);
+}
+
+function ustawStrefe(id) {
+  strefa = id || null;
+  if (strefa) localStorage.setItem('task_strefa', String(strefa));
+  else localStorage.removeItem('task_strefa');
+}
+
 // Droga powrotna. Wcześniej był to szary ciąg tekstu „Zadania › Urlop Malaga
 // 2026" — Adam napisał wprost, że w życiu by nie zgadł, że to guziki. Miał
 // rację dwa razy: nic w tym nie wyglądało na klikalne, a ostatni człon i tak
@@ -168,15 +209,19 @@ async function wczytaj() {
   // tego, czy termin już minął — oś czasu pokazuje rozpiętość, a nie „co dziś".
   if (zakres === 'plan') return wczytajPlan();
   try {
-    const r = await authFetch('/api/task/zadania?zakres=' + zakres);
+    const r = await authFetch('/api/task/zadania?zakres=' + zakres + qStrefa());
     zadania = (await r.json()).zadania || [];
   } catch { zadania = []; toast('Nie udało się wczytać zadań.', 'blad'); }
   rysuj();
 }
 
+// Doklejka `&strefa=` do zapytań. Pusta, gdy patrzymy na wszystkie strefy.
+const qStrefa = () => (strefa ? '&strefa=' + strefa : '');
+
 async function wczytajPlan() {
   try {
-    const r = await authFetch('/api/task/plan' + (planZrobione ? '?zrobione=true' : ''));
+    const r = await authFetch('/api/task/plan?zrobione=' + (planZrobione ? 'true' : 'false')
+                              + qStrefa());
     const d = await r.json();
     zadania = d.zadania || [];
     zaleznosci = d.zaleznosci || [];
@@ -187,7 +232,8 @@ async function wczytajPlan() {
 // Domowników wczytujemy OD RAZU, nie dopiero przy otwarciu formularza:
 // skrót wykonawcy przy każdym zadaniu potrzebuje ich do narysowania listy.
 window.addEventListener('DOMContentLoaded', () =>
-  authRequireHousehold().then(wczytajHousehold).then(wczytaj).then(lapPodepnij));
+  authRequireHousehold().then(wczytajHousehold).then(wczytajStrefy)
+    .then(wczytaj).then(lapPodepnij).then(strefyPodepnij));
 
 // Które zadanie ma otwarte pole dopisywania kroku. Trzymane poza rysowaniem,
 // żeby przerwać ciszę po zapisie: lista przerysowuje się po każdym dodaniu,
@@ -572,7 +618,10 @@ function splaszczPlan(w, poziom) {
 
 function naglowekPlanu() {
   return `
-    <div class="gora"><h1>Plan</h1></div>
+    <!-- Ten sam przełącznik stref co na liście. Bez niego wykres byłby
+         zawężony do strefy, której nie widać i nie da się zmienić bez
+         wychodzenia na listę. -->
+    <div class="gora">${naglowekStrefy()}<span class="plan-podpis">Plan</span></div>
     <!-- JEDEN rząd narzędzi zamiast trzech. Filtry i przełączniki zajmowały
          na telefonie połowę ekranu, zanim w ogóle było widać wykres — więc
          siedzą pod przyciskiem, a na wierzchu zostaje tylko gęstość, którą
@@ -619,6 +668,8 @@ function panelWidoku() {
 
 
 function podepnijNaglowekPlanu() {
+  const tyt = document.getElementById('strefa-tytul');
+  if (tyt) tyt.onclick = strefyOtworz;
   const widokBtn = document.getElementById('p-widok');
   if (widokBtn) widokBtn.onclick = () => { planPanelOtwarty = !planPanelOtwarty; rysujPlan(); };
   const zr = document.getElementById('p-zrobione');
@@ -1212,7 +1263,7 @@ function rysujLista() {
   const lista = aktualny ? aktualny.dzieci : drzewo;
 
   box().innerHTML = `
-    <div class="gora"><h1>Zadania</h1></div>
+    <div class="gora">${naglowekStrefy()}</div>
     <div class="filtry" id="f-zakres">
       ${ZAKRESY.map(([k, l]) => `<button class="chip" type="button" data-z="${k}"
           aria-pressed="${k === zakres}">${l}</button>`).join('')}
@@ -1235,6 +1286,8 @@ function rysujLista() {
     <div class="zadania">${lista.map((w) => wiersz(w, 0)).join('') ||
       '<p class="pusto">Nic tu nie ma. Wpisz pierwsze zadanie powyżej.</p>'}</div>`;
 
+  const tyt = document.getElementById('strefa-tytul');
+  if (tyt) tyt.onclick = strefyOtworz;
   document.getElementById('f-zakres').onclick = (ev) => {
     const b = ev.target.closest('[data-z]');
     if (!b) return;
@@ -1269,7 +1322,9 @@ function rysujLista() {
     if (!t.trim()) return;
     const r = await authFetch('/api/task/zadania', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tytul: t.trim(), parent_id: korzen }),
+      // Strefa bieżąca dla nowego korzenia. Przy `parent_id` serwer ją
+      // zignoruje i weźmie strefę rodzica — krok należy tam, gdzie sprawa.
+      body: JSON.stringify({ tytul: t.trim(), parent_id: korzen, strefa_id: strefa }),
     });
     if (r.ok) {
       const j = await r.json().catch(() => ({}));
@@ -1545,7 +1600,7 @@ async function zapiszZMowy(tekst) {
   try {
     const r = await authFetch('/api/task/z-mowy', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tekst, parent_id: korzen }),
+      body: JSON.stringify({ tekst, parent_id: korzen, strefa_id: strefa }),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { toast(d.detail || 'Nie udało się zapisać zadania.', 'blad'); return; }
@@ -1905,6 +1960,7 @@ async function lapZapisz() {
         powtarzaj: z.powtarzaj, powtarzaj_co: z.powtarzaj_co,
         ...lap.wyk,
         parent_id: teraz ? teraz.id : null,
+        strefa_id: strefa,
       }),
     });
     const d = await r.json().catch(() => ({}));
@@ -1935,6 +1991,159 @@ function lapCofnij() {
     lap.krok = 'jak';
   }
   lapRysuj();
+}
+
+// ── arkusz stref ────────────────────────────────────────────────────────────
+//
+// Dwa ekrany w jednym arkuszu: wybór (jedno stuknięcie, zamyka) i zarządzanie
+// (nazwy, kto z czego korzysta). Rozdzielone, bo to zupełnie różne częstotliwości
+// — strefę przełącza się codziennie, a listę stref układa raz na kwartał.
+
+let strefyTryb = 'wybor';   // wybor | zarzadzanie
+
+function strefyOtworz() {
+  strefyTryb = 'wybor';
+  document.getElementById('strefy-tlo').hidden = false;
+  strefyRysuj();
+}
+
+function strefyZamknij() {
+  document.getElementById('strefy-tlo').hidden = true;
+}
+
+function strefyRysuj() {
+  document.getElementById('strefy-krok').innerHTML =
+    strefyTryb === 'wybor' ? strefyEkranWyboru() : strefyEkranZarzadzania();
+}
+
+function strefyEkranWyboru() {
+  const moje = STREFY.filter((s) => s.moja);
+  return `
+    <p class="lap-pyt">Gdzie jesteś?</p>
+    <div class="lap-lista">
+      <button type="button" class="lap-poz${strefa ? '' : ' wybrana'}" data-strefa="">
+        <span class="nazwa">Wszystkie strefy</span>
+        ${strefa ? '' : '<span class="ile">teraz</span>'}
+      </button>
+      ${moje.map((s) => `<button type="button" class="lap-poz${
+        s.id === strefa ? ' wybrana' : ''}" data-strefa="${s.id}">
+        <span class="nazwa">${esc(s.nazwa)}</span>
+        <span class="ile">${s.id === strefa ? 'teraz'
+          : (s.otwartych ? s.otwartych + ' otwartych' : '')}</span>
+      </button>`).join('')}
+    </div>
+    ${moje.length ? '' : `<p class="lap-pod">Nie masz włączonej żadnej strefy —
+      wszystkie zadania widzisz razem.</p>`}
+    <button type="button" class="lap-inne" data-strefa-tryb="zarzadzanie">
+      Ustaw strefy
+    </button>`;
+}
+
+function strefyEkranZarzadzania() {
+  return `
+    <p class="lap-pyt">Strefy</p>
+    <p class="lap-pod">Odznacz te, których nie używasz — ich zadania znikną
+      z Twojego widoku. Innym domownikom zostają.</p>
+    <div class="lap-lista">
+      ${STREFY.map((s) => `<div class="strefa-wiersz">
+        <label class="strefa-uzywam">
+          <input type="checkbox" data-strefa-moja="${s.id}" ${s.moja ? 'checked' : ''}>
+        </label>
+        <input class="strefa-nazwa" value="${esc(s.nazwa)}" data-strefa-nazwa="${s.id}"
+               aria-label="Nazwa strefy">
+        <button type="button" class="strefa-kasuj" data-strefa-usun="${s.id}"
+                aria-label="Usuń strefę" title="Usuń strefę">✕</button>
+      </div>`).join('')}
+    </div>
+    <div class="dz-nowy" style="margin-top:10px">
+      <input id="strefa-nowa" placeholder="Nowa strefa…" autocomplete="off">
+      <button class="btn btn-primary btn-dopisz" type="button"
+              data-strefa-dodaj="1">Dodaj</button>
+    </div>
+    <button type="button" class="lap-inne" data-strefa-tryb="wybor">Gotowe</button>`;
+}
+
+async function strefyOdswiez() {
+  await wczytajStrefy();
+  strefyRysuj();
+}
+
+function strefyPodepnij() {
+  const tlo = document.getElementById('strefy-tlo');
+  if (!tlo) return;
+  document.getElementById('strefy-zamknij').onclick = strefyZamknij;
+  tlo.onclick = (ev) => { if (ev.target === tlo) strefyZamknij(); };
+
+  document.getElementById('strefy-krok').onclick = async (ev) => {
+    const wyb = ev.target.closest('[data-strefa]');
+    if (wyb) {
+      ustawStrefe(wyb.dataset.strefa ? Number(wyb.dataset.strefa) : null);
+      strefyZamknij();
+      await wczytaj();
+      return;
+    }
+    const tryb = ev.target.closest('[data-strefa-tryb]');
+    if (tryb) {
+      strefyTryb = tryb.dataset.strefaTryb;
+      strefyRysuj();
+      // Wyjście z zarządzania odświeża listę: wyłączona strefa zmienia to, co
+      // w ogóle widać.
+      if (strefyTryb === 'wybor') wczytaj();
+      return;
+    }
+    const dod = ev.target.closest('[data-strefa-dodaj]');
+    if (dod) {
+      const pole = document.getElementById('strefa-nowa');
+      const nazwa = pole.value.trim();
+      if (!nazwa) return;
+      const r = await authFetch('/api/task/strefy', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nazwa }),
+      });
+      if (!r.ok) { toast('Nie udało się dodać strefy.', 'blad'); return; }
+      await strefyOdswiez();
+      return;
+    }
+    const kas = ev.target.closest('[data-strefa-usun]');
+    if (kas) {
+      const id = Number(kas.dataset.strefaUsun);
+      const s = STREFY.find((x) => x.id === id);
+      if (!(await potwierdz({
+        tytul: `Usunąć strefę „${s ? s.nazwa : ''}"?`,
+        tresc: 'Zadania z niej nie znikną — wrócą do „bez strefy".',
+        tak: 'Usuń', groznie: true,
+      }))) return;
+      await authFetch(`/api/task/strefy/${id}`, { method: 'DELETE' });
+      if (strefa === id) ustawStrefe(null);
+      await strefyOdswiez();
+    }
+  };
+
+  // Zmiany zapisują się OD RAZU, bez przycisku „Zapisz": to ustawienia, a nie
+  // formularz — pół sekundy po odznaczeniu ma być po sprawie.
+  document.getElementById('strefy-krok').onchange = async (ev) => {
+    const moja = ev.target.closest('[data-strefa-moja]');
+    if (moja) {
+      await authFetch(`/api/task/strefy/${moja.dataset.strefaMoja}/moja`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moja: moja.checked }),
+      });
+      await wczytajStrefy();
+    }
+  };
+
+  document.getElementById('strefy-krok').addEventListener('blur', async (ev) => {
+    const pole = ev.target.closest('[data-strefa-nazwa]');
+    if (!pole) return;
+    const s = STREFY.find((x) => x.id === Number(pole.dataset.strefaNazwa));
+    const nazwa = pole.value.trim();
+    if (!s || !nazwa || nazwa === s.nazwa) { if (s) pole.value = s.nazwa; return; }
+    await authFetch(`/api/task/strefy/${s.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nazwa }),
+    });
+    await wczytajStrefy();
+  }, true);
 }
 
 function lapPodepnij() {
@@ -2160,6 +2369,19 @@ function rysujSzczegoly() {
       </div>
       ${w.termin ? '' : '<div class="uwaga">Najpierw ustaw termin — od niego liczy się kolejne powtórzenie.</div>'}
     </div>
+    <!-- Strefa ustawiana TYLKO na korzeniu; kroki dziedziczą ją po nadrzędnym,
+         bo krok nie należy do innej części życia niż sprawa, której jest
+         częścią. Zmiana strefy przenosi całą gałąź. -->
+    ${maRodzica ? '' : `
+    <div class="pole">
+      <label for="s-strefa">Strefa</label>
+      <select id="s-strefa">
+        <option value="">— bez strefy —</option>
+        ${STREFY.map((s) => `<option value="${s.id}"${
+          s.id === w.strefa_id ? ' selected' : ''}>${esc(s.nazwa)}</option>`).join('')}
+      </select>
+      <div class="uwaga">Przeniesie też wszystkie kroki w środku.</div>
+    </div>`}
     <div class="pole-cb">
       <!-- Projektem może być tylko zadanie bez rodzica: przedsięwzięcie
            w środku innego przedsięwzięcia to etap, nie projekt. -->
@@ -2276,6 +2498,19 @@ function rysujSzczegoly() {
     const btn = document.getElementById('s-zapisz');
     btn.disabled = true;
     const ok = await zapiszSzczegoly(w.id, dane);
+    // Strefa idzie OSOBNYM żądaniem, bo zmienia całe poddrzewo, a nie jeden
+    // wiersz — wciśnięcie tego w zwykłą edycję znaczyłoby, że każdy zapis
+    // szczegółów po cichu przepisuje wszystkie kroki w środku.
+    if (ok && !maRodzica) {
+      const wybrana = document.getElementById('s-strefa').value;
+      const nowa = wybrana ? Number(wybrana) : null;
+      if (nowa !== (w.strefa_id ?? null)) {
+        await authFetch(`/api/task/zadania/${w.id}/strefa`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ strefa_id: nowa }),
+        });
+      }
+    }
     if (ok) { widok = 'lista'; await wczytaj(); } else { btn.disabled = false; }
   };
 

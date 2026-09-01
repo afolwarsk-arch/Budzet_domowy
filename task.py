@@ -60,6 +60,10 @@ def _dane(d: dict, nowe: bool) -> dict:
         "wykonawca_user_id": d.get("wykonawca_user_id") or None,
         "wykonawca_virtual_id": d.get("wykonawca_virtual_id") or None,
         "kamien_milowy": bool(d.get("kamien_milowy")),
+        # Strefa ma znaczenie tylko dla korzenia — krok dziedziczy ją po
+        # zadaniu nadrzędnym (patrz `task_db.dodaj`). Zmiana strefy istniejącego
+        # zadania idzie osobną trasą, bo dotyczy całego poddrzewa.
+        "strefa_id": d.get("strefa_id") or None,
     }
     # Data początku po terminie znaczy belkę cofniętą w czasie — wykres nie ma
     # jak tego narysować, a użytkownik prawie na pewno pomylił pola.
@@ -131,7 +135,8 @@ def skasuj_zaleznosc(zadanie_id: int, poprzednik_id: int,
 
 
 @router.get("/plan")
-def plan_zadan(zrobione: bool = False, current_user: dict = Depends(get_current_user)):
+def plan_zadan(zrobione: bool = False, strefa: int | None = None,
+               current_user: dict = Depends(get_current_user)):
     """Zadania z datami — wejście dla wykresu Gantta.
 
     Zrobione domyślnie poza wykresem: plan pokazuje, co przed nami. Włącza się
@@ -139,7 +144,7 @@ def plan_zadan(zrobione: bool = False, current_user: dict = Depends(get_current_
     przebiegło.
     """
     hid = _hid(current_user)
-    return {"zadania": task_db.plan(hid, current_user["user_id"], zrobione),
+    return {"zadania": task_db.plan(hid, current_user["user_id"], zrobione, strefa),
             "zaleznosci": task_db.zaleznosci(hid)}
 
 
@@ -332,6 +337,7 @@ async def zadanie_z_mowy(dane: dict, current_user: dict = Depends(get_current_us
         "wykonawca_virtual_id": wyk_virtual,
         "kamien_milowy": False,
         "parent_id": parent_id,
+        "strefa_id": dane.get("strefa_id") or None,
     }
     try:
         nowe_id = task_db.dodaj(hid, current_user["user_id"], d)

@@ -469,6 +469,33 @@
        nigdzie nie trzeba czytać, żeby wiedzieć, gdzie się jest. */
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden;
                clip: rect(0 0 0 0); white-space: nowrap; }
+
+    /* ── STREFY ─────────────────────────────────────────────────────────────
+       Przełącznikiem jest sam TYTUŁ STRONY. Rząd pastylek zjadłby 46 px, na
+       które Adam narzekał dwa razy, a tytuł jest największym napisem na
+       ekranie — w chwili wychodzenia z pracy nie da się go nie zauważyć. */
+    .strefa-tytul { display: inline-flex; align-items: center; gap: 7px; border: none;
+                    background: none; padding: 4px 0; cursor: pointer; color: inherit;
+                    font: inherit; text-align: left; }
+    .strefa-tytul h1 { margin: 0; font-size: 1.25rem; }
+    .strefa-daszek { font-size: 13px; color: var(--muted); line-height: 1; }
+    /* Na planie strefa jest tytułem, więc słowo „Plan" schodzi do roli
+       podpisu — inaczej dwa napisy tej samej wagi kłóciłyby się o pierwszeństwo. */
+    .plan-podpis { font-size: 12.5px; color: var(--muted); }
+    .strefa-tytul:hover h1, .strefa-tytul:hover .strefa-daszek { color: var(--marka); }
+
+    .lap-poz.wybrana { border-color: var(--marka); }
+    .lap-poz.wybrana .ile { color: var(--marka); font-weight: 600; }
+
+    .strefa-wiersz { display: flex; align-items: center; gap: 9px; }
+    .strefa-uzywam { flex: none; display: flex; align-items: center; }
+    .strefa-uzywam input { width: 20px; height: 20px; accent-color: var(--marka);
+                           cursor: pointer; }
+    .strefa-nazwa { flex: 1; min-width: 0; min-height: 42px; font-size: 14px; }
+    .strefa-kasuj { flex: none; width: 34px; height: 34px; border: none; background: none;
+                    color: var(--muted); font-size: 14px; cursor: pointer;
+                    border-radius: 8px; }
+    .strefa-kasuj:hover { background: var(--surface-2); color: var(--danger); }
     .fab-lap { position: fixed; right: 18px; bottom: 22px; z-index: 90;
                width: 60px; height: 60px; display: flex; align-items: center;
                justify-content: center; border: none; border-radius: 50%;
@@ -643,6 +670,17 @@
     </header>
     <h2 id="lap-tytul-a11y" class="sr-only">Łapanie zadania</h2>
     <div id="lap-krok"></div>
+  </div>
+</div>
+
+<div class="lap-tlo" id="strefy-tlo" hidden>
+  <div class="lap-arkusz" role="dialog" aria-modal="true" aria-labelledby="strefy-a11y">
+    <div class="lap-uchwyt"></div>
+    <header class="lap-gora">
+      <h2 id="strefy-a11y" class="sr-only">Strefy</h2>
+      <button type="button" class="lap-zamknij" id="strefy-zamknij" aria-label="Zamknij">✕</button>
+    </header>
+    <div id="strefy-krok"></div>
   </div>
 </div>
 
