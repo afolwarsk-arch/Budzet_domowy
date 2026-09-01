@@ -107,11 +107,16 @@
 
     /* Przycisk szerokości kolumny nazw stoi NAD tą kolumną, czyli nad tym, co
        zmienia. W panelu filtrów wyglądał jak filtr danych, którym nie jest. */
-    .gantt-szer { position: absolute; left: 0; top: 0; width: var(--nazwa); height: 26px;
+    /* Przycisk szerokości siedzi w PUSTYM rogu nad kolumną nazw — czyli nad
+       tym, co zmienia. `bottom: 0`, bo jest równo z rzędem miesięcy; przy
+       `top: 0` wchodziłby na pasek z danymi zaznaczonego zadania, gdy ten
+       jest widoczny. */
+    .gantt-szer { position: absolute; left: 0; bottom: 0; width: var(--nazwa); height: 26px;
                   z-index: 3; border: none; border-right: 1px solid var(--border);
+                  border-bottom: 1px solid var(--border);
                   background: var(--surface); color: var(--muted); cursor: pointer;
-                  font-size: 14px; line-height: 26px; text-align: right;
-                  padding-right: 8px; }
+                  font-size: 15px; line-height: 26px; text-align: right;
+                  padding-right: 10px; }
     .gantt-szer:hover { color: var(--marka); }
 
     /* Kafelki akcji w pasku nad wykresem — te same co przy zadaniu na liście,
@@ -123,7 +128,11 @@
     .gi-akcje .gi-otworz { margin-left: auto; min-height: 34px; padding: 0 14px;
                            font-size: 12.5px; }
 
-    .gantt-gora { position: relative; }
+    /* NIE dopisuj tu `position` dla `.gantt-gora`. Nagłówek jest `sticky` z
+       `top: 56px` (reguła wyżej) i nadpisanie tego na `relative` zamienia
+       `top` w zwykłe przesunięcie — nagłówek zjeżdża o 56 px i przykrywa
+       pierwsze wiersze wykresu. `sticky` i tak jest punktem odniesienia dla
+       elementów pozycjonowanych bezwzględnie w środku, więc nic tu nie trzeba. */
     .gantt-osie { position: relative; height: 26px; margin-left: var(--nazwa);
                   border-bottom: 1px solid var(--border); overflow: hidden; }
     /* Warstwa przesuwana razem z wykresem — patrz `zsynchronizujOs`. */
