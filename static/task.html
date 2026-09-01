@@ -477,7 +477,10 @@
       .fab-lap { bottom: calc(78px + env(safe-area-inset-bottom)); right: 14px; }
     }
 
-    .lap-tlo { position: fixed; inset: 0; z-index: 120; background: rgba(20,18,16,.45);
+    /* Warstwa NAD dolnym paskiem nawigacji (`z-index: 200`), ale POD oknem
+       potwierdzenia (`.pyt-tlo`, 10060) — pytanie zadane z wnętrza arkusza musi
+       się wyświetlić na nim, a nie za nim. */
+    .lap-tlo { position: fixed; inset: 0; z-index: 10000; background: rgba(20,18,16,.45);
                display: flex; align-items: flex-end; justify-content: center; }
     .lap-tlo[hidden] { display: none; }
     .lap-arkusz { width: 100%; max-width: 460px; background: var(--surface);
