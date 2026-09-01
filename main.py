@@ -271,6 +271,17 @@ def task_page():
     return _html("task.html")
 
 
+@app.get("/projekty")
+def task_projekty_page():
+    """Przedsięwzięcia — ta sama strona, inny widok.
+
+    Kafle projektów siedziały wcześniej NAD listą zadań i spychały ją w dół
+    przy każdym wejściu. A przedsięwzięcia przegląda się w zupełnie innym
+    momencie niż „co mam dziś do zrobienia", więc mają własny adres.
+    """
+    return _html("task.html")
+
+
 @app.get("/plan")
 def task_plan_page():
     """Wykres Gantta — ta sama strona, inny widok.

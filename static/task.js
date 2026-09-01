@@ -42,7 +42,12 @@ function odmien(n, poj, kilka, wiele) {
 // odświeżenie strony albo wejście z paska nawigacji trafia tam, gdzie trzeba,
 // zamiast zawsze na „Dziś".
 const TRYB_PLANU = location.pathname.replace(/\/$/, '') === '/plan';
-let zakres = TRYB_PLANU ? 'plan' : 'dzis';   // dzis | nadchodzace | zrobione | plan
+// Projekty mają WŁASNĄ zakładkę, nie panel nad listą. Kafle przedsięwzięć
+// siedziały na górze każdego wejścia w zadania i spychały właściwą listę
+// w dół — a przedsięwzięcia przegląda się w zupełnie innym momencie niż
+// „co mam dziś do zrobienia".
+const TRYB_PROJEKTY = location.pathname.replace(/\/$/, '') === '/projekty';
+let zakres = TRYB_PLANU ? 'plan' : (TRYB_PROJEKTY ? 'wszystkie' : 'dzis');
 let zadania = [];           // płasko, jak z serwera
 let korzen = null;          // null = widok listy; liczba = wejście w zadanie
 let widok = 'lista';        // lista | szczegoly
@@ -182,7 +187,7 @@ function ustawStrefe(id) {
 function okruszki() {
   if (korzen == null) return '';
   const droga = sciezkaDo(korzen);
-  const wyzej = [{ id: '', tytul: 'Wszystkie zadania' },
+  const wyzej = [{ id: '', tytul: TRYB_PROJEKTY ? 'Projekty' : 'Wszystkie zadania' },
                  ...droga.slice(0, -1).map((z) => ({ id: z.id, tytul: z.tytul }))];
   return `<nav class="okruszki">
     ${wyzej.map((z, i) => `<button type="button" class="okruch" data-okr="${z.id}">${
@@ -500,7 +505,31 @@ function opisPowtarzania(z) {
 function rysuj() {
   if (widok === 'szczegoly') return rysujSzczegoly();
   if (zakres === 'plan') return rysujPlan();
+  if (TRYB_PROJEKTY && korzen == null) return rysujProjekty();
   return rysujLista();
+}
+
+// Zakładka przedsięwzięć. Te same kafle co dawniej nad listą, ale pod własnym
+// adresem — a stuknięcie w kafel wchodzi w projekt, czyli pokazuje jego kroki
+// tak samo jak wejście z listy.
+function rysujProjekty() {
+  const projekty = zadania.filter((z) => z.projekt && z.parent_id == null);
+  box().innerHTML = `
+    <div class="gora">${naglowekStrefy()}<span class="plan-podpis">Projekty</span></div>
+    ${projekty.length ? panelProjektow() : `
+      <p class="pusto">Nie masz jeszcze projektów.<br>
+        Otwórz zadanie, które ciągnie się dłużej, i zaznacz w Szczegółach
+        „To jest projekt".</p>`}`;
+  const tyt = document.getElementById('strefa-tytul');
+  if (tyt) tyt.onclick = strefyOtworz;
+  const panel = document.querySelector('.projekty');
+  if (panel) panel.onclick = (ev) => {
+    const b = ev.target.closest('[data-projekt]');
+    if (!b) return;
+    korzen = Number(b.dataset.projekt);
+    nowyId = null;
+    rysuj();
+  };
 }
 
 // ── wykres Gantta ───────────────────────────────────────────────────────────
@@ -1269,7 +1298,6 @@ function rysujLista() {
           aria-pressed="${k === zakres}">${l}</button>`).join('')}
     </div>
     ${okruszki()}
-    ${korzen == null ? panelProjektow() : ''}
     ${aktualny ? nagKorzenia(aktualny) : ''}
     <!-- Pole mówi WPROST, gdzie trafi wpis. Wcześniej wyglądało tak samo
          niezależnie od tego, czy dodaje zadanie główne, czy krok w środku
@@ -1300,14 +1328,6 @@ function rysujLista() {
     const b = ev.target.closest('[data-okr]');
     if (!b) return;
     korzen = b.dataset.okr ? Number(b.dataset.okr) : null;
-    nowyId = null;
-    rysuj();
-  };
-  const panel = document.querySelector('.projekty');
-  if (panel) panel.onclick = (ev) => {
-    const b = ev.target.closest('[data-projekt]');
-    if (!b) return;
-    korzen = Number(b.dataset.projekt);   // wejście w projekt, jak strzałką
     nowyId = null;
     rysuj();
   };
