@@ -1,4 +1,4 @@
-// Ekran zadań — wiem.task.
+﻿// Ekran zadań — wiem.task.
 //
 // DRZEWO SKŁADAMY TUTAJ, nie w SQL-u (patrz nagłówek task_db.py). Serwer daje
 // płaską listę, a `budujDrzewo` wiąże dzieci z rodzicami. Dzięki temu postęp
@@ -136,9 +136,15 @@ function sciezkaDo(id) {
   return droga;
 }
 
-// ── strefy ──────────────────────────────────────────────────────────────────
+// ── obszary życia ───────────────────────────────────────────────────────────
 //
-// Strefa to TRYB, nie pole do wypełnienia: „jestem w robocie" albo „skończyłem
+// UWAGA CO DO NAZW: w interfejsie to „obszary życia", w kodzie i w bazie —
+// `strefa`. Rozjazd celowy: nazwa dla użytkownika zmieniła się po wdrożeniu
+// („strefa" brzmiała jak strefa parkingowa), a przemianowanie tabel i kolumn
+// w działającej bazie kosztowałoby migrację bez żadnego zysku dla nikogo.
+// Zmieniając napisy, szukaj słowa „obszar"; zmieniając logikę — „strefa".
+//
+// Obszar to TRYB, nie pole do wypełnienia: „jestem w robocie" albo „skończyłem
 // i wracam do domu". Dlatego przełącznikiem jest sam TYTUŁ STRONY, a nie
 // kolejny rząd pastylek. Dwa powody: rząd pastylek zjadałby 46 px, na które
 // Adam narzekał dwa razy, a tytuł jest największym napisem na ekranie — czyli
@@ -157,9 +163,12 @@ function biezacaStrefa() {
 function naglowekStrefy() {
   const s = biezacaStrefa();
   return `<button type="button" class="strefa-tytul" id="strefa-tytul"
-                  aria-label="Zmień strefę">
+                  aria-label="Zmień obszar życia">
     ${s && s.ikona ? ikonaSvg(s.ikona) : ''}
-    <h1>${esc(s ? s.nazwa : 'Wszystkie strefy')}</h1><span class="strefa-daszek">▾</span>
+    <!-- Bez wybranego obszaru tytuł brzmi „Wszystko", a nie „Wszystkie obszary
+         życia": to stan DOMYŚLNY, czyli widziany najczęściej, i nie ma powodu,
+         żeby zajmował dwie linijki na telefonie. -->
+    <h1>${esc(s ? s.nazwa : 'Wszystko')}</h1><span class="strefa-daszek">▾</span>
   </button>`;
 }
 
@@ -826,9 +835,7 @@ function wierszPlanu(poz, od, px, szer, dzis) {
     </div></div>`;
 }
 
-function dataKrotka(d) {
-  return d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' });
-}
+// (jedna definicja `dataKrotka` na cały plik — patrz niżej, przy `dataPl`)
 
 const WYS_WIERSZA = 38;
 
@@ -1013,7 +1020,8 @@ function przeciaganieBelek(g) {
     if (start) {
       ev.preventDefault();
       ev.stopPropagation();
-      laczenie = { od: Number(start.dataset.lacznik), el: null };
+      laczenie = { od: Number(start.dataset.lacznik), el: null,
+                   startX: ev.clientX, startY: ev.clientY, ruszony: false };
       g.classList.add('laczy');
       return;
     }
@@ -1044,6 +1052,12 @@ function przeciaganieBelek(g) {
 
   g.addEventListener('pointermove', (ev) => {
     if (laczenie) {
+      // Ten sam próg co przy belkach: dopóki palec nie ruszył, to jest
+      // stuknięcie, a nie rysowanie powiązania.
+      if (!laczenie.ruszony
+          && Math.abs(ev.clientX - laczenie.startX) < 4
+          && Math.abs(ev.clientY - laczenie.startY) < 4) return;
+      laczenie.ruszony = true;
       // Podświetlamy belkę pod kursorem — bez tego nie wiadomo, na co się celuje.
       const cel = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-belka]');
       if (laczenie.el !== cel) {
@@ -1093,9 +1107,19 @@ function przeciaganieBelek(g) {
     if (laczenie) {
       const cel = laczenie.el;
       const od = laczenie.od;
+      const ruszony = laczenie.ruszony;
       laczenie.el?.classList.remove('cel-laczenia');
       laczenie = null;
       g.classList.remove('laczy');
+      // STUKNIĘCIE W KROPKĘ TO STUKNIĘCIE W BELKĘ, nie nieudane rysowanie
+      // powiązania. Kropka siedzi NA belce (jest jej dzieckiem) i przy krótkim
+      // zadaniu zajmuje sporą część pola dotyku. Wcześniej każde trafienie w nią
+      // ustawiało `ostatnioCiagnieto`, przez co następny `click` wpadał
+      // w 400-milisekundową blokadę i znikał bez śladu — stąd „czasem trzeba
+      // kliknąć kilka razy". Zmieniało się tylko to, czy palec trafił w kropkę,
+      // czy obok. Bez blokady zdarzenie dopływa do `g.onclick` i zachowuje się
+      // dokładnie jak stuknięcie w resztę belki.
+      if (!ruszony) return;
       ostatnioCiagnieto = Date.now();
       if (!cel) return;
       const doId = Number(cel.dataset.belka);
@@ -1561,11 +1585,18 @@ function dataPl(iso) {
   return `${d}.${m}.${r}`;
 }
 
-// Kafelek terminu w liście: bez roku, dopóki termin jest w bieżącym roku.
-// „12.09.2026" zajmowało dwa razy więcej szerokości niż reszta kafelków i to
-// ono rozpychało rząd ikon, przez co tytuł łamał się na kolejne linijki.
-function dataKrotka(iso) {
-  const [r, m, d] = String(iso).slice(0, 10).split('-');
+// Krótka data: bez roku, dopóki jest bieżący. „12.09.2026" zajmowało dwa razy
+// więcej szerokości niż reszta kafelków w wierszu zadania i to ono rozpychało
+// rząd ikon, przez co tytuł łamał się na kolejne linijki.
+//
+// PRZYJMUJE `Date` ALBO tekst „RRRR-MM-DD”. Wykres Gantta miał kiedyś własną
+// `dataKrotka` biorącą `Date`, a ta nazwa powtórzona w jednym pliku znaczy, że
+// wygrywa późniejsza deklaracja — podpisy belek zaczęły pokazywać
+// „undefined.undefined”. Jedna funkcja obsługująca oba wejścia zamyka temat.
+function dataKrotka(kiedy) {
+  const iso = kiedy instanceof Date ? isoLokalne(kiedy) : String(kiedy);
+  const [r, m, d] = iso.slice(0, 10).split('-');
+  if (!r || !m || !d) return '';
   return r === String(new Date().getFullYear()) ? `${d}.${m}` : `${d}.${m}.${r.slice(2)}`;
 }
 
@@ -2052,7 +2083,7 @@ function strefyEkranWyboru() {
     <p class="lap-pyt">Gdzie jesteś?</p>
     <div class="lap-lista">
       <button type="button" class="lap-poz${strefa ? '' : ' wybrana'}" data-strefa="">
-        <span class="nazwa">Wszystkie strefy</span>
+        <span class="nazwa">Wszystkie obszary</span>
         ${strefa ? '' : '<span class="ile">teraz</span>'}
       </button>
       ${moje.map((s) => `<button type="button" class="lap-poz${
@@ -2063,16 +2094,16 @@ function strefyEkranWyboru() {
           : (s.otwartych ? s.otwartych + ' otwartych' : '')}</span>
       </button>`).join('')}
     </div>
-    ${moje.length ? '' : `<p class="lap-pod">Nie masz włączonej żadnej strefy —
+    ${moje.length ? '' : `<p class="lap-pod">Nie masz włączonego żadnego obszaru —
       wszystkie zadania widzisz razem.</p>`}
     <button type="button" class="lap-inne" data-strefa-tryb="zarzadzanie">
-      Ustaw strefy
+      Ustaw obszary życia
     </button>`;
 }
 
 function strefyEkranZarzadzania() {
   return `
-    <p class="lap-pyt">Strefy</p>
+    <p class="lap-pyt">Obszary życia</p>
     <p class="lap-pod">Odznacz te, których nie używasz — ich zadania znikną
       z Twojego widoku. Innym domownikom zostają.</p>
     <div class="lap-lista">
@@ -2085,9 +2116,9 @@ function strefyEkranZarzadzania() {
         <button type="button" class="strefa-ikona" data-strefa-ikony="${s.id}"
                 aria-label="Zmień ikonę">${ikonaSvg(s.ikona || 'lista')}</button>
         <input class="strefa-nazwa" value="${esc(s.nazwa)}" data-strefa-nazwa="${s.id}"
-               aria-label="Nazwa strefy">
+               aria-label="Nazwa obszaru">
         <button type="button" class="strefa-kasuj" data-strefa-usun="${s.id}"
-                aria-label="Usuń strefę" title="Usuń strefę">✕</button>
+                aria-label="Usuń obszar" title="Usuń obszar">✕</button>
       </div>
       <div class="strefa-paleta" id="paleta-${s.id}" hidden>
         ${IKONY_STREF.map((i) => `<button type="button" class="strefa-wybor${
@@ -2096,7 +2127,7 @@ function strefyEkranZarzadzania() {
       </div>`).join('')}
     </div>
     <div class="dz-nowy" style="margin-top:10px">
-      <input id="strefa-nowa" placeholder="Nowa strefa…" autocomplete="off">
+      <input id="strefa-nowa" placeholder="Nowy obszar…" autocomplete="off">
       <button class="btn btn-primary btn-dopisz" type="button"
               data-strefa-dodaj="1">Dodaj</button>
     </div>
@@ -2140,7 +2171,7 @@ function strefyPodepnij() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nazwa }),
       });
-      if (!r.ok) { toast('Nie udało się dodać strefy.', 'blad'); return; }
+      if (!r.ok) { toast('Nie udało się dodać obszaru.', 'blad'); return; }
       await strefyOdswiez();
       return;
     }
@@ -2168,8 +2199,8 @@ function strefyPodepnij() {
       const id = Number(kas.dataset.strefaUsun);
       const s = STREFY.find((x) => x.id === id);
       if (!(await potwierdz({
-        tytul: `Usunąć strefę „${s ? s.nazwa : ''}"?`,
-        tresc: 'Zadania z niej nie znikną — wrócą do „bez strefy".',
+        tytul: `Usunąć obszar „${s ? s.nazwa : ''}"?`,
+        tresc: 'Zadania z niej nie znikną — wrócą do „bez obszaru".',
         tak: 'Usuń', groznie: true,
       }))) return;
       await authFetch(`/api/task/strefy/${id}`, { method: 'DELETE' });
@@ -2433,9 +2464,9 @@ function rysujSzczegoly() {
          częścią. Zmiana strefy przenosi całą gałąź. -->
     ${maRodzica ? '' : `
     <div class="pole">
-      <label for="s-strefa">Strefa</label>
+      <label for="s-strefa">Obszar życia</label>
       <select id="s-strefa">
-        <option value="">— bez strefy —</option>
+        <option value="">— bez obszaru —</option>
         ${STREFY.map((s) => `<option value="${s.id}"${
           s.id === w.strefa_id ? ' selected' : ''}>${esc(s.nazwa)}</option>`).join('')}
       </select>
