@@ -306,7 +306,11 @@
        Nazwa przestaje być ucinana i zawija się do dwóch linii; wysokość wiersza
        zostaje bez zmian, bo od niej zależy pozycja belek i strzałek. */
     .gantt.szerokie-nazwy { --nazwa: min(62vw, 320px); }
-    .gantt.szerokie-nazwy .gantt-nazwa {
+    /* Zawijanie dotyczy SAMEGO TEKSTU, nie całej komórki. Reguła siedziała
+       kiedyś na `.gantt-nazwa`, ale ta komórka jest teraz pojemnikiem `flex`
+       na daszek zwijania i tekst — `display: -webkit-box` kasował jej układ,
+       przez co przy rozwiniętej kolumnie nazwy uciekały pod lewą krawędź. */
+    .gantt.szerokie-nazwy .gantt-nazwa-tekst {
       white-space: normal; overflow: hidden; text-overflow: clip;
       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
       line-height: 1.25; font-size: 12px;
