@@ -441,6 +441,19 @@ function podepnijPtaszki() {
       await zapiszSzybko(Number(data.dataset.termin), { termin: data.value || null });
       return;
     }
+    const obszar = ev.target.closest('[data-obszar]');
+    if (obszar) {
+      const id = Number(obszar.dataset.obszar);
+      const r = await authFetch(`/api/task/zadania/${id}/strefa`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strefa_id: obszar.value ? Number(obszar.value) : null }),
+      });
+      if (!r.ok) { toast('Nie udało się zmienić obszaru.', 'blad'); return; }
+      // Świadomie przeładowujemy: przy włączonym zawężeniu do obszaru zadanie
+      // właśnie zniknęło z widoku i lista musi to pokazać.
+      await wczytaj();
+      return;
+    }
     const kto = ev.target.closest('[data-wykonawca]');
     if (kto) {
       const v = kto.value;
@@ -1609,6 +1622,7 @@ function wiersz(w, poziom) {
           ${skrotWykonawcy(w)}
           <select data-wykonawca="${w.id}">${opcjeWykonawcyKrotkie(w)}</select>
         </label>
+        ${kafelObszaru(w)}
         <!-- „+” dopisuje krok BEZ opuszczania listy. Wcześniej jedyną drogą
              było wejście strzałką w zadanie, co przy dopisywaniu trzech kroków
              pod rząd znaczyło trzy razy wejść i wyjść. -->
@@ -1646,6 +1660,26 @@ function wiersz(w, poziom) {
           (w.dzieci || []).map((d) => wiersz(d, poziom + 1)).join('')}</div>
       </div>
     </div>`;
+}
+
+// Kafelek obszaru — dokładnie ta sama mechanika co przy wykonawcy: przezroczysta
+// lista rozwijana leży na etykiecie, więc stuknięcie otwiera systemowy wybór.
+//
+// TYLKO PRZY ZADANIACH GŁÓWNYCH. Krok dziedziczy obszar po sprawie, której jest
+// częścią, a kafelek, który przy jednych wierszach coś robi, a przy innych nie,
+// jest gorszy niż jego brak. Zapis idzie osobną trasą, bo przenosi całą gałąź.
+function kafelObszaru(w) {
+  if (w.parent_id != null || !STREFY.length) return '';
+  const moja = STREFY.find((s) => s.id === w.strefa_id);
+  return `<label class="zad-kto zad-obszar${moja ? ' jest' : ''}"
+                 title="${moja ? 'Obszar: ' + esc(moja.nazwa) : 'Bez obszaru'}">
+    ${ikonaSvg(moja ? (moja.ikona || 'lista') : 'kompas')}
+    <select data-obszar="${w.id}">
+      <option value="">— bez obszaru —</option>
+      ${STREFY.map((s) => `<option value="${s.id}"${
+        s.id === w.strefa_id ? ' selected' : ''}>${esc(s.nazwa)}</option>`).join('')}
+    </select>
+  </label>`;
 }
 
 // Inicjały wykonawcy albo ikona osoby, gdy nikt nie przypisany. Pełne imię

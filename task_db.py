@@ -146,6 +146,17 @@ def init_task_db() -> None:
         # kolor modułu i motyw tak samo jak reszta apki, a zmiana kroju ikon
         # przechodzi wszędzie naraz.
         cur.execute("ALTER TABLE task_strefy ADD COLUMN IF NOT EXISTS ikona TEXT")
+        # Uzupełnienie po fakcie: strefy startowe powstały, zanim ta kolumna
+        # istniała, a `zaloz_strefy_startowe` nie powtarza się dla gospodarstwa,
+        # które ma już jakąkolwiek strefę. Ruszamy WYŁĄCZNIE puste ikony i tylko
+        # przy nazwach, które sami wpisaliśmy — cudzego wyboru to nie dotyka.
+        for nazwa, ikona in (("Praca", "teczka"), ("Dom", "dom"),
+                             ("Własna działalność", "moneta"),
+                             ("Studia i nauka", "ksiazka")):
+            cur.execute("UPDATE task_strefy SET ikona = %s "
+                        "WHERE ikona IS NULL AND nazwa = %s", (ikona, nazwa))
+        # Reszta bez ikony dostaje neutralną, żeby przełącznik nie miał dziur.
+        cur.execute("UPDATE task_strefy SET ikona = 'lista' WHERE ikona IS NULL")
         # NULL znaczy „bez strefy" i jest widoczne dla wszystkich. To jednocześnie
         # ścieżka migracji: wszystko, co powstało przed strefami, zostaje na
         # wierzchu, zamiast zniknąć komuś z oczu przy wdrożeniu.
