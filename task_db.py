@@ -293,6 +293,11 @@ def lista(household_id, user_id, zakres="dzis", osoba_user_id=None):
         warunki.append("status = 'otwarte' AND termin IS NOT NULL AND termin <= CURRENT_DATE")
     elif zakres == "nadchodzace":
         warunki.append("status = 'otwarte' AND (termin IS NULL OR termin > CURRENT_DATE)")
+    elif zakres == "wszystkie":
+        # Wszystko otwarte, bez pytania o datę. „Dziś" i „Nadchodzące" dzielą
+        # zadania po terminie, więc żeby zobaczyć całość, trzeba było przełączać
+        # się tam i z powrotem i składać listę w głowie.
+        warunki.append("status = 'otwarte'")
     else:
         warunki.append("status = 'zrobione' AND zrobione_at > now() - INTERVAL '30 days'")
     if osoba_user_id:

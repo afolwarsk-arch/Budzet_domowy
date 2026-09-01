@@ -411,7 +411,16 @@ function podepnijPtaszki() {
 }
 
 // Bez „Plan": to nie jest zakres listy, tylko osobny widok pod własnym adresem.
-const ZAKRESY = [['dzis', 'Dziś'], ['nadchodzace', 'Nadchodzące'], ['zrobione', 'Zrobione']];
+// „Wszystkie" stoi obok „Dziś" i „Nadchodzących", bo te dwa DZIELĄ zadania po
+// terminie — żeby zobaczyć całość, trzeba było przełączać się tam i z powrotem
+// i składać listę w głowie.
+// „Nadchodzące" skrócone do „Wkrótce" NIE dla urody: zmierzone w kontenerach
+// 320–412 px, cztery chipy z długą etykietą potrzebują 330 px, a na ekranie
+// 360 px zostają 332 — dwa piksele zapasu znika przy innym kroju albo
+// powiększonej czcionce systemowej i pasek łamie się na dwa rzędy (84 px
+// zamiast 38). Ze skróconą etykietą jeden rząd trzyma się do 320 px.
+const ZAKRESY = [['dzis', 'Dziś'], ['nadchodzace', 'Wkrótce'],
+                 ['wszystkie', 'Wszystkie'], ['zrobione', 'Zrobione']];
 
 const OKRESY = [['dzien', 'codziennie'], ['tydzien', 'co tydzień'],
                 ['miesiac', 'co miesiąc'], ['rok', 'co rok']];

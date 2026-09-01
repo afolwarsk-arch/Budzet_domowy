@@ -75,7 +75,7 @@ def _dane(d: dict, nowe: bool) -> dict:
 @router.get("/zadania")
 def lista_zadan(zakres: str = "dzis", osoba: int | None = None,
                 current_user: dict = Depends(get_current_user)):
-    if zakres not in ("dzis", "nadchodzace", "zrobione"):
+    if zakres not in ("dzis", "nadchodzace", "wszystkie", "zrobione"):
         raise HTTPException(400, "Nieznany zakres")
     return {"zadania": task_db.lista(_hid(current_user), current_user["user_id"],
                                      zakres, osoba)}
