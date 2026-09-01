@@ -247,12 +247,17 @@
     /* Pasek z danymi zaznaczonego zadania. Na dotyku zastępuje dymek `title`,
        którego nie da się wywołać bez kursora — pierwsze stuknięcie w belkę
        wypisuje tu daty i powiązania, dopiero drugie otwiera formularz. */
-    .gantt-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    /* UKŁAD PIONOWY, nie poziomy. Daty stały obok nazwy i przy długim tytule
+       zawijały się w dziwnych miejscach, rozpychając pasek na kilka linijek —
+       najgorzej, gdy zadanie ma i początek, i termin. Nazwa dostaje własną
+       linijkę, daty własną; pasek jest niższy i przewidywalnej wysokości. */
+    .gantt-info { display: flex; flex-direction: column; align-items: stretch; gap: 3px;
                   border-bottom: 1px solid var(--marka);
                   background: var(--accent-soft); padding: 9px 12px;
                   border-radius: 12px 12px 0 0; }
-    .gi-tytul { font-weight: 600; color: var(--heading); font-size: 14px; }
-    .gi-dane { font-size: 12.5px; color: var(--accent-strong); flex: 1; min-width: 0; }
+    .gi-tytul { font-weight: 600; color: var(--heading); font-size: 14px;
+                line-height: 1.3; overflow-wrap: anywhere; }
+    .gi-dane { font-size: 12.5px; color: var(--accent-strong); }
     .gi-otworz { min-height: 36px; padding: 0 14px; flex: none; }
     /* Powiązania do zdjęcia — cel wielkości palca, w przeciwieństwie do samej
        kreski na wykresie. */
@@ -314,16 +319,23 @@
     /* Kolumna nazw rozwinięta na chwilę — do przeczytania dłuższych tytułów.
        Nazwa przestaje być ucinana i zawija się do dwóch linii; wysokość wiersza
        zostaje bez zmian, bo od niej zależy pozycja belek i strzałek. */
-    .gantt.szerokie-nazwy { --nazwa: min(62vw, 320px); }
+    /* Połowa ekranu, nie tyle, ile ma najdłuższa nazwa. Reszta się zawija,
+       kosztem wyższego wiersza — lepiej mieć jeden wiersz na trzy linijki niż
+       kolumnę zjadającą cały ekran, na której nie widać już osi czasu. */
+    .gantt.szerokie-nazwy { --nazwa: min(50vw, 300px); }
     /* Zawijanie dotyczy SAMEGO TEKSTU, nie całej komórki. Reguła siedziała
        kiedyś na `.gantt-nazwa`, ale ta komórka jest teraz pojemnikiem `flex`
-       na daszek zwijania i tekst — `display: -webkit-box` kasował jej układ,
-       przez co przy rozwiniętej kolumnie nazwy uciekały pod lewą krawędź. */
+       na daszek zwijania i tekst — `display: -webkit-box` kasował jej układ. */
     .gantt.szerokie-nazwy .gantt-nazwa-tekst {
-      white-space: normal; overflow: hidden; text-overflow: clip;
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-      line-height: 1.25; font-size: 12px;
+      white-space: normal; overflow: visible; text-overflow: clip;
+      overflow-wrap: anywhere; line-height: 1.3; font-size: 12px;
+      padding: 5px 0;
     }
+    /* Wiersz rośnie razem z tekstem. Strzałki zależności przestają wtedy
+       pasować do stałej wysokości — dlatego `poprawStrzalki` przelicza je
+       z faktycznych pozycji wierszy po wstawieniu wykresu. */
+    .gantt.szerokie-nazwy .gantt-wiersz { align-items: stretch; }
+    .gantt.szerokie-nazwy .gantt-nazwa { align-items: center; }
 
     @media (max-width: 700px) {
       /* Na telefonie nazwa dostaje mniej miejsca — inaczej na oś zostaje pasek

@@ -707,6 +707,9 @@ function rysujPlan() {
     </div>`;
   podepnijNaglowekPlanu();
   podepnijBelki();
+  // Dopiero teraz wiersze stoją w dokumencie i mają zmierzalną wysokość.
+  const g = document.querySelector('.gantt');
+  if (g) poprawStrzalki(g, wiersze, rzedy, od, px, szer);
 }
 
 // Spłaszczenie z zachowaniem poziomu zagnieżdżenia — na wykresie wcięcie
@@ -923,6 +926,12 @@ const WYS_WIERSZA = 38;
 // Powiązanie NARUSZONE (następnik zaczyna się przed końcem poprzednika)
 // rysujemy na czerwono. To jedyny moment, w którym plan sam mówi, że się nie
 // domyka — bez tego zależność byłaby ozdobą, a nie narzędziem.
+// Środek wiersza w pionie. Domyślnie ze stałej wysokości, bo przy pierwszym
+// rysowaniu nic jeszcze nie stoi w dokumencie i nie ma czego zmierzyć.
+// Po wstawieniu treści `poprawStrzalki` przelicza to z faktycznych wierszy —
+// przy zawijanych nazwach nie mają one już jednakowej wysokości.
+let yDla = (id, rzedy) => rzedy.get(id) * WYS_WIERSZA + WYS_WIERSZA / 2;
+
 function strzalkiZaleznosci(wiersze, rzedy, od, px, szer) {
   if (!zaleznosci.length) return '';
   const wg = new Map(wiersze.map((w) => [w.z.id, w.z]));
@@ -940,8 +949,8 @@ function strzalkiZaleznosci(wiersze, rzedy, od, px, szer) {
     const zPo = zakresZadania(po);
     if (!zPrzed || !zPo) continue;
 
-    const y1 = rzedy.get(przed.id) * WYS_WIERSZA + WYS_WIERSZA / 2;
-    const y2 = rzedy.get(po.id) * WYS_WIERSZA + WYS_WIERSZA / 2;
+    const y1 = yDla(przed.id, rzedy);
+    const y2 = yDla(po.id, rzedy);
     const x1 = x(zPrzed.koniec) + px;             // koniec poprzednika
     const x2 = x(zPo.start);                      // początek następnika
     const naruszone = zPo.start < zPrzed.koniec;
@@ -960,9 +969,39 @@ function strzalkiZaleznosci(wiersze, rzedy, od, px, szer) {
       </g>`);
   }
   if (!linie.length) return '';
-  const wysokosc = wiersze.length * WYS_WIERSZA;
+  const wysokosc = wysCalosci || wiersze.length * WYS_WIERSZA;
   return `<svg class="gantt-zaleznosci" width="${szer}" height="${wysokosc}"
     style="left:var(--nazwa)" aria-hidden="true">${linie.join('')}</svg>`;
+}
+
+// Wysokość całej warstwy strzałek. Zero znaczy „policz ze stałej" — patrz `yDla`.
+let wysCalosci = 0;
+
+// Przeliczenie strzałek po wstawieniu wykresu do dokumentu.
+//
+// Odkąd długie nazwy zawijają się na kilka linijek, wiersze nie mają jednakowej
+// wysokości — a strzałki liczone ze stałej `WYS_WIERSZA` wskazywałyby wtedy
+// wiersz obok. Mierzymy więc faktyczne położenie każdego wiersza i rysujemy
+// warstwę drugi raz. Jeden dodatkowy odczyt układu na przerysowanie, i tylko
+// wtedy, gdy w ogóle są jakieś powiązania.
+function poprawStrzalki(g, wiersze, rzedy, od, px, szer) {
+  const svg = g.querySelector('.gantt-zaleznosci');
+  if (!svg) return;
+  const body = g.querySelector('.gantt-body');
+  const gora = body.getBoundingClientRect().top - body.scrollTop;
+  const srodki = new Map();
+  [...body.querySelectorAll('.gantt-wiersz')].forEach((el, i) => {
+    const w = wiersze[i];
+    if (!w) return;
+    const r = el.getBoundingClientRect();
+    srodki.set(w.z.id, Math.round(r.top - gora + r.height / 2));
+  });
+  const poprzednie = yDla;
+  yDla = (id, mapa) => (srodki.has(id) ? srodki.get(id) : poprzednie(id, mapa));
+  wysCalosci = Math.round(body.scrollHeight);
+  svg.outerHTML = strzalkiZaleznosci(wiersze, rzedy, od, px, szer);
+  yDla = poprzednie;
+  wysCalosci = 0;
 }
 
 // ── przeciąganie belek ──────────────────────────────────────────────────────
