@@ -1013,6 +1013,11 @@ const IKONY_SVG = {
   krzyzyk: '<path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/>',
   pauza: '<path d="M9.4 5.4v13.2M14.6 5.4v13.2"/>',
   uchwyt: '<circle cx="9" cy="6.4" r="1.5"/><circle cx="15" cy="6.4" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="17.6" r="1.5"/><circle cx="15" cy="17.6" r="1.5"/>',
+  // Kropki wypełnione, nie obwódki: przy 18 px pierścień o promieniu 1,7
+  // rozmywa się w szarą plamę. `fill` w atrybucie wygrywa z dziedziczonym
+  // `fill: none` z .ikona svg, bo dziedziczenie przegrywa z deklaracją na
+  // samym elemencie.
+  kropki: '<circle cx="12" cy="5.4" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="18.6" r="1.7" fill="currentColor" stroke="none"/>',
   uwaga: '<path d="M12 3.8l9 15.6H3z"/><path class="akc" d="M12 9.6v4.2"/><circle class="kropka" cx="12" cy="16.6" r="1.3"/>',
   gwiazdka: '<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
   wymiana: '<path d="M4 8.4h13.2M14 5.2l3.2 3.2-3.2 3.2"/><path d="M20 15.6H6.8M10 12.4l-3.2 3.2 3.2 3.2"/>',

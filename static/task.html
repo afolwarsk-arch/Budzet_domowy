@@ -308,8 +308,7 @@
                                        border: none; padding: 0; }
     .zad-data .ikona svg, .zad-kto .ikona svg { width: 16px; height: 16px; }
 
-    .zad { display: flex; align-items: center; gap: 10px; padding: 12px;
-           border-bottom: 1px solid var(--border-soft); }
+    .zad { padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
     /* Przycisk „+” — dopisuje krok bez opuszczania listy. Widoczny zawsze,
        bo ukryty pod najechaniem nie istnieje dla palca na telefonie. */
     .zad-plus { flex: none; width: 30px; height: 30px; border-radius: 8px;
@@ -347,18 +346,56 @@
        w kolorze modułu, żeby różnica była widoczna, a nie tylko napisana. */
     .szybkie.w-srodku input { border-color: var(--marka); }
     .zad.zrobione .zad-tytul { text-decoration: line-through; color: var(--muted); }
-    .ptaszek { flex: none; width: 26px; height: 26px; border-radius: 50%;
+    /* Kwadrat, nie kółko: okrągłe pole czytało się jak przełącznik trybu, a to
+       jest odhaczanie. Mniejsze niż wcześniej (20 zamiast 26) — na telefonie
+       zjadało szerokość, której brakowało tytułowi. */
+    .ptaszek { flex: none; width: 20px; height: 20px; border-radius: 5px;
                border: 1.5px solid var(--border); background: none; cursor: pointer;
                color: var(--marka); line-height: 1; display: flex; align-items: center;
-               justify-content: center; }
+               justify-content: center; padding: 0; }
+    /* Samo pole jest małe, ale palec dostaje pełne 44 px przez niewidoczną
+       otoczkę — zmniejszanie celu dotyku razem z grafiką to najprostszy sposób
+       na to, żeby odhaczanie zaczęło chybiać. */
+    .ptaszek::before { content: ''; position: absolute; width: 44px; height: 44px;
+                       left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    .ptaszek { position: relative; }
+    /* Odhaczone = wypełniony kwadrat. Kolor przyciemniony względem --marka:
+       biały ptaszek na czystym koralu daje kontrast 2,8:1, czyli poniżej progu
+       3:1 dla elementów graficznych. Przyciemnienie o 18% podnosi go do ~4,7:1. */
+    .zad.zrobione .ptaszek { border-color: transparent; color: #fff;
+                             background: color-mix(in srgb, var(--marka) 82%, #000); }
     .ptaszek .ikona { display: flex; align-items: center; justify-content: center; }
-    .ptaszek .ikona svg { width: 16px; height: 16px; stroke-width: 2; }
+    .ptaszek .ikona svg { width: 13px; height: 13px; stroke-width: 2.6; }
     .zad-tresc { flex: 1; min-width: 0; }
     .zad-tytul { font-size: 14.5px; color: var(--text); }
     .zad-nast { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .zad-termin { font-size: 12px; color: var(--muted); flex: none; }
     .zad-termin.po-czasie { color: var(--danger); font-weight: 600; }
-    .zad-postep { font-size: 12px; color: var(--muted); flex: none; }
+    /* Licznik postępu jest przyciskiem zwijania — wygląda jak etykieta, bo nią
+       jest, ale daszek i pole dotyku robią z niego coś klikalnego. */
+    .zad-postep { display: inline-flex; align-items: center; gap: 3px; flex: none;
+                  border: none; background: none; font: inherit; font-size: 12px;
+                  color: var(--muted); cursor: pointer; padding: 6px 2px; }
+    .zad-postep:hover { color: var(--marka); }
+    .zad-daszek { display: inline-block; font-size: 15px; line-height: 1;
+                  transform: rotate(90deg); transition: transform .15s; }
+    .zad-postep.zwiniety .zad-daszek { transform: rotate(0deg); }
+    .zad-podkroki[hidden] { display: none; }
+
+    /* Kafelki akcji POD nazwą, nie obok. Obok siebie walczyły z tytułem
+       o szerokość: pięć kafelków zabierało ~170 px, tytuł łamał się na trzy
+       linijki i wiersz i tak wychodził wysoki — tylko brzydziej. Wcięcie
+       równa się szerokość ptaszka plus odstęp, więc kafelki stoją w jednej
+       linii z tytułem. */
+    .zad-glowna { display: flex; align-items: center; gap: 10px; }
+    .zad-akcje { display: flex; gap: 5px; margin: 7px 0 0 30px; }
+    /* Jeden rozmiar dla wszystkich kafelków — inaczej rząd rozjeżdża się na
+       tym, że każdy przycisk przyszedł tu z własną szerokością. */
+    .zad-akcje > * { flex: none; height: 28px; min-width: 32px; margin: 0; }
+    .zad-akcje .zad-data { padding: 0 6px; font-size: 11px; }
+    /* Szczegóły na końcu rzędu, z dala od reszty: to jedyny kafelek, który
+       otwiera osobne okno, a nie zmienia czegoś na miejscu. */
+    .zad-akcje .zad-kropki { margin-left: auto; }
     .kamien { display: inline-block; width: 9px; height: 9px; margin-right: 6px;
               background: var(--marka); transform: rotate(45deg); }
     .pusto { color: var(--muted); font-size: 13px; text-align: center; padding: 28px 12px; }
@@ -381,19 +418,13 @@
     .zad-korzen-postep { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .zad-korzen .btn { flex: none; min-height: 44px; }
 
-    .zad-strzalka { flex: none; width: 44px; height: 44px; margin-right: -10px; border: none;
-                    background: none; color: var(--muted); font-size: 20px; line-height: 1;
-                    cursor: pointer; display: flex; align-items: center; justify-content: center; }
-    .zad-strzalka:hover { color: var(--marka); }
-
-    /* Przycisk „Szczegóły" przy zadaniu dodanym przed chwilą przez szybkie
-       dodawanie — jedyna droga do formularza bez wchodzenia strzałką. */
-    .zad-szczegoly-btn { display: inline-flex; align-items: center; margin-top: 6px;
-                          border: 1px solid var(--border); background: var(--surface);
-                          color: var(--marka); border-radius: 8px; padding: 6px 12px;
-                          font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
-                          min-height: 44px; }
-    .zad-szczegoly-btn:hover { border-color: var(--marka); }
+    /* Trzy kropki otwierają szczegóły. Pole dotyku 44 px, choć sama ikona ma
+       18 — palec nie trafia w ikonę, tylko w obszar wokół niej. */
+    .zad-kropki { flex: none; border: none; background: none; color: var(--muted);
+                  cursor: pointer; display: flex; align-items: center;
+                  justify-content: center; }
+    .zad-kropki:hover { color: var(--marka); }
+    .zad-kropki .ikona svg { width: 18px; height: 18px; }
 
     /* ── formularz szczegółów (przeniesione wiernie z health.html) ── */
     .pole { display: flex; flex-direction: column; gap: 4px; margin-bottom: 11px; }

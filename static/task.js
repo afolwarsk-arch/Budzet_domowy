@@ -185,6 +185,11 @@ window.addEventListener('DOMContentLoaded', () =>
 // a bez tego pole znikałoby w środku serii wpisów.
 let dopisywanieW = null;
 
+// Które zadania mają zwinięte kroki. Trzymane poza rysowaniem, bo lista
+// przerysowuje się po każdej zmianie — inaczej wszystko rozwijałoby się z
+// powrotem po odhaczeniu jednego ptaszka.
+const zwiniete = new Set();
+
 // Plusik PRZEŁĄCZA: drugie kliknięcie zamyka pole. Bez tego jedyną drogą
 // wyjścia było wpisanie czegoś albo Escape — czyli znowu wiedza tajemna.
 function pokazDopisywanie(id) {
@@ -192,6 +197,9 @@ function pokazDopisywanie(id) {
   schowajDopisywanie();
   if (juzOtwarte) return;
   dopisywanieW = id;
+  // Dopisywanie do zwiniętego zadania rozwija je — inaczej nowy krok wpadałby
+  // w schowany pojemnik i wyglądałoby to, jakby zapis nie zadziałał.
+  if (zwiniete.delete(id)) rysuj();
   const box = document.getElementById('dopisz-' + id);
   if (!box) return;
   box.hidden = false;
@@ -362,10 +370,10 @@ function podepnijPtaszki() {
       przelaczDziennik(Number(dz.dataset.komentarze));
       return;
     }
-    const wejdz = ev.target.closest('[data-wejdz]');
-    if (wejdz) {
-      korzen = Number(wejdz.dataset.wejdz);
-      nowyId = null;
+    const zw = ev.target.closest('[data-zwin]');
+    if (zw) {
+      const id = Number(zw.dataset.zwin);
+      if (zwiniete.has(id)) zwiniete.delete(id); else zwiniete.add(id);
       rysuj();
       return;
     }
@@ -1326,6 +1334,10 @@ function wiersz(w, poziom) {
   return `
     <div class="zad-galaz">
       <div class="zad${w.status === 'zrobione' ? ' zrobione' : ''}" data-zad="${w.id}">
+        <!-- Nazwa dostaje CAŁĄ szerokość, kafelki idą pod nią. Ustawione obok
+             siebie walczyły o miejsce: tytuł łamał się na trzy linijki, więc
+             wiersz i tak był wysoki — tylko brzydziej. -->
+        <div class="zad-glowna">
         <button class="ptaszek" type="button" data-ptaszek="${w.id}"
                 aria-label="Odhacz zadanie">${w.status === 'zrobione' ? ikonaSvg('ptaszek') : ''}</button>
         <div class="zad-tresc">
@@ -1333,16 +1345,23 @@ function wiersz(w, poziom) {
             w.powtarzaj ? `<span class="zad-cykl" title="Po odhaczeniu wróci ${esc(opisPowtarzania(w))}">${
               esc(opisPowtarzania(w))}</span>` : ''}</div>
           ${nast.tytul ? `<div class="zad-nast">następne: ${esc(nast.tytul)}</div>` : ''}
-          ${w.id === nowyId ? `<button class="zad-szczegoly-btn" type="button" data-szczegoly="${w.id}">Szczegóły</button>` : ''}
         </div>
-        ${p.razem && !w.kamien_milowy ? `<span class="zad-postep">${p.gotowe} z ${p.razem}</span>` : ''}
+        <!-- Licznik postępu zwija i rozwija kroki. „2 z 5" samo mówi, że w
+             środku coś jest, więc stuknięcie w nie po to, żeby to schować albo
+             pokazać, nie wymaga tłumaczenia. Daszek pokazuje, w którą stronę. -->
+        ${p.razem && !w.kamien_milowy ? `<button class="zad-postep${
+            zwiniete.has(w.id) ? ' zwiniety' : ''}" type="button" data-zwin="${w.id}"
+            title="${zwiniete.has(w.id) ? 'Pokaż kroki' : 'Zwiń kroki'}"
+            >${p.gotowe} z ${p.razem}<span class="zad-daszek">›</span></button>` : ''}
+        </div>
         <!-- SZYBKIE POLA bez wchodzenia w formularz. Termin i wykonawca to
              dwie rzeczy ustawiane najczęściej, a dotąd wymagały otwarcia
              szczegółów i przewijania. Data jest jednocześnie etykietą: gdy jest
              ustawiona, widać ją zamiast ikony. -->
+        <div class="zad-akcje">
         <label class="zad-data${w.termin ? (spozniony ? ' po-czasie' : ' jest') : ''}"
                title="Termin">
-          ${w.termin ? dataPl(w.termin) : ikonaSvg('kalendarz')}
+          ${w.termin ? dataKrotka(w.termin) : ikonaSvg('kalendarz')}
           <input type="date" data-termin="${w.id}" value="${esc((w.termin || '').slice(0, 10))}">
         </label>
         <label class="zad-kto${w.wykonawca_user_id ? ' jest' : ''}" title="Wykonawca">
@@ -1358,8 +1377,12 @@ function wiersz(w, poziom) {
                 data-komentarze="${w.id}" title="Dziennik zadania"
                 aria-label="Dziennik zadania">${
           w.ile_komentarzy ? w.ile_komentarzy : ikonaSvg('notatka')}</button>
-        <button class="zad-strzalka" type="button" data-wejdz="${w.id}"
-                aria-label="Pokaż tylko to zadanie">›</button>
+        <!-- Trzy kropki, nie strzałka. Strzałka „›" obiecywała przejście dalej,
+             a szczegóły to okno z formularzem — kropki nie obiecują kierunku,
+             tylko „jest tu więcej". -->
+        <button class="zad-kropki" type="button" data-szczegoly="${w.id}"
+                aria-label="Szczegóły zadania" title="Szczegóły">${ikonaSvg('kropki')}</button>
+        </div>
       </div>
       <div class="zad-dzieci${maDzieci ? '' : ' pusta'}">
         <!-- Pole dopisywania kroku wskakuje TUTAJ, czyli w miejscu, w którym
@@ -1375,7 +1398,11 @@ function wiersz(w, poziom) {
              otwarciu, żeby lista nie wołała serwera o komentarze wszystkich
              zadań naraz. -->
         <div class="zad-dziennik" id="dziennik-${w.id}" hidden></div>
-        ${(w.dzieci || []).map((d) => wiersz(d, poziom + 1)).join('')}
+        <!-- Kroki w osobnym pojemniku, bo zwijanie ma chować JE, a nie pole
+             dopisywania i dziennik — te muszą działać także przy zwiniętym
+             zadaniu. -->
+        <div class="zad-podkroki"${zwiniete.has(w.id) ? ' hidden' : ''}>${
+          (w.dzieci || []).map((d) => wiersz(d, poziom + 1)).join('')}</div>
       </div>
     </div>`;
 }
@@ -1429,6 +1456,14 @@ async function zapiszSzybko(id, zmiany) {
 function dataPl(iso) {
   const [r, m, d] = String(iso).slice(0, 10).split('-');
   return `${d}.${m}.${r}`;
+}
+
+// Kafelek terminu w liście: bez roku, dopóki termin jest w bieżącym roku.
+// „12.09.2026" zajmowało dwa razy więcej szerokości niż reszta kafelków i to
+// ono rozpychało rząd ikon, przez co tytuł łamał się na kolejne linijki.
+function dataKrotka(iso) {
+  const [r, m, d] = String(iso).slice(0, 10).split('-');
+  return r === String(new Date().getFullYear()) ? `${d}.${m}` : `${d}.${m}.${r.slice(2)}`;
 }
 
 // ── formularz szczegółów ─────────────────────────────────────────────────────
