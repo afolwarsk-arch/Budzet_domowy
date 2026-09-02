@@ -241,9 +241,25 @@ async def rozumiem(dane: dict, current_user: dict = Depends(get_current_user)):
     database.log_api_usage(hid, "task-mowa", usage.get("input_tokens", 0),
                            usage.get("output_tokens", 0), current_user.get("user_id"))
 
+    uid = current_user["user_id"]
     wyk_user, wyk_virtual = _dopasuj_wykonawce(hid, zrozumiane.get("wykonawca"))
-    cel = _dopasuj_miejsce(task_db.drzewo_do_wyboru(hid, current_user["user_id"]),
-                           zrozumiane.get("gdzie"))
+
+    # To samo wypowiedziane słowo sprawdzamy DWA razy: najpierw wśród zadań,
+    # potem wśród obszarów życia. Kolejność ma znaczenie — projekt jest
+    # konkretniejszy niż obszar, więc „dopisz do remontu domu" ma trafić
+    # w projekt, a nie w szufladę „Dom". Dopiero gdy żadne zadanie nie pasuje,
+    # pytamy o obszar: „wrzuć to do domu" nie wskazuje wtedy niczego innego.
+    gdzie = zrozumiane.get("gdzie")
+    cel = _dopasuj_miejsce(task_db.drzewo_do_wyboru(hid, uid), gdzie)
+    obszar = None
+    if not cel:
+        # Tylko obszary, których ta osoba używa. Wrzucenie zadania do obszaru
+        # wyłączonego schowałoby je jej z oczu w chwili zapisania.
+        moje = [s for s in task_db.strefy(hid, uid) if s.get("moja")]
+        trafiony = _dopasuj_miejsce([{"id": s["id"], "tytul": s["nazwa"]} for s in moje], gdzie)
+        if trafiony:
+            obszar = {"id": trafiony["id"], "nazwa": trafiony["tytul"]}
+
     return {
         "zadanie": zrozumiane,
         "wykonawca_user_id": wyk_user,
@@ -252,6 +268,7 @@ async def rozumiem(dane: dict, current_user: dict = Depends(get_current_user)):
         # nigdy nie zapisuje po cichu — dopasowanie po nazwie bywa pewne w 90%
         # przypadków, a te 10% wpadałoby do losowego projektu bez śladu.
         "cel": cel,
+        "obszar": obszar,
     }
 
 

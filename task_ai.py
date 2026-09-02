@@ -75,7 +75,10 @@ powtarzaniem.
 WYKONAWCA: imię osoby, jeśli padło („niech Ola kupi mleko" → "Ola"), w innym
 razie null. Nie wymyślaj imion.
 
-GDZIE: nazwa projektu albo zadania, do którego to należy, jeśli padła —
+GDZIE: nazwa projektu, zadania ALBO OBSZARU ŻYCIA, do którego to należy, jeśli
+padła. Obszary to szuflady w rodzaju „praca", „dom", „własna działalność",
+„studia" — „wrzuć to do domu", „to na pracę" znaczy właśnie obszar. Nie
+rozstrzygaj, czy to projekt, czy obszar; program sprawdzi jedno i drugie.
 „dopisz do urlopu w Maladze kupno biletów" → "urlop w Maladze", „w zakupie
 działki umów notariusza" → "zakup działki". Przepisz to, co usłyszałeś, nie
 poprawiaj odmiany ani nie skracaj; dopasowaniem do istniejących projektów

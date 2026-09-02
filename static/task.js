@@ -1918,6 +1918,7 @@ function lapOtworz() {
   lap.wyk = {};
   lap.sciezka = [];
   lap.zgadniete = false;
+  lap.obszar = null;
   lap.zapisuje = false;
   document.getElementById('lap-tlo').hidden = false;
   lapRysuj();
@@ -2035,6 +2036,16 @@ function lapCytat() {
   if (z.wykonawca) {
     chipy.push(`<span class="lap-chip">${ikonaSvg('osoby')}${esc(z.wykonawca)}${
       lap.wyk.wykonawca_user_id || lap.wyk.wykonawca_virtual_id ? '' : ' (nie znam)'}</span>`);
+  }
+  // Obszar wyróżniony kolorem: to jedyna plakietka, która mówi o zmianie
+  // względem tego, co widzisz na ekranie.
+  const obs = lap.obszar || biezacaStrefa();
+  if (obs) {
+    const ikona = lap.obszar
+      ? (STREFY.find((s) => s.id === lap.obszar.id) || {}).ikona
+      : obs.ikona;
+    chipy.push(`<span class="lap-chip${lap.obszar ? ' lap-chip-obszar' : ''}">${
+      ikonaSvg(ikona || 'kompas')}${esc(lap.obszar ? lap.obszar.nazwa : obs.nazwa)}</span>`);
   }
   return `<p class="lap-cytat">${esc(z.tytul || '')}</p>${
     chipy.length ? `<div class="lap-chipy">${chipy.join('')}</div>` : ''}`;
@@ -2183,6 +2194,11 @@ async function lapRozumiem(tekst) {
   }
 
   lap.zadanie = d.zadanie;
+  // Obszar usłyszany w zdaniu WYGRYWA z tym, w którym akurat jesteś. Siedzisz
+  // w „Pracy", mówisz „wrzuć to do domu" — zadanie ma trafić do domu, bo to
+  // była wyraźna instrukcja, a bieżący obszar to tylko domyślne tło. Widać go
+  // na plakietce nad pytaniem, żeby nic nie działo się po cichu.
+  lap.obszar = d.obszar || null;
   lap.wyk = {
     wykonawca_user_id: d.wykonawca_user_id || null,
     wykonawca_virtual_id: d.wykonawca_virtual_id || null,
@@ -2218,7 +2234,9 @@ async function lapZapisz() {
         powtarzaj: z.powtarzaj, powtarzaj_co: z.powtarzaj_co,
         ...lap.wyk,
         parent_id: teraz ? teraz.id : null,
-        strefa_id: strefa,
+        // Obszar ze zdania przed obszarem z ekranu. Przy zapisie w projekcie
+        // serwer i tak weźmie obszar rodzica — krok należy tam, gdzie sprawa.
+        strefa_id: lap.obszar ? lap.obszar.id : strefa,
       }),
     });
     const d = await r.json().catch(() => ({}));
