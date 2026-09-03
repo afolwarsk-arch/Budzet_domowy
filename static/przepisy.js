@@ -361,12 +361,22 @@ function ekranOpisu() {
       <button class="x" id="zamknij" type="button" aria-label="Zamknij">&times;</button>
     </div>
     <div class="sek-tyt">Składniki i ilości</div>
+    <!-- Kafelek na poprzednim ekranie obiecuje „wklej ALBO PODYKTUJ", a tu
+         przez długi czas stało samo pole tekstowe. Mikrofon domyka tę obietnicę:
+         przepis czyta się z kartki albo z cudzego ekranu na głos szybciej, niż
+         się go przepisuje kciukiem. -->
+    <button class="dyktuj hidden" id="dyktuj" type="button" aria-pressed="false">
+      <span class="dyktuj-kropka"></span><span id="dyktuj-napis">Podyktuj przepis</span>
+    </button>
     <textarea id="opis" placeholder="Spaghetti bolognese na 4 porcje: 500 g makaronu, 400 g mielonej wołowiny, puszka pomidorów, cebula, 2 łyżki oliwy"></textarea>
     <div class="komunikat">Napisz, na ile porcji wychodzi danie — inaczej AI to oszacuje.</div>
     <div id="ark-komunikat"></div>
     <button class="cta" id="rozloz" type="button">Rozłóż na składniki</button>`;
   ark.querySelector('#zamknij').onclick = () => zamknijArkusz();
-  ark.querySelector('#opis').focus();
+  // BEZ `focus()` na polu: wyrzucało klawiaturę na pół ekranu, zasłaniając
+  // mikrofon, którego ten ekran właśnie się dorobił. Kto chce pisać, stuknie
+  // w pole sam.
+  podepnijDyktowanie(ark);
   ark.querySelector('#rozloz').onclick = async (ev) => {
     const opis = ark.querySelector('#opis').value.trim();
     if (opis.length < 10) { komunikat('Opisz przepis dokładniej.', true); return; }
@@ -381,6 +391,38 @@ function ekranOpisu() {
       if (!r.ok) { komunikat(d.detail || 'Nie udało się rozłożyć.', true); ev.target.disabled = false; return; }
       otworzEdytor(zProponowanego(d));
     } catch { komunikat('Błąd połączenia.', true); ev.target.disabled = false; }
+  };
+}
+
+// Dyktowanie przepisu. Ten sam moduł co przy wydatkach i zadaniach.
+//
+// Tekst DOPISUJEMY nową linią zamiast podmieniać zawartość pola: składniki
+// wylicza się jeden po drugim, z przerwami na zajrzenie do garnka, a każda
+// przerwa kończy nasłuch. Podmiana kasowałaby wszystko, co powiedziano wcześniej.
+function podepnijDyktowanie(ark) {
+  const btn = ark.querySelector('#dyktuj');
+  const pole = ark.querySelector('#opis');
+  const napis = ark.querySelector('#dyktuj-napis');
+  // Przycisk pokazujemy TYLKO tam, gdzie dyktowanie zadziała — obiecywanie
+  // funkcji, której ta przeglądarka nie ma, jest gorsze niż jej brak.
+  if (!btn || !window.Dyktowanie || !Dyktowanie.dostepne()) return;
+  btn.classList.remove('hidden');
+
+  btn.onclick = () => {
+    if (Dyktowanie.sluchaMy()) { Dyktowanie.stop(); return; }
+    Dyktowanie.start({
+      onStan: (slucha) => {
+        btn.setAttribute('aria-pressed', slucha ? 'true' : 'false');
+        napis.textContent = slucha ? 'Słucham… (stuknij, by zakończyć)' : 'Podyktuj przepis';
+      },
+      onTekst: (tekst) => {
+        if (!tekst) return;
+        const teraz = pole.value;
+        pole.value = teraz && !teraz.endsWith('\n') ? teraz + '\n' + tekst : teraz + tekst;
+        komunikat('Dopisano: „' + tekst + '". Możesz mówić dalej albo rozłożyć na składniki.');
+      },
+      onBlad: (t) => komunikat(t, true),
+    });
   };
 }
 
