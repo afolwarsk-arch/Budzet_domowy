@@ -624,6 +624,59 @@ def szacuj_posilek(opis: str) -> tuple[list[dict], dict]:
     return dane.get("pozycje") or [], _usage(message)
 
 
+# Zdjęcie jest tu nośnikiem TEKSTU, nie widokiem jedzenia: kartka, strona
+# książki kucharskiej, ekran cudzej apki do liczenia kalorii. Kolejność zasad
+# ma znaczenie — model, któremu najpierw powie się o talerzu, zaczyna zgadywać
+# z wyglądu nawet wtedy, gdy gramatura jest wypisana wprost obok.
+_POSILEK_FOTO_PROMPT = _POSILEK_PROMPT + """
+ZDJĘCIE ZAMIAST OPISU:
+- Najczęściej to ZAPISANY OPIS posiłku: odręczna notatka, strona książki
+  kucharskiej, karta dań albo ekran innej aplikacji do liczenia kalorii.
+- ODCZYTUJ TO, CO NAPISANE. Gdy widać gotowe wartości (nazwa, gramatura, kcal,
+  makro) — przepisz je, nie szacuj od nowa. Wypisana liczba jest zawsze
+  pewniejsza niż Twoje oszacowanie.
+- Gdy podana jest sama nazwa i ilość, oszacuj wartości tak jak przy opisie
+  słowami.
+- Zdjęcie samego talerza to przypadek OSTATECZNY: dopiero gdy nie ma na nim
+  żadnego tekstu, oszacuj porcje z wielkości naczynia i sztućców.
+- Dopisz pole "opis" z jednym zdaniem o tym, co odczytałeś — trafia do
+  dziennika jako ślad, skąd wpis pochodzi.
+- Gdy na zdjęciu nie ma jedzenia ani jego opisu, zwróć {"pozycje": []}.
+"""
+
+
+def posilek_ze_zdjecia(image_bytes: bytes, mime_type: str = "image/jpeg") -> tuple[list, str, dict]:
+    """Zdjęcie posiłku → (pozycje, jednozdaniowy opis, zużycie tokenów).
+
+    Bliźniak `szacuj_posilek`, tylko wejściem jest obraz. Osobna funkcja, a nie
+    przełącznik w tamtej: różnią się promptem i kosztem wywołania, a mieszanie
+    tego w jednym miejscu kończy się tym, że nie wiadomo, która gałąź się
+    wykonała, gdy wynik jest dziwny.
+    """
+    import json as _json
+
+    client = anthropic.Anthropic()
+    image_bytes, mime_type = prepare_image(image_bytes, mime_type)
+    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2000,
+        system=_POSILEK_FOTO_PROMPT,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": image_b64}},
+                {"type": "text", "text": "Odczytaj posiłek ze zdjęcia i zwróć JSON."},
+            ],
+        }],
+    )
+    surowy = message.content[0].text.strip()
+    if surowy.startswith("```"):
+        surowy = surowy.split("```")[1].lstrip("json").strip()
+    dane = _json.loads(surowy)
+    return dane.get("pozycje") or [], (dane.get("opis") or "").strip(), _usage(message)
+
+
 _DORADCA_PROMPT = """Jesteś doświadczonym, konkretnym doradcą budżetowym dla polskiego gospodarstwa domowego. \
 Dostajesz zagregowane dane o wydatkach z ostatnich kilku miesięcy (kwoty w PLN). \
 Twoim zadaniem jest znaleźć REALNE, oparte na danych możliwości oszczędzania — nie ogólniki.

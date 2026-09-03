@@ -528,6 +528,40 @@ def z_opisu(body: dict, current_user: dict = Depends(get_current_user)):
     return {"pozycje": pozycje}
 
 
+@router.post("/opis-ze-zdjecia")
+async def z_opisu_ze_zdjecia(file: UploadFile = File(...),
+                             current_user: dict = Depends(get_current_user)):
+    """Zdjęcie posiłku → te same pozycje do zatwierdzenia co przy opisie słowami.
+
+    Bliźniak `/opis`, tylko wejściem jest obraz. Powstało z sytuacji, w której
+    trzeba było zapisać to samo, co jadł ktoś obok, mając przed sobą jego ekran:
+    dotąd jedyną drogą było założenie PRZEPISU i zaciągnięcie go do dnia, czyli
+    dwa kroki i trwały wpis w książce przepisów po czymś zjedzonym raz.
+
+    Tak samo jak tam — NIC nie zapisujemy. Użytkownik ogląda, co model odczytał,
+    zanim to wyląduje w dzienniku.
+    """
+    if current_user.get("ai_zablokowane"):
+        raise HTTPException(403, "Funkcje AI są wyłączone dla tego konta.")
+    hid = _hid(current_user)
+    dane = await file.read()
+    if not dane:
+        raise HTTPException(400, "Puste zdjęcie.")
+    import ai_processor
+    import database
+    try:
+        pozycje, opis, uzycie = await run_in_threadpool(
+            ai_processor.posilek_ze_zdjecia, dane, file.content_type or "image/jpeg")
+    except Exception as e:
+        print(f"[eat] odczyt posilku ze zdjecia nie powiodl sie: {e!r}")
+        raise HTTPException(502, "Nie udało się odczytać zdjęcia. Spróbuj zrobić je z bliska.")
+    database.log_api_usage(hid, "eat-opis-foto", uzycie["input_tokens"],
+                           uzycie["output_tokens"], current_user["user_id"])
+    if not pozycje:
+        raise HTTPException(422, "Nie widzę na tym zdjęciu jedzenia ani jego opisu.")
+    return {"pozycje": pozycje, "opis": opis}
+
+
 # ── dziennik ────────────────────────────────────────────────────────────────
 
 @router.get("/dzien")

@@ -789,6 +789,19 @@ function otworzArkusz(posilek) {
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6" width="17" height="13" rx="2.5"/><circle cx="12" cy="12.5" r="3.4"/><path d="M8.5 6l1.4-2.2h4.2L15.5 6"/></svg>
           <span class="t">Zdjęcie tabeli z tyłu</span><span class="o">Gdy trzeba odczytać wartości odżywcze</span>
         </label>
+        <!-- Zdjęcie OPISU posiłku, nie talerza: notatki, strony z książki
+             kucharskiej, cudzego ekranu z wpisem. Adam jadł to samo co kolega
+             i miał przed sobą jego wpis — żeby to zapisać, musiał najpierw
+             założyć PRZEPIS, a potem zaciągnąć go do dnia. Dwa kroki i trwały
+             wpis w książce przepisów po czymś zjedzonym raz.
+
+             Bez atrybutu capture: kadr bywa już w galerii (zrzut ekranu,
+             zdjęcie kartki sprzed godziny), a capture odbiera ten wybór
+             i otwiera od razu aparat. -->
+        <label class="droga" for="ark-plik-danie" tabindex="0" role="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14.2 3.5V8h4.6"/><path d="M9 12.5h6M9 16h4"/></svg>
+          <span class="t">Zdjęcie kartki</span><span class="o">Notatka, książka kucharska, cudzy ekran</span>
+        </label>
         <button class="droga" id="d-opis" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9"/></svg>
           <span class="t">Opisz słowami</span><span class="o">Domowy obiad bez kodu</span>
@@ -815,6 +828,7 @@ function otworzArkusz(posilek) {
            renderowane, tylko niewidoczne. -->
       <input type="file" id="ark-plik" accept="image/*" capture="environment" class="schowane">
       <input type="file" id="ark-plik-przod" accept="image/*" capture="environment" class="schowane">
+      <input type="file" id="ark-plik-danie" accept="image/*" class="schowane">
     </div>`;
   document.body.appendChild(arkusz);
   // W trybie aplikacji „wstecz" jest podstawowym gestem zamykania. Bez wpisu w
@@ -859,6 +873,11 @@ function otworzArkusz(posilek) {
     wyslijOpis(pole.value);
   };
   arkusz.querySelector('#ark-plik').onchange = wyslijEtykiete;
+  arkusz.querySelector('#ark-plik-danie').onchange = (ev) => {
+    const plik = ev.target.files && ev.target.files[0];
+    if (plik) wyslijDanie(plik);
+    ev.target.value = '';   // ten sam plik dwa razy z rzędu też ma zadziałać
+  };
   arkusz.querySelector('#ark-mik').onclick = dyktuj;
   // Wpisywanie szuka produktów po nazwie (własna baza + Open Food Facts).
   // Dopiero gdy nic nie ma, proponujemy oszacowanie opisu przez AI.
@@ -1373,6 +1392,23 @@ async function wyslijOpis(tekst) {
     if (!r.ok) { komunikat(d.detail || 'Nie udało się oszacować.', true); return; }
     komunikat('');
     ekranPozycji(d.pozycje, opis);
+  } catch { komunikat('Błąd połączenia.', true); }
+}
+
+// Zdjęcie całego posiłku → te same pozycje do zatwierdzenia co przy opisie
+// słowami. Świadomie wpada w `ekranPozycji`, a nie w osobny ekran: dla
+// użytkownika to ta sama sprawa, tylko wpisana aparatem zamiast klawiaturą.
+async function wyslijDanie(plik) {
+  zatrzymajSkaner();
+  komunikat('Odczytuję posiłek ze zdjęcia…');
+  const fd = new FormData();
+  fd.append('file', plik);
+  try {
+    const r = await authFetch('/api/eat/opis-ze-zdjecia', { method: 'POST', body: fd });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { komunikat(d.detail || 'Nie udało się odczytać posiłku.', true); return; }
+    komunikat('');
+    ekranPozycji(d.pozycje, d.opis || 'ze zdjęcia');
   } catch { komunikat('Błąd połączenia.', true); }
 }
 
