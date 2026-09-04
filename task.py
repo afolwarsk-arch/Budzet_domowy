@@ -414,6 +414,35 @@ def edytuj_zadanie(zadanie_id: int, dane: dict,
     return {"ok": True}
 
 
+@router.put("/rodzic")
+def przenies_zadania(dane: dict, current_user: dict = Depends(get_current_user)):
+    """Podpina istniejące zadania pod inne zadanie albo wyjmuje je na wierzch.
+
+    JEDNA TRASA dla jednego i dla wielu: „wrzuć tę akcję do projektu" i
+    „pozbieraj pięć luźnych akcji w jeden projekt" to ta sama operacja, a osobny
+    endpoint na liczbę mnogą różniłby się wyłącznie pętlą.
+
+    Nie idzie to przez `PUT /zadania/{id}`, bo tamta trasa nadpisuje komplet
+    pól — przeniesienie wymagałoby odesłania całego zadania z powrotem.
+    """
+    lista = dane.get("zadania")
+    if not isinstance(lista, list) or not lista:
+        raise HTTPException(400, "Nie wskazano zadań do przeniesienia.")
+    try:
+        # Górny limit chroni przed listą, której nikt nie zaznaczył ręcznie.
+        ids = [int(x) for x in lista[:100]]
+        parent_id = int(dane["parent_id"]) if dane.get("parent_id") else None
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Nieprawidłowe dane.")
+    try:
+        ile = task_db.przenies(_hid(current_user), current_user["user_id"], ids, parent_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not ile:
+        raise HTTPException(404, "Nie ma takiego zadania")
+    return {"przeniesione": ile}
+
+
 @router.patch("/zadania/{zadanie_id}/status")
 def status_zadania(zadanie_id: int, dane: dict,
                    current_user: dict = Depends(get_current_user)):

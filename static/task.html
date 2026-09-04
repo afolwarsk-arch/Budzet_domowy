@@ -483,11 +483,19 @@
        równa się szerokość ptaszka plus odstęp, więc kafelki stoją w jednej
        linii z tytułem. */
     .zad-glowna { display: flex; align-items: center; gap: 10px; }
-    .zad-akcje { display: flex; gap: 5px; margin: 7px 0 0 30px; }
+    /* ZAWIJANIE JEST BEZPIECZNIKIEM, nie układem docelowym. Siedem kafelków
+       mieści się w jednym rzędzie dopiero od ~340 px; bez `wrap` na węższym
+       ekranie ostatni z nich (trzy kropki) wychodziłby poza kartę zamiast
+       zejść do drugiego rzędu. */
+    .zad-akcje { display: flex; flex-wrap: wrap; gap: 5px; margin: 7px 0 0 30px; }
     /* Jeden rozmiar dla wszystkich kafelków — inaczej rząd rozjeżdża się na
        tym, że każdy przycisk przyszedł tu z własną szerokością. */
     .zad-akcje > * { flex: none; height: 28px; min-width: 32px; margin: 0; }
     .zad-akcje .zad-data { padding: 0 6px; font-size: 11px; }
+    /* Przeniesienie zadania — ikona, nie znak. „→" obok „+" czytałoby się jak
+       para strzałek nawigacji, a to jest akcja na zadaniu. */
+    .zad-przenies { display: flex; align-items: center; justify-content: center; }
+    .zad-przenies .ikona svg { width: 16px; height: 16px; }
     /* Szczegóły na końcu rzędu, z dala od reszty: to jedyny kafelek, który
        otwiera osobne okno, a nie zmienia czegoś na miejscu. */
     .zad-akcje .zad-kropki { margin-left: auto; }
@@ -711,6 +719,25 @@
     .lap-poz:hover { border-color: var(--marka); }
     .lap-poz .nazwa { flex: 1; min-width: 0; }
     .lap-poz .ile { flex: none; font-size: 11.5px; color: var(--muted); }
+    .lap-poz .ikona svg { width: 18px; height: 18px; }
+    /* Projekt na liście miejsc jest grubszy — przedsięwzięcia stoją na górze
+       i mają się odcinać od zwykłych zadań bez dopisywania słowa „projekt". */
+    .lap-poz.projekt .nazwa { font-weight: 600; }
+    .lap-poz.zle:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* Zbieranie luźnych zadań do projektu: ta sama pozycja co przy wyborze
+       miejsca, tylko z ptaszkiem. Kwadracik jest w ETYKIECIE, więc celem dotyku
+       jest cały wiersz — trafianie w 20 px na telefonie kończy się chybieniem. */
+    .przen-poz { cursor: pointer; }
+    .przen-poz input { flex: none; width: 20px; height: 20px; margin: 0;
+                       accent-color: var(--marka); }
+    .przen-poz.wybrana { border-color: var(--marka); background: var(--accent-soft); }
+    /* Pole nazwy nowego projektu — ten sam wygląd co pole dyktowania obok. */
+    .lap-pisz input { width: 100%; font: inherit; font-size: 15px; padding: 11px 12px;
+                      border-radius: 12px; border: 1.5px solid var(--border);
+                      background: var(--surface); color: var(--text); }
+    .lap-pisz input:focus { outline: none; border-color: var(--marka); }
+    .lap-kafel[disabled] { opacity: .45; cursor: default; }
 
     /* Rozpoznane zdanie. To najważniejsza rzecz na ekranie — jest cytatem tego,
        co przed chwilą powiedziałeś, więc dostaje rozmiar i cudzysłów, a nie
@@ -811,6 +838,23 @@
       <button type="button" class="lap-zamknij" id="strefy-zamknij" aria-label="Zamknij">✕</button>
     </header>
     <div id="strefy-krok"></div>
+  </div>
+</div>
+
+<!-- Przenoszenie gotowego zadania pod projekt albo pod inne zadanie. Osobny
+     arkusz od łapania, bo tamten prowadzi WŁASNY stan przepływu (nagranie,
+     rozpoznanie, zapis) — wpychanie w niego drugiej ścieżki znaczyłoby, że
+     każde „gdzie" musi wiedzieć, którą z dwóch spraw właśnie obsługuje. -->
+<div class="lap-tlo" id="przen-tlo" hidden>
+  <div class="lap-arkusz" role="dialog" aria-modal="true" aria-labelledby="przen-a11y">
+    <div class="lap-uchwyt"></div>
+    <header class="lap-gora">
+      <button type="button" class="lap-wroc" id="przen-wroc" aria-label="Wróć" hidden>‹</button>
+      <div class="lap-sciezka" id="przen-sciezka"></div>
+      <button type="button" class="lap-zamknij" id="przen-zamknij" aria-label="Zamknij">✕</button>
+    </header>
+    <h2 id="przen-a11y" class="sr-only">Przenoszenie zadania</h2>
+    <div id="przen-krok"></div>
   </div>
 </div>
 

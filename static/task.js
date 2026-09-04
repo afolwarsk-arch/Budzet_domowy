@@ -275,7 +275,7 @@ async function wczytajPlan() {
 // skrót wykonawcy przy każdym zadaniu potrzebuje ich do narysowania listy.
 window.addEventListener('DOMContentLoaded', () =>
   authRequireHousehold().then(wczytajHousehold).then(wczytajStrefy)
-    .then(wczytaj).then(lapPodepnij).then(strefyPodepnij));
+    .then(wczytaj).then(lapPodepnij).then(strefyPodepnij).then(przenPodepnij));
 
 // Które zadanie ma otwarte pole dopisywania kroku. Trzymane poza rysowaniem,
 // żeby przerwać ciszę po zapisie: lista przerysowuje się po każdym dodaniu,
@@ -498,9 +498,14 @@ function podepnijPtaszki() {
       rysuj();
       return;
     }
+    const prz = ev.target.closest('[data-przenies]');
+    if (prz) {
+      przenOtworz(Number(prz.dataset.przenies));
+      return;
+    }
     const szcz = ev.target.closest('[data-szczegoly]');
     if (szcz) {
-      otworzSzczegoly(Number(szcz.dataset.szczegoly));
+      menuZadania(Number(szcz.dataset.szczegoly));
       return;
     }
     const b = ev.target.closest('[data-ptaszek]');
@@ -1522,6 +1527,11 @@ function rysujLista() {
           ${ikonaSvg('mikrofon')}</button>` : ''}
       <button class="btn btn-primary" type="submit">Dodaj</button>
     </form>
+    <!-- Druga droga zapełniania projektu: nie „napisz nowe", tylko „weź to,
+         co już leży luzem". Stoi pod polem, bo jest rzadsza — projekt zbiera
+         się raz, a kroki dopisuje przez cały czas jego trwania. -->
+    ${aktualny ? `<button type="button" class="lap-inne" id="dodaj-istniejace"
+        style="margin-top:0">+ Dodaj istniejące zadania</button>` : ''}
     <div class="zadania">${lista.map((w) => wiersz(w, 0)).join('') ||
       '<p class="pusto">Nic tu nie ma. Wpisz pierwsze zadanie powyżej.</p>'}</div>`;
 
@@ -1543,6 +1553,9 @@ function rysujLista() {
   };
   const korzenBtn = document.getElementById('korzen-szczegoly');
   if (korzenBtn) korzenBtn.onclick = () => otworzSzczegoly(aktualny.id);
+  const dodajIstn = document.getElementById('dodaj-istniejace');
+  if (dodajIstn) dodajIstn.onclick = () =>
+    przenZbieraj({ id: aktualny.id, tytul: aktualny.tytul });
   const btnMowa = document.getElementById('sz-mowa');
   if (btnMowa) btnMowa.onclick = () => dyktuj(btnMowa);
   document.getElementById('szybkie').onsubmit = async (ev) => {
@@ -1677,15 +1690,22 @@ function wiersz(w, poziom) {
              pod rząd znaczyło trzy razy wejść i wyjść. -->
         <button class="zad-plus" type="button" data-dodaj="${w.id}"
                 aria-label="Dodaj krok w tym zadaniu" title="Dodaj krok">+</button>
+        <!-- Wsunięcie gotowego zadania pod projekt albo pod inne zadanie.
+             Dotąd dało się to zrobić WYŁĄCZNIE listą rozwijaną w Szczegółach,
+             czyli po otwarciu formularza z kilkunastoma polami — a porządkuje
+             się listę w biegu, tak samo jak dopisuje kroki. -->
+        <button class="zad-plus zad-przenies" type="button" data-przenies="${w.id}"
+                aria-label="Przenieś zadanie" title="Przenieś do projektu">${
+          ikonaSvg('przenies')}</button>
         <button class="zad-plus zad-komentarz${w.ile_komentarzy ? ' jest' : ''}" type="button"
                 data-komentarze="${w.id}" title="Dziennik zadania"
                 aria-label="Dziennik zadania">${
           w.ile_komentarzy ? w.ile_komentarzy : ikonaSvg('notatka')}</button>
         <!-- Trzy kropki, nie strzałka. Strzałka „›" obiecywała przejście dalej,
-             a szczegóły to okno z formularzem — kropki nie obiecują kierunku,
-             tylko „jest tu więcej". -->
+             a kropki nie obiecują kierunku, tylko „jest tu więcej" — więc mogą
+             prowadzić do MENU, a nie do jednego okna. -->
         <button class="zad-kropki" type="button" data-szczegoly="${w.id}"
-                aria-label="Szczegóły zadania" title="Szczegóły">${ikonaSvg('kropki')}</button>
+                aria-label="Co z tym zadaniem" title="Więcej">${ikonaSvg('kropki')}</button>
         </div>
       </div>
       <div class="zad-dzieci${maDzieci ? '' : ' pusta'}">
@@ -2267,6 +2287,439 @@ function lapCofnij() {
     lap.krok = 'jak';
   }
   lapRysuj();
+}
+
+// ── menu zadania ────────────────────────────────────────────────────────────
+//
+// Trzy kropki prowadzą teraz do MENU, nie wprost do Szczegółów. Kropki nie
+// obiecują kierunku — obiecują, że „jest tu więcej" — a przeniesienie i
+// usunięcie wymagały dotąd otwarcia formularza z kilkunastoma polami po to,
+// żeby zrobić jedną rzecz i wyjść.
+//
+// Arkusz stref, nie własne okienko: menu przyklejone do wiersza musiałoby samo
+// liczyć, czy zmieści się nad kciukiem, czy pod nim, a ten arkusz już umie być
+// oknem nad treścią (patrz `krokWArkuszu`).
+function menuZadania(id) {
+  const w = zadania.find((z) => z.id === id);
+  const tlo = document.getElementById('strefy-tlo');
+  if (!w) return;
+  if (!tlo) { otworzSzczegoly(id); return; }   // widok bez arkusza — wprost
+  tlo.hidden = false;
+  const box = document.getElementById('strefy-krok');
+  box.innerHTML = `
+    <p class="lap-pyt">${esc(w.tytul)}</p>
+    <div class="lap-lista">
+      <button type="button" class="lap-poz" id="menu-szczegoly">
+        ${ikonaSvg('olowek')}<span class="nazwa">Szczegóły</span></button>
+      <button type="button" class="lap-poz" id="menu-przenies">
+        ${ikonaSvg('przenies')}<span class="nazwa">Przenieś do…</span>
+        <span class="ile">${w.parent_id != null ? 'zmień miejsce' : 'do projektu'}</span></button>
+      <button type="button" class="lap-poz zle" id="menu-usun">
+        ${ikonaSvg('kosz')}<span class="nazwa">Usuń</span></button>
+    </div>`;
+  // Uchwyty wieszamy na konkretnych przyciskach, a NIE przez `onclick` na
+  // `#strefy-krok`: tamten należy do obsługi stref i nadpisanie go zabrałoby
+  // działanie ekranowi obszarów aż do przeładowania strony.
+  box.querySelector('#menu-szczegoly').onclick = () => { strefyZamknij(); otworzSzczegoly(id); };
+  box.querySelector('#menu-przenies').onclick = () => { strefyZamknij(); przenOtworz(id); };
+  box.querySelector('#menu-usun').onclick = () => { strefyZamknij(); usunZadanie(id, w.tytul); };
+}
+
+// ── przenoszenie istniejących zadań ─────────────────────────────────────────
+//
+// „Wrzuć tę akcję do projektu" i „zrób z niej krok innej akcji" to JEDNA
+// operacja: wskaż nowego rodzica. Dotąd prowadziła do niej wyłącznie lista
+// rozwijana w Szczegółach.
+//
+// Arkusz jest ten sam co przy łapaniu zadania (ścieżka u góry, jedno pytanie
+// na ekran, najwyżej dwa duże kafelki), bo to ta sama decyzja — „gdzie to ma
+// trafić". Osobny stan, bo tamten przepływ prowadzi własny (nagranie,
+// rozpoznanie, zapis) i wpychanie w niego drugiej sprawy znaczyłoby, że każdy
+// ekran musi wiedzieć, którą z dwóch właśnie obsługuje.
+
+const przen = {
+  ids: [],              // przenoszone zadania
+  tytul: '',            // tytuł jedynego przenoszonego albo nazwa celu
+  maRodzica: false,     // czy jest skąd wyjmować na wierzch
+  krok: 'lista',        // lista | miejsce | kroki | nowy | zbieranie
+  sciezka: [],          // droga w drzewie; ostatni człon to cel
+  drzewo: [],           // płaska lista otwartych zadań
+  wczytane: false,
+  // Zadanie i jego poddrzewo. Podpięcie pod własny krok zamyka pętlę, po której
+  // drzewo nie ma korzenia. Serwer to odrzuca (`wykryj_cykl`), ale pokazywanie
+  // wyboru, który zawsze kończy się błędem, jest gorsze niż jego brak.
+  zabronione: new Set(),
+  cel: null,            // {id, tytul} gdy cel znany z góry (zbieranie)
+  zaznaczone: new Set(),
+  pracuje: false,
+};
+
+function przenZamknij() {
+  document.getElementById('przen-tlo').hidden = true;
+}
+
+async function przenWczytajDrzewo() {
+  try {
+    const r = await authFetch('/api/task/drzewo');
+    przen.drzewo = (await r.json()).zadania || [];
+  } catch { przen.drzewo = []; toast('Nie udało się wczytać listy zadań.', 'blad'); }
+  przen.wczytane = true;
+}
+
+const przenDzieci = (id) =>
+  przen.drzewo.filter((z) => z.parent_id === id && !przen.zabronione.has(z.id));
+const przenKorzenie = () =>
+  przen.drzewo.filter((z) => z.parent_id == null && !przen.zabronione.has(z.id));
+const przenTeraz = () => przen.sciezka[przen.sciezka.length - 1] || null;
+
+// Zadanie i wszystko, co ma w środku.
+function przenPotomkowie(id) {
+  const zbior = new Set([id]);
+  let rosnie = true;
+  while (rosnie) {
+    rosnie = false;
+    for (const z of przen.drzewo) {
+      if (z.parent_id != null && zbior.has(z.parent_id) && !zbior.has(z.id)) {
+        zbior.add(z.id);
+        rosnie = true;
+      }
+    }
+  }
+  return zbior;
+}
+
+// Zadanie, jego wnętrze i jego przodkowie. Przy ZBIERANIU wykluczamy jednych
+// i drugich: krok, który już w tym projekcie siedzi, nie ma dokąd trafić,
+// a wsunięcie projektu pod własny krok zamyka pętlę.
+function przenRodzina(id) {
+  const zbior = przenPotomkowie(id);
+  const wg = new Map(przen.drzewo.map((z) => [z.id, z]));
+  let x = wg.get(id);
+  const widziane = new Set();
+  while (x && x.parent_id != null && !widziane.has(x.id)) {
+    widziane.add(x.id);
+    zbior.add(x.parent_id);
+    x = wg.get(x.parent_id);
+  }
+  return zbior;
+}
+
+const przenIle = () => (przen.ids.length === 1 ? `„${esc(przen.tytul)}"`
+  : `${przen.ids.length} ${odmien(przen.ids.length, 'zadanie', 'zadania', 'zadań')}`);
+
+async function przenOtworz(id) {
+  const z = zadania.find((x) => x.id === id);
+  if (!z) return;
+  przen.ids = [id];
+  przen.tytul = z.tytul;
+  przen.maRodzica = z.parent_id != null;
+  przen.cel = null;
+  przen.sciezka = [];
+  przen.zaznaczone = new Set();
+  przen.krok = 'lista';
+  przen.pracuje = false;
+  przen.wczytane = false;
+  przen.drzewo = [];
+  przen.zabronione = new Set([id]);
+  document.getElementById('przen-tlo').hidden = false;
+  przenRysuj();                      // arkusz od razu na ekranie, choćby z „wczytuję"
+  await przenWczytajDrzewo();
+  przen.zabronione = przenPotomkowie(id);
+  przenRysuj();
+}
+
+// Drugie wejście: cel znany z góry (siedzisz w projekcie), a wybiera się to,
+// co ma do niego wejść. Odwrotny kierunek tej samej operacji.
+async function przenZbieraj(cel) {
+  przen.ids = [];
+  przen.cel = cel;
+  przen.tytul = cel.tytul;
+  przen.maRodzica = false;
+  przen.sciezka = [];
+  przen.zaznaczone = new Set();
+  przen.krok = 'zbieranie';
+  przen.pracuje = false;
+  przen.wczytane = false;
+  przen.drzewo = [];
+  przen.zabronione = new Set([cel.id]);
+  document.getElementById('przen-tlo').hidden = false;
+  przenRysuj();
+  await przenWczytajDrzewo();
+  przen.zabronione = przenRodzina(cel.id);
+  przenRysuj();
+}
+
+function przenRysuj() {
+  const box = document.getElementById('przen-krok');
+  if (!box) return;
+  // Wracać nie ma z czego na pierwszym ekranie ani przy zbieraniu, gdzie cel
+  // jest jeden i znany od początku.
+  document.getElementById('przen-wroc').hidden = ['lista', 'zbieranie'].includes(przen.krok);
+  przenRysujSciezke();
+  box.innerHTML = {
+    lista: przenEkranLista, miejsce: przenEkranMiejsce, kroki: przenEkranKroki,
+    nowy: przenEkranNowy, zbieranie: przenEkranZbieranie,
+  }[przen.krok]();
+  const pole = box.querySelector('input[type="text"]');
+  if (pole) pole.focus();
+}
+
+function przenRysujSciezke() {
+  const el = document.getElementById('przen-sciezka');
+  if (!przen.sciezka.length || przen.krok === 'zbieranie') { el.innerHTML = ''; return; }
+  el.innerHTML = przen.sciezka.map((w, i) => {
+    const ostatni = i === przen.sciezka.length - 1;
+    return `${i ? '<span class="strzal">›</span>' : ''}<button type="button"${
+      ostatni ? ' class="teraz"' : ''} data-przen-poziom="${i}">${esc(w.tytul)}</button>`;
+  }).join('');
+}
+
+const przenCzeka = () => `<div class="lap-czeka">
+  <div class="lap-kropki"><i></i><i></i><i></i></div>Wczytuję listę zadań…</div>`;
+
+function przenPozycja(z) {
+  const ile = przenDzieci(z.id).length;
+  return `<button type="button" class="lap-poz${z.projekt ? ' projekt' : ''}"
+                  data-przen-wejdz="${z.id}">
+    <span class="nazwa">${esc(z.tytul)}</span>
+    ${ile ? `<span class="ile">${ile} ${odmien(ile, 'krok', 'kroki', 'kroków')}</span>` : ''}
+  </button>`;
+}
+
+// Projekty na górze, reszta pod nimi — w jednej liście, nie w dwóch. Zadanie
+// bywa dobrym miejscem dla kroku, nawet jeśli nikt nie ogłosił go projektem,
+// a dzielenie listy zmuszałoby do zgadywania, w której połowie czegoś szukać.
+function przenEkranLista() {
+  if (!przen.wczytane) return przenCzeka();
+  const korzenie = przenKorzenie();
+  const kolejno = [...korzenie.filter((z) => z.projekt), ...korzenie.filter((z) => !z.projekt)];
+  return `
+    <p class="lap-pyt">Dokąd przenieść ${przenIle()}?</p>
+    <div class="lap-lista">
+      ${kolejno.map(przenPozycja).join('')
+        || '<p class="lap-pod">Nie masz innych zadań, pod które dałoby się to podpiąć.</p>'}
+    </div>
+    <div class="lap-kafle" style="margin-top:12px">
+      <button type="button" class="lap-kafel pelny" data-przen="nowy">
+        Nowy projekt…
+        <small>załóż i od razu przenieś</small>
+      </button>
+    </div>
+    ${przen.maRodzica ? `<button type="button" class="lap-inne" data-przen="wierzch">
+      Wyjmij na wierzch listy</button>` : ''}`;
+}
+
+function przenEkranMiejsce() {
+  const teraz = przenTeraz();
+  const dzieci = przenDzieci(teraz.id);
+  return `
+    <p class="lap-pyt">Przenieść ${przenIle()} do „${esc(teraz.tytul)}"?</p>
+    <div class="lap-kafle">
+      <button type="button" class="lap-kafel mocny${dzieci.length ? '' : ' pelny'}"
+              data-przen="zapisz">
+        Tutaj
+        ${przen.pracuje ? '<small>przenoszę…</small>' : ''}
+      </button>
+      ${dzieci.length ? `<button type="button" class="lap-kafel" data-przen="glebiej">
+        Wejdź głębiej
+        <small>${dzieci.length} ${odmien(dzieci.length, 'krok', 'kroki', 'kroków')} w środku</small>
+      </button>` : ''}
+    </div>
+    <button type="button" class="lap-inne" data-przen="lista">Wybierz inne miejsce</button>`;
+}
+
+function przenEkranKroki() {
+  const teraz = przenTeraz();
+  const dzieci = przenDzieci(teraz.id);
+  return `
+    <p class="lap-pyt">W którym kroku?</p>
+    <div class="lap-lista">${dzieci.map(przenPozycja).join('')}</div>
+    <button type="button" class="lap-inne" data-przen="tutaj">
+      Jednak wprost w „${esc(teraz.tytul)}"
+    </button>`;
+}
+
+function przenEkranNowy() {
+  return `
+    <p class="lap-pyt">Nowy projekt</p>
+    <p class="lap-pod">Powstanie na wierzchu listy, a ${przenIle()} od razu
+      w nim wyląduje.</p>
+    <div class="lap-pisz">
+      <input type="text" id="przen-nazwa" placeholder="Nazwa projektu…" autocomplete="off">
+      <button type="button" class="lap-kafel pelny mocny" data-przen="zaloz">
+        ${przen.pracuje ? 'Zakładam…' : 'Załóż i przenieś'}
+      </button>
+    </div>`;
+}
+
+// Zbieranie: cel jest jeden i znany, wybiera się zawartość. Pokazujemy TYLKO
+// zadania z wierzchu listy — krok siedzący już w innym projekcie przenosi się
+// pojedynczo, z jego własnego wiersza, bo to decyzja o zabraniu go stamtąd.
+function przenEkranZbieranie() {
+  if (!przen.wczytane) return przenCzeka();
+  const kandydaci = przenKorzenie();
+  const ile = przen.zaznaczone.size;
+  return `
+    <p class="lap-pyt">Dodaj istniejące do „${esc(przen.cel.tytul)}"</p>
+    <p class="lap-pod">Zaznaczone wejdą tu jako kroki — razem z tym, co same
+      mają w środku.</p>
+    <div class="lap-lista">
+      ${kandydaci.map((z) => `<label class="lap-poz przen-poz${
+        przen.zaznaczone.has(z.id) ? ' wybrana' : ''}${z.projekt ? ' projekt' : ''}"
+        data-przen-wiersz="${z.id}">
+        <input type="checkbox" data-przen-zazn="${z.id}"${
+          przen.zaznaczone.has(z.id) ? ' checked' : ''}>
+        <span class="nazwa">${esc(z.tytul)}</span>
+      </label>`).join('')
+        || '<p class="lap-pod">Nie ma luźnych zadań do dodania.</p>'}
+    </div>
+    <div class="lap-kafle" style="margin-top:12px">
+      <button type="button" class="lap-kafel pelny mocny" data-przen="zbierz"
+              id="przen-zatwierdz"${ile ? '' : ' disabled'}>
+        ${przen.pracuje ? 'Przenoszę…' : `Przenieś tutaj${ile ? ` (${ile})` : ''}`}
+      </button>
+    </div>`;
+}
+
+// Licznik na przycisku odświeżamy PUNKTOWO, bez przerysowania listy: przy
+// zaznaczaniu piątej pozycji lista skoczyłaby na początek i trzeba by jej
+// szukać od nowa.
+function przenOdswiezZaznaczenie(id, wybrane) {
+  const wiersz = document.querySelector(`[data-przen-wiersz="${id}"]`);
+  if (wiersz) wiersz.classList.toggle('wybrana', wybrane);
+  const btn = document.getElementById('przen-zatwierdz');
+  if (!btn) return;
+  const ile = przen.zaznaczone.size;
+  btn.disabled = !ile;
+  btn.textContent = `Przenieś tutaj${ile ? ` (${ile})` : ''}`;
+}
+
+async function przenZaloz() {
+  if (przen.pracuje) return;
+  const pole = document.getElementById('przen-nazwa');
+  const nazwa = (pole ? pole.value : '').trim();
+  if (!nazwa) { toast('Podaj nazwę projektu.', 'blad'); return; }
+  przen.pracuje = true;
+  przenRysuj();
+  let nowy = null;
+  try {
+    const r = await authFetch('/api/task/zadania', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tytul: nazwa, projekt: true, strefa_id: strefa }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.id) { toast(d.detail || 'Nie udało się założyć projektu.', 'blad'); return; }
+    nowy = d.id;
+  } catch {
+    toast('Brak połączenia — projekt nie powstał.', 'blad');
+    return;
+  } finally {
+    przen.pracuje = false;
+  }
+  await przenWykonaj(nowy, przen.ids, nazwa);
+}
+
+async function przenWykonaj(parentId, ids, tytulCelu) {
+  if (przen.pracuje || !ids.length) return;
+  przen.pracuje = true;
+  przenRysuj();
+  try {
+    const r = await authFetch('/api/task/rodzic', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zadania: ids, parent_id: parentId }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { toast(d.detail || 'Nie udało się przenieść.', 'blad'); return; }
+    przenZamknij();
+    await wczytaj();
+    // Przeniesione zadanie mogło zniknąć z bieżącego widoku: krok dziedziczy
+    // obszar po sprawie, a lista bywa zawężona do jednego obszaru. Cisza po
+    // przeniesieniu wyglądałaby jak zgubienie zadania.
+    const widac = ids.every((i) => zadania.some((z) => z.id === i));
+    const co = ids.length === 1 ? 'Przeniesione' : `Przeniesione zadania: ${ids.length}`;
+    toast(parentId ? `${co} do „${tytulCelu}".${widac ? '' : ' Nie widać ich w tym widoku.'}`
+                   : `${co} na wierzch listy.`, 'ok');
+  } catch {
+    toast('Brak połączenia — nic nie zostało przeniesione.', 'blad');
+  } finally {
+    przen.pracuje = false;
+  }
+}
+
+function przenCofnij() {
+  if (przen.krok === 'kroki') {
+    przen.krok = 'miejsce';
+  } else if (przen.krok === 'miejsce') {
+    przen.sciezka.pop();
+    if (!przen.sciezka.length) przen.krok = 'lista';
+  } else {
+    przen.sciezka = [];
+    przen.krok = 'lista';
+  }
+  przenRysuj();
+}
+
+function przenPodepnij() {
+  const tlo = document.getElementById('przen-tlo');
+  if (!tlo) return;
+  document.getElementById('przen-zamknij').onclick = przenZamknij;
+  document.getElementById('przen-wroc').onclick = przenCofnij;
+  tlo.onclick = (ev) => { if (ev.target === tlo) przenZamknij(); };
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !tlo.hidden) przenZamknij();
+  });
+
+  document.getElementById('przen-sciezka').onclick = (ev) => {
+    const b = ev.target.closest('[data-przen-poziom]');
+    if (!b) return;
+    przen.sciezka = przen.sciezka.slice(0, Number(b.dataset.przenPoziom) + 1);
+    przen.krok = 'miejsce';
+    przenRysuj();
+  };
+
+  document.getElementById('przen-krok').onchange = (ev) => {
+    const p = ev.target.closest('[data-przen-zazn]');
+    if (!p) return;
+    const id = Number(p.dataset.przenZazn);
+    if (p.checked) przen.zaznaczone.add(id); else przen.zaznaczone.delete(id);
+    przenOdswiezZaznaczenie(id, p.checked);
+  };
+
+  document.getElementById('przen-krok').onclick = (ev) => {
+    const wejdz = ev.target.closest('[data-przen-wejdz]');
+    if (wejdz) {
+      const z = przen.drzewo.find((x) => x.id === Number(wejdz.dataset.przenWejdz));
+      if (!z) return;
+      przen.sciezka.push({ id: z.id, tytul: z.tytul });
+      przen.krok = 'miejsce';
+      przenRysuj();
+      return;
+    }
+    const b = ev.target.closest('[data-przen]');
+    if (!b) return;
+    ({
+      nowy: () => { przen.krok = 'nowy'; przenRysuj(); },
+      zaloz: przenZaloz,
+      lista: () => { przen.sciezka = []; przen.krok = 'lista'; przenRysuj(); },
+      glebiej: () => { przen.krok = 'kroki'; przenRysuj(); },
+      tutaj: () => { przen.krok = 'miejsce'; przenRysuj(); },
+      wierzch: () => przenWykonaj(null, przen.ids, ''),
+      zapisz: () => {
+        const teraz = przenTeraz();
+        if (teraz) przenWykonaj(teraz.id, przen.ids, teraz.tytul);
+      },
+      zbierz: () => przenWykonaj(przen.cel.id, [...przen.zaznaczone], przen.cel.tytul),
+    }[b.dataset.przen] || (() => {}))();
+  };
+
+  // Enter w nazwie nowego projektu zakłada go — pole jest jedno, więc nie ma
+  // czym innym ten klawisz zająć.
+  document.getElementById('przen-krok').addEventListener('keydown', (ev) => {
+    if (ev.target.id === 'przen-nazwa' && ev.key === 'Enter') {
+      ev.preventDefault();
+      przenZaloz();
+    }
+  });
 }
 
 // ── arkusz stref ────────────────────────────────────────────────────────────

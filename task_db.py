@@ -722,6 +722,71 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
         return zmienione
 
 
+def przenies(household_id, user_id, zadania_ids, parent_id) -> int:
+    """Podpina ISTNIEJĄCE zadania pod nowego rodzica. `parent_id=None` wyjmuje je
+    na wierzch listy. Zwraca liczbę przeniesionych.
+
+    Osobna trasa zamiast `edytuj`, bo tamta NADPISUJE komplet pól: przeniesienie
+    musiałoby najpierw odczytać wszystko, co w zadaniu siedzi, i odesłać
+    z powrotem — a przy zbieraniu kilku zadań naraz to tyleż okazji, żeby po
+    drodze coś skasować.
+
+    Dziedziczenie jest to samo, co przy tworzeniu kroku (`dodaj`), i musi zejść
+    NA CAŁE PODDRZEWO: prywatność, bo tytuły dzieci zdradzają treść prywatnego
+    rodzica, i obszar, bo lista po nim filtruje — krok, który został w starym
+    obszarze, zniknąłby z projektu w nowym.
+    """
+    rodzic = None
+    if parent_id:
+        rodzic = pobierz(household_id, user_id, parent_id)
+        if not rodzic:
+            raise ValueError("Nie ma takiego zadania nadrzędnego.")
+    # Wszystkie odczyty PRZED otwarciem połączenia do zapisu: `pobierz` bierze
+    # własne połączenie z puli, a zagnieżdżanie ich zjadałoby ją przy dłuższej
+    # liście zadań (patrz nagłówek `database.get_db`).
+    pary = pary_gospodarstwa(household_id)
+    do_zrobienia = []
+    for zid in zadania_ids:
+        if zid == parent_id:
+            continue
+        z = pobierz(household_id, user_id, zid)
+        if not z:
+            continue
+        if wykryj_cykl(pary, zid, parent_id):
+            raise ValueError("Zadanie nie może trafić do własnego kroku.")
+        do_zrobienia.append(z)
+        # Pary muszą nadążać za tym, co już przenieśliśmy — inaczej druga
+        # pozycja z listy byłaby sprawdzana wobec drzewa sprzed pierwszej.
+        pary = [(i, parent_id if i == zid else p) for i, p in pary]
+    if not do_zrobienia:
+        return 0
+
+    with get_db() as cur:
+        for z in do_zrobienia:
+            cur.execute("""UPDATE task_zadania SET
+                  parent_id = %s,
+                  -- Podpięcie pod rodzica odbiera status projektu: przedsięwzięcie
+                  -- w środku innego przedsięwzięcia to etap. Wyjęcie na wierzch
+                  -- go NIE przywraca — projektem zostaje się jawnie.
+                  projekt = projekt AND %s,
+                  kolejnosc = COALESCE((SELECT MAX(k.kolejnosc) + 1 FROM task_zadania k
+                                        WHERE k.household_id = %s
+                                          AND k.parent_id IS NOT DISTINCT FROM %s), 0)
+                WHERE household_id = %s AND id = %s""",
+                (parent_id, parent_id is None, household_id, parent_id,
+                 household_id, z["id"]))
+            if rodzic:
+                cur.execute("""WITH RECURSIVE galaz AS (
+                      SELECT id FROM task_zadania WHERE id = %s
+                      UNION ALL
+                      SELECT z.id FROM task_zadania z JOIN galaz g ON z.parent_id = g.id)
+                    UPDATE task_zadania SET prywatne_dla = %s, strefa_id = %s
+                    WHERE id IN (SELECT id FROM galaz) AND household_id = %s""",
+                    (z["id"], rodzic["prywatne_dla"], rodzic.get("strefa_id"),
+                     household_id))
+    return len(do_zrobienia)
+
+
 def nastepna_data(data, okres: str, co: int):
     """Przesuwa datę o `co` jednostek `okres`. Zwraca `date` albo None.
 

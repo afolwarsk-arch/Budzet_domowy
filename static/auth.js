@@ -1027,6 +1027,9 @@ const IKONY_SVG = {
   gwiazdka: '<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
   wymiana: '<path d="M4 8.4h13.2M14 5.2l3.2 3.2-3.2 3.2"/><path d="M20 15.6H6.8M10 12.4l-3.2 3.2 3.2 3.2"/>',
   do_salda: '<path class="akc" d="M12 4v10.4M8.4 11l3.6 3.6L15.6 11"/><path d="M5 19.2h14"/>',
+  // Strzałka WCHODZĄCA do środka, nie zwykła strzałka w prawo: chodzi o
+  // wsunięcie czegoś do wnętrza czegoś innego, a nie o przejście dalej.
+  przenies: '<path d="M13.6 4.2h5a1.8 1.8 0 011.8 1.8v12a1.8 1.8 0 01-1.8 1.8h-5"/><path class="akc" d="M3.4 12h9.8M9.8 8.4l3.6 3.6-3.6 3.6"/>',
 };
 
 // Wersje pelne — tylko do dolnego paska. Przy 23 px cienka kreska jest
