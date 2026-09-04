@@ -1637,8 +1637,24 @@ function potwierdz(opcje) {
 // znaczy zaznaczanie tekstu, a nie zmianę ekranu.
 function gestPrzesuwania(el, opcje) {
   if (!el) return;
-  const PROG = 62;      // px w poziomie; mniej łapałoby zwykłe drgnięcie ręki
-  const SKOS = 1.6;     // ile razy ruch poziomy ma przeważyć nad pionowym
+  // BEZ TEGO GEST NIE DZIAŁA NA TELEFONIE — i to była pierwsza wersja.
+  // Przy domyślnym `touch-action: auto` przeglądarka uznaje każdy ruch palca
+  // za początek przewijania: wysyła `pointerdown`, a przy pierwszym drgnięciu
+  // w pionie przejmuje gest i przerywa go `pointercancel`. Ruch palcem nigdy
+  // nie jest idealnie poziomy, więc próg nie zdążał się nazbierać.
+  // `pan-y` mówi wprost: pionowe przewijanie jest twoje, poziome moje.
+  // `pinch-zoom` zostaje, żeby nie odebrać powiększania dwoma palcami.
+  //
+  // UWAGA przy podpinaniu: to ustawienie obowiązuje CAŁE poddrzewo i nie da
+  // się go w środku odblokować (przeglądarka bierze część wspólną wzdłuż
+  // przodków). Element z własnym przewijaniem w poziomie — oś Gantta, rząd
+  // zakładek — musi więc zostać POZA elementem gestu albo mieć go zdjętego
+  // na czas swojego widoku.
+  if (opcje.touchAction !== false) el.style.touchAction = 'pan-y pinch-zoom';
+  // 50 px, nie 62: palcem na telefonie ruch bywa krótszy i łukowaty, a próg
+  // liczony przy kciuku trzymającym telefon jednoręcznie zbierał się z trudem.
+  const PROG = 50;      // px w poziomie; mniej łapałoby zwykłe drgnięcie ręki
+  const SKOS = 1.4;     // ile razy ruch poziomy ma przeważyć nad pionowym
   let x0 = 0, y0 = 0, palec = null, zdecydowany = 0;
 
   const wolno = (cel) => {

@@ -647,6 +647,11 @@ function opisPowtarzania(z) {
 }
 
 function rysuj() {
+  // `touch-action: pan-y` z gestu przesuwania obowiązuje CAŁE poddrzewo i nie
+  // da się go w środku odblokować — a oś Gantta przewija się w poziomie palcem.
+  // Dlatego na planie zdejmujemy je z kontenera treści i oddajemy gest osi.
+  const t = box();
+  if (t) t.style.touchAction = zakres === 'plan' ? '' : 'pan-y pinch-zoom';
   if (widok === 'szczegoly') return rysujSzczegoly();
   if (zakres === 'plan') return rysujPlan();
   if (TRYB_PROJEKTY && korzen == null) return rysujProjekty();

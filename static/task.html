@@ -598,6 +598,11 @@
     /* Pasek stoi PRZED <main>, więc odbiera mu górny odstęp — inaczej między
        zakładkami a pierwszym wierszem robi się dziura na 28 px. */
     .obszary:not([hidden]) + main { padding-top: 14px; }
+
+    /* Obszar przesuwania palcem musi sięgać poza ostatnie zadanie: przy krótkiej
+       liście przeciągnięcie w dolnej połowie ekranu trafiało w puste tło pod
+       treścią i gest nie miał gdzie się zacząć. */
+    #tresc { min-height: 74vh; }
     /* Zakładka okienkowa: zaokrąglona u góry, przy dole zlana z treścią. */
     .ob { flex: none; display: inline-flex; align-items: center; gap: 6px;
           border: 1px solid transparent; border-bottom: none;

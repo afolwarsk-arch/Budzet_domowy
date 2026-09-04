@@ -122,6 +122,12 @@
     #bilans-uwaga:empty { display: none; }
     @media (max-width: 700px) { .bilans-in { gap: 9px; } .bl-w { font-size: 12px; } .bl-d { font-size: 9px; } }
 
+    /* Obszar przesuwania palcem musi sięgać poza ostatni wpis. Bez tego dzień
+       z dwoma posiłkami dawał `main` wysokie na pół ekranu, a przeciągnięcie
+       poniżej — czyli tam, gdzie kciuk trafia najczęściej — lądowało w pustym
+       tle i nie zmieniało dnia. */
+    main { min-height: 74vh; }
+
     /* ── arkusz dodawania ── */
     .ark-tlo { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9998;
                display: flex; align-items: flex-end; justify-content: center; }
