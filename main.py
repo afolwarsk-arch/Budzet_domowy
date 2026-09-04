@@ -164,7 +164,7 @@ _MOTYW_BOOT = (
 # JUŻ W ODPOWIEDZI SERWERA. Robienie tego w JS dałoby mignięcie koralem przed
 # przemalowaniem na zielono.
 _STRONY_MODULU = {"eat.html": "eat", "przepisy.html": "eat", "statystyki.html": "eat",
-                  "skaner.html": "eat",
+                  "produkty.html": "eat",
                   "health.html": "health", "task.html": "task",
                   "task-plan.html": "task"}
 # Strony finansów celowo BEZ wpisu: ich paleta jest wartością domyślną w :root,
@@ -256,9 +256,21 @@ def statystyki_page():
     return _html("statystyki.html")
 
 
+@app.get("/produkty")
+def produkty_page():
+    """Baza produktów gospodarstwa — przegląd i dokładanie tego, czego żadna
+    baza nie zna."""
+    return _html("produkty.html")
+
+
 @app.get("/skaner")
 def skaner_page():
-    return _html("skaner.html")
+    """Dawna zakładka „Sprawdź produkt". Skanowanie kodu razem z ocenami
+    przeniosło się na stronę Produktów: dwa skanery w jednym module znaczyły,
+    że przed zeskanowaniem trzeba wiedzieć, czy się TYLKO sprawdza, czy dodaje.
+    Adres zostaje, żeby stare skróty i zakładki nie prowadziły donikąd."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/produkty", status_code=308)
 
 
 @app.get("/health")

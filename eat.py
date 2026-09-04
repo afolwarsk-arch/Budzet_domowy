@@ -274,6 +274,58 @@ def lista_produktow(current_user: dict = Depends(get_current_user)):
     return eat_db.lista_produktow(_hid(current_user))
 
 
+def _produkt_z_ciala(body: dict) -> dict:
+    """Pola produktu z formularza. Wartości odżywcze są zawsze NA 100 G —
+    tak stoi na każdej etykiecie i tak trzyma je baza; przeliczanie „na porcję"
+    w jednym miejscu, a „na 100 g" w drugim byłoby cichym źródłem pomyłek."""
+    nazwa = (body.get("nazwa") or "").strip()
+    if not nazwa:
+        raise HTTPException(400, "Podaj nazwę produktu.")
+    kod = (body.get("kod") or "").strip()
+    if kod and (not kod.isdigit() or not 6 <= len(kod) <= 14):
+        raise HTTPException(400, "Kod kreskowy to 6–14 cyfr.")
+    return {
+        "nazwa": nazwa, "marka": body.get("marka"), "kod": kod or None,
+        "kcal": _liczba(body.get("kcal")), "bialko": _liczba(body.get("bialko")),
+        "tluszcz": _liczba(body.get("tluszcz")), "wegle": _liczba(body.get("wegle")),
+        "blonnik": _liczba(body.get("blonnik")), "cukry": _liczba(body.get("cukry")),
+        "sol": _liczba(body.get("sol")),
+        "opak_g": _liczba(body.get("opak_g")), "sztuk_w_opak": _liczba(body.get("sztuk_w_opak")),
+        "porcja_g": _liczba(body.get("porcja_g")), "opis_porcji": body.get("opis_porcji"),
+    }
+
+
+@router.post("/produkty", status_code=201)
+def dodaj_produkt_recznie(body: dict, current_user: dict = Depends(get_current_user)):
+    """Produkt wpisany z ręki — dla wszystkiego, czego nie zna ani kod kreskowy,
+    ani Open Food Facts, ani odczyt etykiety."""
+    hid = _hid(current_user)
+    dane = _produkt_z_ciala(body)
+    if dane["kod"] and eat_db.produkt_po_kodzie(hid, dane["kod"]):
+        # `zapisz_produkt` odświeżyłby istniejący wiersz po cichu, a to wygląda
+        # jak zgubiony zapis: nowy produkt nie pojawia się na liście.
+        raise HTTPException(409, "Produkt o tym kodzie już jest w Waszej bazie.")
+    dane["zrodlo"] = "reczne"
+    return {"produkt": eat_db.zapisz_produkt(hid, dane)}
+
+
+@router.put("/produkty/{produkt_id}")
+def popraw_produkt(produkt_id: int, body: dict,
+                   current_user: dict = Depends(get_current_user)):
+    """Poprawka istniejącego produktu — literówka w nazwie, wartość źle odczytana
+    z etykiety, dopisana gramatura opakowania."""
+    hid = _hid(current_user)
+    dane = _produkt_z_ciala(body)
+    if dane["kod"]:
+        inny = eat_db.produkt_po_kodzie(hid, dane["kod"])
+        if inny and inny["id"] != produkt_id:
+            raise HTTPException(409, "Ten kod ma już inny produkt w Waszej bazie.")
+    p = eat_db.zmien_produkt(produkt_id, hid, dane)
+    if not p:
+        raise HTTPException(404, "Nie znaleziono produktu")
+    return {"produkt": p}
+
+
 @router.delete("/produkty/{produkt_id}")
 def usun_produkt(produkt_id: int, current_user: dict = Depends(get_current_user)):
     if not eat_db.usun_produkt(produkt_id, _hid(current_user)):

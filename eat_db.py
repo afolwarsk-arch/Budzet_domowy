@@ -435,9 +435,14 @@ def ulubione(household_id: int, limit: int = 20) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
-def zapisz_produkt(household_id: int, dane: dict) -> dict:
-    """Dokłada produkt do bazy gospodarstwa. Przy powtórzonym kodzie odświeża
-    wartości zamiast tworzyć duplikat."""
+def _oczysc_produkt(dane: dict) -> dict:
+    """Surowy słownik → wiersz gotowy do zapisu.
+
+    WYDZIELONE Z `zapisz_produkt`, bo ten sam filtr musi obowiązywać przy
+    poprawianiu produktu z ekranu Produkty. Walidacja wpisana tylko w INSERT
+    znaczyłaby, że ręczna edycja jest jedyną drogą wpuszczenia do bazy wartości,
+    których reszta apki się nie spodziewa.
+    """
     pola = ("kod", "nazwa", "marka", "opak_g", "kcal", "bialko", "tluszcz",
             "wegle", "blonnik", "cukry", "sol", "zrodlo", "sztuk_w_opak",
             "porcja_g", "opis_porcji", "nutriscore", "nova", "dodatki")
@@ -493,6 +498,13 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
         sztuk = None
     w["sztuk_w_opak"] = sztuk if sztuk and 2 <= sztuk <= 200 else None
     w["nazwa_szukaj"] = bez_ogonkow(w["nazwa"])
+    return w
+
+
+def zapisz_produkt(household_id: int, dane: dict) -> dict:
+    """Dokłada produkt do bazy gospodarstwa. Przy powtórzonym kodzie odświeża
+    wartości zamiast tworzyć duplikat."""
+    w = _oczysc_produkt(dane)
     with get_db() as cur:
         if w["kod"]:
             cur.execute("""
@@ -536,6 +548,30 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
                 RETURNING *
             """, {"h": household_id, **w})
         return dict(cur.fetchone())
+
+
+def zmien_produkt(produkt_id: int, household_id: int, dane: dict) -> dict | None:
+    """Poprawia produkt w bazie gospodarstwa. Zwraca cały wiersz albo None.
+
+    NADPISUJE komplet pól, także pustymi wartościami — inaczej nie dałoby się
+    skasować gramatury dopisanej przez pomyłkę. To formularz z widocznymi
+    polami, więc puste pole znaczy tu „ma być puste", a nie „nie wiem".
+
+    Źródła NIE ruszamy: produkt odczytany kiedyś z etykiety zostaje etykietą,
+    nawet gdy ktoś poprawił w nim literówkę. Znacznik mówi, SKĄD wzięły się
+    wartości, a nie kto ostatnio dotykał wiersza.
+    """
+    w = _oczysc_produkt(dane)
+    with get_db() as cur:
+        cur.execute("""UPDATE eat_produkty SET
+              kod=%(kod)s, nazwa=%(nazwa)s, nazwa_szukaj=%(nazwa_szukaj)s, marka=%(marka)s,
+              opak_g=%(opak_g)s, kcal=%(kcal)s, bialko=%(bialko)s, tluszcz=%(tluszcz)s,
+              wegle=%(wegle)s, blonnik=%(blonnik)s, cukry=%(cukry)s, sol=%(sol)s,
+              sztuk_w_opak=%(sztuk_w_opak)s, porcja_g=%(porcja_g)s, opis_porcji=%(opis_porcji)s
+            WHERE id=%(id)s AND household_id=%(h)s
+            RETURNING *""", {**w, "id": produkt_id, "h": household_id})
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 
 def ustaw_sztuk_w_opak(produkt_id: int, household_id: int, sztuk: int | None) -> dict | None:

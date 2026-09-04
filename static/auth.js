@@ -1027,6 +1027,10 @@ const IKONY_SVG = {
   gwiazdka: '<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
   wymiana: '<path d="M4 8.4h13.2M14 5.2l3.2 3.2-3.2 3.2"/><path d="M20 15.6H6.8M10 12.4l-3.2 3.2 3.2 3.2"/>',
   do_salda: '<path class="akc" d="M12 4v10.4M8.4 11l3.6 3.6L15.6 11"/><path d="M5 19.2h14"/>',
+  // Kod kreskowy: ramka aparatu z kreskami w środku. Sam prostokąt z kreskami
+  // gubi się przy 22 px w dolnym pasku, a narożniki celownika czyta się jako
+  // „skanowanie" nawet wtedy, gdy kresek nie widać.
+  kodkreskowy: '<path d="M3.4 8V5.6a2.2 2.2 0 012.2-2.2H8M16 3.4h2.4a2.2 2.2 0 012.2 2.2V8M20.6 16v2.4a2.2 2.2 0 01-2.2 2.2H16M8 20.6H5.6a2.2 2.2 0 01-2.2-2.2V16"/><path class="akc" d="M7.6 8.2v7.6M11 8.2v7.6M14.4 8.2v7.6M17.4 8.2v7.6"/>',
   // Strzałka WCHODZĄCA do środka, nie zwykła strzałka w prawo: chodzi o
   // wsunięcie czegoś do wnętrza czegoś innego, a nie o przejście dalej.
   przenies: '<path d="M13.6 4.2h5a1.8 1.8 0 011.8 1.8v12a1.8 1.8 0 01-1.8 1.8h-5"/><path class="akc" d="M3.4 12h9.8M9.8 8.4l3.6 3.6-3.6 3.6"/>',
@@ -1035,6 +1039,7 @@ const IKONY_SVG = {
 // Wersje pelne — tylko do dolnego paska. Przy 23 px cienka kreska jest
 // zbyt watla, a paska oglada sie w ruchu.
 const IKONY_PELNE = {
+  kodkreskowy: '<rect x="3" y="4.6" width="18" height="14.8" rx="2.6"/><path class="pusto" d="M6.6 8h1.8v8H6.6zM10.2 8h1.5v8h-1.5zM13.4 8h1.2v8h-1.2zM16.4 8h1.6v8h-1.6z"/>',
   pulpit: '<rect x="3" y="12" width="4.5" height="8" rx="1.4"/><rect x="9.7" y="7" width="4.5" height="13" rx="1.4"/><rect x="16.4" y="10" width="4.5" height="10" rx="1.4"/><circle class="kropka" cx="18.65" cy="5.4" r="2.1"/>',
   dodaj: '<circle cx="12" cy="12" r="9"/><path class="pusto" d="M11 7.4h2v9.2h-2z"/><path class="pusto" d="M7.4 11h9.2v2H7.4z"/>',
   lista: '<rect x="4" y="5.4" width="16" height="2.2" rx="1.1"/><rect x="4" y="10.9" width="16" height="2.2" rx="1.1"/><rect x="4" y="16.4" width="9" height="2.2" rx="1.1"/><circle class="kropka" cx="18.4" cy="17.5" r="2.1"/>',
@@ -1097,7 +1102,7 @@ const MODULY = [
     strony: [
       { href: '/eat', ikona: 'lista', label: 'Dziennik', pelny: 'Dziennik' },
       { href: '/przepisy', ikona: 'ksiazka', label: 'Przepisy', pelny: 'Przepisy' },
-      { href: '/skaner', ikona: 'dodaj', label: 'Sprawdź', pelny: 'Sprawdź produkt' },
+      { href: '/produkty', ikona: 'kodkreskowy', label: 'Produkty', pelny: 'Baza produktów' },
       { href: '/statystyki', ikona: 'analiza', label: 'Statystyki', pelny: 'Statystyki i oceny' },
     ],
   },
