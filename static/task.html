@@ -580,19 +580,45 @@
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden;
                clip: rect(0 0 0 0); white-space: nowrap; }
 
-    /* ── STREFY ─────────────────────────────────────────────────────────────
-       Przełącznikiem jest sam TYTUŁ STRONY. Rząd pastylek zjadłby 46 px, na
-       które Adam narzekał dwa razy, a tytuł jest największym napisem na
-       ekranie — w chwili wychodzenia z pracy nie da się go nie zauważyć. */
-    .strefa-tytul { display: inline-flex; align-items: center; gap: 7px; border: none;
-                    background: none; padding: 4px 0; cursor: pointer; color: inherit;
-                    font: inherit; text-align: left; }
-    .strefa-tytul h1 { margin: 0; font-size: 1.25rem; }
-    .strefa-daszek { font-size: 13px; color: var(--muted); line-height: 1; }
-    /* Na planie strefa jest tytułem, więc słowo „Plan" schodzi do roli
-       podpisu — inaczej dwa napisy tej samej wagi kłóciłyby się o pierwszeństwo. */
+    /* ── OBSZARY ŻYCIA: pasek zakładek ──────────────────────────────────────
+       Przełącznikiem był wcześniej sam TYTUŁ STRONY — oszczędzał 46 px, ale
+       trzeba było WIEDZIEĆ, że tytuł jest klikalny, i nie było widać, jakie
+       obszary w ogóle istnieją. Zakładki mówią to same: wszystkie naraz,
+       bieżąca podświetlona. Bilans wysokości wychodzi na zero, bo pasek
+       zastąpił tytuł, a nie doszedł do niego.
+
+       Przyklejony pod górnym paskiem: przy przewiniętej liście „w którym
+       obszarze jestem" jest pytaniem zadawanym najczęściej. */
+    .obszary { position: sticky; top: 0; z-index: 60; background: var(--surface-2);
+               border-bottom: 1px solid var(--border); }
+    .obszary-in { display: flex; gap: 3px; align-items: flex-end; overflow-x: auto;
+                  scrollbar-width: none; max-width: 1100px; margin: 0 auto;
+                  padding: 6px 20px 0; }
+    .obszary-in::-webkit-scrollbar { display: none; }
+    /* Pasek stoi PRZED <main>, więc odbiera mu górny odstęp — inaczej między
+       zakładkami a pierwszym wierszem robi się dziura na 28 px. */
+    .obszary:not([hidden]) + main { padding-top: 14px; }
+    /* Zakładka okienkowa: zaokrąglona u góry, przy dole zlana z treścią. */
+    .ob { flex: none; display: inline-flex; align-items: center; gap: 6px;
+          border: 1px solid transparent; border-bottom: none;
+          border-radius: 9px 9px 0 0; padding: 8px 12px; margin-bottom: -1px;
+          background: none; color: var(--muted); font: inherit; font-size: 12.5px;
+          cursor: pointer; min-height: 38px; white-space: nowrap; }
+    .ob:hover { color: var(--text); }
+    /* Aktywna „wystaje" na krawędź paska — to ta jedna kreska robi z rzędu
+       przycisków zakładki. */
+    .ob.teraz { background: var(--surface); border-color: var(--border);
+                border-bottom: 1px solid var(--surface); color: var(--marka);
+                font-weight: 600; }
+    .ob .ikona svg { width: 17px; height: 17px; }
+    .ob i { font-style: normal; font-size: 10.5px; color: var(--muted);
+            background: var(--surface); border-radius: 999px; padding: 1px 6px; }
+    .ob.teraz i { background: var(--accent-soft); color: var(--accent-strong); }
+    .ob-ustaw { margin-left: auto; padding: 8px 10px; }
+
+    /* Na planie i w projektach nazwa widoku schodzi do roli podpisu —
+       obszar mówi już pasek wyżej. */
     .plan-podpis { font-size: 12.5px; color: var(--muted); }
-    .strefa-tytul:hover h1, .strefa-tytul:hover .strefa-daszek { color: var(--marka); }
 
     .lap-poz.wybrana { border-color: var(--marka); }
     .lap-poz.wybrana .ile { color: var(--marka); font-weight: 600; }
@@ -814,6 +840,11 @@
 <nav>
   <a href="/" class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></a>
 </nav>
+
+<!-- Zakładki obszarów życia. Poza <main>, bo mają dotykać górnego paska
+     i przyklejać się do niego przy przewijaniu; treść w środku wyrównana
+     do tej samej szerokości co reszta strony. -->
+<div class="obszary" id="obszary" hidden><div class="obszary-in" id="obszary-in"></div></div>
 
 <main>
   <div id="tresc"></div>

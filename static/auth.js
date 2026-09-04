@@ -1625,5 +1625,82 @@ function potwierdz(opcje) {
   });
 }
 
+// ── przesuwanie palcem między ekranami ──────────────────────────────────────
+//
+// JEDEN mechanizm dla wszystkich modułów: w dzienniku jedzenia przewija dni,
+// w zadaniach — obszary życia. Gest znaczy wszędzie to samo („pokaż sąsiada"),
+// więc dwie osobne obsługi rozjechałyby się przy pierwszej poprawce.
+//
+// Pointer events, nie touch: jedno zdarzenie obsługuje palec i rysik, a
+// `pointercancel` mówi wprost, że przeglądarka przejęła gest na własne
+// przewijanie. Mysz świadomie POMIJAMY — przeciąganie kursorem po stronie
+// znaczy zaznaczanie tekstu, a nie zmianę ekranu.
+function gestPrzesuwania(el, opcje) {
+  if (!el) return;
+  const PROG = 62;      // px w poziomie; mniej łapałoby zwykłe drgnięcie ręki
+  const SKOS = 1.6;     // ile razy ruch poziomy ma przeważyć nad pionowym
+  let x0 = 0, y0 = 0, palec = null, zdecydowany = 0;
+
+  const wolno = (cel) => {
+    if (opcje.aktywny && !opcje.aktywny()) return false;
+    // Pola tekstowe zaznaczają treść palcem, a kontenery przewijane w poziomie
+    // (oś Gantta, rząd zakładek) mają własny gest — oba by go przechwyciły.
+    return !cel.closest('input, textarea, select, [contenteditable="true"], .bez-gestu');
+  };
+
+  el.addEventListener('pointerdown', (ev) => {
+    if (ev.pointerType === 'mouse' || !wolno(ev.target)) { palec = null; return; }
+    palec = ev.pointerId;
+    x0 = ev.clientX;
+    y0 = ev.clientY;
+    zdecydowany = 0;
+  }, { passive: true });
+
+  el.addEventListener('pointermove', (ev) => {
+    if (palec === null || ev.pointerId !== palec) return;
+    const dx = ev.clientX - x0, dy = ev.clientY - y0;
+    if (!zdecydowany) {
+      if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+      // Pierwszy wyraźny ruch przesądza, czyj jest gest, i rozstrzygamy to RAZ.
+      // Sprawdzanie przy każdym zdarzeniu sprawiało, że przewijanie w pionie
+      // z lekkim skosem raz po raz wchodziło w tryb przesuwania i treść drgała.
+      zdecydowany = Math.abs(dx) > Math.abs(dy) * SKOS ? 1 : -1;
+    }
+    if (zdecydowany < 0) return;
+    // Treść jedzie za palcem, ale WOLNIEJ niż on. Opór mówi, że to nie jest
+    // swobodne przeciąganie, i sam z siebie podpowiada, że jest jakiś próg.
+    el.style.transform = `translateX(${dx * 0.3}px)`;
+  }, { passive: true });
+
+  const koniec = (ev) => {
+    if (palec === null || ev.pointerId !== palec) return;
+    const dx = ev.clientX - x0;
+    palec = null;
+    el.style.transition = 'transform .16s ease-out';
+    el.style.transform = '';
+    setTimeout(() => { el.style.transition = ''; }, 200);
+    if (zdecydowany <= 0 || Math.abs(dx) < PROG) return;
+    const dalej = dx < 0 ? opcje.wLewo : opcje.wPrawo;
+    if (!dalej) return;
+    // Animacja wejścia dopiero PO przerysowaniu treści — inaczej jechałby
+    // po ekranie stary ekran, a nowy pojawiałby się bez ruchu.
+    Promise.resolve(dalej()).then(() => animujWejscie(el, dx < 0 ? 1 : -1));
+  };
+  el.addEventListener('pointerup', koniec, { passive: true });
+  el.addEventListener('pointercancel', () => { palec = null; el.style.transform = ''; },
+                      { passive: true });
+}
+
+// `kierunek > 0` — nowa treść przyjeżdża z prawej (przesunięto palcem w lewo).
+function animujWejscie(el, kierunek) {
+  if (!el) return;
+  el.classList.remove('przesuw-l', 'przesuw-p');
+  void el.offsetWidth;          // restart animacji przy dwóch gestach pod rząd
+  el.classList.add(kierunek > 0 ? 'przesuw-p' : 'przesuw-l');
+  setTimeout(() => el.classList.remove('przesuw-l', 'przesuw-p'), 300);
+}
+
+window.gestPrzesuwania = gestPrzesuwania;
+window.animujWejscie = animujWejscie;
 window.toast = toast;
 window.potwierdz = potwierdz;

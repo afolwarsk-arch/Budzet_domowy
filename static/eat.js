@@ -3056,12 +3056,23 @@ function przesunDzien(o) {
   const d = new Date(dzienISO + 'T12:00:00');
   d.setDate(d.getDate() + o);
   dzienISO = d.toLocaleDateString('sv-SE');
-  wczytajDzien();
+  // Zwracamy obietnicę, żeby gest przesuwania mógł puścić animację wejścia
+  // DOPIERO po przerysowaniu dnia — inaczej po ekranie jechałaby stara treść.
+  return wczytajDzien();
 }
 
 authRequireHousehold().then(() => {
   document.getElementById('poprz').onclick = () => przesunDzien(-1);
   document.getElementById('nast').onclick = () => przesunDzien(1);
   document.getElementById('btn-cele').onclick = oknoCeli;
+  // Przesuwanie palcem lewo-prawo zmienia dzień. Strzałki zostają: na myszy
+  // gestu nie ma, a i palcem czasem wygodniej stuknąć niż przeciągnąć.
+  gestPrzesuwania(document.querySelector('main'), {
+    wLewo: () => przesunDzien(1),
+    wPrawo: () => przesunDzien(-1),
+    // Przy otwartym arkuszu dodawania gest należy do niego — przeskok dnia pod
+    // spodem zmieniłby cel zapisu w połowie wpisywania.
+    aktywny: () => !arkusz,
+  });
   wczytajDzien();
 });

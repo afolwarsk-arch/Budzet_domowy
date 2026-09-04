@@ -175,16 +175,70 @@ function biezacaStrefa() {
   return STREFY.find((x) => x.id === strefa) || null;
 }
 
-function naglowekStrefy() {
-  const s = biezacaStrefa();
-  return `<button type="button" class="strefa-tytul" id="strefa-tytul"
-                  aria-label="Zmień obszar życia">
-    ${s && s.ikona ? ikonaSvg(s.ikona) : ''}
-    <!-- Bez wybranego obszaru tytuł brzmi „Wszystko", a nie „Wszystkie obszary
-         życia": to stan DOMYŚLNY, czyli widziany najczęściej, i nie ma powodu,
-         żeby zajmował dwie linijki na telefonie. -->
-    <h1>${esc(s ? s.nazwa : 'Wszystko')}</h1><span class="strefa-daszek">▾</span>
-  </button>`;
+// Pasek zakładek pod górnym paskiem. Zastąpił przełączanie obszaru przez sam
+// TYTUŁ STRONY: tamto oszczędzało miejsce, ale trzeba było wiedzieć, że tytuł
+// jest klikalny, i nie było widać, jakie obszary w ogóle istnieją.
+//
+// „Wszystkie" jest zawsze pierwsze i zawsze obecne — to stan domyślny, więc
+// powrót do niego nie może wymagać szukania.
+function rysujObszary() {
+  const pasek = document.getElementById('obszary');
+  const box = document.getElementById('obszary-in');
+  if (!pasek || !box) return;
+  const moje = STREFY.filter((s) => s.moja);
+  // Bez włączonych obszarów pasek byłby listwą z jedną zakładką, która niczego
+  // nie przełącza — wtedy go nie ma.
+  pasek.hidden = !moje.length;
+  if (!moje.length) return;
+  const zakladka = (id, ikona, nazwa, ile) => `
+    <button class="ob${id === strefa ? ' teraz' : ''}" type="button" data-ob="${id || ''}"
+            ${id === strefa ? 'aria-current="true"' : ''}>
+      ${ikonaSvg(ikona)}<span>${esc(nazwa)}</span>${ile ? `<i>${ile}</i>` : ''}
+    </button>`;
+  box.innerHTML = zakladka(null, 'kompas', 'Wszystkie', 0)
+    + moje.map((s) => zakladka(s.id, s.ikona || 'lista', s.nazwa, s.otwartych)).join('')
+    + `<button class="ob ob-ustaw" type="button" data-ob-ustaw="1"
+               aria-label="Ustaw obszary życia" title="Ustaw obszary życia">${
+      ikonaSvg('admin')}</button>`;
+  // Zakładka wybrana bywa poza ekranem, gdy obszarów jest więcej niż mieści
+  // się w rzędzie — wtedy pasek pokazywałby stan, którego nie widać.
+  const teraz = box.querySelector('.ob.teraz');
+  if (teraz) teraz.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+
+function obszaryPodepnij() {
+  const box = document.getElementById('obszary-in');
+  if (!box) return;
+  box.onclick = async (ev) => {
+    if (ev.target.closest('[data-ob-ustaw]')) {
+      strefyOtworz();
+      strefyTryb = 'zarzadzanie';
+      strefyRysuj();
+      return;
+    }
+    const b = ev.target.closest('[data-ob]');
+    if (!b) return;
+    const id = b.dataset.ob ? Number(b.dataset.ob) : null;
+    if (id === strefa) return;
+    ustawStrefe(id);
+    rysujObszary();
+    await wczytaj();
+  };
+}
+
+// Przesunięcie palcem przeskakuje do sąsiedniej zakładki. BEZ ZAWIJANIA:
+// skok z ostatniego obszaru z powrotem na „Wszystkie" wyglądałby jak usterka,
+// a pasek i tak pokazuje, że dalej już nic nie ma.
+function przesunObszar(o) {
+  const moje = STREFY.filter((s) => s.moja);
+  if (!moje.length) return;
+  const kolejno = [null, ...moje.map((s) => s.id)];
+  const teraz = kolejno.indexOf(strefa);
+  const docelowy = Math.min(kolejno.length - 1, Math.max(0, teraz + o));
+  if (docelowy === teraz) return;
+  ustawStrefe(kolejno[docelowy]);
+  rysujObszary();
+  return wczytaj();
 }
 
 async function wczytajStrefy() {
@@ -197,6 +251,7 @@ async function wczytajStrefy() {
   // Strefa, której już nie ma (skasowana albo wyłączona), przestaje obowiązywać
   // — inaczej lista byłaby pusta bez wyjaśnienia dlaczego.
   if (strefa && !STREFY.some((s) => s.id === strefa && s.moja)) ustawStrefe(null);
+  rysujObszary();
 }
 
 function ustawStrefe(id) {
@@ -276,7 +331,29 @@ async function wczytajPlan() {
 // skrót wykonawcy przy każdym zadaniu potrzebuje ich do narysowania listy.
 window.addEventListener('DOMContentLoaded', () =>
   authRequireHousehold().then(wczytajHousehold).then(wczytajStrefy)
-    .then(wczytaj).then(lapPodepnij).then(strefyPodepnij).then(przenPodepnij));
+    .then(wczytaj).then(lapPodepnij).then(strefyPodepnij).then(przenPodepnij)
+    .then(obszaryPodepnij).then(podepnijGesty));
+
+// Czy nad treścią stoi arkusz. Gest przesuwania musi wtedy milczeć: w arkuszu
+// przesuwa się listy i pola, a przeskok obszaru pod spodem byłby niespodzianką.
+const arkuszOtwarty = () => ['lap-tlo', 'przen-tlo', 'strefy-tlo'].some((id) => {
+  const el = document.getElementById(id);
+  return el && !el.hidden;
+});
+
+// Przesunięcie palcem lewo-prawo przeskakuje między obszarami życia — ten sam
+// gest, którym w dzienniku jedzenia przewija się dni.
+function podepnijGesty() {
+  gestPrzesuwania(document.getElementById('tresc'), {
+    wLewo: () => przesunObszar(1),
+    wPrawo: () => przesunObszar(-1),
+    // Na wykresie gest należy do OSI CZASU, którą przewija się w poziomie,
+    // a w formularzu szczegółów i w środku projektu nie ma między czym
+    // przeskakiwać.
+    aktywny: () => widok === 'lista' && zakres !== 'plan' && korzen == null
+      && !arkuszOtwarty(),
+  });
+}
 
 // Które zadanie ma otwarte pole dopisywania kroku. Trzymane poza rysowaniem,
 // żeby przerwać ciszę po zapisie: lista przerysowuje się po każdym dodaniu,
@@ -582,13 +659,11 @@ function rysuj() {
 function rysujProjekty() {
   const projekty = zadania.filter((z) => z.projekt && z.parent_id == null);
   box().innerHTML = `
-    <div class="gora">${naglowekStrefy()}<span class="plan-podpis">Projekty</span></div>
+    <div class="gora"><h1>Projekty</h1></div>
     ${projekty.length ? panelProjektow() : `
       <p class="pusto">Nie masz jeszcze projektów.<br>
         Otwórz zadanie, które ciągnie się dłużej, i zaznacz w Szczegółach
         „To jest projekt".</p>`}`;
-  const tyt = document.getElementById('strefa-tytul');
-  if (tyt) tyt.onclick = strefyOtworz;
   const panel = document.querySelector('.projekty');
   if (panel) panel.onclick = (ev) => {
     const b = ev.target.closest('[data-projekt]');
@@ -730,10 +805,7 @@ function splaszczPlan(w, poziom) {
 
 function naglowekPlanu() {
   return `
-    <!-- Ten sam przełącznik stref co na liście. Bez niego wykres byłby
-         zawężony do strefy, której nie widać i nie da się zmienić bez
-         wychodzenia na listę. -->
-    <div class="gora">${naglowekStrefy()}<span class="plan-podpis">Plan</span></div>
+    <div class="gora"><h1>Plan</h1></div>
     <!-- JEDEN rząd narzędzi zamiast trzech. Filtry i przełączniki zajmowały
          na telefonie połowę ekranu, zanim w ogóle było widać wykres — więc
          siedzą pod przyciskiem, a na wierzchu zostaje tylko gęstość, którą
@@ -797,8 +869,6 @@ function panelWidoku() {
 
 
 function podepnijNaglowekPlanu() {
-  const tyt = document.getElementById('strefa-tytul');
-  if (tyt) tyt.onclick = strefyOtworz;
   const widokBtn = document.getElementById('p-widok');
   if (widokBtn) widokBtn.onclick = () => { planPanelOtwarty = !planPanelOtwarty; rysujPlan(); };
   const zr = document.getElementById('p-zrobione');
@@ -1510,7 +1580,6 @@ function rysujLista() {
   const lista = aktualny ? aktualny.dzieci : drzewo;
 
   box().innerHTML = `
-    <div class="gora">${naglowekStrefy()}</div>
     <div class="filtry" id="f-zakres">
       ${ZAKRESY.map(([k, l]) => `<button class="chip" type="button" data-z="${k}"
           aria-pressed="${k === zakres}">${l}</button>`).join('')}
@@ -1536,8 +1605,6 @@ function rysujLista() {
     <div class="zadania">${lista.map((w) => wiersz(w, 0)).join('') ||
       '<p class="pusto">Nic tu nie ma. Wpisz pierwsze zadanie powyżej.</p>'}</div>`;
 
-  const tyt = document.getElementById('strefa-tytul');
-  if (tyt) tyt.onclick = strefyOtworz;
   document.getElementById('f-zakres').onclick = (ev) => {
     const b = ev.target.closest('[data-z]');
     if (!b) return;

@@ -1430,3 +1430,16 @@ h1 .logo .lg-kropka,
   /* nad dolnym paskiem nawigacji */
   .aparat-plyw { bottom: calc(78px + env(safe-area-inset-bottom)); right: 14px; }
 }
+
+/* ── przesuwanie palcem między ekranami ──────────────────────────────────────
+   Wspólne dla modułów: dni w dzienniku jedzenia, obszary życia w zadaniach.
+   Animacja jest KRÓTKA i jednokierunkowa — ma powiedzieć, z której strony
+   przyszła nowa treść, a nie bawić oka. Sam gest siedzi w `gestPrzesuwania`
+   w auth.js. */
+@keyframes przesuw-z-prawej { from { transform: translateX(28px); opacity: .3; } }
+@keyframes przesuw-z-lewej  { from { transform: translateX(-28px); opacity: .3; } }
+.przesuw-p { animation: przesuw-z-prawej .19s ease-out; }
+.przesuw-l { animation: przesuw-z-lewej .19s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .przesuw-p, .przesuw-l { animation: none; }
+}
