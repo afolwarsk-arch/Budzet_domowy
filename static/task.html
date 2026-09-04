@@ -615,6 +615,16 @@
             background: var(--surface); border-radius: 999px; padding: 1px 6px; }
     .ob.teraz i { background: var(--accent-soft); color: var(--accent-strong); }
     .ob-ustaw { margin-left: auto; padding: 8px 10px; }
+    /* ZMIERZONE: „Wszystkie", „Praca 6" i „Dom 16" plus ustawienia potrzebują
+       401 px, więc na ekranie 360 px pasek już się przewija — a przewijany
+       rząd zakładek ukrywa te, których nie widać, i przestaje odpowiadać na
+       pytanie „gdzie jestem". Licznik przy NIEAKTYWNYCH schodzi więc z drogi
+       (26 px każdy): przy bieżącym obszarze mówi, ile jest do zrobienia,
+       przy pozostałych to ciekawostka. Po tym cięciu całość mieści się w 334 px. */
+    @media (max-width: 430px) {
+      .ob { padding: 8px 9px; }
+      .ob:not(.teraz) i { display: none; }
+    }
 
     /* Na planie i w projektach nazwa widoku schodzi do roli podpisu —
        obszar mówi już pasek wyżej. */
