@@ -589,7 +589,10 @@ function ekranProduktu(p, opcje = {}) {
     wlasna: 'Ten produkt już macie u siebie.',
   }[opcje.skad];
 
-  box.innerHTML = naglowek('Produkt', true) + `
+  // Strzałka „wróć" TYLKO wtedy, gdy jest dokąd wracać. Otwarta z listy karta
+  // ma jedno wyjście — zamknięcie — a dwa przyciski robiące to samo uczą, że
+  // jeden z nich jest nieprzewidywalny.
+  box.innerHTML = naglowek('Produkt', !!opcje.skad) + `
     <div class="prod-gora">
       ${p.marka ? `<div class="marka">${e(p.marka)}</div>` : ''}
       <h3>${e(p.nazwa)}</h3>
@@ -623,7 +626,7 @@ function ekranProduktu(p, opcje = {}) {
     <div class="sek-tyt">Co dalej</div>
     <button class="cta druga" id="k-popraw" type="button">Popraw wartości</button>
     <button class="cta druga" id="k-ulub" type="button" style="margin-top:8px">
-      ${p.ulubiony ? '★ Odepnij z ulubionych' : '☆ Przypnij do ulubionych'}</button>
+      ${p.ulubiony ? '&#9829; Odepnij z ulubionych' : '&#9825; Przypnij do ulubionych'}</button>
     <button class="cta-usun" id="k-usun" type="button">Usuń z bazy</button>
 
     <div class="stopka">

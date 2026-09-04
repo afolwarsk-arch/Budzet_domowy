@@ -873,6 +873,8 @@ const _SAMOUCZEK_SLAJDY = {
     opis: 'Ustawiasz cel kaloryczny, a apka pokazuje, ile zostało. Dzień, w którym zapisałeś tylko śniadanie, oznaczysz jako <b>niekompletny</b> — nie zaniży wtedy średnich, bo inaczej każdy pominięty obiad wyglądałby jak dzień pod celem.' },
   { ikona: 'ksiazka', tytul: 'Przepisy — gotujesz raz, wpisujesz wiele razy',
     opis: 'Przepis dodasz na cztery sposoby: opisując słowami, zdjęciem przepisu, ręcznie albo składając go z tego, co już masz w dzienniku. Jednostką jest <b>porcja</b>, bo kalorie się nie gotują — a rozpiska składników zostaje zamrożona przy wpisie, więc późniejsza zmiana przepisu nie przepisuje historii.' },
+  { ikona: 'kodkreskowy', tytul: 'Baza produktów',
+    opis: 'Zakładka „Produkty" to wszystko, co apka już zna — z wyszukiwarką i podziałem na to, co przyszło z zewnętrznej bazy, i to, co wpisaliście sami. Tu też dokładasz produkt, którego <b>nie zna żaden kod kreskowy</b>: zdjęciem przodu, zdjęciem tabeli albo z ręki. Skan pokazuje przy okazji oceny, więc sprawdzisz produkt przy półce, nie dodając nic do dziennika.' },
   { ikona: 'lupa', tytul: 'Statystyki i oceny',
     opis: 'Na „Statystykach" zobaczysz Nutri-Score (a–e) i NOVA (1–4) z Open Food Facts. To <b>oceny cudze i opublikowane</b> — apka nie wymyśla własnego wskaźnika „zdrowe", bo taki wskaźnik byłby naszą opinią udającą fakt. Procenty liczą się od całości dnia, nie tylko od produktów, które ocenę mają.' },
   ],
