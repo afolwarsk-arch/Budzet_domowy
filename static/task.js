@@ -345,6 +345,10 @@ const arkuszOtwarty = () => ['lap-tlo', 'przen-tlo', 'strefy-tlo'].some((id) => 
 // gest, którym w dzienniku jedzenia przewija się dni.
 function podepnijGesty() {
   gestPrzesuwania(document.getElementById('tresc'), {
+    // `touch-action` ustawia tu `rysuj()`, nie sam gest: na planie musi ono
+    // ZNIKNĄĆ, żeby oś Gantta dała się przewijać palcem, a podpięcie gestu
+    // dzieje się PO pierwszym rysowaniu i nadpisywało tamtą decyzję.
+    touchAction: false,
     wLewo: () => przesunObszar(1),
     wPrawo: () => przesunObszar(-1),
     // Na wykresie gest należy do OSI CZASU, którą przewija się w poziomie,
