@@ -238,7 +238,8 @@ function nagKorzenia(w) {
             title="Wróć do: ${esc(wyzej.tytul)}"
             aria-label="Wróć do: ${esc(wyzej.tytul)}">‹</button>
     <div>
-      <div class="zad-korzen-tytul">${w.kamien_milowy ? '<span class="kamien"></span>' : ''}${esc(w.tytul)}</div>
+      <div class="zad-korzen-tytul">${w.kamien_milowy ? '<span class="kamien"></span>' : ''}${esc(w.tytul)}${
+        w.projekt ? '<span class="zad-projekt" title="Przedsięwzięcie — zbiera kroki">projekt</span>' : ''}</div>
       <div class="zad-korzen-postep">${p.razem ? `${p.gotowe} z ${p.razem} · ` : ''}${
         esc(wyzej.tytul)}</div>
     </div>
@@ -1657,7 +1658,11 @@ function wiersz(w, poziom) {
         <button class="ptaszek" type="button" data-ptaszek="${w.id}"
                 aria-label="Odhacz zadanie">${w.status === 'zrobione' ? ikonaSvg('ptaszek') : ''}</button>
         <div class="zad-tresc">
+          <!-- Plakietka „projekt" przy tytule: bez niej przedsięwzięcie wygląda
+               na liście dokładnie jak zwykłe zadanie, a to ono zbiera kroki
+               i ma własny kafel w zakładce Projekty. -->
           <div class="zad-tytul">${w.kamien_milowy ? '<span class="kamien"></span>' : ''}${esc(w.tytul)}${
+            w.projekt ? '<span class="zad-projekt" title="Przedsięwzięcie — zbiera kroki">projekt</span>' : ''}${
             w.powtarzaj ? `<span class="zad-cykl" title="Po odhaczeniu wróci ${esc(opisPowtarzania(w))}">${
               esc(opisPowtarzania(w))}</span>` : ''}</div>
           ${nast.tytul ? `<div class="zad-nast">następne: ${esc(nast.tytul)}</div>` : ''}
@@ -2481,7 +2486,8 @@ function przenPozycja(z) {
   const ile = przenDzieci(z.id).length;
   return `<button type="button" class="lap-poz${z.projekt ? ' projekt' : ''}"
                   data-przen-wejdz="${z.id}">
-    <span class="nazwa">${esc(z.tytul)}</span>
+    <span class="nazwa">${esc(z.tytul)}${
+      z.projekt ? '<span class="zad-projekt">projekt</span>' : ''}</span>
     ${ile ? `<span class="ile">${ile} ${odmien(ile, 'krok', 'kroki', 'kroków')}</span>` : ''}
   </button>`;
 }
@@ -2569,7 +2575,8 @@ function przenEkranZbieranie() {
         data-przen-wiersz="${z.id}">
         <input type="checkbox" data-przen-zazn="${z.id}"${
           przen.zaznaczone.has(z.id) ? ' checked' : ''}>
-        <span class="nazwa">${esc(z.tytul)}</span>
+        <span class="nazwa">${esc(z.tytul)}${
+          z.projekt ? '<span class="zad-projekt">projekt</span>' : ''}</span>
       </label>`).join('')
         || '<p class="lap-pod">Nie ma luźnych zadań do dodania.</p>'}
     </div>
