@@ -171,6 +171,22 @@
     .droga b { display: block; font-size: 13.5px; color: var(--heading); margin-bottom: 3px; }
     .droga span { font-size: 11px; color: var(--muted); line-height: 1.3; display: block; }
 
+    /* Kafelek zdjęcia z wyborem źródła. Android nie potrafi dać obu dróg
+       w jednym polu pliku (capture = tylko aparat, brak capture = tylko
+       galeria), więc pola są dwa i wybór musi być widoczny. Dwa małe przyciski
+       w kafelku zamiast osobnego ekranu: decyzja jest w tym samym stuknięciu. */
+    .droga-zrodla { display: flex; flex-direction: column; }
+    /* Selektory MUSZĄ być mocniejsze niż `.droga span` wyżej (0,1,1), które daje
+       display:block i szary tekst 11 px — inaczej rząd przycisków rozpada się
+       na dwie linie, a napisy gasną do koloru podpisu. */
+    .droga .zrodla { display: flex; gap: 6px; margin-top: 9px; }
+    .droga .zrodlo { flex: 1; border: 1px solid var(--border); border-radius: 8px;
+              padding: 8px 4px; min-height: 40px; display: flex; align-items: center;
+              justify-content: center; font-size: 12px; color: var(--text);
+              background: var(--surface-2); cursor: pointer; }
+    .droga .zrodlo:hover { border-color: var(--accent); color: var(--accent); }
+    .droga .zrodlo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
     /* Ta sama definicja co w eat.html. Bez niej `class="mini-btn"` nic nie robiło
        i przeglądarka rysowała <button> domyślnym stylem, a <label> zostawiała
        gołym tekstem — w jednym rzędzie wychodziły z tego dwa różne światy. */

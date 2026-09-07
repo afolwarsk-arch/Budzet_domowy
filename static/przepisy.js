@@ -739,12 +739,24 @@ function ekranSkladnika(gotowe, stan) {
       <button class="droga" id="skl-skan" type="button">
         <b>Skanuj kod</b><span>Najszybsze przy wszystkim z opakowania</span>
       </button>
-      <label class="droga" for="skl-plik-tyl" tabindex="0" role="button">
+      <!-- DWA pola na jedno zdjęcie, bo Android nie daje wyboru w jednym:
+           atrybut capture otwiera wyłącznie aparat, jego brak wyłącznie galerię.
+           Jeden kafelek z dwoma etykietami zostawia decyzję człowiekowi
+           i nie kosztuje dodatkowego ekranu. -->
+      <div class="droga droga-zrodla">
         <b>Zdjęcie tabeli</b><span>Wartości odżywcze z tyłu opakowania</span>
-      </label>
-      <label class="droga" for="skl-plik-przod" tabindex="0" role="button">
+        <span class="zrodla">
+          <label class="zrodlo" for="skl-tyl-ap" tabindex="0" role="button">Aparat</label>
+          <label class="zrodlo" for="skl-plik-tyl" tabindex="0" role="button">Z dysku</label>
+        </span>
+      </div>
+      <div class="droga droga-zrodla">
         <b>Zdjęcie przodu</b><span>Odczyta nazwę i poszuka w bazie</span>
-      </label>
+        <span class="zrodla">
+          <label class="zrodlo" for="skl-przod-ap" tabindex="0" role="button">Aparat</label>
+          <label class="zrodlo" for="skl-plik-przod" tabindex="0" role="button">Z dysku</label>
+        </span>
+      </div>
       <button class="droga" id="skl-przepis" type="button">
         <b>Inne Twoje danie</b><span>Złóż danie z dań, które już masz</span>
       </button>
@@ -765,12 +777,15 @@ function ekranSkladnika(gotowe, stan) {
          robiło nic i nawet nie zgłaszało błędu. Nie chowamy ich przez
          display:none, bo takie pole bywa traktowane jak nieistniejące.
 
-         Bez atrybutu capture: wymusza on aparat i odbiera wybór pliku
-         z dysku, a przepis składa się zwykle przy stole, ze zdjęć zrobionych
-         wcześniej w sklepie albo przysłanych przez kogoś. -->
+         Pola są PARAMI: to z atrybutem capture otwiera aparat, to bez niego galerię
+         i dysk. Jedno pole nie umie obu — patrz komentarz przy kafelkach. -->
     <input type="file" id="skl-plik-przod" accept="image/*"
            style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+    <input type="file" id="skl-przod-ap" accept="image/*" capture="environment"
+           style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
     <input type="file" id="skl-plik-tyl" accept="image/*"
+           style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+    <input type="file" id="skl-tyl-ap" accept="image/*" capture="environment"
            style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
     <div class="sek-tyt">Albo wpisz wprost</div>
     <input type="text" id="r-nazwa" placeholder="Nazwa składnika" autocomplete="off">
@@ -946,9 +961,23 @@ function ekranSkladnika(gotowe, stan) {
     return d;
   };
 
+  // Etykiety otwierają wybór pliku same z siebie; skryptu potrzeba tylko po to,
+  // żeby działały także z klawiatury — na <label> Enter nic nie robi.
+  ark.querySelectorAll('label.zrodlo[for]').forEach((l) => {
+    l.onkeydown = (ev) => {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      ev.preventDefault();
+      const cel = ark.querySelector('#' + l.getAttribute('for'));
+      if (cel) cel.click();
+    };
+  });
+
   // TABELA Z TYŁU zawiera wartości odżywcze, więc od razu daje gotowy produkt.
-  ark.querySelector('#skl-plik-tyl').onchange = async (ev) => {
+  // Ten sam odczyt dla obu pól — aparatu i dysku; różni je tylko to, skąd plik
+  // przyszedł, a to nie zmienia niczego po naszej stronie.
+  const zTabeli = async (ev) => {
     const plik = ev.target.files && ev.target.files[0];
+    ev.target.value = '';        // ten sam plik dwa razy z rzędu też ma zadziałać
     if (!plik) return;
     try {
       const d = await wyslij(plik, '/api/eat/etykieta', 'Czytam tabelę wartości odżywczych…');
@@ -957,11 +986,14 @@ function ekranSkladnika(gotowe, stan) {
     } catch (err) { komunikat(err.message || 'Błąd połączenia.', true); }
   };
 
+  ['#skl-plik-tyl', '#skl-tyl-ap'].forEach((sel) => { ark.querySelector(sel).onchange = zTabeli; });
+
   // PRZÓD nie ma tabeli — daje nazwę i markę, którymi szukamy w bazach.
   // Wybór zostawiamy człowiekowi: braniem pierwszego trafienia z brzegu łatwo
   // wstawić do przepisu zupełnie inny produkt.
-  ark.querySelector('#skl-plik-przod').onchange = async (ev) => {
+  const zPrzodu = async (ev) => {
     const plik = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
     if (!plik) return;
     try {
       const d = await wyslij(plik, '/api/eat/etykieta-przod', 'Czytam przód opakowania…');
@@ -978,6 +1010,7 @@ function ekranSkladnika(gotowe, stan) {
       rysujWyniki(lista, false);
     } catch (err) { komunikat(err.message || 'Błąd połączenia.', true); }
   };
+  ['#skl-plik-przod', '#skl-przod-ap'].forEach((sel) => { ark.querySelector(sel).onchange = zPrzodu; });
 
   let licznik = 0;
   const szukajka = ark.querySelector('#szukaj-skl');

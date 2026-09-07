@@ -778,26 +778,42 @@ function otworzArkusz(posilek) {
           <span><span class="t">Skanuj kod kreskowy</span><span class="o">Najszybsze przy wszystkim z opakowania</span></span>
         </button>
         <!-- <label for>, a NIE przycisk wołający .click() w skrypcie. Etykieta
-             otwiera aparat natywnie, bez pośrednictwa JS — to znosi całą klasę
-             błędów, w której kliknięcie nic nie robiło i nawet nie zgłaszało
-             błędu. Pola plików leżą poniżej, poza tą siatką. -->
-        <label class="droga" for="ark-plik-przod" tabindex="0" role="button">
+             otwiera wybór pliku natywnie, bez pośrednictwa JS — to znosi całą
+             klasę błędów, w której kliknięcie nic nie robiło i nawet nie
+             zgłaszało błędu. Pola plików leżą poniżej, poza tą siatką.
+
+             KAŻDE zdjęcie ma DWA pola i dwie etykiety, bo Android nie daje
+             wyboru w jednym: atrybut capture otwiera wyłącznie aparat, jego brak
+             wyłącznie galerię. Wybór musi więc być po naszej stronie. -->
+        <div class="droga droga-zrodla">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="3.5" width="13" height="17" rx="2"/><path d="M8.5 8h7M8.5 11.5h7M8.5 15h4"/></svg>
           <span class="t">Zdjęcie przodu</span><span class="o">Odczyta nazwę i poszuka w bazie</span>
-        </label>
-        <label class="droga" for="ark-plik" tabindex="0" role="button">
+          <span class="zrodla">
+            <label class="zrodlo" for="ark-przod-ap" tabindex="0" role="button">Aparat</label>
+            <label class="zrodlo" for="ark-plik-przod" tabindex="0" role="button">Z dysku</label>
+          </span>
+        </div>
+        <div class="droga droga-zrodla">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6" width="17" height="13" rx="2.5"/><circle cx="12" cy="12.5" r="3.4"/><path d="M8.5 6l1.4-2.2h4.2L15.5 6"/></svg>
           <span class="t">Zdjęcie tabeli z tyłu</span><span class="o">Gdy trzeba odczytać wartości odżywcze</span>
-        </label>
+          <span class="zrodla">
+            <label class="zrodlo" for="ark-tyl-ap" tabindex="0" role="button">Aparat</label>
+            <label class="zrodlo" for="ark-plik" tabindex="0" role="button">Z dysku</label>
+          </span>
+        </div>
         <!-- Zdjęcie OPISU posiłku, nie talerza: notatki, strony z książki
              kucharskiej, cudzego ekranu z wpisem. Adam jadł to samo co kolega
              i miał przed sobą jego wpis — żeby to zapisać, musiał najpierw
              założyć PRZEPIS, a potem zaciągnąć go do dnia. Dwa kroki i trwały
              wpis w książce przepisów po czymś zjedzonym raz. -->
-        <label class="droga" for="ark-plik-danie" tabindex="0" role="button">
+        <div class="droga droga-zrodla">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14.2 3.5V8h4.6"/><path d="M9 12.5h6M9 16h4"/></svg>
           <span class="t">Zdjęcie kartki</span><span class="o">Notatka, książka kucharska, cudzy ekran</span>
-        </label>
+          <span class="zrodla">
+            <label class="zrodlo" for="ark-danie-ap" tabindex="0" role="button">Aparat</label>
+            <label class="zrodlo" for="ark-plik-danie" tabindex="0" role="button">Z dysku</label>
+          </span>
+        </div>
         <button class="droga" id="d-opis" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9"/></svg>
           <span class="t">Opisz słowami</span><span class="o">Domowy obiad bez kodu</span>
@@ -823,14 +839,16 @@ function otworzArkusz(posilek) {
            — bez błędu, po prostu nic się nie dzieje. Tu pole nadal jest
            renderowane, tylko niewidoczne.
 
-           ŻADNE z tych pól nie ma atrybutu capture. Wymusza on aparat i tym
-           samym ODBIERA wybór pliku z dysku — a kadr bywa już zrobiony (zdjęcie
-           etykiety sprzed godziny, zrzut ekranu, plik przesłany przez kogoś).
-           Bez niego stuknięcie daje wybór: aparat albo galeria. Kosztuje jedno
-           stuknięcie więcej, gdy naprawdę chce się fotografować teraz. -->
+           Pola chodzą PARAMI: `-ap` z atrybutem capture otwiera aparat, drugie
+           bez niego — galerię i dysk. Jedno pole nie umie obu naraz, a kadr
+           bywa już zrobiony (zdjęcie etykiety sprzed godziny, zrzut ekranu,
+           plik przysłany przez kogoś) albo dopiero do zrobienia. -->
       <input type="file" id="ark-plik" accept="image/*" class="schowane">
+      <input type="file" id="ark-tyl-ap" accept="image/*" capture="environment" class="schowane">
       <input type="file" id="ark-plik-przod" accept="image/*" class="schowane">
+      <input type="file" id="ark-przod-ap" accept="image/*" capture="environment" class="schowane">
       <input type="file" id="ark-plik-danie" accept="image/*" class="schowane">
+      <input type="file" id="ark-danie-ap" accept="image/*" capture="environment" class="schowane">
     </div>`;
   document.body.appendChild(arkusz);
   // W trybie aplikacji „wstecz" jest podstawowym gestem zamykania. Bez wpisu w
@@ -848,9 +866,9 @@ function otworzArkusz(posilek) {
   arkusz.querySelector('#d-skan').onclick = uruchomSkaner;
   arkusz.querySelector('#d-przepisy').onclick = () => ekranListyPrzepisow('');
   arkusz.querySelector('#d-historia').onclick = () => ekranHistorii(dzienISO, '');
-  // Etykiety otwierają aparat same z siebie; skryptu potrzeba tylko po to, żeby
-  // działały także z klawiatury — na <label> Enter nic nie robi.
-  arkusz.querySelectorAll('label.droga[for]').forEach((l) => {
+  // Etykiety otwierają wybór pliku same z siebie; skryptu potrzeba tylko po to,
+  // żeby działały także z klawiatury — na <label> Enter nic nie robi.
+  arkusz.querySelectorAll('label.zrodlo[for], label.droga[for]').forEach((l) => {
     l.onkeydown = (ev) => {
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
       ev.preventDefault();
@@ -858,11 +876,15 @@ function otworzArkusz(posilek) {
       if (cel) cel.click();
     };
   });
-  arkusz.querySelector('#ark-plik-przod').onchange = (ev) => {
-    const plik = ev.target.files && ev.target.files[0];
-    if (plik) wyslijPrzod(plik);
-    ev.target.value = '';   // ten sam plik dwa razy z rzędu też ma zadziałać
-  };
+  // Pola chodzą parami (aparat / dysk) i mają tę samą obsługę — źródło pliku
+  // nie zmienia niczego po naszej stronie.
+  ['#ark-plik-przod', '#ark-przod-ap'].forEach((sel) => {
+    arkusz.querySelector(sel).onchange = (ev) => {
+      const plik = ev.target.files && ev.target.files[0];
+      ev.target.value = '';   // ten sam plik dwa razy z rzędu też ma zadziałać
+      if (plik) wyslijPrzod(plik);
+    };
+  });
   arkusz.querySelector('#d-opis').onclick = () => {
     const pole = arkusz.querySelector('#ark-szukaj');
     // Stuknięcie w „Opisz słowami" przy pustym polu to prośba o miejsce na opis,
@@ -874,12 +896,16 @@ function otworzArkusz(posilek) {
     }
     wyslijOpis(pole.value);
   };
-  arkusz.querySelector('#ark-plik').onchange = wyslijEtykiete;
-  arkusz.querySelector('#ark-plik-danie').onchange = (ev) => {
-    const plik = ev.target.files && ev.target.files[0];
-    if (plik) wyslijDanie(plik);
-    ev.target.value = '';   // ten sam plik dwa razy z rzędu też ma zadziałać
-  };
+  ['#ark-plik', '#ark-tyl-ap'].forEach((sel) => {
+    arkusz.querySelector(sel).onchange = wyslijEtykiete;
+  });
+  ['#ark-plik-danie', '#ark-danie-ap'].forEach((sel) => {
+    arkusz.querySelector(sel).onchange = (ev) => {
+      const plik = ev.target.files && ev.target.files[0];
+      ev.target.value = '';   // ten sam plik dwa razy z rzędu też ma zadziałać
+      if (plik) wyslijDanie(plik);
+    };
+  });
   arkusz.querySelector('#ark-mik').onclick = dyktuj;
   // Wpisywanie szuka produktów po nazwie (własna baza + Open Food Facts).
   // Dopiero gdy nic nie ma, proponujemy oszacowanie opisu przez AI.
@@ -2431,12 +2457,19 @@ function ekranZPrzodu(d) {
     <div class="komunikat">Możesz poprawić hasło i poszukać ponownie — bez robienia
       zdjęcia od nowa.</div>
     <div class="sek-tyt">Albo dokończ ręcznie</div>
-    <!-- Etykieta, nie przycisk: aparat otwiera się natywnie, bez .click() ze
-         skryptu. Pole jest WŁASNE — ten ekran podmienia całą zawartość arkusza,
-         więc pole z ekranu startowego już nie istnieje. -->
-    <label class="cta" for="p-plik-tyl" id="p-tabela" tabindex="0" role="button"
-           style="display:block;text-align:center">Zdjęcie tabeli z tyłu</label>
+    <!-- Etykiety, nie przyciski: wybór pliku otwiera się natywnie, bez .click()
+         ze skryptu. Pola są WŁASNE — ten ekran podmienia całą zawartość
+         arkusza, więc pola z ekranu startowego już nie istnieją. Dwa, bo jedno
+         nie daje naraz aparatu i dysku. -->
+    <div class="droga droga-zrodla">
+      <span class="t">Zdjęcie tabeli z tyłu</span><span class="o">Stamtąd biorą się wartości odżywcze</span>
+      <span class="zrodla">
+        <label class="zrodlo" for="p-tyl-ap" tabindex="0" role="button">Aparat</label>
+        <label class="zrodlo" for="p-plik-tyl" tabindex="0" role="button">Z dysku</label>
+      </span>
+    </div>
     <input type="file" id="p-plik-tyl" accept="image/*" class="schowane">
+    <input type="file" id="p-tyl-ap" accept="image/*" capture="environment" class="schowane">
     <div id="ark-komunikat"></div>`;
 
   ark.querySelector('#zamknij2').onclick = () => zamknijArkusz();
@@ -2444,12 +2477,17 @@ function ekranZPrzodu(d) {
   // Nazwa i liczba sztuk z przodu doklejają się do produktu odczytanego z tyłu —
   // tamta tabela nie zawiera ani jednego, ani drugiego.
   odczytZPrzodu = o;
-  ark.querySelector('#p-plik-tyl').onchange = wyslijEtykiete;
-  ark.querySelector('#p-tabela').onkeydown = (ev) => {
-    if (ev.key !== 'Enter' && ev.key !== ' ') return;
-    ev.preventDefault();
-    ark.querySelector('#p-plik-tyl').click();
-  };
+  ['#p-plik-tyl', '#p-tyl-ap'].forEach((sel) => {
+    ark.querySelector(sel).onchange = wyslijEtykiete;
+  });
+  ark.querySelectorAll('label.zrodlo[for]').forEach((l) => {
+    l.onkeydown = (ev) => {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      ev.preventDefault();
+      const cel = ark.querySelector('#' + l.getAttribute('for'));
+      if (cel) cel.click();
+    };
+  });
 
   function podepnijWyniki() {
     ark.querySelectorAll('[data-rodzaj]').forEach((b) => {

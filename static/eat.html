@@ -154,6 +154,19 @@
     .droga .t { font-size: 13.5px; font-weight: 600; display: block; margin-top: 6px; }
     .droga.glowna .t { margin-top: 0; font-size: 15px; }
     .droga .o { font-size: 11.5px; color: var(--muted); display: block; margin-top: 2px; line-height: 1.35; }
+
+    /* Kafelek zdjęcia z wyborem źródła. Android nie potrafi dać obu dróg
+       w jednym polu pliku (capture = tylko aparat, brak capture = tylko
+       galeria), więc pola są dwa i wybór musi być widoczny. Selektory z `.droga`
+       z przodu, żeby wygrać z `.droga .o` i `.droga .t` wyżej. */
+    .droga-zrodla { display: flex; flex-direction: column; }
+    .droga .zrodla { display: flex; gap: 6px; margin-top: 10px; }
+    .droga .zrodlo { flex: 1; border: 1px solid var(--border); border-radius: 8px;
+              padding: 8px 4px; min-height: 40px; display: flex; align-items: center;
+              justify-content: center; font-size: 12px; color: var(--text);
+              background: var(--surface-2); cursor: pointer; text-align: center; }
+    .droga .zrodlo:hover { border-color: var(--accent); color: var(--accent); }
+    .droga .zrodlo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .droga.glowna .o { color: rgba(251,249,244,.72); }
 
     .sek-tyt { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);

@@ -187,17 +187,26 @@ function ekranDrog() {
            otwiera wybór pliku natywnie — to znosi całą klasę błędów, w której
            stuknięcie nic nie robiło i nawet nie zgłaszało błędu.
 
-           Pola plików NIE mają atrybutu capture: wymusza on aparat i odbiera
-           wybór z dysku, a etykieta bywa sfotografowana wcześniej albo przysłana
-           przez kogoś. Bez niego stuknięcie daje jedno i drugie. -->
-      <label class="droga" for="p-przod" tabindex="0" role="button">
+           DWA pola na jedno zdjęcie, bo Android nie daje wyboru w jednym:
+           atrybut capture otwiera wyłącznie aparat, jego brak wyłącznie galerię.
+           Kafelek z dwoma etykietami zostawia decyzję człowiekowi i nie
+           kosztuje dodatkowego ekranu. -->
+      <div class="droga droga-zrodla">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="3.5" width="13" height="17" rx="2"/><path d="M8.5 8h7M8.5 11.5h7M8.5 15h4"/></svg>
         <span class="t">Zdjęcie przodu</span><span class="o">Odczyta nazwę i poszuka w bazie</span>
-      </label>
-      <label class="droga" for="p-tyl" tabindex="0" role="button">
+        <span class="zrodla">
+          <label class="zrodlo" for="p-przod-ap" tabindex="0" role="button">Aparat</label>
+          <label class="zrodlo" for="p-przod" tabindex="0" role="button">Z dysku</label>
+        </span>
+      </div>
+      <div class="droga droga-zrodla">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6" width="17" height="13" rx="2.5"/><circle cx="12" cy="12.5" r="3.4"/><path d="M8.5 6l1.4-2.2h4.2L15.5 6"/></svg>
         <span class="t">Zdjęcie tabeli z tyłu</span><span class="o">Gdy trzeba odczytać wartości odżywcze</span>
-      </label>
+        <span class="zrodla">
+          <label class="zrodlo" for="p-tyl-ap" tabindex="0" role="button">Aparat</label>
+          <label class="zrodlo" for="p-tyl" tabindex="0" role="button">Z dysku</label>
+        </span>
+      </div>
       <button class="droga" id="d-opis" type="button">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9"/></svg>
         <span class="t">Opisz słowami</span><span class="o">Domowy wypiek, warzywa na wagę — AI oszacuje wartości</span>
@@ -219,14 +228,27 @@ function ekranDrog() {
     </div>
     <div id="a-kom"></div>
     <input type="file" id="p-przod" accept="image/*" class="schowane">
-    <input type="file" id="p-tyl" accept="image/*" class="schowane">`;
+    <input type="file" id="p-przod-ap" accept="image/*" capture="environment" class="schowane">
+    <input type="file" id="p-tyl" accept="image/*" class="schowane">
+    <input type="file" id="p-tyl-ap" accept="image/*" capture="environment" class="schowane">`;
   podepnijNaglowek(box);
   box.querySelector('#d-skan').onclick = skanuj;
   box.querySelector('#d-opis').onclick = () => ekranOpisu();
   box.querySelector('#d-recznie').onclick = () => ekranReczny(null, {});
-  // Etykiety otwierają aparat same; skrypt jest tu tylko po to, żeby działały
-  // także z klawiatury — na <label> Enter nic nie robi.
-  box.querySelectorAll('label.droga[for]').forEach((l) => {
+  podepnijKlawisze(box);
+  podepnijZdjecia(box, { '#p-przod': wyslijPrzod, '#p-przod-ap': wyslijPrzod,
+                         '#p-tyl': wyslijTabele, '#p-tyl-ap': wyslijTabele });
+  const idz = () => poKodzie(box.querySelector('#kod-reczny').value);
+  box.querySelector('#kod-idz').onclick = idz;
+  box.querySelector('#kod-reczny').addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); idz(); }
+  });
+}
+
+// Etykiety otwierają wybór pliku same z siebie; skrypt jest tu tylko po to, żeby
+// działały także z klawiatury — na <label> Enter nic nie robi.
+function podepnijKlawisze(box) {
+  box.querySelectorAll('label.zrodlo[for], label.cta[for]').forEach((l) => {
     l.onkeydown = (ev) => {
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
       ev.preventDefault();
@@ -234,20 +256,20 @@ function ekranDrog() {
       if (cel) cel.click();
     };
   });
-  box.querySelector('#p-przod').onchange = (ev) => {
-    const plik = ev.target.files && ev.target.files[0];
-    ev.target.value = '';        // ten sam plik dwa razy z rzędu też ma zadziałać
-    if (plik) wyslijPrzod(plik);
-  };
-  box.querySelector('#p-tyl').onchange = (ev) => {
-    const plik = ev.target.files && ev.target.files[0];
-    ev.target.value = '';
-    if (plik) wyslijTabele(plik);
-  };
-  const idz = () => poKodzie(box.querySelector('#kod-reczny').value);
-  box.querySelector('#kod-idz').onclick = idz;
-  box.querySelector('#kod-reczny').addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') { ev.preventDefault(); idz(); }
+}
+
+// Pola zdjęć chodzą PARAMI (aparat / dysk), a obsługa jest ta sama — skąd plik
+// przyszedł, nie zmienia niczego po naszej stronie. Czyszczenie `value` po
+// każdym wyborze, żeby ten sam plik dwa razy z rzędu też zadziałał.
+function podepnijZdjecia(box, mapa) {
+  Object.entries(mapa).forEach(([sel, obsluga]) => {
+    const pole = box.querySelector(sel);
+    if (!pole) return;
+    pole.onchange = (ev) => {
+      const plik = ev.target.files && ev.target.files[0];
+      ev.target.value = '';
+      if (plik) obsluga(plik);
+    };
   });
 }
 
@@ -307,12 +329,20 @@ function ekranNieznany(kod) {
       w Open Food Facts. Dodaj produkt jedną z dróg poniżej — kod zapamiętam
       i następnym razem wystarczy go zeskanować.</div>
     <div class="drogi">
-      <label class="droga" for="n-przod" tabindex="0" role="button">
+      <div class="droga droga-zrodla">
         <span class="t">Zdjęcie przodu</span><span class="o">Odczyta nazwę i gramaturę</span>
-      </label>
-      <label class="droga" for="n-tyl" tabindex="0" role="button">
+        <span class="zrodla">
+          <label class="zrodlo" for="n-przod-ap" tabindex="0" role="button">Aparat</label>
+          <label class="zrodlo" for="n-przod" tabindex="0" role="button">Z dysku</label>
+        </span>
+      </div>
+      <div class="droga droga-zrodla">
         <span class="t">Zdjęcie tabeli z tyłu</span><span class="o">Odczyta wartości odżywcze</span>
-      </label>
+        <span class="zrodla">
+          <label class="zrodlo" for="n-tyl-ap" tabindex="0" role="button">Aparat</label>
+          <label class="zrodlo" for="n-tyl" tabindex="0" role="button">Z dysku</label>
+        </span>
+      </div>
       <button class="droga" id="n-opis" type="button">
         <span class="t">Opisz słowami</span><span class="o">AI oszacuje wartości na 100 g</span>
       </button>
@@ -322,27 +352,15 @@ function ekranNieznany(kod) {
     </div>
     <div id="a-kom"></div>
     <input type="file" id="n-przod" accept="image/*" class="schowane">
-    <input type="file" id="n-tyl" accept="image/*" class="schowane">`;
+    <input type="file" id="n-przod-ap" accept="image/*" capture="environment" class="schowane">
+    <input type="file" id="n-tyl" accept="image/*" class="schowane">
+    <input type="file" id="n-tyl-ap" accept="image/*" capture="environment" class="schowane">`;
   podepnijNaglowek(box, ekranDrog);
   box.querySelector('#n-opis').onclick = () => ekranOpisu();
   box.querySelector('#n-recznie').onclick = () => ekranReczny(null, { kod });
-  box.querySelector('#n-przod').onchange = (ev) => {
-    const plik = ev.target.files && ev.target.files[0];
-    ev.target.value = '';
-    if (plik) wyslijPrzod(plik);
-  };
-  box.querySelector('#n-tyl').onchange = (ev) => {
-    const plik = ev.target.files && ev.target.files[0];
-    ev.target.value = '';
-    if (plik) wyslijTabele(plik);
-  };
-  box.querySelectorAll('label.droga[for]').forEach((l) => {
-    l.onkeydown = (ev) => {
-      if (ev.key !== 'Enter' && ev.key !== ' ') return;
-      ev.preventDefault();
-      document.getElementById(l.getAttribute('for')).click();
-    };
-  });
+  podepnijKlawisze(box);
+  podepnijZdjecia(box, { '#n-przod': wyslijPrzod, '#n-przod-ap': wyslijPrzod,
+                         '#n-tyl': wyslijTabele, '#n-tyl-ap': wyslijTabele });
 }
 
 // ── droga 2: zdjęcie przodu opakowania ──────────────────────────────────────
@@ -401,23 +419,22 @@ function ekranZPrzodu(d) {
     <div class="komunikat">Możesz poprawić hasło i poszukać ponownie — bez robienia
       zdjęcia od nowa.</div>
     <div class="sek-tyt">Albo dokończ sam</div>
-    <label class="cta" for="z-tyl" tabindex="0" role="button">Zdjęcie tabeli z tyłu</label>
+    <div class="droga droga-zrodla">
+      <span class="t">Zdjęcie tabeli z tyłu</span><span class="o">Stamtąd biorą się wartości odżywcze</span>
+      <span class="zrodla">
+        <label class="zrodlo" for="z-tyl-ap" tabindex="0" role="button">Aparat</label>
+        <label class="zrodlo" for="z-tyl" tabindex="0" role="button">Z dysku</label>
+      </span>
+    </div>
     <input type="file" id="z-tyl" accept="image/*" class="schowane">
+    <input type="file" id="z-tyl-ap" accept="image/*" capture="environment" class="schowane">
     <button class="cta druga" id="z-recznie" type="button" style="margin-top:8px">
       Wpisz wartości ręcznie</button>
     <div id="a-kom"></div>`;
   podepnijNaglowek(box, ekranDrog);
 
-  box.querySelector('#z-tyl').onchange = (ev) => {
-    const plik = ev.target.files && ev.target.files[0];
-    ev.target.value = '';
-    if (plik) wyslijTabele(plik);
-  };
-  box.querySelector('label.cta[for]').onkeydown = (ev) => {
-    if (ev.key !== 'Enter' && ev.key !== ' ') return;
-    ev.preventDefault();
-    box.querySelector('#z-tyl').click();
-  };
+  podepnijKlawisze(box);
+  podepnijZdjecia(box, { '#z-tyl': wyslijTabele, '#z-tyl-ap': wyslijTabele });
   // Ręczne dokończenie startuje z tym, co model odczytał z przodu — przepisywanie
   // nazwy, którą apka przed chwilą pokazała, byłoby pracą za darmo.
   box.querySelector('#z-recznie').onclick = () => ekranReczny(null, {
