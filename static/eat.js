@@ -839,7 +839,7 @@ function otworzArkusz(posilek) {
            — bez błędu, po prostu nic się nie dzieje. Tu pole nadal jest
            renderowane, tylko niewidoczne.
 
-           Pola chodzą PARAMI: `-ap` z atrybutem capture otwiera aparat, drugie
+           Pola chodzą PARAMI: to z końcówką -ap i atrybutem capture otwiera aparat, drugie
            bez niego — galerię i dysk. Jedno pole nie umie obu naraz, a kadr
            bywa już zrobiony (zdjęcie etykiety sprzed godziny, zrzut ekranu,
            plik przysłany przez kogoś) albo dopiero do zrobienia. -->
