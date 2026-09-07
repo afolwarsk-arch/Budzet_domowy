@@ -35,7 +35,11 @@ let osoby = [];
 let osobaId;
 let problemy = [];
 let problemId = null;     // null = bez filtrowania po problemie
-let widok = 'os';         // os | podglad | szczegoly | problemy
+let widok = 'os';         // os | podglad | szczegoly | problemy | przebieg
+// Wygładzanie przebiegu średnią z 7 dni. RĘCZNE, nie automatyczne, bo rytm
+// pomiarów bywa różny: przy codziennym ważeniu surowe punkty to szum, a przy
+// czterech badaniach w roku średnia niczego nie wygładza, tylko przesuwa.
+let wygladz = false;
 let odczyt = null;        // { dokument } — czeka na zapis
 // Problemy zaznaczone na ekranie podglądu, jeszcze przed zapisem dokumentu.
 // Trzymamy je osobno, bo dokument nie ma jeszcze identyfikatora — przypięcie
@@ -148,12 +152,22 @@ function dataPl(iso) {
   return d && m && r ? `${d}.${m}.${r}` : iso;
 }
 
+// Liczba po polsku: przecinek zamiast kropki, bez końcówek w rodzaju „4,5000".
+//
+// BŁĄD, KTÓRY TU BYŁ: obcinanie zer wyrażeniem /\.?0+$/ działało na CAŁYM
+// napisie, nie tylko po przecinku — więc „80" stawało się „8", a „100" jedynką.
+// Wynik badania równy 100 pokazywał się jako 1 i nikt tego nie zauważył, bo
+// wygląda jak poprawna liczba, tylko inna. Obcinanie jest zresztą zbędne:
+// String(Number(x)) sam z siebie nie zostawia zer na końcu ułamka
+// (String(Number('4.5000')) to „4.5"), więc wystarczy podmiana separatora.
+const bezZer = (v) => String(Number(v)).replace('.', ',');
+
 // Wartość wyniku razem z operatorem. „<0,005" musi zostać „<0,005" — sama
 // liczba 0,005 znaczy co innego niż „mniej niż 0,005".
 function wartosc(w) {
   if (w.wartosc_liczba != null) {
-    const liczba = String(w.wartosc_liczba).replace(/\.?0+$/, '').replace('.', ',');
-    return (w.operator || '') + liczba + (w.jednostka ? ' ' + esc(w.jednostka) : '');
+    return (w.operator || '') + bezZer(w.wartosc_liczba)
+      + (w.jednostka ? ' ' + esc(w.jednostka) : '');
   }
   return esc(w.wartosc_tekst || '—');
 }
@@ -351,6 +365,14 @@ async function rysujOs() {
            chce obrazek", więc system dokłada aparat obok plików i galerii — a to
            jest wejście dla pliku, który już gdzieś leży. Aparat ma własny kafelek. -->
       <input type="file" id="plik-dysk" accept=".jpg,.jpeg,.png,.webp,.pdf" multiple>
+      <!-- Waga nie jest dokumentem: nie ma skanu, placówki ani normy. Stoi tu
+           mimo to, bo to jedyne miejsce w module, gdzie się coś DOKŁADA —
+           osobne wejście gdzie indziej trzeba by szukać. -->
+      <button class="wejscie pomiar" type="button" id="w-waga">
+        <svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M12 8.5v3.2M12 11.7l3-2.4"/><path d="M8 16.5h8"/></svg>
+        <span class="tresc"><b>Waga</b><span id="waga-podpis">Wpisz kilogramy — bez dokumentu</span></span>
+        <span class="ostatnia" id="waga-ostatnia"></span>
+      </button>
     </div>
     ${budujOs(dokumenty)}`;
 
@@ -369,6 +391,11 @@ async function rysujOs() {
     rysuj();
   };
   document.getElementById('do-przebiegu').onclick = () => { widok = 'przebieg'; rysuj(); };
+  document.getElementById('w-waga').onclick = () => otworzWage();
+  // Ostatnia waga dociąga się PO narysowaniu osi, osobnym żądaniem. Wstrzymanie
+  // całej osi na kafelek byłoby złą wymianą: oś jest treścią strony, a to jest
+  // liczba na przycisku.
+  pokazOstatniaWage();
   document.getElementById('do-filtrow').onclick = otworzFiltry;
   const czysc = document.getElementById('czysc-filtry');
   if (czysc) czysc.onclick = () => { filtry = pusteFiltry(); rysuj(); };
@@ -618,6 +645,175 @@ async function zamknijOdczyt(d) {
 // i problemy), a specjalizacji bywa kilkanaście. Wybór zatwierdza się dopiero
 // przyciskiem — zmiana czterech pól po kolei odpalałaby cztery zapytania
 // i cztery przerysowania osi.
+
+// ── waga ────────────────────────────────────────────────────────────────────
+//
+// Pomiar wpisywany z ręki, bez dokumentu i bez odczytu AI. Siedzi w health,
+// a nie w eat, bo ma obejmować WSZYSTKIE osoby — także dzieci, które nie mają
+// konta i istnieją wyłącznie tutaj. Ceną jest brak zestawienia z kaloriami.
+
+const POMIAR = 'Waga';
+const dzisISO = () => new Date().toLocaleDateString('sv-SE');
+
+// Różnica względem poprzedniego pomiaru. Znak jest tu treścią — „−0,6" i „0,6"
+// to dwie przeciwne wiadomości — więc minus musi zostać, a plus dopisujemy.
+function roznicaKg(nowa, stara) {
+  const d = Math.round((Number(nowa) - Number(stara)) * 10) / 10;
+  if (!d) return 'bez zmiany';
+  return (d > 0 ? '+' : '−') + liczba(Math.abs(d)) + ' kg';
+}
+
+function odKiedy(iso) {
+  const d = Math.round(dni(dzisISO(), iso));
+  if (d === 0) return 'dziś';
+  if (d === 1) return 'wczoraj';
+  if (d < 31) return `${d} ${odmien(d, 'dzień', 'dni', 'dni')} temu`;
+  return dataPl(iso);
+}
+
+async function pobierzWage(osoba) {
+  try {
+    const r = await authFetch(`/api/health/pomiary?osoba_id=${osoba}&nazwa=${encodeURIComponent(POMIAR)}`);
+    return r.ok ? ((await r.json()).pomiary || []) : [];
+  } catch { return []; }
+}
+
+// Liczba na kafelku. Przy „Wszyscy" nie ma czego pokazać — waga należy do
+// osoby, a średnia z domowników nie znaczy nic.
+async function pokazOstatniaWage() {
+  const kwota = document.getElementById('waga-ostatnia');
+  const podpis = document.getElementById('waga-podpis');
+  if (!kwota || !podpis) return;
+  if (osobaId === null) {
+    podpis.textContent = 'Wpisz kilogramy — osobę wybierzesz w oknie';
+    return;
+  }
+  const lista = await pobierzWage(osobaId);
+  // Osoba mogła się w międzyczasie przełączyć — nie nadpisujemy nowszego stanu.
+  if (!document.getElementById('waga-ostatnia')) return;
+  if (!lista.length) {
+    podpis.textContent = 'Jeszcze żadnego pomiaru — wpisz pierwszy';
+    return;
+  }
+  kwota.textContent = liczba(lista[0].wartosc) + ' kg';
+  podpis.textContent = odKiedy(lista[0].data)
+    + (lista[1] ? ' · ' + roznicaKg(lista[0].wartosc, lista[1].wartosc) : '');
+}
+
+async function otworzWage() {
+  // Przy jednej osobie w gospodarstwie nie ma czego wybierać — wybór z jednym
+  // przyciskiem to pytanie, na które istnieje jedna odpowiedź.
+  let ktora = osobaId !== null ? osobaId : (osoby.length === 1 ? osoby[0].id : null);
+  const tlo = document.createElement('div');
+  tlo.className = 'przelacznik-tlo';
+  tlo.innerHTML = `<div class="przelacznik arkusz-filtry">
+      <div class="przelacznik-tyt">Waga</div>
+      <div id="waga-osoby"></div>
+      <div class="pola-2">
+        <div class="pole"><label for="wg-data">Dzień</label>
+          <input type="date" id="wg-data" value="${dzisISO()}" max="${dzisISO()}"></div>
+        <div class="pole"><label for="wg-kg">Kilogramy</label>
+          <input type="text" id="wg-kg" inputmode="decimal" autocomplete="off" placeholder="np. 82,4"></div>
+      </div>
+      <div class="uwaga" id="wg-kom"></div>
+      <div class="akcje">
+        <button class="btn btn-outline" type="button" id="wg-zamknij">Zamknij</button>
+        <button class="btn btn-primary" type="button" id="wg-zapisz">Zapisz</button>
+      </div>
+      <div id="wg-historia"></div>
+    </div>`;
+  tlo.addEventListener('click', (e) => { if (e.target === tlo) zamknijWage(); });
+  document.body.appendChild(tlo);
+
+  const zamknijWage = () => {
+    tlo.remove();
+    // Kafelek na osi ma pokazywać stan po zapisie, a nie sprzed otwarcia okna.
+    pokazOstatniaWage();
+  };
+  const kom = (t, blad) => {
+    const el = tlo.querySelector('#wg-kom');
+    el.className = 'uwaga' + (blad ? ' blad' : '');
+    el.textContent = t || '';
+  };
+
+  if (osoby.length > 1) {
+    tlo.querySelector('#waga-osoby').innerHTML = `<div class="pole">
+      <label>Kogo ważymy</label>
+      <div class="filtry" id="wg-chipy">${osoby.map((o) => `
+        <button class="chip" type="button" data-o="${o.id}"
+                aria-pressed="${o.id === ktora}">${esc(o.imie)}</button>`).join('')}</div>
+    </div>`;
+    tlo.querySelector('#wg-chipy').onclick = (ev) => {
+      const b = ev.target.closest('[data-o]');
+      if (!b) return;
+      ktora = Number(b.dataset.o);
+      tlo.querySelectorAll('#wg-chipy [data-o]').forEach((x) =>
+        x.setAttribute('aria-pressed', String(Number(x.dataset.o) === ktora)));
+      odswiezHistorie();
+    };
+  }
+
+  async function odswiezHistorie() {
+    const box = tlo.querySelector('#wg-historia');
+    const pole = tlo.querySelector('#wg-kg');
+    if (ktora === null) {
+      box.innerHTML = '<div class="uwaga">Wybierz osobę, żeby zobaczyć jej pomiary.</div>';
+      return;
+    }
+    box.innerHTML = '<div class="laduje">Wczytuję…</div>';
+    const lista = await pobierzWage(ktora);
+    // Ostatnia waga jako PODPOWIEDŹ, nie jako wartość wpisana z góry: pole
+    // wypełnione liczbą wygląda na uzupełnione i łatwo zapisać wczorajszy stan.
+    pole.placeholder = lista.length ? liczba(lista[0].wartosc) : 'np. 82,4';
+    if (!lista.length) {
+      box.innerHTML = '<div class="uwaga">Jeszcze żadnego pomiaru.</div>';
+      return;
+    }
+    box.innerHTML = `<div class="pole"><label>Ostatnie pomiary</label></div>
+      ${lista.slice(0, 8).map((p, i) => `<div class="wg-wiersz">
+        <span class="wg-data">${dataPl(p.data)}</span>
+        <span class="wg-kg">${liczba(p.wartosc)} ${esc(p.jednostka || 'kg')}</span>
+        <span class="wg-roz">${lista[i + 1] ? roznicaKg(p.wartosc, lista[i + 1].wartosc) : ''}</span>
+        <button class="wg-x" type="button" data-usun="${p.id}" aria-label="Usuń pomiar">&times;</button>
+      </div>`).join('')}`;
+    box.querySelectorAll('[data-usun]').forEach((b) => {
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const r = await authFetch('/api/health/pomiary/' + b.dataset.usun, { method: 'DELETE' });
+          if (!r.ok) { kom('Nie udało się usunąć.', true); b.disabled = false; return; }
+          kom('');
+          await odswiezHistorie();
+        } catch { kom('Błąd połączenia.', true); b.disabled = false; }
+      };
+    });
+  }
+  odswiezHistorie();
+
+  tlo.querySelector('#wg-zamknij').onclick = zamknijWage;
+  tlo.querySelector('#wg-zapisz').onclick = async (ev) => {
+    if (ktora === null) { kom('Wybierz osobę.', true); return; }
+    const wartosc = tlo.querySelector('#wg-kg').value.trim();
+    if (!wartosc) { kom('Wpisz wagę.', true); tlo.querySelector('#wg-kg').focus(); return; }
+    ev.target.disabled = true;
+    try {
+      const r = await authFetch('/api/health/pomiary', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          osoba_id: ktora, nazwa: POMIAR, jednostka: 'kg',
+          data: tlo.querySelector('#wg-data').value, wartosc,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { kom(d.detail || 'Nie udało się zapisać.', true); ev.target.disabled = false; return; }
+      tlo.querySelector('#wg-kg').value = '';
+      kom('Zapisane.');
+      await odswiezHistorie();
+    } catch { kom('Błąd połączenia.', true); }
+    ev.target.disabled = false;
+  };
+  tlo.querySelector('#wg-kg').focus();
+}
 
 async function otworzFiltry() {
   // Kopia głęboka: zaznaczanie ma dać się porzucić przez zamknięcie arkusza,
@@ -1199,7 +1395,7 @@ function skalujY(punkty) {
   return { min: (min >= 0 && dol < 0) ? 0 : dol, max: max + luz };
 }
 
-const liczba = (v) => String(Number(v)).replace(/\.?0+$/, '').replace('.', ',');
+const liczba = bezZer;   // patrz komentarz przy bezZer — tamten wariant gubił zera
 
 function rysujWykres(punkty, szer) {
   const wys = 250;
@@ -1232,9 +1428,29 @@ function rysujWykres(punkty, szer) {
 
   const linia = punkty.map((p, i) => `${xs[i].toFixed(1)},${Y(p.wartosc_liczba).toFixed(1)}`).join(' ');
 
+  // Wygładzanie: średnia z OKNA SIEDMIU DNI, nie z siedmiu ostatnich punktów.
+  // Waga bywa wpisywana nieregularnie — trzy pomiary w tygodniu i przerwa —
+  // a średnia „z ostatnich siedmiu" mieszałaby wtedy dane sprzed miesiąca
+  // z dzisiejszymi i pokazywała spadek, którego nie było.
+  const srednia = wygladz ? punkty.map((p) => {
+    const t = new Date(p.data_badania).getTime();
+    const okno = punkty.filter((q) => {
+      const tq = new Date(q.data_badania).getTime();
+      return tq <= t && tq > t - 7 * 86400000;
+    });
+    return okno.reduce((s, q) => s + Number(q.wartosc_liczba), 0) / okno.length;
+  }) : null;
+  const liniaSrednia = srednia
+    ? `<polyline class="srednia" points="${srednia.map((v, i) =>
+        `${xs[i].toFixed(1)},${Y(v).toFixed(1)}`).join(' ')}"/>`
+    : '';
+
   const marki = punkty.map((p, i) => {
     const x = xs[i], y = Y(p.wartosc_liczba);
-    const flaga = p.flaga ? ' flaga' : '';
+    // Pomiar wpisany ręcznie rysujemy pierścieniem: waga łazienkowa i waga
+    // w przychodni stoją na jednej osi i muszą dać się rozróżnić.
+    const flaga = (p.flaga ? ' flaga' : '') + (p.pomiar_id ? ' wlasny' : '')
+      + (wygladz ? ' przygaszony' : '');
     // Operator: trójkąt zwrócony w stronę, w którą wartość „ucieka" poza skalę
     // pomiaru. Kółko znaczy „zmierzono tyle", trójkąt „wiadomo tylko tyle".
     const znak = p.operator
@@ -1269,7 +1485,8 @@ function rysujWykres(punkty, szer) {
       <text class="opis" x="${OS_L}" y="${wys - 8}">${esc(dataPl(punkty[0].data_badania))}</text>
       <text class="opis" x="${szer - OS_P}" y="${wys - 8}" text-anchor="end">${
         esc(dataPl(punkty[punkty.length - 1].data_badania))}</text>
-      <polyline class="linia" points="${linia}"/>
+      <polyline class="linia${wygladz ? ' przygaszona' : ''}" points="${linia}"/>
+      ${liniaSrednia}
       ${marki}${etykiety}
     </svg>`;
 }
@@ -1283,7 +1500,8 @@ function tabelaPrzebiegu(punkty) {
           p.jednostka ? ' ' + esc(p.jednostka) : ''}${
           p.flaga ? `<span class="flaga">${esc(p.flaga)}</span>` : ''}</td>
         <td class="w-norma">${norma(p)}</td>
-        <td class="w-norma">${esc(p.placowka || '')}</td>
+        <td class="w-norma">${p.pomiar_id
+          ? 'wpisane ręcznie' : esc(p.placowka || '')}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
 }
@@ -1332,6 +1550,7 @@ async function rysujPrzebieg() {
   }
 
   const jednostka = (przebieg.find((p) => p.jednostka) || {}).jednostka || '';
+  const wlasnych = przebieg.some((p) => p.pomiar_id);
   box().innerHTML = `
     <button class="wroc" id="wroc">← Oś czasu</button>
     <div class="gora"><h1>Przebieg parametru</h1></div>
@@ -1346,8 +1565,13 @@ async function rysujPrzebieg() {
         <span class="os-data">${przebieg.length} pomiarów</span>
       </div>
       <div id="plotno"></div>
-      <div class="wyk-podpis" id="podpis">Szare pasmo to norma z danego badania —
-        potrafi się zmieniać między laboratoriami.</div>
+      <div class="wyk-podpis" id="podpis">${wlasnych
+        ? 'Pierścień to pomiar wpisany ręcznie, koło — wynik z dokumentu.'
+        : 'Szare pasmo to norma z danego badania — potrafi się zmieniać między laboratoriami.'}</div>
+      ${przebieg.length >= 4 ? `<div class="filtry" style="margin-top:10px">
+        <button class="chip" type="button" id="wygladz" aria-pressed="${wygladz}">
+          Wygładź (średnia 7 dni)</button>
+      </div>` : ''}
     </div>
     <div class="karta">
       <h2>Wszystkie pomiary</h2>
@@ -1357,6 +1581,14 @@ async function rysujPrzebieg() {
     </div>`;
 
   przerysujPlotno();
+  const przel = document.getElementById('wygladz');
+  if (przel) przel.onclick = () => {
+    wygladz = !wygladz;
+    przel.setAttribute('aria-pressed', String(wygladz));
+    // Samo płótno, nie cały ekran: przerysowanie widoku zabrałoby pozycję
+    // przewinięcia i podpis pod wykresem, a zmienia się jedna linia.
+    przerysujPlotno();
+  };
   document.getElementById('lista-param').onclick = (ev) => {
     const b = ev.target.closest('[data-p]');
     if (!b) return;

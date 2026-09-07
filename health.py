@@ -335,3 +335,59 @@ def przebieg(osoba_id: int, nazwa: str, current_user: dict = Depends(get_current
 @router.get("/parametry")
 def parametry(osoba_id: int, current_user: dict = Depends(get_current_user)):
     return {"parametry": health_db.nazwy_parametrow(_hid(current_user), osoba_id)}
+
+
+# ── pomiary własne (waga) ───────────────────────────────────────────────────
+#
+# Wpisywane z ręki, bez dokumentu i bez odczytu AI. Osobne od wyników badań,
+# ale trafiają na TEN SAM wykres przebiegu — patrz `health_db.przebieg`.
+
+# Górna granica na wartość: literówka „825" zamiast „82,5" rozjeżdża wykres na
+# lata wstecz, a wpisu i tak nikt potem nie ogląda. Waga człowieka nie ma prawa
+# przekroczyć 700 kg (rekord świata to 635), a „0" nie jest pomiarem.
+_POMIAR_MAKS = 700
+
+
+@router.get("/pomiary")
+def lista_pomiarow(osoba_id: int, nazwa: str = Query(default="Waga"),
+                   current_user: dict = Depends(get_current_user)):
+    return {"pomiary": health_db.pomiary(_hid(current_user), osoba_id, nazwa)}
+
+
+@router.post("/pomiary", status_code=201)
+def dodaj_pomiar(dane: dict, current_user: dict = Depends(get_current_user)):
+    hid = _hid(current_user)
+    try:
+        osoba_id = int(dane.get("osoba_id") or 0)
+    except (TypeError, ValueError):
+        osoba_id = 0
+    if not osoba_id:
+        raise HTTPException(400, "Wskaż osobę")
+    nazwa = (dane.get("nazwa") or "Waga").strip()[:60]
+    if not nazwa:
+        raise HTTPException(400, "Podaj nazwę pomiaru")
+    # Przecinek zamiast kropki: na polskiej klawiaturze telefonu to domyślny
+    # separator i „82,4" jest tym, co człowiek naprawdę wpisze.
+    try:
+        wartosc = float(str(dane.get("wartosc") or "").replace(",", ".").strip())
+    except ValueError:
+        raise HTTPException(400, "Podaj wartość liczbą")
+    if not 0 < wartosc <= _POMIAR_MAKS:
+        raise HTTPException(400, f"Wartość musi być większa od zera i nie większa niż {_POMIAR_MAKS}.")
+    kiedy = _data(dane.get("data")) or date.today().isoformat()
+    if kiedy > date.today().isoformat():
+        raise HTTPException(400, "Nie da się zważyć w przyszłości.")
+    try:
+        pomiar = health_db.zapisz_pomiar(hid, osoba_id, kiedy, nazwa,
+                                         round(wartosc, 2),
+                                         (dane.get("jednostka") or "kg").strip()[:20])
+    except ValueError:
+        raise HTTPException(404, "Nie znaleziono osoby")
+    return {"pomiar": pomiar}
+
+
+@router.delete("/pomiary/{pomiar_id}")
+def skasuj_pomiar(pomiar_id: int, current_user: dict = Depends(get_current_user)):
+    if not health_db.usun_pomiar(_hid(current_user), pomiar_id):
+        raise HTTPException(404, "Nie znaleziono pomiaru")
+    return {"ok": True}

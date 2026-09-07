@@ -254,6 +254,38 @@ def init_health_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS health_dokprob_problem "
                     "ON health_dokument_problemy (problem_id)")
 
+        # ── pomiary własne ──────────────────────────────────────────────────
+        #
+        # OSOBNA TABELA, a nie wiersz w `health_wyniki`, bo tamta ma
+        # `dokument_id NOT NULL`: każdy wynik wisi na dokumencie i bierze
+        # z niego datę. Poranna waga nie jest badaniem z laboratorium — nie ma
+        # placówki, nie ma normy, nie ma skanu. Zakładanie sztucznego dokumentu
+        # na każde ważenie dałoby kilkaset wpisów rocznie na osi czasu, każdy
+        # do klikania; jeden wspólny dokument „Pomiary" też nie zadziała, bo
+        # data siedzi na dokumencie i wszystkie pomiary miałyby tę samą.
+        #
+        # `nazwa` zamiast sztywnego „waga”: to ta sama nazwa co w
+        # `health_wyniki.nazwa`, dzięki czemu przebieg parametru scala oba
+        # źródła bez tłumaczenia słownika, a obwód pasa czy temperatura wejdą
+        # tą samą drogą bez migracji.
+        cur.execute("""CREATE TABLE IF NOT EXISTS health_pomiary (
+            id           SERIAL PRIMARY KEY,
+            household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            osoba_id     INTEGER NOT NULL REFERENCES health_osoby(id) ON DELETE CASCADE,
+            data         DATE NOT NULL,
+            nazwa        TEXT NOT NULL,
+            wartosc      NUMERIC(12,4) NOT NULL,
+            jednostka    TEXT,
+            created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+        # Jeden pomiar na osobę, dzień i parametr — powtórne ważenie tego samego
+        # ranka POPRAWIA wpis, zamiast dokładać drugi punkt. Bez tego dwa
+        # wejścia na wagę robiły z wykresu pionową kreskę.
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS health_pomiar_dzien "
+                    "ON health_pomiary (osoba_id, data, lower(nazwa))")
+        cur.execute("CREATE INDEX IF NOT EXISTS health_pomiar_osoba "
+                    "ON health_pomiary (osoba_id, nazwa, data)")
+
 
 # ── osoby ───────────────────────────────────────────────────────────────────
 
@@ -777,29 +809,96 @@ def przebieg(household_id: int, osoba_id: int, nazwa: str) -> list[dict]:
     żeby ekran mógł je narysować inaczej — jako punkt przy granicy, a nie jako
     zwykły pomiar. Wycięcie ich z wykresu ukryłoby najciekawsze przypadki,
     bo poza skalę wychodzą wyniki skrajne.
+
+    Punkty pochodzą z DWÓCH źródeł naraz: wyników odczytanych z dokumentów
+    i pomiarów wpisanych ręcznie (`health_pomiary`). Scalanie po nazwie jest tu
+    zaletą, a nie kompromisem — dziecko ważone w domu i to samo dziecko ważone
+    w przychodni to jedna historia i ma stać na jednej osi. Pomiar własny
+    poznaje się po `pomiar_id`; ekran rysuje go inaczej i pozwala skasować.
     """
     with get_db() as cur:
         cur.execute(
             "SELECT d.data_badania, d.placowka, w.wartosc_liczba, w.jednostka, "
-            "       w.operator, w.norma_min, w.norma_max, w.flaga, w.metoda "
+            "       w.operator, w.norma_min, w.norma_max, w.flaga, w.metoda, "
+            "       NULL::integer AS pomiar_id "
             "FROM health_wyniki w JOIN health_dokumenty d ON d.id = w.dokument_id "
             "WHERE d.household_id = %s AND d.osoba_id = %s AND NOT d.ukryty "
             "  AND lower(w.nazwa) = lower(%s) AND w.wartosc_liczba IS NOT NULL "
-            "ORDER BY d.data_badania",
-            (household_id, osoba_id, nazwa.strip()),
+            "UNION ALL "
+            "SELECT p.data AS data_badania, NULL::text AS placowka, p.wartosc, "
+            "       p.jednostka, NULL::text, NULL::numeric, NULL::numeric, "
+            "       NULL::text, NULL::text, p.id "
+            "FROM health_pomiary p "
+            "WHERE p.household_id = %s AND p.osoba_id = %s AND lower(p.nazwa) = lower(%s) "
+            "ORDER BY data_badania",
+            (household_id, osoba_id, nazwa.strip(),
+             household_id, osoba_id, nazwa.strip()),
         )
         return [dict(r) for r in cur.fetchall()]
 
 
 def nazwy_parametrow(household_id: int, osoba_id: int) -> list[dict]:
-    """Które parametry mają co najmniej dwa pomiary — tylko te da się narysować."""
+    """Które parametry mają co najmniej dwa pomiary — tylko te da się narysować.
+
+    Liczy oba źródła razem: waga zmierzona raz w domu i raz w przychodni daje
+    dwa punkty i ma się dać narysować, choć w żadnym źródle z osobna nie ma ich
+    dwóch."""
     with get_db() as cur:
         cur.execute(
-            "SELECT w.nazwa, COUNT(*) AS ile FROM health_wyniki w "
-            "JOIN health_dokumenty d ON d.id = w.dokument_id "
-            "WHERE d.household_id = %s AND d.osoba_id = %s AND NOT d.ukryty "
-            "  AND w.wartosc_liczba IS NOT NULL "
-            "GROUP BY w.nazwa HAVING COUNT(*) > 1 ORDER BY COUNT(*) DESC, w.nazwa",
-            (household_id, osoba_id),
+            "SELECT nazwa, COUNT(*) AS ile FROM ("
+            "  SELECT w.nazwa FROM health_wyniki w "
+            "  JOIN health_dokumenty d ON d.id = w.dokument_id "
+            "  WHERE d.household_id = %s AND d.osoba_id = %s AND NOT d.ukryty "
+            "    AND w.wartosc_liczba IS NOT NULL "
+            "  UNION ALL "
+            "  SELECT p.nazwa FROM health_pomiary p "
+            "  WHERE p.household_id = %s AND p.osoba_id = %s"
+            ") AS zrodla "
+            "GROUP BY nazwa HAVING COUNT(*) > 1 ORDER BY COUNT(*) DESC, nazwa",
+            (household_id, osoba_id, household_id, osoba_id),
         )
         return [dict(r) for r in cur.fetchall()]
+
+
+# ── pomiary własne ──────────────────────────────────────────────────────────
+
+def pomiary(household_id: int, osoba_id: int, nazwa: str, limit: int = 60) -> list[dict]:
+    """Ostatnie pomiary jednego parametru — od najnowszego, do listy pod wpisem."""
+    with get_db() as cur:
+        cur.execute(
+            "SELECT id, data, nazwa, wartosc, jednostka FROM health_pomiary "
+            "WHERE household_id = %s AND osoba_id = %s AND lower(nazwa) = lower(%s) "
+            "ORDER BY data DESC LIMIT %s",
+            (household_id, osoba_id, nazwa.strip(), limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def zapisz_pomiar(household_id: int, osoba_id: int, data, nazwa: str,
+                  wartosc, jednostka: str | None) -> dict:
+    """Dokłada pomiar albo POPRAWIA ten z tego samego dnia.
+
+    Sprawdzenie gospodarstwa przy osobie, a nie tylko w kolumnie: bez tego
+    dałoby się wpisać pomiar cudzej osobie, podając jej id."""
+    with get_db() as cur:
+        cur.execute("SELECT 1 FROM health_osoby WHERE id = %s AND household_id = %s",
+                    (osoba_id, household_id))
+        if not cur.fetchone():
+            raise ValueError("Nie znaleziono osoby")
+        cur.execute(
+            "INSERT INTO health_pomiary (household_id, osoba_id, data, nazwa, "
+            "                            wartosc, jednostka) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (osoba_id, data, lower(nazwa)) DO UPDATE "
+            "  SET wartosc = EXCLUDED.wartosc, jednostka = EXCLUDED.jednostka "
+            "RETURNING id, data, nazwa, wartosc, jednostka",
+            (household_id, osoba_id, data, nazwa.strip(), wartosc, jednostka),
+        )
+        return dict(cur.fetchone())
+
+
+def usun_pomiar(household_id: int, pomiar_id: int) -> bool:
+    with get_db() as cur:
+        cur.execute("DELETE FROM health_pomiary WHERE id = %s AND household_id = %s",
+                    (pomiar_id, household_id))
+        return cur.rowcount > 0
