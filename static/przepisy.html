@@ -178,6 +178,47 @@
                 padding: 2px 9px; font: inherit; font-size: 11.5px; cursor: pointer;
                 color: var(--accent); }
 
+    /* Pole wyszukiwania z mikrofonem — ten sam układ co w dzienniku, bo to ta
+       sama czynność: powiedz albo napisz, co ma wejść do dania. */
+    .szukaj { display: flex; gap: 8px; }
+    .szukaj input { flex: 1; min-width: 0; }
+    .mik { flex: none; width: 44px; min-height: 44px; border: 1px solid var(--border);
+           background: var(--surface); border-radius: 8px; color: var(--muted);
+           cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    /* `display:flex` z reguły wyżej BIJE wbudowane [hidden]{display:none}
+       przeglądarki (reguła autora wygrywa z regułą UA), więc bez tej linii
+       mikrofon pokazywałby się także tam, gdzie dyktowanie nie działa. */
+    .mik[hidden] { display: none; }
+    .mik.slucha { border-color: var(--danger); color: var(--danger); }
+    .mik svg { width: 19px; height: 19px; fill: none; stroke: currentColor;
+               stroke-width: 1.7; stroke-linecap: round; }
+
+    /* Pozycje oszacowane przez AI, do zatwierdzenia. Wiersz ma ptaszek, bo model
+       dokłada czasem coś, czego w daniu nie ma — łatwiej odznaczyć niż potem
+       kasować z przepisu. */
+    .poz-edyt { display: flex; align-items: flex-start; gap: 9px; padding: 8px 10px;
+                background: var(--surface); border: 1px solid var(--border-soft);
+                border-radius: 9px; margin-bottom: 6px; }
+    .poz-edyt > input[type=checkbox] { width: 20px; height: 20px; margin: 2px 0 0;
+                flex: none; accent-color: var(--primary); }
+    .pe-tresc { flex: 1; min-width: 0; }
+    .pe-nazwa { font-size: 13.5px; color: var(--heading); }
+    .pe-linia { display: flex; align-items: center; gap: 6px; margin-top: 4px;
+                font-size: 12px; color: var(--muted); }
+    .ark .pe-linia input { width: 74px; flex: none; text-align: center; font-size: 13px; }
+    .pe-kcal { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+    /* Wiersz z dziennika. Klikalny w całości — wybór, nie formularz. */
+    .szybka { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+              background: var(--surface); border: 1px solid var(--border-soft);
+              border-radius: 9px; padding: 9px 11px; margin-bottom: 6px; font: inherit;
+              color: var(--text); cursor: pointer; min-height: 44px; }
+    .szybka:hover { border-color: var(--accent); }
+    .szybka b { display: block; font-size: 13.5px; color: var(--heading);
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .szybka span > span { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+    .szybka .nz { flex: 1; min-width: 0; }
+
     .komunikat { font-size: 12.5px; color: var(--muted); margin: 8px 0; }
     .komunikat.blad { color: var(--danger); }
     .laduje { text-align: center; color: var(--muted); padding: 24px; font-size: 14px; }

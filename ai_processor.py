@@ -624,6 +624,67 @@ def szacuj_posilek(opis: str) -> tuple[list[dict], dict]:
     return dane.get("pozycje") or [], _usage(message)
 
 
+# Produkt do BAZY, nie pozycja w dzienniku. Różnica jest jedna, ale zasadnicza:
+# baza trzyma wartości NA 100 G, a `szacuj_posilek` liczy zjedzoną porcję.
+# Przeliczanie jednego na drugie po stronie apki wyglądało kusząco (podziel przez
+# gramaturę, pomnóż przez sto), tylko że wtedy w wynik na 100 g wchodzi błąd
+# zgadywania wielkości porcji — przy „kawałku sernika" model najpierw zgaduje,
+# ile ten kawałek waży, i cała pomyłka ląduje w wartości, która ma być stała.
+# Dlatego pytamy wprost o 100 g i osobnym promptem.
+_PRODUKT_OPIS_PROMPT = """Szacujesz wartości odżywcze PRODUKTU spożywczego opisanego
+słowami po polsku. Produkt trafi do bazy i będzie używany wielokrotnie.
+
+Zwróć WYŁĄCZNIE JSON:
+{"nazwa": "...", "marka": null, "kcal": liczba, "bialko": liczba, "tluszcz": liczba,
+ "wegle": liczba, "cukry": liczba, "blonnik": liczba, "sol": liczba,
+ "opak_g": liczba, "porcja_g": liczba, "opis_porcji": null,
+ "pewnosc": "wysoka", "uwaga": "..."}
+
+ZASADY:
+- WSZYSTKIE wartości odżywcze dotyczą 100 G PRODUKTU. Nigdy porcji, nigdy
+  opakowania, nigdy sztuki. To jest najważniejsza zasada — tak samo stoi na
+  każdej etykiecie i tak trzyma je baza.
+- Gdy w opisie podano wartości dla porcji albo dla opakowania, PRZELICZ je na
+  100 g i policz z podanej gramatury.
+- To jest JEDEN produkt, nie posiłek. Gdy opis wymienia kilka rzeczy naraz
+  („chleb z masłem"), weź tę główną i napisz o tym w polu "uwaga".
+- `nazwa` krótka i rzeczowa, tak jak stoi na opakowaniu („Twaróg półtłusty”),
+  bez ilości i bez słowa „domowy”, chyba że to część nazwy.
+- `marka` tylko wtedy, gdy pada w opisie. Inaczej null.
+- `opak_g` tylko wtedy, gdy w opisie podano wielkość opakowania. Inaczej null.
+- `porcja_g` i `opis_porcji` wypełnij, gdy produkt naturalnie występuje
+  w sztukach (kromka 35 g, jajko 55 g, jogurt 150 g). Inaczej null.
+- `cukry`, `blonnik`, `sol` podaj, gdy da się je sensownie oszacować; inaczej null.
+  Wartość zmyślona jest gorsza niż jej brak — te trzy pola napędzają „światła”
+  na karcie produktu.
+- `pewnosc`: "wysoka" dla produktów typowych i dobrze opisanych, "średnia" gdy
+  przepis bywa różny, "niska" gdy zgadujesz. `uwaga` to JEDNO zdanie mówiące,
+  na czym oparte jest oszacowanie i czego w nim brakuje.
+- Gdy opis nie pozwala oszacować niczego, zwróć {"nazwa": ""}.
+- Nie dopisuj niczego, czego nie ma w opisie.
+"""
+
+
+def produkt_z_opisu(opis: str) -> tuple[dict, dict]:
+    """Opis słowami („domowy sernik z twarogu bez rodzynek") → produkt na 100 g.
+
+    Dla wszystkiego, co nie ma kodu kreskowego ani etykiety: domowe wypieki,
+    warzywa na wagę, produkty z lokalnej piekarni."""
+    import json as _json
+
+    client = anthropic.Anthropic()
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1200,
+        system=_PRODUKT_OPIS_PROMPT,
+        messages=[{"role": "user", "content": opis.strip()[:600]}],
+    )
+    surowy = message.content[0].text.strip()
+    if surowy.startswith("```"):
+        surowy = surowy.split("```")[1].lstrip("json").strip()
+    return _json.loads(surowy), _usage(message)
+
+
 # Zdjęcie jest tu nośnikiem TEKSTU, nie widokiem jedzenia: kartka, strona
 # książki kucharskiej, ekran cudzej apki do liczenia kalorii. Kolejność zasad
 # ma znaczenie — model, któremu najpierw powie się o talerzu, zaczyna zgadywać

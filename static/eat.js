@@ -793,11 +793,7 @@ function otworzArkusz(posilek) {
              kucharskiej, cudzego ekranu z wpisem. Adam jadł to samo co kolega
              i miał przed sobą jego wpis — żeby to zapisać, musiał najpierw
              założyć PRZEPIS, a potem zaciągnąć go do dnia. Dwa kroki i trwały
-             wpis w książce przepisów po czymś zjedzonym raz.
-
-             Bez atrybutu capture: kadr bywa już w galerii (zrzut ekranu,
-             zdjęcie kartki sprzed godziny), a capture odbiera ten wybór
-             i otwiera od razu aparat. -->
+             wpis w książce przepisów po czymś zjedzonym raz. -->
         <label class="droga" for="ark-plik-danie" tabindex="0" role="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14.2 3.5V8h4.6"/><path d="M9 12.5h6M9 16h4"/></svg>
           <span class="t">Zdjęcie kartki</span><span class="o">Notatka, książka kucharska, cudzy ekran</span>
@@ -825,9 +821,15 @@ function otworzArkusz(posilek) {
       <!-- „schowane", a nie display:none. Pole z display:none bywa przez
            przeglądarki traktowane jak nieistniejące i odmawia otwarcia aparatu
            — bez błędu, po prostu nic się nie dzieje. Tu pole nadal jest
-           renderowane, tylko niewidoczne. -->
-      <input type="file" id="ark-plik" accept="image/*" capture="environment" class="schowane">
-      <input type="file" id="ark-plik-przod" accept="image/*" capture="environment" class="schowane">
+           renderowane, tylko niewidoczne.
+
+           ŻADNE z tych pól nie ma atrybutu capture. Wymusza on aparat i tym
+           samym ODBIERA wybór pliku z dysku — a kadr bywa już zrobiony (zdjęcie
+           etykiety sprzed godziny, zrzut ekranu, plik przesłany przez kogoś).
+           Bez niego stuknięcie daje wybór: aparat albo galeria. Kosztuje jedno
+           stuknięcie więcej, gdy naprawdę chce się fotografować teraz. -->
+      <input type="file" id="ark-plik" accept="image/*" class="schowane">
+      <input type="file" id="ark-plik-przod" accept="image/*" class="schowane">
       <input type="file" id="ark-plik-danie" accept="image/*" class="schowane">
     </div>`;
   document.body.appendChild(arkusz);
@@ -2434,7 +2436,7 @@ function ekranZPrzodu(d) {
          więc pole z ekranu startowego już nie istnieje. -->
     <label class="cta" for="p-plik-tyl" id="p-tabela" tabindex="0" role="button"
            style="display:block;text-align:center">Zdjęcie tabeli z tyłu</label>
-    <input type="file" id="p-plik-tyl" accept="image/*" capture="environment" class="schowane">
+    <input type="file" id="p-plik-tyl" accept="image/*" class="schowane">
     <div id="ark-komunikat"></div>`;
 
   ark.querySelector('#zamknij2').onclick = () => zamknijArkusz();

@@ -305,7 +305,10 @@ def dodaj_produkt_recznie(body: dict, current_user: dict = Depends(get_current_u
         # `zapisz_produkt` odświeżyłby istniejący wiersz po cichu, a to wygląda
         # jak zgubiony zapis: nowy produkt nie pojawia się na liście.
         raise HTTPException(409, "Produkt o tym kodzie już jest w Waszej bazie.")
-    dane["zrodlo"] = "reczne"
+    # „opis" znaczy: wartości oszacowało AI, a człowiek je zatwierdził. Na liście
+    # produktów widać wtedy inny znacznik niż przy przepisanej etykiecie — przy
+    # poprawianiu wartości to pierwsza rzecz, którą trzeba wiedzieć.
+    dane["zrodlo"] = "opis" if body.get("zrodlo") == "opis" else "reczne"
     return {"produkt": eat_db.zapisz_produkt(hid, dane)}
 
 
@@ -612,6 +615,43 @@ async def z_opisu_ze_zdjecia(file: UploadFile = File(...),
     if not pozycje:
         raise HTTPException(422, "Nie widzę na tym zdjęciu jedzenia ani jego opisu.")
     return {"pozycje": pozycje, "opis": opis}
+
+
+@router.post("/produkty/z-opisu")
+def produkt_z_opisu(body: dict, current_user: dict = Depends(get_current_user)):
+    """„Domowy sernik z twarogu" → propozycja produktu z wartościami na 100 g.
+
+    NICZEGO NIE ZAPISUJE. Wynik ląduje w formularzu ręcznym, gdzie człowiek go
+    ogląda i zatwierdza — oszacowanie modelu wpisane do bazy po cichu byłoby
+    potem używane jak odczyt z etykiety, bez śladu, skąd się wzięło.
+    """
+    if current_user.get("ai_zablokowane"):
+        raise HTTPException(403, "Funkcje AI są wyłączone dla tego konta.")
+    hid = _hid(current_user)
+    opis = (body.get("opis") or "").strip()
+    if len(opis) < 3:
+        raise HTTPException(400, "Napisz, co to za produkt.")
+    import ai_processor
+    import database
+    try:
+        dane, uzycie = ai_processor.produkt_z_opisu(opis)
+    except Exception as e:
+        print(f"[eat] szacowanie produktu z opisu nie powiodlo sie: {e!r}")
+        raise HTTPException(502, "Nie udało się oszacować. Spróbuj opisać prościej.")
+    database.log_api_usage(hid, "eat-produkt-opis", uzycie["input_tokens"],
+                           uzycie["output_tokens"], current_user["user_id"])
+    if not (dane.get("nazwa") or "").strip():
+        raise HTTPException(422, "Za mało informacji, żeby cokolwiek policzyć.")
+    # Przez formularz przepuszczamy tylko pola, które ten formularz ma. Model
+    # potrafi dołożyć coś od siebie, a stamtąd trafiłoby to prosto do zapisu.
+    pola = ("nazwa", "marka", "kcal", "bialko", "tluszcz", "wegle", "cukry",
+            "blonnik", "sol", "opak_g", "porcja_g", "opis_porcji")
+    propozycja = {p: dane.get(p) for p in pola}
+    return {
+        "produkt": propozycja,
+        "pewnosc": dane.get("pewnosc"),
+        "uwaga": dane.get("uwaga"),
+    }
 
 
 # ── dziennik ────────────────────────────────────────────────────────────────

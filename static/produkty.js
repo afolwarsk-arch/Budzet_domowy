@@ -135,6 +135,9 @@ function otworzArkusz() {
 
 function zamknij(zHistorii) {
   if (window.Skaner) window.Skaner.stop();
+  // Nasłuch mikrofonu żyje poza DOM-em: bez tego dyktowanie chodziło dalej po
+  // zamknięciu arkusza, a jego wynik nie miał już gdzie trafić.
+  if (window.Dyktowanie) Dyktowanie.stop();
   kontekst = {};
   if (!ark) return;
   ark.remove();
@@ -181,8 +184,12 @@ function ekranDrog() {
         <span><span class="t">Skanuj kod kreskowy</span><span class="o">Najszybsze przy wszystkim z opakowania</span></span>
       </button>
       <!-- <label for>, a NIE przycisk wołający .click() ze skryptu. Etykieta
-           otwiera aparat natywnie — to znosi całą klasę błędów, w której
-           stuknięcie nic nie robiło i nawet nie zgłaszało błędu. -->
+           otwiera wybór pliku natywnie — to znosi całą klasę błędów, w której
+           stuknięcie nic nie robiło i nawet nie zgłaszało błędu.
+
+           Pola plików NIE mają atrybutu capture: wymusza on aparat i odbiera
+           wybór z dysku, a etykieta bywa sfotografowana wcześniej albo przysłana
+           przez kogoś. Bez niego stuknięcie daje jedno i drugie. -->
       <label class="droga" for="p-przod" tabindex="0" role="button">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="3.5" width="13" height="17" rx="2"/><path d="M8.5 8h7M8.5 11.5h7M8.5 15h4"/></svg>
         <span class="t">Zdjęcie przodu</span><span class="o">Odczyta nazwę i poszuka w bazie</span>
@@ -191,9 +198,13 @@ function ekranDrog() {
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6" width="17" height="13" rx="2.5"/><circle cx="12" cy="12.5" r="3.4"/><path d="M8.5 6l1.4-2.2h4.2L15.5 6"/></svg>
         <span class="t">Zdjęcie tabeli z tyłu</span><span class="o">Gdy trzeba odczytać wartości odżywcze</span>
       </label>
+      <button class="droga" id="d-opis" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9"/></svg>
+        <span class="t">Opisz słowami</span><span class="o">Domowy wypiek, warzywa na wagę — AI oszacuje wartości</span>
+      </button>
       <button class="droga" id="d-recznie" type="button">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.2-4.2L15.6 5.4a2.2 2.2 0 0 1 3.1 3.1L8.2 18.8z"/><path d="M14 7l3 3"/></svg>
-        <span class="t">Wypełnij ręcznie</span><span class="o">Domowy wypiek, waga, produkt bez etykiety</span>
+        <span class="t">Wypełnij ręcznie</span><span class="o">Gdy znasz wartości i chcesz je po prostu wpisać</span>
       </button>
     </div>
     <div id="podglad">
@@ -207,10 +218,11 @@ function ekranDrog() {
       <button class="cta druga" id="kod-idz" type="button" style="width:auto;padding:0 16px">Sprawdź</button>
     </div>
     <div id="a-kom"></div>
-    <input type="file" id="p-przod" accept="image/*" capture="environment" class="schowane">
-    <input type="file" id="p-tyl" accept="image/*" capture="environment" class="schowane">`;
+    <input type="file" id="p-przod" accept="image/*" class="schowane">
+    <input type="file" id="p-tyl" accept="image/*" class="schowane">`;
   podepnijNaglowek(box);
   box.querySelector('#d-skan').onclick = skanuj;
+  box.querySelector('#d-opis').onclick = () => ekranOpisu();
   box.querySelector('#d-recznie').onclick = () => ekranReczny(null, {});
   // Etykiety otwierają aparat same; skrypt jest tu tylko po to, żeby działały
   // także z klawiatury — na <label> Enter nic nie robi.
@@ -301,14 +313,18 @@ function ekranNieznany(kod) {
       <label class="droga" for="n-tyl" tabindex="0" role="button">
         <span class="t">Zdjęcie tabeli z tyłu</span><span class="o">Odczyta wartości odżywcze</span>
       </label>
-      <button class="droga" id="n-recznie" type="button" style="grid-column:span 2">
+      <button class="droga" id="n-opis" type="button">
+        <span class="t">Opisz słowami</span><span class="o">AI oszacuje wartości na 100 g</span>
+      </button>
+      <button class="droga" id="n-recznie" type="button">
         <span class="t">Wypełnij ręcznie</span><span class="o">Gdy zdjęcie i tak nic nie da</span>
       </button>
     </div>
     <div id="a-kom"></div>
-    <input type="file" id="n-przod" accept="image/*" capture="environment" class="schowane">
-    <input type="file" id="n-tyl" accept="image/*" capture="environment" class="schowane">`;
+    <input type="file" id="n-przod" accept="image/*" class="schowane">
+    <input type="file" id="n-tyl" accept="image/*" class="schowane">`;
   podepnijNaglowek(box, ekranDrog);
+  box.querySelector('#n-opis').onclick = () => ekranOpisu();
   box.querySelector('#n-recznie').onclick = () => ekranReczny(null, { kod });
   box.querySelector('#n-przod').onchange = (ev) => {
     const plik = ev.target.files && ev.target.files[0];
@@ -386,7 +402,7 @@ function ekranZPrzodu(d) {
       zdjęcia od nowa.</div>
     <div class="sek-tyt">Albo dokończ sam</div>
     <label class="cta" for="z-tyl" tabindex="0" role="button">Zdjęcie tabeli z tyłu</label>
-    <input type="file" id="z-tyl" accept="image/*" capture="environment" class="schowane">
+    <input type="file" id="z-tyl" accept="image/*" class="schowane">
     <button class="cta druga" id="z-recznie" type="button" style="margin-top:8px">
       Wpisz wartości ręcznie</button>
     <div id="a-kom"></div>`;
@@ -472,7 +488,89 @@ async function wyslijTabele(plik) {
   ekranProduktu(d.produkt, { skad: 'etykieta' });
 }
 
-// ── droga 4: ręcznie ────────────────────────────────────────────────────────
+// ── droga 4: opis słowami ───────────────────────────────────────────────────
+//
+// Dla wszystkiego, co nie ma ani kodu, ani etykiety: domowy wypiek, warzywa
+// na wagę, bułka z lokalnej piekarni. Dotąd jedyną drogą było ręczne wpisanie
+// siedmiu liczb, których nikt nie zna z głowy — czyli w praktyce produkt
+// nie trafiał do bazy wcale.
+//
+// Osobny endpoint, a nie ten od dziennika: baza trzyma wartości NA 100 G,
+// a tamten szacuje zjedzoną porcję. Przeliczanie jednego na drugie wnosiłoby
+// do stałej wartości błąd zgadywania wielkości porcji.
+// `wstepny` niesie z powrotem to, co już napisano: po nieudanym oszacowaniu
+// ekran budowany jest od zera i bez tego kasowałby cały opis.
+function ekranOpisu(wstepny) {
+  const box = otworzArkusz();
+  if (window.Skaner) window.Skaner.stop();
+  box.innerHTML = naglowek('Opisz produkt', true) + `
+    <div class="sek-tyt">Co to jest</div>
+    <button class="dyktuj hidden" id="dyktuj" type="button" aria-pressed="false">
+      <span class="dyktuj-kropka"></span><span id="dyktuj-napis">Podyktuj opis</span>
+    </button>
+    <textarea id="o-opis" placeholder="np. domowy sernik na kruchym spodzie, z twarogu półtłustego, bez rodzynek">${e(wstepny || '')}</textarea>
+    <div class="komunikat">Im więcej szczegółów, tym bliżej prawdy: rodzaj, tłustość,
+      z czego zrobione. Wartości wyjdą <b>na 100 g</b> i przed zapisem zobaczysz je
+      w formularzu.</div>
+    <div id="a-kom"></div>
+    <button class="cta" id="o-szacuj" type="button">Oszacuj wartości</button>`;
+  podepnijNaglowek(box, ekranDrog);
+
+  // Dyktowanie DOPISUJE nową linią zamiast podmieniać pole: opis produktu
+  // uzupełnia się partiami, a każda przerwa w mówieniu kończy nasłuch.
+  const btn = box.querySelector('#dyktuj');
+  const pole = box.querySelector('#o-opis');
+  const napis = box.querySelector('#dyktuj-napis');
+  if (window.Dyktowanie && Dyktowanie.dostepne()) {
+    btn.classList.remove('hidden');
+    btn.onclick = () => {
+      if (Dyktowanie.sluchaMy()) { Dyktowanie.stop(); return; }
+      Dyktowanie.start({
+        onStan: (slucha) => {
+          btn.setAttribute('aria-pressed', slucha ? 'true' : 'false');
+          napis.textContent = slucha ? 'Słucham… (stuknij, by zakończyć)' : 'Podyktuj opis';
+        },
+        onTekst: (tekst) => {
+          if (!tekst) return;
+          const teraz = pole.value;
+          pole.value = teraz && !teraz.endsWith('\n') ? teraz + '\n' + tekst : teraz + tekst;
+          kom('Dopisano: „' + tekst + '". Możesz mówić dalej albo oszacować.');
+        },
+        onBlad: (t) => kom(t, true),
+      });
+    };
+  }
+
+  box.querySelector('#o-szacuj').onclick = async (ev) => {
+    const opis = pole.value.trim();
+    if (opis.length < 3) { kom('Napisz, co to za produkt.', true); pole.focus(); return; }
+    if (window.Dyktowanie) Dyktowanie.stop();
+    ev.target.disabled = true;
+    czekaj(box, 'Szacuję', 'Liczę wartości odżywcze na 100 g produktu.');
+    let d;
+    try {
+      const r = await authFetch('/api/eat/produkty/z-opisu', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opis }),
+      });
+      d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        ekranBledu(d.detail || 'Nie udało się oszacować.', () => ekranOpisu(opis));
+        return;
+      }
+    } catch { ekranBledu('Błąd połączenia.', () => ekranOpisu(opis)); return; }
+    // Wynik NIE idzie prosto do bazy — ląduje w formularzu, gdzie widać każdą
+    // liczbę i można ją poprawić przed zapisem.
+    ekranReczny(null, Object.assign({}, d.produkt, {
+      kod: kontekst.kod || '',
+      zrodlo: 'opis',
+      pewnosc: d.pewnosc,
+      uwaga: d.uwaga,
+    }));
+  };
+}
+
+// ── droga 5: ręcznie ────────────────────────────────────────────────────────
 
 // `edytowany` niepuste = poprawiamy istniejący produkt. To ten sam formularz,
 // bo pola są te same, a osobny ekran do poprawek rozjechałby się z tym przy
@@ -484,7 +582,21 @@ function ekranReczny(edytowany, wstepne) {
     `<div class="pole"><label for="f-${id}">${etykieta}</label>
       <input id="f-${id}" ${dodatki} value="${wartosc == null ? '' : e(wartosc)}"></div>`;
   const num = 'type="text" inputmode="decimal" autocomplete="off"';
-  box.innerHTML = naglowek(edytowany ? 'Popraw produkt' : 'Nowy produkt', true) + `
+  // Wartości z AI są ZGADYWANE i muszą tak wyglądać. Formularz wypełniony po
+  // cichu niczym się nie różni od przepisanej etykiety, a różnica jest cała:
+  // etykietę ktoś zmierzył, oszacowanie ktoś obstawił.
+  const zOpisu = !edytowany && p.zrodlo === 'opis';
+  const PEWNOSC = { wysoka: 'produkt typowy, wartości powinny być blisko',
+                    'średnia': 'przepisy bywają różne — sprawdź, czy to Wasz',
+                    niska: 'model zgadywał, potraktuj to jak punkt wyjścia' };
+  box.innerHTML = naglowek(edytowany ? 'Popraw produkt' : 'Nowy produkt', true)
+    + (zOpisu ? `<div class="uwaga-ai">
+        <b>Oszacowane przez AI, nie odczytane z etykiety.</b>
+        ${p.uwaga ? ' ' + e(p.uwaga) : ''}
+        ${PEWNOSC[p.pewnosc] ? '<br>Pewność ' + e(p.pewnosc) + ' — '
+          + PEWNOSC[p.pewnosc] + '.' : ''}
+        <br>Popraw, co wiesz lepiej, i dopiero wtedy zapisz.
+      </div>` : '') + `
     <div class="pola">
       <div class="pole cale"><label for="f-nazwa">Nazwa</label>
         <input id="f-nazwa" value="${e(p.nazwa || '')}" autocomplete="off"
@@ -524,6 +636,9 @@ function ekranReczny(edytowany, wstepne) {
       dane[k] = wartosc(k) || null;
     });
     if (!dane.nazwa) { kom('Podaj nazwę produktu.', true); return; }
+    // Znacznik źródła na liście produktów: „z opisu" kontra „ręcznie". Bez tego
+    // po tygodniu nie widać, które liczby ktoś przepisał, a które obstawił model.
+    if (zOpisu) dane.zrodlo = 'opis';
     const btn = box.querySelector('#f-zapisz');
     btn.disabled = true;
     try {

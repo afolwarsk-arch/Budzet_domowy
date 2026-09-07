@@ -95,6 +95,9 @@ function odmianaPorcji(n) {
 
 function zamknijArkusz(zHistorii) {
   if (!arkusz) return;
+  // Nasłuch mikrofonu żyje poza DOM-em: bez tego dyktowanie chodziło dalej po
+  // zamknięciu arkusza, a jego wynik nie miał już gdzie trafić.
+  if (window.Dyktowanie) Dyktowanie.stop();
   arkusz.remove();
   arkusz = null;
   if (!zHistorii && history.state && history.state.ark) {
@@ -635,8 +638,11 @@ function otworzEdytor(przepis) {
   pole('#waga').addEventListener('input', () => odswiezWage(sumy().gramy));
 
   pole('#zamknij').onclick = () => zamknijArkusz();
+  // Callback przyjmuje jeden składnik ALBO całą listę: opis słowami i danie
+  // z dziennika wnoszą po kilka pozycji naraz, a dokładanie ich pojedynczo
+  // przerysowywałoby edytor tyle razy, ile jest składników.
   pole('#dodaj-skl').onclick = () => ekranSkladnika((s) => {
-    stan.skladniki.push(s);
+    [].concat(s).forEach((x) => stan.skladniki.push(x));
     otworzEdytorZeStanem(stan);
   }, stan);
 
@@ -696,12 +702,17 @@ function otworzEdytorZeStanem(stan) {
 function ekranSkladnika(gotowe, stan) {
   const ark = arkusz && arkusz.querySelector('.ark');
   if (!ark) return;
-  // Zapamiętujemy, co użytkownik zdążył wpisać, zanim podmienimy ekran.
-  stan.nazwa = (ark.querySelector('#nazwa') || {}).value || stan.nazwa;
-  stan.porcje = zPola(ark.querySelector('#porcje')) || stan.porcje;
-  // Wagę przenosimy TYLKO wtedy, gdy wpisał ją człowiek. Wartość policzona
-  // automatycznie ma się przeliczyć po powrocie, razem z nowym składnikiem.
-  stan.waga = stan.wagaRecznie ? (zPola(ark.querySelector('#waga')) || '') : '';
+  // Zapamiętujemy, co użytkownik zdążył wpisać, zanim podmienimy ekran — ale
+  // TYLKO wtedy, gdy pod spodem faktycznie stoi edytor. Na ten ekran wraca się
+  // też z podekranów (opis słowami, dziennik), gdzie tych pól nie ma: pusty
+  // odczyt kasował wtedy ręcznie wpisaną wagę gotowego dania.
+  if (ark.querySelector('#porcje')) {
+    stan.nazwa = (ark.querySelector('#nazwa') || {}).value || stan.nazwa;
+    stan.porcje = zPola(ark.querySelector('#porcje')) || stan.porcje;
+    // Wagę przenosimy TYLKO wtedy, gdy wpisał ją człowiek. Wartość policzona
+    // automatycznie ma się przeliczyć po powrocie, razem z nowym składnikiem.
+    stan.waga = stan.wagaRecznie ? (zPola(ark.querySelector('#waga')) || '') : '';
+  }
 
   ark.innerHTML = `
     <div class="ark-gl">
@@ -709,7 +720,15 @@ function ekranSkladnika(gotowe, stan) {
       <h2>Dodaj składnik</h2>
       <button class="x" id="zamknij" type="button" aria-label="Zamknij">&times;</button>
     </div>
-    <input type="text" id="szukaj-skl" placeholder="Szukaj produktu" autocomplete="off">
+    <!-- Mikrofon w polu, a nie osobny przycisk pod spodem: to jedno pole na
+         „powiedz albo napisz". Krótka fraza idzie do wyszukiwarki, zdanie do AI
+         — rozstrzyga się to po długości, tak samo jak w dzienniku. -->
+    <div class="szukaj">
+      <input type="text" id="szukaj-skl" placeholder="Szukaj albo opisz składnik" autocomplete="off">
+      <button class="mik" id="skl-mik" type="button" aria-label="Podyktuj" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
+      </button>
+    </div>
     <div id="wyniki" style="margin-top:10px"></div>
     <div class="sek-tyt">Albo weź gotowe</div>
     <!-- Te same kafelki co na ekranie „Nowy przepis" — to jest w tej apce wzorzec
@@ -729,6 +748,12 @@ function ekranSkladnika(gotowe, stan) {
       <button class="droga" id="skl-przepis" type="button">
         <b>Inne Twoje danie</b><span>Złóż danie z dań, które już masz</span>
       </button>
+      <button class="droga" id="skl-opis" type="button">
+        <b>Opisz słowami</b><span>AI rozłoży „garść orzechów" na wartości</span>
+      </button>
+      <button class="droga" id="skl-dziennik" type="button">
+        <b>Z dziennika</b><span>Weź to, co już jadłeś w inne dni</span>
+      </button>
     </div>
     <div id="skl-przepisy" style="display:none;margin-bottom:8px"></div>
     <div id="skl-skaner" style="display:none;margin-bottom:8px">
@@ -736,12 +761,16 @@ function ekranSkladnika(gotowe, stan) {
       <div class="komunikat">Skieruj aparat na kod kreskowy.</div>
     </div>
     <!-- Pola plików: <label for>, a nie .click() ze skryptu — etykieta otwiera
-         aparat natywnie i znosi całą klasę błędów, w których stuknięcie nie
+         wybór pliku natywnie i znosi całą klasę błędów, w których stuknięcie nie
          robiło nic i nawet nie zgłaszało błędu. Nie chowamy ich przez
-         display:none, bo takie pole bywa traktowane jak nieistniejące. -->
-    <input type="file" id="skl-plik-przod" accept="image/*" capture="environment"
+         display:none, bo takie pole bywa traktowane jak nieistniejące.
+
+         Bez atrybutu capture: wymusza on aparat i odbiera wybór pliku
+         z dysku, a przepis składa się zwykle przy stole, ze zdjęć zrobionych
+         wcześniej w sklepie albo przysłanych przez kogoś. -->
+    <input type="file" id="skl-plik-przod" accept="image/*"
            style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
-    <input type="file" id="skl-plik-tyl" accept="image/*" capture="environment"
+    <input type="file" id="skl-plik-tyl" accept="image/*"
            style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
     <div class="sek-tyt">Albo wpisz wprost</div>
     <input type="text" id="r-nazwa" placeholder="Nazwa składnika" autocomplete="off">
@@ -763,8 +792,11 @@ function ekranSkladnika(gotowe, stan) {
   // to KAŻDA droga, a nie tylko zamknięcie arkusza.
   const zatrzymaj = () => {
     if (window.Skaner) window.Skaner.stop();
+    if (window.Dyktowanie) Dyktowanie.stop();
     const podglad = ark.querySelector('#skl-skaner');
     if (podglad) podglad.style.display = 'none';
+    const m = ark.querySelector('#skl-mik');
+    if (m) m.classList.remove('slucha');
   };
   ark.querySelector('#zamknij').onclick = () => { zatrzymaj(); zamknijArkusz(); };
   ark.querySelector('#wroc').onclick = () => { zatrzymaj(); otworzEdytorZeStanem(stan); };
@@ -993,6 +1025,77 @@ function ekranSkladnika(gotowe, stan) {
   // opuszczeniu ekranu, bo `gotowe()` tylko podmienia zawartość arkusza.
   ark.querySelector('#r-nazwa').addEventListener('focus', zatrzymaj);
 
+  // ── opis słowami → AI ──
+  //
+  // Ten sam endpoint co w dzienniku (`/api/eat/opis`). Zwraca listę pozycji
+  // z wartościami dla PODANEJ ilości, a składnik przepisu potrzebuje dokładnie
+  // tego samego — więc nic nie trzeba przeliczać.
+  const opisemDoAI = async (tekst) => {
+    zatrzymaj();
+    const opis = (tekst || '').trim();
+    if (opis.length < 3) { komunikat('Napisz, co wchodzi w skład dania.', true); return; }
+    komunikat('Szacuję…');
+    try {
+      const r = await authFetch('/api/eat/opis', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opis }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { komunikat(d.detail || 'Nie udało się oszacować.', true); return; }
+      komunikat('');
+      ekranPozycjiSkladnikow(d.pozycje || [], opis, gotowe, stan);
+    } catch { komunikat('Błąd połączenia.', true); }
+  };
+
+  ark.querySelector('#skl-opis').onclick = () => {
+    // Stuknięcie przy pustym polu to prośba o miejsce na opis, a nie błąd —
+    // ta sama poprawka co w dzienniku, gdzie witało to czerwonym komunikatem.
+    if (!szukajka.value.trim()) {
+      szukajka.placeholder = 'np. dwie garście orzechów i łyżka miodu';
+      szukajka.focus();
+      return;
+    }
+    opisemDoAI(szukajka.value);
+  };
+
+  ark.querySelector('#skl-dziennik').onclick = () => {
+    zatrzymaj();
+    ekranDziennikaSkladnika(new Date().toLocaleDateString('sv-SE'), '', gotowe, stan);
+  };
+
+  // ── dyktowanie ──
+  //
+  // Przycisk pokazujemy TYLKO tam, gdzie zadziała — obiecywanie funkcji, której
+  // ta przeglądarka nie ma, jest gorsze niż jej brak.
+  const mik = ark.querySelector('#skl-mik');
+  if (window.Dyktowanie && Dyktowanie.dostepne()) {
+    mik.hidden = false;
+    mik.onclick = () => {
+      if (Dyktowanie.sluchaMy()) { Dyktowanie.stop(); return; }
+      zatrzymaj();
+      Dyktowanie.start({
+        onStan: (slucha) => {
+          mik.classList.toggle('slucha', slucha);
+          if (slucha) komunikat('Słucham…');
+        },
+        onTekst: (tekst) => {
+          if (!tekst) return;
+          szukajka.value = tekst;
+          komunikat('');
+          // Krótka fraza to prawie zawsze nazwa produktu („serek wiejski"),
+          // a nie opis. Wyszukiwarka odpowiada od razu, za darmo i pokazuje
+          // Wasze własne produkty; AI ma sens dopiero przy „dwie garście
+          // orzechów i łyżka miodu". Gdy wyszukiwarka nic nie znajdzie,
+          // kafelek „Opisz słowami" wciąż stoi obok.
+          const slowa = tekst.split(/\s+/).filter(Boolean);
+          if (slowa.length <= 2 && tekst.length <= 30) szukajka.dispatchEvent(new Event('input'));
+          else opisemDoAI(tekst);
+        },
+        onBlad: (t) => { mik.classList.remove('slucha'); komunikat(t, true); },
+      });
+    };
+  }
+
   ark.querySelector('#dodaj-r').onclick = () => {
     const nazwa = ark.querySelector('#r-nazwa').value.trim();
     const gram = zPola(ark.querySelector('#r-gram'));
@@ -1007,6 +1110,254 @@ function ekranSkladnika(gotowe, stan) {
       wegle: zPola(ark.querySelector('#r-w')),
     });
   };
+}
+
+// ── pozycje z AI do zatwierdzenia ───────────────────────────────────────────
+//
+// Bliźniak ekranu z dziennika: model zwraca kilka pozycji, człowiek odznacza
+// to, czego w daniu nie ma, i poprawia gramatury. Do przepisu wchodzą dopiero
+// zatwierdzone — oszacowanie AI wpisane wprost do książki przepisów zostałoby
+// tam na zawsze, bo przepisu nie ogląda się drugi raz tak jak dnia.
+function ekranPozycjiSkladnikow(pozycje, opis, gotowe, stan) {
+  const ark = arkusz && arkusz.querySelector('.ark');
+  if (!ark) return;
+  if (!pozycje.length) {
+    komunikat('Nic z tego nie wyszło — opisz dokładniej albo wpisz wprost.', true);
+    return;
+  }
+
+  ark.innerHTML = `
+    <div class="ark-gl">
+      <button class="x" id="wroc" type="button" aria-label="Wróć">‹</button>
+      <h2>Sprawdź i popraw</h2>
+      <button class="x" id="zamknij" type="button" aria-label="Zamknij">&times;</button>
+    </div>
+    <div class="komunikat">Z opisu „${e(opis)}". Odznacz, czego w daniu nie ma,
+      popraw gramatury.</div>
+    ${pozycje.map((p, i) => `
+      <div class="poz-edyt">
+        <input type="checkbox" data-zazn="${i}" checked aria-label="Weź ${e(p.nazwa)}">
+        <div class="pe-tresc">
+          <div class="pe-nazwa">${e(p.nazwa)}</div>
+          <div class="pe-linia">
+            <input type="text" data-gram="${i}" value="${dziesietne(p.ilosc_g)}"
+                   inputmode="decimal" autocomplete="off"
+                   aria-label="Gramatura ${e(p.nazwa)}"> g
+            <span class="pe-kcal" data-kcal="${i}">${zaokr(p.kcal)} kcal</span>
+          </div>
+        </div>
+      </div>`).join('')}
+    <div class="suma" id="poz-suma"></div>
+    <div id="ark-komunikat"></div>
+    <button class="cta" id="dodaj-poz" type="button">Dodaj do przepisu</button>`;
+
+  // Wartości z AI dotyczą PODANEJ ilości, więc poprawka gramatury przelicza je
+  // proporcjonalnie — tak samo jak w dzienniku.
+  const bazowe = pozycje.map((p) => ({
+    g: Number(p.ilosc_g) || 100, kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
+    tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
+  }));
+  const biezaca = (i) => {
+    const g = zPola(ark.querySelector(`[data-gram="${i}"]`));
+    const b = bazowe[i];
+    const m = b.g > 0 ? g / b.g : 0;
+    return { g, kcal: b.kcal * m, bialko: b.bialko * m, tluszcz: b.tluszcz * m, wegle: b.wegle * m };
+  };
+  const wybrane = () => pozycje
+    .map((p, i) => ({ p, i }))
+    .filter(({ i }) => ark.querySelector(`[data-zazn="${i}"]`).checked);
+
+  const przelicz = () => {
+    const suma = { kcal: 0, bialko: 0, tluszcz: 0, wegle: 0, g: 0 };
+    pozycje.forEach((_, i) => {
+      const v = biezaca(i);
+      ark.querySelector(`[data-kcal="${i}"]`).textContent = zaokr(v.kcal) + ' kcal';
+      if (!ark.querySelector(`[data-zazn="${i}"]`).checked) return;
+      suma.kcal += v.kcal; suma.bialko += v.bialko;
+      suma.tluszcz += v.tluszcz; suma.wegle += v.wegle; suma.g += v.g;
+    });
+    ark.querySelector('#poz-suma').innerHTML = `
+      <div class="suma-kc">${zaokr(suma.kcal)} kcal</div>
+      <div class="suma-mk"><span>B <b>${dziesietne(suma.bialko)} g</b></span>
+        <span>T <b>${dziesietne(suma.tluszcz)} g</b></span>
+        <span>W <b>${dziesietne(suma.wegle)} g</b></span></div>
+      <div class="suma-pod">${dziesietne(suma.g)} g w ${wybrane().length} zaznaczonych</div>`;
+  };
+  przelicz();
+  ark.querySelectorAll('[data-gram], [data-zazn]').forEach((el) => {
+    el.addEventListener('input', przelicz);
+    el.addEventListener('change', przelicz);
+  });
+
+  ark.querySelector('#zamknij').onclick = () => zamknijArkusz();
+  ark.querySelector('#wroc').onclick = () => ekranSkladnika(gotowe, stan);
+  ark.querySelector('#dodaj-poz').onclick = () => {
+    const lista = wybrane();
+    if (!lista.length) { komunikat('Zaznacz przynajmniej jedną pozycję.', true); return; }
+    gotowe(lista.map(({ p, i }) => {
+      const v = biezaca(i);
+      return {
+        produkt_id: null, nazwa: String(p.nazwa || '').slice(0, 120),
+        // Gramatura musi być dodatnia — serwer odrzuca zero, a pozycja bez wagi
+        // i tak nie wniosłaby do przepisu niczego policzalnego.
+        ilosc_g: Math.max(0.1, Math.round(v.g * 10) / 10),
+        kcal: Math.round(v.kcal * 10) / 10, bialko: Math.round(v.bialko * 10) / 10,
+        tluszcz: Math.round(v.tluszcz * 10) / 10, wegle: Math.round(v.wegle * 10) / 10,
+      };
+    }));
+  };
+}
+
+// ── składnik z dziennika ────────────────────────────────────────────────────
+//
+// Przepis powstaje najczęściej z czegoś, co się już raz zjadło i zapisało.
+// Dotąd jedyną drogą było wpisanie tego drugi raz z ręki albo szukanie tych
+// samych produktów od nowa.
+//
+// Wartości bierzemy z WPISU, nie z produktu: w dzienniku stoi ta gramatura,
+// która naprawdę poszła na talerz.
+let licznikDziennika = 0;
+
+async function ekranDziennikaSkladnika(iso, filtr, gotowe, stan) {
+  const ark = arkusz && arkusz.querySelector('.ark');
+  if (!ark) return;
+  const moje = ++licznikDziennika;
+  const dzis = new Date().toLocaleDateString('sv-SE');
+
+  // Szkielet rysujemy raz, żeby pole filtru nie znikało pod palcem przy
+  // przerysowaniu listy.
+  if (!ark.querySelector('#d-filtr')) {
+    ark.innerHTML = `
+      <div class="ark-gl">
+        <button class="x" id="wroc" type="button" aria-label="Wróć">‹</button>
+        <h2>Z dziennika</h2>
+        <button class="x" id="zamknij" type="button" aria-label="Zamknij">&times;</button>
+      </div>
+      <div class="gdzie" style="margin-bottom:8px">
+        <button id="d-poprz" type="button" aria-label="Poprzedni dzień">‹</button>
+        <button id="d-etykieta" type="button" style="flex:3"></button>
+        <button id="d-nast" type="button" aria-label="Następny dzień">›</button>
+      </div>
+      <input type="date" id="d-data" style="width:100%;margin-bottom:8px" max="${dzis}">
+      <input type="text" id="d-filtr" placeholder="Zawęź w tym dniu" autocomplete="off">
+      <div id="d-lista" style="margin-top:10px"><div class="komunikat">Wczytuję…</div></div>
+      <div id="ark-komunikat"></div>`;
+    ark.querySelector('#zamknij').onclick = () => zamknijArkusz();
+    ark.querySelector('#wroc').onclick = () => ekranSkladnika(gotowe, stan);
+    ark.querySelector('#d-filtr').addEventListener('input', (ev) => {
+      // Filtr działa na już pobranym dniu — bez opóźnienia i bez żądania.
+      ekranDziennikaSkladnika(ark.dataset.iso || iso, ev.target.value, gotowe, stan);
+    });
+    ark.querySelector('#d-data').addEventListener('change', (ev) => {
+      if (ev.target.value) ekranDziennikaSkladnika(ev.target.value, '', gotowe, stan);
+    });
+    const skok = (o) => {
+      const d = new Date((ark.dataset.iso || iso) + 'T12:00:00');
+      d.setDate(d.getDate() + o);
+      const nowy = d.toLocaleDateString('sv-SE');
+      if (nowy > dzis) return;          // w przyszłość nie ma po co iść
+      ekranDziennikaSkladnika(nowy, '', gotowe, stan);
+    };
+    ark.querySelector('#d-poprz').onclick = () => skok(-1);
+    ark.querySelector('#d-nast').onclick = () => skok(1);
+  }
+  ark.dataset.iso = iso;
+  ark.querySelector('#d-etykieta').textContent = etykietaDnia(iso);
+  ark.querySelector('#d-data').value = iso;
+  ark.querySelector('#d-nast').disabled = iso >= dzis;
+  if (ark.querySelector('#d-filtr').value !== (filtr || '')) {
+    ark.querySelector('#d-filtr').value = filtr || '';
+  }
+
+  let d;
+  try {
+    const r = await authFetch('/api/eat/dzien?data=' + encodeURIComponent(iso));
+    if (!r.ok) throw new Error('brak');
+    d = await r.json();
+  } catch {
+    const box = ark.querySelector('#d-lista');
+    if (box) box.innerHTML = '<div class="komunikat blad">Nie udało się wczytać tego dnia.</div>';
+    return;
+  }
+  // Starsza odpowiedź nie może nadpisać nowszej (szybkie stukanie w strzałki).
+  if (moje !== licznikDziennika || !arkusz) return;
+  const box = ark.querySelector('#d-lista');
+  if (!box) return;
+
+  const szukane = (filtr || '').trim().toLowerCase();
+  const pasuje = (t) => !szukane || (t || '').toLowerCase().includes(szukane);
+  // Wpisy trzymamy poza HTML-em: wciskanie całego wpisu w atrybut data-* to
+  // połowa błędów z cudzysłowami.
+  const pojedyncze = [];
+  const dania = [];
+  const naSkladnik = (w) => ({
+    produkt_id: w.produkt_id || null,
+    nazwa: String(w.nazwa || '').slice(0, 120),
+    ilosc_g: Math.max(0.1, Number(w.ilosc_g) || 0.1),
+    kcal: Number(w.kcal) || 0, bialko: Number(w.bialko) || 0,
+    tluszcz: Number(w.tluszcz) || 0, wegle: Number(w.wegle) || 0,
+  });
+  const wiersz = (w, wciety) => {
+    const i = pojedyncze.push(w) - 1;
+    return `<button class="szybka" data-w="${i}" type="button"
+              ${wciety ? 'style="margin-left:16px"' : ''}>
+      <span class="nz"><b>${e(w.nazwa)}</b><span>${e(w.opis_porcji
+        || dziesietne(w.ilosc_g) + ' g')} · ${zaokr(w.kcal)} kcal</span></span>
+    </button>`;
+  };
+
+  let html = '';
+  POSILKI.forEach(([klucz, nazwaP]) => {
+    const wszystkie = (d.posilki && d.posilki[klucz]) || [];
+    if (!wszystkie.length) return;
+    let tresc = '';
+    // Danie zapisane jako grupa jest JEDNYM wyborem — po to się je scalało.
+    // Składniki zostają pod spodem, wcięte, gdyby chciało się wziąć tylko jeden.
+    const grupy = {};
+    const kolejnosc = [];
+    wszystkie.forEach((w) => {
+      if (!w.grupa_id) { kolejnosc.push({ wpis: w }); return; }
+      if (grupy[w.grupa_id] === undefined) {
+        grupy[w.grupa_id] = kolejnosc.length;
+        kolejnosc.push({ nazwa: w.grupa_nazwa || 'Danie', skladniki: [] });
+      }
+      kolejnosc[grupy[w.grupa_id]].skladniki.push(w);
+    });
+    kolejnosc.forEach((el) => {
+      if (el.wpis) {
+        if (pasuje(el.wpis.nazwa)) tresc += wiersz(el.wpis, false);
+        return;
+      }
+      if (!(pasuje(el.nazwa) || el.skladniki.some((s) => pasuje(s.nazwa)))) return;
+      const kcal = el.skladniki.reduce((s, w) => s + Number(w.kcal || 0), 0);
+      const di = dania.push(el) - 1;
+      tresc += `<button class="szybka" data-d="${di}" type="button">
+        <span class="nz"><b>${e(el.nazwa)}</b><span>całe danie · ${el.skladniki.length} skł.
+          · ${zaokr(kcal)} kcal</span></span>
+      </button>`;
+      el.skladniki.forEach((w) => { if (pasuje(w.nazwa)) tresc += wiersz(w, true); });
+    });
+    if (tresc) html += `<div class="sek-tyt">${nazwaP}</div>` + tresc;
+  });
+
+  box.innerHTML = html || `<div class="komunikat">${szukane
+    ? 'Nic takiego w tym dniu.'
+    : 'W tym dniu nic nie zapisałeś. Przejdź strzałkami do innego dnia.'}</div>`;
+  box.querySelectorAll('[data-w]').forEach((b) => {
+    b.onclick = () => gotowe(naSkladnik(pojedyncze[Number(b.dataset.w)]));
+  });
+  box.querySelectorAll('[data-d]').forEach((b) => {
+    b.onclick = () => gotowe(dania[Number(b.dataset.d)].skladniki.map(naSkladnik));
+  });
+}
+
+function etykietaDnia(iso) {
+  const dzis = new Date().toLocaleDateString('sv-SE');
+  if (iso === dzis) return 'Dziś';
+  const wczoraj = new Date(Date.now() - 86400000).toLocaleDateString('sv-SE');
+  if (iso === wczoraj) return 'Wczoraj';
+  return new Date(iso + 'T12:00:00').toLocaleDateString('pl-PL',
+    { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
 // ── start ───────────────────────────────────────────────────────────────────
