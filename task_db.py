@@ -17,7 +17,19 @@ from datetime import date, timedelta
 from database import get_db
 from task_drzewo import wykryj_cykl  # re-eksport: używają go kolejne funkcje w tym pliku
 
-STATUSY = ("otwarte", "zrobione")
+# „wstrzymane" to trzeci stan, nie odmiana dwóch pozostałych: zadanie, które
+# czeka na kogoś albo na później, nie jest ani otwarte (bo nie ma co z nim
+# dziś robić i nie ma przypominać), ani zrobione (bo nie jest). Wpychanie go
+# w „zrobione" kłamałoby w historii, a zostawianie w „otwarte" znaczyło, że
+# lista codzienna zaczyna kłamać o tym, co jest do zrobienia.
+STATUSY = ("otwarte", "zrobione", "wstrzymane")
+
+# Priorytet: -1 niski, 0 zwykły, 1 wysoki. Liczba, nie tekst, bo to skala
+# porządkowa i sortowanie ma być zadaniem bazy. TRZY stopnie, nie pięć i nie
+# macierz Eisenhowera — ta ostatnia była świadomie odrzucona przy projektowaniu
+# modułu: dwa wymiary (ważne × pilne) wymagają decyzji przy KAŻDYM zadaniu,
+# a pilność i tak niesie termin.
+PRIORYTETY = (-1, 0, 1)
 
 
 def init_task_db() -> None:
@@ -66,6 +78,10 @@ def init_task_db() -> None:
         # Wykres pyta o zadania z jakąkolwiek datą w zadanym oknie czasu.
         cur.execute("CREATE INDEX IF NOT EXISTS task_zadania_plan "
                     "ON task_zadania (household_id, data_start, termin)")
+
+        # ── priorytet ──────────────────────────────────────────────────────
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS "
+                    "priorytet SMALLINT NOT NULL DEFAULT 0")
 
         # ── cykliczność ────────────────────────────────────────────────────
         # NIE generujemy wystąpień z góry. Zadanie powtarzalne to jeden wiersz;
@@ -188,11 +204,22 @@ def _p(household_id, user_id, *reszta):
 
 
 _POLA = """id, parent_id, tytul, opis, termin, pora, data_start, projekt,
-           powtarzaj, powtarzaj_co, strefa_id,
+           powtarzaj, powtarzaj_co, strefa_id, priorytet,
            wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
            status, zrobione_at, kolejnosc, utworzyl"""
 
 OKRESY = ("dzien", "tydzien", "miesiac", "rok")
+
+
+def _priorytet(v) -> int:
+    """Cokolwiek przyjdzie z zewnątrz → jeden z trzech dozwolonych stopni.
+    Kolumna jest SMALLINT NOT NULL, więc śmieć z formularza kończyłby się
+    błędem 500 zamiast czytelnym zachowaniem."""
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return 0
+    return n if n in PRIORYTETY else 0
 
 
 def zaleznosci(household_id: int) -> list[dict]:
@@ -346,10 +373,25 @@ def pary_gospodarstwa(household_id):
         return [(r["id"], r["parent_id"]) for r in cur.fetchall()]
 
 
-def lista(household_id, user_id, zakres="dzis", osoba_user_id=None, strefa=None):
+# Ile wstecz sięgamy po zadania ZAMKNIĘTE. Otwartych nie ograniczamy w czasie —
+# jest ich tyle, ile ktoś zaniedbał — ale zrobione narastają bez końca i bez
+# limitu widok „wszystko" po roku używania byłby archiwum, nie listą.
+ZROBIONE_DNI = 90
+
+
+def lista(household_id, user_id, czas="wszystko", status="otwarte",
+          osoba_user_id=None, strefa=None):
     """Płaska lista zadań. Drzewo składa front — patrz nagłówek pliku.
 
-    UWAGA: zwracamy też przodków zadań pasujących do zakresu, inaczej krok
+    DWA NIEZALEŻNE FILTRY, nie jeden. Wcześniej `zakres` mieszał czas ze
+    stanem („Dziś" znaczyło też „otwarte", „Zrobione" znaczyło też „kiedykolwiek")
+    i nie dało się zobaczyć, co w projekcie zostało DOMKNIĘTE, a co wisi — a to
+    jest właśnie kontekst potrzebny przy otwartym kroku: co go poprzedzało.
+
+    `czas`:   wszystko | dzis | wkrotce
+    `status`: wszystkie | otwarte | zrobione | wstrzymane
+
+    UWAGA: zwracamy też przodków zadań pasujących do filtrów, inaczej krok
     z terminem na dziś wisiałby na liście bez rodzica i bez kontekstu.
 
     `strefa`: None to wszystkie strefy, do których mam dostęp; liczba zawęża
@@ -362,23 +404,28 @@ def lista(household_id, user_id, zakres="dzis", osoba_user_id=None, strefa=None)
     if strefa:
         warunki.append("strefa_id = %s")
         p.append(strefa)
-    if zakres == "dzis":
-        warunki.append("status = 'otwarte' AND termin IS NOT NULL AND termin <= CURRENT_DATE")
-    elif zakres == "nadchodzace":
-        warunki.append("status = 'otwarte' AND (termin IS NULL OR termin > CURRENT_DATE)")
-    elif zakres == "wszystkie":
-        # Wszystko otwarte, bez pytania o datę. „Dziś" i „Nadchodzące" dzielą
-        # zadania po terminie, więc żeby zobaczyć całość, trzeba było przełączać
-        # się tam i z powrotem i składać listę w głowie.
-        warunki.append("status = 'otwarte'")
-    else:
-        warunki.append("status = 'zrobione' AND zrobione_at > now() - INTERVAL '30 days'")
+
+    if czas == "dzis":
+        warunki.append("termin IS NOT NULL AND termin <= CURRENT_DATE")
+    elif czas == "wkrotce":
+        warunki.append("(termin IS NULL OR termin > CURRENT_DATE)")
+
+    if status in ("otwarte", "zrobione", "wstrzymane"):
+        warunki.append("status = %s")
+        p.append(status)
+    # Zamknięte przycinamy zawsze, także w „wszystkie" — inaczej filtr stanu
+    # nabrałby po cichu drugiego znaczenia („i całe archiwum przy okazji").
+    if status in ("zrobione", "wszystkie"):
+        warunki.append(f"(status <> 'zrobione' OR zrobione_at > now() - INTERVAL '{ZROBIONE_DNI} days')")
     if osoba_user_id:
         warunki.append("wykonawca_user_id = %s")
         p.append(osoba_user_id)
     with get_db() as cur:
+        # Termin PRZED priorytetem: to on mówi, czy coś jest na dziś, a priorytet
+        # rozstrzyga dopiero remis w obrębie tego samego dnia. Odwrotna kolejność
+        # wypychałaby ważne zadanie z odległym terminem nad to, które płonie dziś.
         cur.execute(f"SELECT {_POLA} FROM task_zadania WHERE " + " AND ".join(warunki)
-                    + " ORDER BY termin NULLS LAST, kolejnosc, id", p)
+                    + " ORDER BY termin NULLS LAST, priorytet DESC, kolejnosc, id", p)
         wiersze = [dict(r) for r in cur.fetchall()]
         znane = {w["id"] for w in wiersze}
         brakujacy = {w["parent_id"] for w in wiersze if w["parent_id"] and w["parent_id"] not in znane}
@@ -638,10 +685,10 @@ def dodaj(household_id, user_id, d) -> int:
     with get_db() as cur:
         cur.execute("""INSERT INTO task_zadania
             (household_id, parent_id, tytul, opis, termin, pora, data_start, projekt,
-             powtarzaj, powtarzaj_co, strefa_id,
+             powtarzaj, powtarzaj_co, strefa_id, priorytet,
              wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
              utworzyl, kolejnosc)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     COALESCE((SELECT MAX(kolejnosc) + 1 FROM task_zadania
                               WHERE household_id = %s AND parent_id IS NOT DISTINCT FROM %s), 0))
             RETURNING id""",
@@ -651,6 +698,7 @@ def dodaj(household_id, user_id, d) -> int:
              # przedsięwzięciem, tylko jego częścią.
              bool(d.get("projekt")) and not parent_id,
              d.get("powtarzaj"), d.get("powtarzaj_co") or 1, strefa,
+             _priorytet(d.get("priorytet")),
              d.get("wykonawca_user_id"), d.get("wykonawca_virtual_id"),
              prywatne, bool(d.get("kamien_milowy")), user_id, household_id, parent_id))
         return cur.fetchone()["id"]
@@ -689,7 +737,7 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
         cur.execute("""UPDATE task_zadania SET
               tytul = %s, opis = %s, termin = %s, pora = %s, parent_id = %s,
               data_start = %s, projekt = %s,
-              powtarzaj = %s, powtarzaj_co = %s,
+              powtarzaj = %s, powtarzaj_co = %s, priorytet = %s,
               wykonawca_user_id = %s, wykonawca_virtual_id = %s,
               kamien_milowy = %s, prywatne_dla = %s,
               przypomniano_at = CASE WHEN termin IS DISTINCT FROM %s
@@ -705,6 +753,9 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
              # więc zdejmujemy je razem z terminem zamiast zostawiać martwe.
              d.get("powtarzaj") if d.get("termin") else None,
              d.get("powtarzaj_co") or 1,
+             # Brak klucza znaczy „nie ruszaj" — formularze, które o priorytet
+             # nie pytają (np. szybkie łapanie), nie mogą go po cichu zerować.
+             _priorytet(d["priorytet"]) if "priorytet" in d else stare.get("priorytet", 0),
              d.get("wykonawca_user_id"), d.get("wykonawca_virtual_id"),
              bool(d.get("kamien_milowy")), prywatne, d.get("termin"), d.get("pora"),
              household_id, zadanie_id))
@@ -879,6 +930,41 @@ def ustaw_status(household_id, user_id, zadanie_id, zrobione, kaskada=False) -> 
         if zrobione and zmienione and biezace.get("powtarzaj"):
             _powtorz(cur, household_id, biezace)
         return zmienione
+
+
+def wstrzymaj(household_id, user_id, zadanie_id, wstrzymane, kaskada=False) -> int:
+    """Wstrzymuje zadanie albo je wznawia. Osobna funkcja od `ustaw_status`,
+    bo tamta obraca się wokół „zrobione czy nie" — ma kolumnę `zrobione_at`
+    i rodzi kolejne wystąpienie zadania powtarzalnego. Wstrzymanie nie jest
+    żadnym z tych zdarzeń: nic się nie wydarzyło, tylko przestajemy o tym
+    przypominać.
+
+    Kaskada schodzi w dół poddrzewa: wstrzymany remont, którego kroki dalej
+    przypominają o sobie codziennie, byłby wstrzymany tylko z nazwy.
+
+    Wznowienie zawsze wraca do „otwarte" — także dla zadań, które w międzyczasie
+    ktoś odhaczył? NIE: warunek `status = 'wstrzymane'` pilnuje, żeby wznowienie
+    nie odhaczało zrobionych kroków wstrzymanego projektu.
+    """
+    if not pobierz(household_id, user_id, zadanie_id):
+        return 0
+    nowy = "wstrzymane" if wstrzymane else "otwarte"
+    stary = "otwarte" if wstrzymane else "wstrzymane"
+    with get_db() as cur:
+        if kaskada:
+            cur.execute("""WITH RECURSIVE poddrzewo AS (
+                  SELECT id FROM task_zadania WHERE id = %s
+                  UNION ALL
+                  SELECT z.id FROM task_zadania z JOIN poddrzewo p ON z.parent_id = p.id)
+                UPDATE task_zadania SET status = %s
+                WHERE id IN (SELECT id FROM poddrzewo) AND household_id = %s
+                  AND status = %s""",
+                (zadanie_id, nowy, household_id, stary))
+        else:
+            cur.execute("""UPDATE task_zadania SET status = %s
+                WHERE id = %s AND household_id = %s AND status = %s""",
+                (nowy, zadanie_id, household_id, stary))
+        return cur.rowcount
 
 
 def usun(household_id, user_id, zadanie_id) -> bool:

@@ -51,8 +51,14 @@ const TRYB_PROJEKTY = location.pathname.replace(/\/$/, '') === '/projekty';
 // w szczegóły i powrót wracało do „Dziś", więc praca nad czymś odległym
 // w czasie znaczyła przestawianie filtra po każdej zmianie.
 // Domyślnie „Wszystkie": po wejściu ma być widać całość, a nie wycinek.
-let zakres = TRYB_PLANU ? 'plan'
-  : (TRYB_PROJEKTY ? 'wszystkie' : (localStorage.getItem('task_zakres') || 'wszystkie'));
+//
+// DWA FILTRY, NIE JEDEN. Wcześniej jeden rząd chipów mieszał czas ze stanem:
+// „Dziś" znaczyło też „tylko otwarte", a „Zrobione" — „kiedykolwiek". Nie dało
+// się przez to zobaczyć, co w projekcie zostało domknięte, a co wisi; a przy
+// otwartym kroku to właśnie zamknięte poprzedniki niosą kontekst.
+let zakres = TRYB_PLANU ? 'plan' : 'lista';   // tylko rozróżnienie widoku
+let czas = TRYB_PROJEKTY ? 'wszystko' : (localStorage.getItem('task_czas') || 'wszystko');
+let stan = TRYB_PROJEKTY ? 'otwarte' : (localStorage.getItem('task_stan') || 'otwarte');
 let zadania = [];           // płasko, jak z serwera
 let korzen = null;          // null = widok listy; liczba = wejście w zadanie
 let widok = 'lista';        // lista | szczegoly
@@ -307,7 +313,7 @@ async function wczytaj() {
   // tego, czy termin już minął — oś czasu pokazuje rozpiętość, a nie „co dziś".
   if (zakres === 'plan') return wczytajPlan();
   try {
-    const r = await authFetch('/api/task/zadania?zakres=' + zakres + qStrefa());
+    const r = await authFetch(`/api/task/zadania?czas=${czas}&status=${stan}` + qStrefa());
     zadania = (await r.json()).zadania || [];
   } catch { zadania = []; toast('Nie udało się wczytać zadań.', 'blad'); }
   rysuj();
@@ -627,8 +633,12 @@ function podepnijPtaszki() {
 // 360 px zostają 332 — dwa piksele zapasu znika przy innym kroju albo
 // powiększonej czcionce systemowej i pasek łamie się na dwa rzędy (84 px
 // zamiast 38). Ze skróconą etykietą jeden rząd trzyma się do 320 px.
-const ZAKRESY = [['wszystkie', 'Wszystkie'], ['dzis', 'Dziś'],
-                 ['nadchodzace', 'Wkrótce'], ['zrobione', 'Zrobione']];
+// Dwa rzędy, bo to dwa różne pytania: „z jakiego czasu" i „w jakim stanie".
+// Etykiety krótkie z tego samego powodu co wcześniej: zmierzone w kontenerach
+// 320–412 px, długie nazwy łamią rząd na dwa i pasek rośnie z 38 na 84 px.
+const CZASY = [['wszystko', 'Cały czas'], ['dzis', 'Dziś'], ['wkrotce', 'Wkrótce']];
+const STANY = [['otwarte', 'Otwarte'], ['zrobione', 'Zrobione'],
+               ['wstrzymane', 'Wstrzymane'], ['wszystkie', 'Wszystkie']];
 
 const OKRESY = [['dzien', 'codziennie'], ['tydzien', 'co tydzień'],
                 ['miesiac', 'co miesiąc'], ['rok', 'co rok']];
@@ -1589,9 +1599,19 @@ function rysujLista() {
   const lista = aktualny ? aktualny.dzieci : drzewo;
 
   box().innerHTML = `
-    <div class="filtry" id="f-zakres">
-      ${ZAKRESY.map(([k, l]) => `<button class="chip" type="button" data-z="${k}"
-          aria-pressed="${k === zakres}">${l}</button>`).join('')}
+    <!-- Podpisy „kiedy" i „stan" nie są ozdobą: dwa rzędy identycznych chipów
+         bez nich czyta się jak jeden rozsypany filtr. -->
+    <div class="filtry-para">
+      <div class="filtry" id="f-czas">
+        <span class="f-etykieta">Kiedy</span>
+        ${CZASY.map(([k, l]) => `<button class="chip" type="button" data-c="${k}"
+            aria-pressed="${k === czas}">${l}</button>`).join('')}
+      </div>
+      <div class="filtry" id="f-stan">
+        <span class="f-etykieta">Stan</span>
+        ${STANY.map(([k, l]) => `<button class="chip" type="button" data-s="${k}"
+            aria-pressed="${k === stan}">${l}</button>`).join('')}
+      </div>
     </div>
     ${aktualny ? nagKorzenia(aktualny) : ''}
     <!-- Pole mówi WPROST, gdzie trafi wpis. Wcześniej wyglądało tak samo
@@ -1614,11 +1634,19 @@ function rysujLista() {
     <div class="zadania">${lista.map((w) => wiersz(w, 0)).join('') ||
       '<p class="pusto">Nic tu nie ma. Wpisz pierwsze zadanie powyżej.</p>'}</div>`;
 
-  document.getElementById('f-zakres').onclick = (ev) => {
-    const b = ev.target.closest('[data-z]');
+  document.getElementById('f-czas').onclick = (ev) => {
+    const b = ev.target.closest('[data-c]');
     if (!b) return;
-    zakres = b.dataset.z;
-    localStorage.setItem('task_zakres', zakres);
+    czas = b.dataset.c;
+    localStorage.setItem('task_czas', czas);
+    nowyId = null;
+    wczytaj();
+  };
+  document.getElementById('f-stan').onclick = (ev) => {
+    const b = ev.target.closest('[data-s]');
+    if (!b) return;
+    stan = b.dataset.s;
+    localStorage.setItem('task_stan', stan);
     nowyId = null;
     wczytaj();
   };
@@ -1651,13 +1679,14 @@ function rysujLista() {
       pole.value = '';
       nowyId = j.id || null;
       await wczytaj();
-      // Zadanie bez terminu trafia do „Nadchodzących", więc dodane na zakładce
-      // „Dziś" znikało bez śladu i wyglądało, jakby zapis się nie udał.
-      // Przechodzimy tam, gdzie faktycznie wylądowało, i mówimy o tym.
+      // Zadanie bez terminu nie pasuje do „Dziś", więc dodane na tym filtrze
+      // znikało bez śladu i wyglądało, jakby zapis się nie udał. Przechodzimy
+      // tam, gdzie faktycznie wylądowało, i mówimy o tym.
       if (nowyId && !zadania.some((z) => z.id === nowyId)) {
-        zakres = 'nadchodzace';
+        czas = 'wkrotce';
+        localStorage.setItem('task_czas', czas);
         await wczytaj();
-        toast('Zadanie bez terminu — trafiło do „Nadchodzących".', 'ok');
+        toast('Zadanie bez terminu — szukaj go w „Wkrótce".', 'ok');
       }
     } else {
       toast('Nie udało się zapisać zadania.', 'blad');
@@ -1718,6 +1747,17 @@ function naleziDo(z, projektId) {
   return false;
 }
 
+// Priorytet WIDAĆ przy tytule, a nie tylko w formularzu — ustawienie, którego
+// nie widać na liście, jest ozdobą. Wysoki dostaje wykrzyknik i kolor, niski
+// samą strzałkę w dół: ważne ma się rzucać w oczy, nieważne ma nie zabierać
+// uwagi. Zwykły priorytet nie ma znaku — cisza jest tu domyślną odpowiedzią.
+function znakPriorytetu(w) {
+  const p = Number(w.priorytet) || 0;
+  if (p > 0) return '<span class="zad-prio wysoki" title="Wysoki priorytet">!</span>';
+  if (p < 0) return '<span class="zad-prio niski" title="Niski priorytet">↓</span>';
+  return '';
+}
+
 function wiersz(w, poziom) {
   const p = postep(w);
   const nast = p.razem && w.status !== 'zrobione' ? nastepnyKrok(w) : {};
@@ -1726,30 +1766,39 @@ function wiersz(w, poziom) {
   const maDzieci = (w.dzieci || []).length > 0;
   return `
     <div class="zad-galaz">
-      <div class="zad${w.status === 'zrobione' ? ' zrobione' : ''}" data-zad="${w.id}">
+      <div class="zad${w.status === 'zrobione' ? ' zrobione' : ''}${
+          w.status === 'wstrzymane' ? ' wstrzymane' : ''}" data-zad="${w.id}">
         <!-- Nazwa dostaje CAŁĄ szerokość, kafelki idą pod nią. Ustawione obok
              siebie walczyły o miejsce: tytuł łamał się na trzy linijki, więc
              wiersz i tak był wysoki — tylko brzydziej. -->
         <div class="zad-glowna">
         <button class="ptaszek" type="button" data-ptaszek="${w.id}"
                 aria-label="Odhacz zadanie">${w.status === 'zrobione' ? ikonaSvg('ptaszek') : ''}</button>
+        <!-- ZWIJANIE PRZED TREŚCIĄ, nie w prawym rogu. Wcześniej licznik „2 z 5"
+             stał na końcu wiersza, bez ramki i w kolorze podpisu — Adam zgłosił,
+             że jest niewidoczny i nie wygląda na klikalny. Daszek z lewej to
+             wzorzec drzewa, który czyta się bez tłumaczenia (tak samo działa
+             kolumna nazw na wykresie Gantta), a ramka mówi „to jest przycisk". -->
+        ${p.razem && !w.kamien_milowy ? `<button class="zad-zwin${
+            zwiniete.has(w.id) ? ' zwiniety' : ''}" type="button" data-zwin="${w.id}"
+            aria-expanded="${!zwiniete.has(w.id)}"
+            aria-label="${zwiniete.has(w.id) ? 'Pokaż kroki' : 'Zwiń kroki'}"
+            title="${zwiniete.has(w.id) ? 'Pokaż kroki' : 'Zwiń kroki'}"
+            ><span class="zad-daszek">›</span>${p.gotowe}/${p.razem}</button>` : ''}
         <div class="zad-tresc">
           <!-- Plakietka „projekt" przy tytule: bez niej przedsięwzięcie wygląda
                na liście dokładnie jak zwykłe zadanie, a to ono zbiera kroki
                i ma własny kafel w zakładce Projekty. -->
-          <div class="zad-tytul">${w.kamien_milowy ? '<span class="kamien"></span>' : ''}${esc(w.tytul)}${
+          <div class="zad-tytul">${w.kamien_milowy ? '<span class="kamien"></span>' : ''}${
+            znakPriorytetu(w)}${esc(w.tytul)}${
             w.projekt ? '<span class="zad-projekt" title="Przedsięwzięcie — zbiera kroki">projekt</span>' : ''}${
+            w.status === 'wstrzymane'
+              ? '<span class="zad-stop" title="Wstrzymane — nie przypomina i nie liczy się do „dziś"">wstrzymane</span>'
+              : ''}${
             w.powtarzaj ? `<span class="zad-cykl" title="Po odhaczeniu wróci ${esc(opisPowtarzania(w))}">${
               esc(opisPowtarzania(w))}</span>` : ''}</div>
           ${nast.tytul ? `<div class="zad-nast">następne: ${esc(nast.tytul)}</div>` : ''}
         </div>
-        <!-- Licznik postępu zwija i rozwija kroki. „2 z 5" samo mówi, że w
-             środku coś jest, więc stuknięcie w nie po to, żeby to schować albo
-             pokazać, nie wymaga tłumaczenia. Daszek pokazuje, w którą stronę. -->
-        ${p.razem && !w.kamien_milowy ? `<button class="zad-postep${
-            zwiniete.has(w.id) ? ' zwiniety' : ''}" type="button" data-zwin="${w.id}"
-            title="${zwiniete.has(w.id) ? 'Pokaż kroki' : 'Zwiń kroki'}"
-            >${p.gotowe} z ${p.razem}<span class="zad-daszek">›</span></button>` : ''}
         </div>
         <!-- SZYBKIE POLA bez wchodzenia w formularz. Termin i wykonawca to
              dwie rzeczy ustawiane najczęściej, a dotąd wymagały otwarcia
@@ -2395,6 +2444,13 @@ function menuZadania(id) {
       <button type="button" class="lap-poz" id="menu-przenies">
         ${ikonaSvg('przenies')}<span class="nazwa">Przenieś do…</span>
         <span class="ile">${w.parent_id != null ? 'zmień miejsce' : 'do projektu'}</span></button>
+      <!-- Wstrzymanie sąsiaduje z przeniesieniem, a nie z usunięciem: to jest
+           odłożenie sprawy, nie pozbycie się jej. -->
+      <button type="button" class="lap-poz" id="menu-wstrzymaj">
+        ${ikonaSvg(w.status === 'wstrzymane' ? 'zadania' : 'pauza')}
+        <span class="nazwa">${w.status === 'wstrzymane' ? 'Wznów' : 'Wstrzymaj'}</span>
+        <span class="ile">${w.status === 'wstrzymane'
+          ? 'wróci na listę' : 'przestanie przypominać'}</span></button>
       <button type="button" class="lap-poz zle" id="menu-usun">
         ${ikonaSvg('kosz')}<span class="nazwa">Usuń</span></button>
     </div>`;
@@ -2403,6 +2459,10 @@ function menuZadania(id) {
   // działanie ekranowi obszarów aż do przeładowania strony.
   box.querySelector('#menu-szczegoly').onclick = () => { strefyZamknij(); otworzSzczegoly(id); };
   box.querySelector('#menu-przenies').onclick = () => { strefyZamknij(); przenOtworz(id); };
+  box.querySelector('#menu-wstrzymaj').onclick = () => {
+    strefyZamknij();
+    przelaczWstrzymanie(id, w.status !== 'wstrzymane');
+  };
   box.querySelector('#menu-usun').onclick = () => { strefyZamknij(); usunZadanie(id, w.tytul); };
 }
 
@@ -3243,6 +3303,18 @@ function rysujSzczegoly() {
       <label for="s-wykonawca">Wykonawca</label>
       <select id="s-wykonawca">${opcjeWykonawcy}</select>
     </div>
+    <!-- TRZY stopnie, nie pięć i nie macierz ważne × pilne: pilność niesie już
+         termin, a dwuwymiarowa siatka wymaga decyzji przy każdym zadaniu.
+         „Zwykły" jest domyślny i nie zostawia żadnego znaku na liście. -->
+    <div class="pole">
+      <label for="s-priorytet">Priorytet</label>
+      <select id="s-priorytet">
+        <option value="1"${Number(w.priorytet) > 0 ? ' selected' : ''}>Wysoki</option>
+        <option value="0"${!Number(w.priorytet) ? ' selected' : ''}>Zwykły</option>
+        <option value="-1"${Number(w.priorytet) < 0 ? ' selected' : ''}>Niski</option>
+      </select>
+      <div class="uwaga">Przy równym terminie ważniejsze idzie wyżej na liście.</div>
+    </div>
     <!-- Przeniesienie pod inne zadanie. Baza obsługiwała to od początku
          (z wykrywaniem pętli), ale nie było na to żadnego wejścia — sprawa,
          która okazała się częścią większego przedsięwzięcia, wymagała
@@ -3384,6 +3456,7 @@ function rysujSzczegoly() {
       termin: document.getElementById('s-termin').value || null,
       data_start: document.getElementById('s-start').value || null,
       pora: document.getElementById('s-pora').value || null,
+      priorytet: Number(document.getElementById('s-priorytet').value) || 0,
       wykonawca_user_id: wyk.startsWith('u:') ? Number(wyk.slice(2)) : null,
       wykonawca_virtual_id: wyk.startsWith('v:') ? Number(wyk.slice(2)) : null,
       kamien_milowy: document.getElementById('s-kamien').checked,
@@ -3450,6 +3523,25 @@ async function zapiszSzczegoly(id, dane, cicho = false) {
     toast('Błąd połączenia. Spróbuj ponownie.', 'blad');
     return false;
   }
+}
+
+// Wstrzymanie schodzi na CAŁE poddrzewo. Wstrzymany remont, którego kroki dalej
+// przypominają o sobie codziennie, byłby wstrzymany tylko z nazwy. Baza rusza
+// wyłącznie wiersze w stanie przeciwnym, więc wznowienie nie odhaczy niczego,
+// co ktoś w międzyczasie zamknął.
+async function przelaczWstrzymanie(id, wstrzymane) {
+  try {
+    const r = await authFetch(`/api/task/zadania/${id}/wstrzymanie`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wstrzymane, kaskada: true }),
+    });
+    if (!r.ok) { toast('Nie udało się zmienić zadania.', 'blad'); return; }
+    await wczytaj();
+    // Wstrzymane znika z „Otwartych", więc bez tego zdania wygląda na skasowane.
+    toast(wstrzymane
+      ? (stan === 'otwarte' ? 'Wstrzymane — znajdziesz je w stanie „Wstrzymane".' : 'Wstrzymane.')
+      : 'Wznowione.', 'ok');
+  } catch { toast('Błąd połączenia.', 'blad'); }
 }
 
 async function usunZadanie(id, tytul) {

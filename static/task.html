@@ -475,15 +475,44 @@
     .zad-nast { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .zad-termin { font-size: 12px; color: var(--muted); flex: none; }
     .zad-termin.po-czasie { color: var(--danger); font-weight: 600; }
-    /* Licznik postępu jest przyciskiem zwijania — wygląda jak etykieta, bo nią
-       jest, ale daszek i pole dotyku robią z niego coś klikalnego. */
-    .zad-postep { display: inline-flex; align-items: center; gap: 3px; flex: none;
-                  border: none; background: none; font: inherit; font-size: 12px;
-                  color: var(--muted); cursor: pointer; padding: 6px 2px; }
-    .zad-postep:hover { color: var(--marka); }
+    /* Przycisk zwijania kroków. Stał wcześniej na KOŃCU wiersza, bez ramki
+       i w kolorze podpisu — czytało się to jak etykieta, nie jak przełącznik,
+       i ginęło przy prawej krawędzi. Teraz jest przed treścią (wzorzec drzewa),
+       ma ramkę i licznik w środku: widać, że jest klikalny, i widać, ile kroków
+       chowa. */
+    .zad-zwin { display: inline-flex; align-items: center; gap: 2px; flex: none;
+                border: 1px solid var(--border); border-radius: 8px;
+                background: var(--surface-2); font: inherit; font-size: 11.5px;
+                font-variant-numeric: tabular-nums; color: var(--text);
+                cursor: pointer; padding: 3px 7px 3px 4px; min-height: 30px; }
+    .zad-zwin:hover { border-color: var(--marka); color: var(--marka); }
     .zad-daszek { display: inline-block; font-size: 15px; line-height: 1;
                   transform: rotate(90deg); transition: transform .15s; }
-    .zad-postep.zwiniety .zad-daszek { transform: rotate(0deg); }
+    .zad-zwin.zwiniety .zad-daszek { transform: rotate(0deg); }
+    .zad-zwin.zwiniety { border-color: var(--marka); color: var(--marka); }
+
+    /* Priorytet przy tytule. Wysoki krzyczy, niski szepcze, zwykły milczy. */
+    .zad-prio { display: inline-flex; align-items: center; justify-content: center;
+                width: 17px; height: 17px; border-radius: 5px; margin-right: 6px;
+                font-size: 11.5px; font-weight: 800; vertical-align: 1px; }
+    .zad-prio.wysoki { background: var(--danger-bg); color: var(--danger); }
+    .zad-prio.niski { color: var(--muted); font-weight: 600; }
+
+    /* Wstrzymane: plakietka i przygaszony wiersz. Zadanie nie jest zrobione,
+       więc NIE dostaje przekreślenia — to znak zarezerwowany dla zamkniętych. */
+    .zad-stop { display: inline-block; margin-left: 7px; padding: 0 7px;
+                border-radius: 999px; border: 1px dashed var(--border);
+                color: var(--muted); font-size: 10px; font-weight: 700;
+                letter-spacing: .05em; text-transform: uppercase;
+                white-space: nowrap; vertical-align: 2px; }
+    .zad.wstrzymane .zad-tytul { color: var(--muted); }
+    .zad.wstrzymane .ptaszek { opacity: .5; }
+
+    /* Dwa rzędy filtrów: czas i stan. Podpis przed chipami mówi, o co pyta
+       rząd — bez niego dwa identyczne rzędy czyta się jak jeden rozsypany. */
+    .filtry-para { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    .f-etykieta { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
+                  color: var(--muted); font-weight: 700; width: 42px; flex: none; }
     .zad-podkroki[hidden] { display: none; }
 
     /* Kafelki akcji POD nazwą, nie obok. Obok siebie walczyły z tytułem

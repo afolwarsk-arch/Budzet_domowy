@@ -65,6 +65,11 @@ def _dane(d: dict, nowe: bool) -> dict:
         # zadania idzie osobną trasą, bo dotyczy całego poddrzewa.
         "strefa_id": d.get("strefa_id") or None,
     }
+    # Brak klucza znaczy „nie ruszaj" — tak samo jak przy `parent_id` wyżej.
+    # Formularze, które o priorytet nie pytają (szybkie łapanie, dyktowanie),
+    # nie mogą go po cichu zerować przy każdym zapisie.
+    if nowe or "priorytet" in d:
+        dane["priorytet"] = d.get("priorytet") or 0
     # Data początku po terminie znaczy belkę cofniętą w czasie — wykres nie ma
     # jak tego narysować, a użytkownik prawie na pewno pomylił pola.
     if dane["data_start"] and dane["termin"] and dane["data_start"] > dane["termin"]:
@@ -77,13 +82,16 @@ def _dane(d: dict, nowe: bool) -> dict:
 
 
 @router.get("/zadania")
-def lista_zadan(zakres: str = "dzis", osoba: int | None = None,
-                strefa: int | None = None,
+def lista_zadan(czas: str = "wszystko", status: str = "otwarte",
+                osoba: int | None = None, strefa: int | None = None,
                 current_user: dict = Depends(get_current_user)):
-    if zakres not in ("dzis", "nadchodzace", "wszystkie", "zrobione"):
-        raise HTTPException(400, "Nieznany zakres")
+    """Dwa niezależne filtry: czas i stan — patrz `task_db.lista`."""
+    if czas not in ("wszystko", "dzis", "wkrotce"):
+        raise HTTPException(400, "Nieznany zakres czasu")
+    if status not in ("wszystkie", "otwarte", "zrobione", "wstrzymane"):
+        raise HTTPException(400, "Nieznany stan")
     return {"zadania": task_db.lista(_hid(current_user), current_user["user_id"],
-                                     zakres, osoba, strefa)}
+                                     czas, status, osoba, strefa)}
 
 
 @router.get("/zadania/{zadanie_id}/komentarze")
@@ -450,6 +458,23 @@ def status_zadania(zadanie_id: int, dane: dict,
                                bool(dane.get("zrobione")), bool(dane.get("kaskada")))
     if not ile:
         raise HTTPException(404, "Nie ma takiego zadania")
+    return {"zmienione": ile}
+
+
+@router.patch("/zadania/{zadanie_id}/wstrzymanie")
+def wstrzymanie_zadania(zadanie_id: int, dane: dict,
+                        current_user: dict = Depends(get_current_user)):
+    """Wstrzymuje zadanie albo je wznawia.
+
+    Osobna trasa od `/status`, bo to inne zdarzenie: tamta mówi „zrobione",
+    ta mówi „nie teraz". Wstrzymane zadanie znika z listy otwartych i przestaje
+    przypominać (tik czyta wyłącznie `status = 'otwarte'`), ale nie udaje
+    wykonanego.
+    """
+    ile = task_db.wstrzymaj(_hid(current_user), current_user["user_id"], zadanie_id,
+                            bool(dane.get("wstrzymane")), bool(dane.get("kaskada")))
+    if not ile:
+        raise HTTPException(404, "Nie ma takiego zadania albo już jest w tym stanie")
     return {"zmienione": ile}
 
 
