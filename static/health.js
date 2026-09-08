@@ -720,6 +720,11 @@ async function otworzWage() {
         <button class="btn btn-outline" type="button" id="wg-zamknij">Zamknij</button>
         <button class="btn btn-primary" type="button" id="wg-zapisz">Zapisz</button>
       </div>
+      <!-- Ten arkusz jest skrótem na „zważyłem się i wracam". Wykres, cel
+           i pełna historia mieszkają na /waga — tu tylko droga do nich. -->
+      <button class="btn btn-outline" type="button" id="wg-strona"
+              style="width:100%;margin-top:9px;min-height:44px;justify-content:center">
+        Wykres i cel →</button>
       <div id="wg-historia"></div>
     </div>`;
   tlo.addEventListener('click', (e) => { if (e.target === tlo) zamknijWage(); });
@@ -791,6 +796,7 @@ async function otworzWage() {
   odswiezHistorie();
 
   tlo.querySelector('#wg-zamknij').onclick = zamknijWage;
+  tlo.querySelector('#wg-strona').onclick = () => { location.href = '/waga'; };
   tlo.querySelector('#wg-zapisz').onclick = async (ev) => {
     if (ktora === null) { kom('Wybierz osobę.', true); return; }
     const wartosc = tlo.querySelector('#wg-kg').value.trim();

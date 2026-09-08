@@ -286,6 +286,29 @@ def init_health_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS health_pomiar_osoba "
                     "ON health_pomiary (osoba_id, nazwa, data)")
 
+        # ── cel pomiaru ─────────────────────────────────────────────────────
+        #
+        # Cel ma PUNKT STARTU zapisany na stałe (`start_data`, `start_wartosc`),
+        # a nie liczony z historii. Bez tego linia tempa przesuwałaby się przy
+        # każdym nowym ważeniu i „jesteś w tyle" potrafiłoby zmienić się w
+        # „jesteś przed planem" bez żadnej zmiany w rzeczywistości. Start to
+        # miejsce, z którego się wyruszyło — jest faktem z przeszłości.
+        cur.execute("""CREATE TABLE IF NOT EXISTS health_cele (
+            id            SERIAL PRIMARY KEY,
+            household_id  INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            osoba_id      INTEGER NOT NULL REFERENCES health_osoby(id) ON DELETE CASCADE,
+            nazwa         TEXT NOT NULL,
+            cel           NUMERIC(12,4) NOT NULL,
+            termin        DATE,
+            start_data    DATE NOT NULL,
+            start_wartosc NUMERIC(12,4) NOT NULL,
+            created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+        # Jeden cel na osobę i parametr. Dwa cele naraz dla tej samej wagi to
+        # nie jest sytuacja, tylko niedokończona zmiana zdania.
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS health_cel_osoba "
+                    "ON health_cele (osoba_id, lower(nazwa))")
+
 
 # ── osoby ───────────────────────────────────────────────────────────────────
 
@@ -901,4 +924,50 @@ def usun_pomiar(household_id: int, pomiar_id: int) -> bool:
     with get_db() as cur:
         cur.execute("DELETE FROM health_pomiary WHERE id = %s AND household_id = %s",
                     (pomiar_id, household_id))
+        return cur.rowcount > 0
+
+
+# ── cel pomiaru ─────────────────────────────────────────────────────────────
+
+def cel(household_id: int, osoba_id: int, nazwa: str) -> dict | None:
+    with get_db() as cur:
+        cur.execute(
+            "SELECT id, nazwa, cel, termin, start_data, start_wartosc FROM health_cele "
+            "WHERE household_id = %s AND osoba_id = %s AND lower(nazwa) = lower(%s)",
+            (household_id, osoba_id, nazwa.strip()),
+        )
+        r = cur.fetchone()
+        return dict(r) if r else None
+
+
+def zapisz_cel(household_id: int, osoba_id: int, nazwa: str, wartosc,
+               termin, start_data, start_wartosc) -> dict:
+    """Ustawia albo zmienia cel. Punkt startu przychodzi z zewnątrz, bo tylko
+    warstwa wyżej wie, czy to nowy cel (start = dziś i dzisiejsza waga), czy
+    poprawka istniejącego (start zostaje ten sam)."""
+    with get_db() as cur:
+        cur.execute("SELECT 1 FROM health_osoby WHERE id = %s AND household_id = %s",
+                    (osoba_id, household_id))
+        if not cur.fetchone():
+            raise ValueError("Nie znaleziono osoby")
+        cur.execute(
+            "INSERT INTO health_cele (household_id, osoba_id, nazwa, cel, termin, "
+            "                         start_data, start_wartosc) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (osoba_id, lower(nazwa)) DO UPDATE "
+            "  SET cel = EXCLUDED.cel, termin = EXCLUDED.termin, "
+            "      start_data = EXCLUDED.start_data, start_wartosc = EXCLUDED.start_wartosc "
+            "RETURNING id, nazwa, cel, termin, start_data, start_wartosc",
+            (household_id, osoba_id, nazwa.strip(), wartosc, termin, start_data, start_wartosc),
+        )
+        return dict(cur.fetchone())
+
+
+def usun_cel(household_id: int, osoba_id: int, nazwa: str) -> bool:
+    with get_db() as cur:
+        cur.execute(
+            "DELETE FROM health_cele WHERE household_id = %s AND osoba_id = %s "
+            "  AND lower(nazwa) = lower(%s)",
+            (household_id, osoba_id, nazwa.strip()),
+        )
         return cur.rowcount > 0

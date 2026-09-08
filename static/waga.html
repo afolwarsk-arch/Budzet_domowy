@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Masa ciała — Wiem</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#1a1d20">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script defer src="/static/auth.js"></script>
+  <style>
+    main { padding-bottom: 96px; }
+    .gora { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+    .gora h1 { margin: 0; font-size: 1.25rem; }
+
+    .filtry { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    .chip { border: 1px solid var(--border); background: var(--surface); border-radius: 999px;
+            padding: 7px 12px; min-height: 38px; font: inherit; font-size: 12.5px;
+            cursor: pointer; color: var(--text); display: inline-flex; align-items: center;
+            gap: 6px; }
+    .chip[aria-pressed="true"] { border-color: var(--marka); background: var(--surface-2);
+            font-weight: 600; }
+
+    .karta { border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+             padding: 14px 15px; margin-bottom: 12px; }
+    .karta h2 { font-size: 15px; margin: 0 0 10px; }
+
+    /* Bieżąca waga. Liczba jest tu treścią strony, więc dostaje rozmiar
+       odpowiadający swojej roli — reszta karty to podpisy pod nią. */
+    .teraz { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .teraz .kg { font-size: 40px; font-weight: 800; line-height: 1;
+                 color: var(--heading); font-variant-numeric: tabular-nums; }
+    .teraz .jedn { font-size: 15px; color: var(--muted); }
+    .teraz .zmiana { margin-left: auto; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .w-dol { color: var(--good, #2e7d32); }
+    .w-gore { color: var(--danger); }
+    .teraz-kiedy { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+    /* Wpis: pole i przycisk w jednym rzędzie. Ważenie to trzy sekundy rano,
+       więc droga do zapisu musi być krótsza niż do czegokolwiek innego. */
+    .wpis { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .wpis input[type=text] { flex: 1; min-width: 110px; font: inherit; font-size: 16px; }
+    .wpis input[type=date] { flex: none; width: 150px; font: inherit; font-size: 14px; }
+    .wpis button { flex: none; min-height: 46px; padding: 0 20px; border: none;
+                   border-radius: 10px; background: var(--primary); color: var(--on-primary);
+                   font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .wpis button[disabled] { opacity: .55; cursor: not-allowed; }
+
+    /* ── cel ── */
+    .cel-gl { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+    .cel-gl h2 { flex: 1; }
+    .cel-edytuj { background: none; border: none; color: var(--accent); font: inherit;
+                  font-size: 12.5px; cursor: pointer; min-height: 38px; padding: 0 4px; }
+    .cel-liczby { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; }
+    .cel-poz b { display: block; font-size: 20px; font-weight: 700; color: var(--heading);
+                 font-variant-numeric: tabular-nums; line-height: 1.2; }
+    .cel-poz span { font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+                    color: var(--muted); }
+    /* Pasek postępu liczony od STARTU celu, nie od zera: „przeszedłeś 2 z 4 kg",
+       a nie „ważysz 78 ze 100". Zero nie jest tu żadnym punktem odniesienia. */
+    .pasek { height: 8px; border-radius: 999px; background: var(--surface-2);
+             overflow: hidden; margin-bottom: 8px; }
+    .pasek i { display: block; height: 100%; background: var(--marka); border-radius: 999px; }
+    .cel-stan { font-size: 13px; line-height: 1.5; }
+    .cel-stan.przed { color: var(--good, #2e7d32); }
+    .cel-stan.tyl { color: var(--warn, #b26a00); }
+
+    .pusto { color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .pusto b { display: block; color: var(--heading); font-size: 15px; margin-bottom: 4px; }
+
+    /* ── wykres ── */
+    .wykres { width: 100%; display: block; }
+    .wykres .siatka { stroke: var(--border); stroke-width: 1; }
+    .wykres .linia { fill: none; stroke: var(--marka); stroke-width: 2;
+                     stroke-linejoin: round; stroke-linecap: round; }
+    .wykres .linia.przygaszona { opacity: .28; stroke-width: 1.5; }
+    .wykres .srednia { fill: none; stroke: var(--marka); stroke-width: 2.5;
+                       stroke-linejoin: round; stroke-linecap: round; }
+    /* Cel poziomą kreską, tempo ukośną i cieńszą — dwie linie pomocnicze muszą
+       się różnić kształtem, nie tylko odcieniem, bo obie są szare. */
+    .wykres .cel-linia { stroke: var(--heading); stroke-width: 1.5; stroke-dasharray: 6 4;
+                         opacity: .55; }
+    .wykres .tempo { fill: none; stroke: var(--muted); stroke-width: 1.5;
+                     stroke-dasharray: 2 4; }
+    .wykres .punkt { fill: var(--marka); stroke: var(--surface); stroke-width: 2; }
+    .wykres .punkt.przygaszony { opacity: .35; }
+    /* Pomiar z dokumentu (np. ważenie w przychodni) — pierścień, nie koło. */
+    .wykres .punkt.zbadania { fill: var(--surface); stroke: var(--marka); }
+    .wykres .opis { fill: var(--muted); font-size: 11px; }
+    .wykres .wartosc { fill: var(--heading); font-size: 11.5px; font-weight: 600; }
+    .wykres .dotyk { fill: transparent; cursor: pointer; }
+    .wyk-podpis { font-size: 12.5px; color: var(--muted); min-height: 18px; margin-top: 8px; }
+    .legenda { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px;
+               color: var(--muted); margin-top: 8px; }
+
+    /* ── historia ── */
+    .wiersz { display: flex; align-items: center; gap: 10px; padding: 9px 2px;
+              border-bottom: 1px solid var(--border-soft); font-size: 13.5px; }
+    .wiersz:last-child { border-bottom: none; }
+    .w-data { flex: 1; min-width: 0; color: var(--muted); font-size: 12.5px; }
+    .w-kg { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .w-roz { width: 78px; text-align: right; font-size: 11.5px; color: var(--muted);
+             font-variant-numeric: tabular-nums; }
+    .w-x { flex: none; min-width: 34px; min-height: 34px; background: none; border: none;
+           color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; }
+    .w-x:hover { color: var(--danger); }
+    .w-zrodlo { font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+                color: var(--muted); border: 1px solid var(--border); border-radius: 999px;
+                padding: 1px 7px; }
+
+    /* ── arkusz celu ── */
+    .ark-tlo { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9998;
+               display: flex; align-items: flex-end; justify-content: center; }
+    .ark { background: var(--surface); width: 100%; max-width: 480px; max-height: 92vh;
+           overflow-y: auto; border-radius: 18px 18px 0 0;
+           padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
+    @media (min-width: 560px) { .ark-tlo { align-items: center; } .ark { border-radius: 18px; } }
+    .ark h2 { margin: 0 0 14px; font-size: 1.05rem; }
+    .pole { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+    .pole label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
+                  color: var(--muted); font-weight: 600; }
+    .pole input { width: 100%; font: inherit; font-size: 15px; }
+    .akcje { display: flex; gap: 9px; margin-top: 4px; }
+    .akcje button { flex: 1; min-height: 46px; border-radius: 10px; font: inherit;
+                    font-size: 14.5px; font-weight: 600; cursor: pointer; }
+    .btn-glowny { border: none; background: var(--primary); color: var(--on-primary); }
+    .btn-drugi { border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+    .btn-usun { width: 100%; margin-top: 10px; padding: 11px; background: none; border: none;
+                color: var(--danger); font: inherit; font-size: 13px; cursor: pointer;
+                border-radius: 10px; min-height: 44px; }
+
+    .kom { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin: 8px 0; }
+    .kom.blad { color: var(--danger); }
+    .laduje { text-align: center; color: var(--muted); padding: 30px; font-size: 15px; }
+  </style>
+</head>
+<body>
+<nav>
+  <a href="/waga" class="logo">w<span class="lg-i">ı<i class="lg-kropka"></i></span>em<i class="lg-kropka"></i></a>
+</nav>
+
+<main>
+  <div id="tresc"><div class="laduje">Wczytuję…</div></div>
+</main>
+
+<script defer src="/static/waga.js"></script>
+</body>
+</html>

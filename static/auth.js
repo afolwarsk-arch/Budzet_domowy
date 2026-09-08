@@ -1116,6 +1116,7 @@ const MODULY = [
     ikona: 'zdrowie',
     strony: [
       { href: '/health', ikona: 'zdrowie', label: 'Historia', pelny: 'Historia zdrowia' },
+      { href: '/waga', ikona: 'analiza', label: 'Waga', pelny: 'Masa ciała' },
     ],
   },
   {

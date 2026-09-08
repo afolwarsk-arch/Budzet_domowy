@@ -165,7 +165,7 @@ _MOTYW_BOOT = (
 # przemalowaniem na zielono.
 _STRONY_MODULU = {"eat.html": "eat", "przepisy.html": "eat", "statystyki.html": "eat",
                   "produkty.html": "eat",
-                  "health.html": "health", "task.html": "task",
+                  "health.html": "health", "waga.html": "health", "task.html": "task",
                   "task-plan.html": "task"}
 # Strony finansów celowo BEZ wpisu: ich paleta jest wartością domyślną w :root,
 # więc każda strona spoza modułów (admin, profil) dostaje akcent finansów.
@@ -276,6 +276,15 @@ def skaner_page():
 @app.get("/health")
 def health_page():
     return _html("health.html")
+
+
+@app.get("/waga")
+def waga_page():
+    """Masa ciała — osobna strona, bo to jedyny pomiar wpisywany codziennie.
+
+    Na osi czasu health mieszałaby się z dokumentami, a przebieg parametru jest
+    wspólny dla wyników z laboratorium i nie ma gdzie pokazać celu ani tempa."""
+    return _html("waga.html")
 
 
 @app.get("/task")

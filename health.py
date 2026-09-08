@@ -391,3 +391,64 @@ def skasuj_pomiar(pomiar_id: int, current_user: dict = Depends(get_current_user)
     if not health_db.usun_pomiar(_hid(current_user), pomiar_id):
         raise HTTPException(404, "Nie znaleziono pomiaru")
     return {"ok": True}
+
+
+# ── cel pomiaru ─────────────────────────────────────────────────────────────
+
+@router.get("/cel")
+def pobierz_cel(osoba_id: int, nazwa: str = Query(default="Waga"),
+                current_user: dict = Depends(get_current_user)):
+    return {"cel": health_db.cel(_hid(current_user), osoba_id, nazwa)}
+
+
+@router.put("/cel")
+def ustaw_cel(dane: dict, current_user: dict = Depends(get_current_user)):
+    """Cel wagowy: dokąd i do kiedy.
+
+    PUNKT STARTU zapisujemy przy zakładaniu celu i już go nie ruszamy przy
+    poprawkach samej wartości — linia tempa ma pokazywać drogę od miejsca,
+    z którego się wyruszyło. Liczona z bieżącej historii przesuwałaby się przy
+    każdym ważeniu i „jesteś w tyle" zmieniałoby się w „przed planem" bez
+    żadnej zmiany w rzeczywistości.
+    """
+    hid = _hid(current_user)
+    try:
+        osoba_id = int(dane.get("osoba_id") or 0)
+    except (TypeError, ValueError):
+        osoba_id = 0
+    if not osoba_id:
+        raise HTTPException(400, "Wskaż osobę")
+    nazwa = (dane.get("nazwa") or "Waga").strip()[:60]
+    try:
+        wartosc = float(str(dane.get("cel") or "").replace(",", ".").strip())
+    except ValueError:
+        raise HTTPException(400, "Podaj cel liczbą")
+    if not 0 < wartosc <= _POMIAR_MAKS:
+        raise HTTPException(400, f"Cel musi być większy od zera i nie większy niż {_POMIAR_MAKS}.")
+    termin = _data(dane.get("termin"))
+    if termin and termin < date.today().isoformat():
+        raise HTTPException(400, "Termin już minął — wybierz datę w przyszłości.")
+
+    # Start bierzemy z ostatniego pomiaru. Cel bez ani jednego ważenia nie ma
+    # od czego liczyć tempa, więc prosimy o wagę zamiast zgadywać.
+    stary = health_db.cel(hid, osoba_id, nazwa)
+    if stary and not dane.get("od_nowa"):
+        start_data, start_wartosc = stary["start_data"], stary["start_wartosc"]
+    else:
+        ostatnie = health_db.pomiary(hid, osoba_id, nazwa, limit=1)
+        if not ostatnie:
+            raise HTTPException(400, "Najpierw wpisz choć jedną wagę — inaczej nie ma od czego liczyć.")
+        start_data, start_wartosc = ostatnie[0]["data"], ostatnie[0]["wartosc"]
+    try:
+        return {"cel": health_db.zapisz_cel(hid, osoba_id, nazwa, round(wartosc, 2),
+                                            termin, start_data, start_wartosc)}
+    except ValueError:
+        raise HTTPException(404, "Nie znaleziono osoby")
+
+
+@router.delete("/cel")
+def skasuj_cel(osoba_id: int, nazwa: str = Query(default="Waga"),
+               current_user: dict = Depends(get_current_user)):
+    if not health_db.usun_cel(_hid(current_user), osoba_id, nazwa):
+        raise HTTPException(404, "Nie ma takiego celu")
+    return {"ok": True}
