@@ -559,6 +559,11 @@ function podepnijPtaszki() {
         wykonawca_user_id: v.startsWith('u:') ? Number(v.slice(2)) : null,
         wykonawca_virtual_id: v.startsWith('v:') ? Number(v.slice(2)) : null,
       });
+      return;
+    }
+    const prio = ev.target.closest('[data-priorytet]');
+    if (prio) {
+      await zapiszSzybko(Number(prio.dataset.priorytet), { priorytet: Number(prio.value) });
     }
   };
 
@@ -1813,6 +1818,21 @@ function wiersz(w, poziom) {
         <label class="zad-kto${w.wykonawca_user_id ? ' jest' : ''}" title="Wykonawca">
           ${skrotWykonawcy(w)}
           <select data-wykonawca="${w.id}">${opcjeWykonawcyKrotkie(w)}</select>
+        </label>
+        <!-- Priorytet ustawiany WPROST Z LISTY, tak samo jak termin i wykonawca:
+             to trzecia rzecz zmieniana najczęściej, a wchodzenie po nią
+             w formularz z kilkunastoma polami znaczyło, że nikt jej nie ruszy.
+             Ten sam wzorzec co przy wykonawcy — kafelek jest etykietą listy
+             wyboru, więc stuknięcie otwiera natywny wybór systemu. -->
+        <label class="zad-kto zad-prio-kafel${
+            Number(w.priorytet) > 0 ? ' wysoki' : (Number(w.priorytet) < 0 ? ' niski' : '')}"
+               title="Priorytet">
+          ${Number(w.priorytet) > 0 ? '!' : (Number(w.priorytet) < 0 ? '↓' : '–')}
+          <select data-priorytet="${w.id}" aria-label="Priorytet zadania">
+            <option value="1"${Number(w.priorytet) > 0 ? ' selected' : ''}>Wysoki</option>
+            <option value="0"${!Number(w.priorytet) ? ' selected' : ''}>Zwykły</option>
+            <option value="-1"${Number(w.priorytet) < 0 ? ' selected' : ''}>Niski</option>
+          </select>
         </label>
         ${kafelObszaru(w)}
         <!-- „+” dopisuje krok BEZ opuszczania listy. Wcześniej jedyną drogą

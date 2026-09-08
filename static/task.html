@@ -412,6 +412,14 @@
        szarych kafelków w rzędzie nic nie mówi na pierwszy rzut oka. */
     .zad-obszar.jest { color: var(--marka); border-color: var(--marka); }
 
+    /* Kafelek priorytetu. Zwykły jest myślnikiem w kolorze podpisu — ma być
+       widoczny jako miejsce do stuknięcia, ale nie ma krzyczeć, bo „zwykły"
+       to stan domyślny większości zadań. Wysoki bierze kolor ostrzeżenia,
+       niski zostaje szary i lżejszy. */
+    .zad-prio-kafel { font-weight: 700; }
+    .zad-prio-kafel.wysoki { color: var(--danger); border-color: var(--danger); }
+    .zad-prio-kafel.niski { color: var(--muted); font-weight: 400; }
+
     .zad { padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
     /* Przycisk „+” — dopisuje krok bez opuszczania listy. Widoczny zawsze,
        bo ukryty pod najechaniem nie istnieje dla palca na telefonie. */
@@ -459,8 +467,12 @@
                justify-content: center; padding: 0; }
     /* Samo pole jest małe, ale palec dostaje pełne 44 px przez niewidoczną
        otoczkę — zmniejszanie celu dotyku razem z grafiką to najprostszy sposób
-       na to, żeby odhaczanie zaczęło chybiać. */
-    .ptaszek::before { content: ''; position: absolute; width: 44px; height: 44px;
+       na to, żeby odhaczanie zaczęło chybiać.
+       Otoczka jest SZERSZA NIŻ WIDAĆ i wystaje 12 px poza kwadrat: gdy zaraz
+       obok stanął przycisk zwijania, jej krawędź kończyła się dwa piksele przed
+       nim i część stuknięć w „zwiń" trafiała w odhaczanie. Stąd węższa otoczka
+       (40 px, wciąż powyżej progu dotyku) i większy odstęp w `.zad-glowna`. */
+    .ptaszek::before { content: ''; position: absolute; width: 40px; height: 40px;
                        left: 50%; top: 50%; transform: translate(-50%, -50%); }
     .ptaszek { position: relative; }
     /* Odhaczone = wypełniony kwadrat. Kolor przyciemniony względem --marka:
@@ -510,9 +522,15 @@
 
     /* Dwa rzędy filtrów: czas i stan. Podpis przed chipami mówi, o co pyta
        rząd — bez niego dwa identyczne rzędy czyta się jak jeden rozsypany. */
-    .filtry-para { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-    .f-etykieta { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
-                  color: var(--muted); font-weight: 700; width: 42px; flex: none; }
+    .filtry-para { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .f-etykieta { font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+                  color: var(--muted); font-weight: 700; width: 38px; flex: none; }
+    /* Chipy filtrów SĄ MNIEJSZE od zwykłych: dwa rzędy przy pełnym rozmiarze
+       zabierały 96 px nad listą, czyli tyle co całe zadanie. Cel dotyku zostaje
+       przy 34 px — to filtr, w który stuka się raz na jakiś czas, a nie kafelek
+       obsługiwany w biegu; poniżej 32 px zaczyna chybiać. */
+    .filtry-para .chip { min-height: 34px; padding: 4px 11px; font-size: 12px; }
+    .filtry-para .filtry { gap: 5px; }
     .zad-podkroki[hidden] { display: none; }
 
     /* Kafelki akcji POD nazwą, nie obok. Obok siebie walczyły z tytułem
@@ -521,6 +539,10 @@
        równa się szerokość ptaszka plus odstęp, więc kafelki stoją w jednej
        linii z tytułem. */
     .zad-glowna { display: flex; align-items: center; gap: 10px; }
+    /* Osobny, większy odstęp WYŁĄCZNIE między ptaszkiem a zwijaniem: to jedyna
+       para sąsiadów, w której pomyłka jest kosztowna (odhaczenie zamiast
+       zwinięcia zamyka zadanie). Reszta rzędu zostaje ciasna. */
+    .ptaszek + .zad-zwin { margin-left: 6px; }
     /* ZAWIJANIE JEST BEZPIECZNIKIEM, nie układem docelowym. Siedem kafelków
        mieści się w jednym rzędzie dopiero od ~340 px; bez `wrap` na węższym
        ekranie ostatni z nich (trzy kropki) wychodziłby poza kartę zamiast
