@@ -1646,7 +1646,7 @@ function rysujLista() {
          kursor z pola po każdym znaku. -->
     <div class="szukajka">
       <input id="t-szukaj" type="search" autocomplete="off" value="${esc(fraza)}"
-             placeholder="Szukaj w zadaniach — po nazwie albo opisie">
+             placeholder="Szukaj w zadaniach…">
       <button class="btn btn-primary" type="button" id="t-szukaj-btn">Szukaj</button>
       ${szukamy() ? '<button class="btn btn-outline" type="button" id="t-szukaj-x">Wyczyść</button>' : ''}
     </div>

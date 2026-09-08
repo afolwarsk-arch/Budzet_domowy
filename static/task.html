@@ -692,6 +692,17 @@
     @media (max-width: 430px) {
       .ob { padding: 8px 9px; }
       .ob:not(.teraz) i { display: none; }
+      /* Zmierzone na 390 px: rząd „Stan" potrzebuje ~400 px z podpisem, więc
+         czwarty chip spadał do drugiej linijki i pasek filtrów zajmował dwa
+         rzędy zamiast jednego. Zamiast zawijać — przewijamy w poziomie, tak
+         samo jak pasek obszarów wyżej; jeden rząd zostaje jednym rzędem. */
+      .filtry-para .filtry { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+      .filtry-para .filtry::-webkit-scrollbar { display: none; }
+      .filtry-para .chip { flex: none; }
+      /* Przenoszenie zadania ZNIKA z rzędu kafelków (zostaje w menu pod trzema
+         kropkami): przy ośmiu kafelkach rząd łamał się na telefonie na dwie
+         linijki, a to jedyna akcja, która ma drugie, równie widoczne wejście. */
+      .zad-akcje .zad-przenies { display: none; }
     }
 
     /* Na planie i w projektach nazwa widoku schodzi do roli podpisu —
