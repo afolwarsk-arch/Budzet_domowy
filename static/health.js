@@ -121,12 +121,31 @@ function zapytanieOsi() {
 
 // Ile pikseli dostaje jeden dzień. Suwak zmienia GĘSTOŚĆ osi, nigdy zakres —
 // oś zawsze pokazuje całą historię, bo jej sensem jest widzieć całość naraz.
+// GĘSTOŚĆ STERUJE WIELKOŚCIĄ KART, nie odstępami między nimi.
+//
+// Wcześniej suwak mnożył liczbę dni przerwy przez współczynnik i tak liczony
+// odstęp przycinał do 10–210 px. Zmierzone: przy „całej historii" (0,22) nawet
+// miesiąc przerwy dawał 6 px, czyli poniżej minimum — wszystko zlepiało się
+// do 10 px; przy „kwartale" (4,5) już 47 dni wchodziło w górny limit, więc pół
+// roku i cztery lata wyglądały tak samo. Do tego przerwy powyżej 64 px są
+// połowione i zastępowane podpisem. Suwak zmieniał więc kilkadziesiąt pikseli
+// pustki między kartami, które same mają ~90 px — sygnał ginął w karcie.
+//
+// Sedna nie da się naprawić strojeniem liczb: oś kodowała czas PUSTKĄ, a pustka
+// przegrywa z wysokością kart. Informację o czasie i tak niosą podpisy
+// („3 miesiące przerwy"), więc gęstość steruje tym, co naprawdę decyduje,
+// ile historii widać naraz — objętością samych kart.
 const SKALE = [
-  { px: 0.22, opis: 'cała historia' },
-  { px: 1.1,  opis: 'rok' },
-  { px: 4.5,  opis: 'kwartał' },
+  { klasa: 'pelne', nazwa: 'Pełne', opis: 'Wszystko naraz: kto, gdzie, ile wyników, etykiety spraw.' },
+  { klasa: 'zwezone', nazwa: 'Zwężone', opis: 'Bez lekarza i placówki — zostaje nazwa, data i znaczniki.' },
+  { klasa: 'skrot', nazwa: 'Skrót', opis: 'Jedna linijka na wpis: sama nazwa i data. Najwięcej historii naraz.' },
 ];
 let skala = 1;
+
+// Odstęp na dzień przerwy — teraz STAŁY, bo suwak steruje czym innym.
+// Wartość ze środkowego ustawienia starej skali, czyli tego, przy którym oś
+// wyglądała najsensowniej.
+const PX_NA_DZIEN = 1.1;
 
 // Odstęp nigdy nie spada poniżej MIN (karty by na siebie nachodziły) ani nie
 // przekracza MAX (czteroletnia przerwa dałaby ekran pustki, przez który trzeba
@@ -246,7 +265,7 @@ function wpisOsi(d, poprzedni) {
   let cisza = '';
   if (poprzedni && d.data_badania && poprzedni.data_badania) {
     const roznica = dni(poprzedni.data_badania, d.data_badania);
-    odstep = Math.min(ODSTEP_MAX, Math.max(ODSTEP_MIN, roznica * SKALE[skala].px));
+    odstep = Math.min(ODSTEP_MAX, Math.max(ODSTEP_MIN, roznica * PX_NA_DZIEN));
     if (odstep >= CISZA_OD) {
       cisza = `<div class="os-cisza" style="margin-top:${Math.round(odstep / 2 - 8)}px">
                  ${opiszPrzerwe(roznica)}</div>`;
@@ -297,7 +316,7 @@ function budujOs(dokumenty) {
     czesci.push(wpisOsi(d, poprzedni));
     poprzedni = d;
   }
-  return `<div class="os">${czesci.join('')}</div>`;
+  return `<div class="os os-${SKALE[skala].klasa}">${czesci.join('')}</div>`;
 }
 
 async function rysujOs() {
@@ -344,11 +363,18 @@ async function rysujOs() {
         ${ileFiltrow() ? '<button class="chip dodaj" type="button" id="czysc-filtry">Wyczyść</button>' : ''}
         ${opisFiltrow()}
       </div>
+      <!-- Podpisy STOJĄ NAD POZYCJAMI suwaka, a nie jeden z boku: przy jednym
+           podpisie nie było widać, które ustawienie jest włączone ani co dadzą
+           pozostałe. Aktywny jest wyróżniony, a pod suwakiem stoi zdanie
+           o tym, co ta pozycja robi. -->
       <div class="skala">
-        <span>gęstość</span>
+        <div class="skala-etykiety" aria-hidden="true">
+          ${SKALE.map((s, i) => `<span class="se${i === skala ? ' akt' : ''}"
+              data-skala="${i}">${s.nazwa}</span>`).join('')}
+        </div>
         <input type="range" id="suwak" min="0" max="2" step="1" value="${skala}"
-               aria-label="Gęstość osi czasu">
-        <span id="skala-opis">${SKALE[skala].opis}</span>
+               aria-label="Gęstość osi czasu: ${SKALE[skala].nazwa}">
+        <div class="skala-opis" id="skala-opis">${SKALE[skala].opis}</div>
       </div>
     </div>
     <div class="wejscia">
@@ -418,13 +444,27 @@ async function rysujOs() {
   };
   // Przerysowujemy tylko oś — pobieranie danych przy każdym drgnięciu suwaka
   // byłoby żądaniem na każdy krok, a dane się przecież nie zmieniają.
-  document.getElementById('suwak').oninput = (ev) => {
-    skala = Number(ev.target.value);
+  const suwak = document.getElementById('suwak');
+  const ustawSkale = (v) => {
+    skala = Number(v);
+    suwak.value = String(skala);
+    suwak.setAttribute('aria-label', 'Gęstość osi czasu: ' + SKALE[skala].nazwa);
     document.getElementById('skala-opis').textContent = SKALE[skala].opis;
-    const stara = document.querySelector('.os');
-    if (stara) stara.outerHTML = budujOs(dokumenty);
-    podepnijOtwieranie();
+    document.querySelectorAll('.skala-etykiety .se').forEach((s, i) => {
+      s.classList.toggle('akt', i === skala);
+    });
+    // Wystarczy podmienić klasę na osi: gęstość zmienia WIELKOŚĆ kart, a to
+    // robi CSS. Przerysowywanie całej osi przy każdym drgnięciu suwaka byłoby
+    // składaniem tych samych kart od nowa kilkanaście razy na sekundę.
+    const os = document.querySelector('.os');
+    if (os) os.className = 'os os-' + SKALE[skala].klasa;
   };
+  suwak.oninput = (ev) => ustawSkale(ev.target.value);
+  // Podpisy nad suwakiem są też przyciskami — celowanie w pozycję suwaka
+  // palcem jest trudniejsze niż stuknięcie w słowo, które ją nazywa.
+  document.querySelectorAll('.skala-etykiety .se').forEach((s) => {
+    s.onclick = () => ustawSkale(s.dataset.skala);
+  });
 
   document.getElementById('w-zdjecie').onclick = () => document.getElementById('plik-zdjecie').click();
   document.getElementById('w-dysk').onclick = () => document.getElementById('plik-dysk').click();
