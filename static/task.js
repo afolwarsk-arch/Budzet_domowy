@@ -59,6 +59,11 @@ const TRYB_PROJEKTY = location.pathname.replace(/\/$/, '') === '/projekty';
 let zakres = TRYB_PLANU ? 'plan' : 'lista';   // tylko rozróżnienie widoku
 let czas = TRYB_PROJEKTY ? 'wszystko' : (localStorage.getItem('task_czas') || 'wszystko');
 let stan = TRYB_PROJEKTY ? 'otwarte' : (localStorage.getItem('task_stan') || 'otwarte');
+// Szukana fraza. NIE zapisujemy jej w localStorage — filtr przeżywa
+// odświeżenie, bo jest ustawieniem widoku, a wyszukiwanie jest czynnością:
+// wejście na listę z aktywnym szukaniem sprzed tygodnia wyglądałoby jak
+// zniknięcie połowy zadań.
+let fraza = '';
 let zadania = [];           // płasko, jak z serwera
 let korzen = null;          // null = widok listy; liczba = wejście w zadanie
 let widok = 'lista';        // lista | szczegoly
@@ -313,11 +318,20 @@ async function wczytaj() {
   // tego, czy termin już minął — oś czasu pokazuje rozpiętość, a nie „co dziś".
   if (zakres === 'plan') return wczytajPlan();
   try {
-    const r = await authFetch(`/api/task/zadania?czas=${czas}&status=${stan}` + qStrefa());
+    // Szukanie omija filtry ORAZ zawężenie do obszaru: skoro się czegoś szuka,
+    // to zwykle dlatego, że nie wiadomo, gdzie to jest.
+    const adres = szukamy()
+      ? '/api/task/szukaj?q=' + encodeURIComponent(fraza.trim())
+      : `/api/task/zadania?czas=${czas}&status=${stan}` + qStrefa();
+    const r = await authFetch(adres);
     zadania = (await r.json()).zadania || [];
   } catch { zadania = []; toast('Nie udało się wczytać zadań.', 'blad'); }
   rysuj();
 }
+
+// Dwa znaki, jak w wyszukiwarce finansów: jedna litera pasuje do wszystkiego
+// i wynik nie jest wtedy odpowiedzią na żadne pytanie.
+const szukamy = () => fraza.trim().length >= 2;
 
 // Doklejka `&strefa=` do zapytań. Pusta, gdy patrzymy na wszystkie strefy.
 const qStrefa = () => (strefa ? '&strefa=' + strefa : '');
@@ -1594,19 +1608,11 @@ function podepnijBelki() {
   if (tor && dzisEl) tor.scrollLeft = Math.max(0, dzisEl.offsetLeft - 120);
 }
 
-function rysujLista() {
-  // Zadanie mogło zniknąć (usunięte albo wypadło z bieżącego zakresu) —
-  // wtedy wracamy na korzeń całego drzewa zamiast pokazać pustkę bez wyjścia.
-  if (korzen != null && !zadania.some((z) => z.id === korzen)) korzen = null;
-  const drzewo = budujDrzewo(zadania);
-  const aktualny = korzen != null ? drzewo.flatMap(splaszcz).find((x) => x.id === korzen) : null;
-  if (korzen != null && !aktualny) korzen = null;
-  const lista = aktualny ? aktualny.dzieci : drzewo;
-
-  box().innerHTML = `
-    <!-- Podpisy „kiedy" i „stan" nie są ozdobą: dwa rzędy identycznych chipów
-         bez nich czyta się jak jeden rozsypany filtr. -->
-    <div class="filtry-para">
+// Dwa rzędy filtrów. Podpisy „Kiedy" i „Stan" nie są ozdobą: dwa rzędy
+// identycznych chipów bez nich czyta się jak jeden rozsypany filtr.
+// Znikają na czas wyszukiwania, bo wyszukiwanie idzie ponad nimi.
+function filtryHtml() {
+  return `<div class="filtry-para">
       <div class="filtry" id="f-czas">
         <span class="f-etykieta">Kiedy</span>
         ${CZASY.map(([k, l]) => `<button class="chip" type="button" data-c="${k}"
@@ -1617,7 +1623,35 @@ function rysujLista() {
         ${STANY.map(([k, l]) => `<button class="chip" type="button" data-s="${k}"
             aria-pressed="${k === stan}">${l}</button>`).join('')}
       </div>
+    </div>`;
+}
+
+function rysujLista() {
+  // Zadanie mogło zniknąć (usunięte albo wypadło z bieżącego zakresu) —
+  // wtedy wracamy na korzeń całego drzewa zamiast pokazać pustkę bez wyjścia.
+  if (korzen != null && !zadania.some((z) => z.id === korzen)) korzen = null;
+  const drzewo = budujDrzewo(zadania);
+  const aktualny = korzen != null ? drzewo.flatMap(splaszcz).find((x) => x.id === korzen) : null;
+  if (korzen != null && !aktualny) korzen = null;
+  const lista = aktualny ? aktualny.dzieci : drzewo;
+  // Zwijanie hurtem ma sens tylko wtedy, gdy jest co zwijać.
+  const zRodzicami = zadania.filter((z) => zadania.some((x) => x.parent_id === z.id));
+  const maRodzicow = zRodzicami.length > 0;
+  const wszystkoZwiniete = maRodzicow && zRodzicami.every((z) => zwiniete.has(z.id));
+
+  box().innerHTML = `
+    <!-- Wyszukiwarka jak w finansach: szuka po CAŁOŚCI, ponad filtrami.
+         Szukanie na Enter i na przycisk, a nie przy każdej literze — lista
+         przerysowuje się w całości, więc szukanie „na żywo" zabierałoby
+         kursor z pola po każdym znaku. -->
+    <div class="szukajka">
+      <input id="t-szukaj" type="search" autocomplete="off" value="${esc(fraza)}"
+             placeholder="Szukaj w zadaniach — po nazwie albo opisie">
+      <button class="btn btn-primary" type="button" id="t-szukaj-btn">Szukaj</button>
+      ${szukamy() ? '<button class="btn btn-outline" type="button" id="t-szukaj-x">Wyczyść</button>' : ''}
     </div>
+    ${szukamy() ? `<div class="szukaj-info">Wyniki dla „${esc(fraza.trim())}" —
+        <b>poza filtrami</b>, razem z zamkniętymi i wstrzymanymi.</div>` : filtryHtml()}
     ${aktualny ? nagKorzenia(aktualny) : ''}
     <!-- Pole mówi WPROST, gdzie trafi wpis. Wcześniej wyglądało tak samo
          niezależnie od tego, czy dodaje zadanie główne, czy krok w środku
@@ -1636,10 +1670,51 @@ function rysujLista() {
          się raz, a kroki dopisuje przez cały czas jego trwania. -->
     ${aktualny ? `<button type="button" class="lap-inne" id="dodaj-istniejace"
         style="margin-top:0">+ Dodaj istniejące zadania</button>` : ''}
+    ${maRodzicow ? `<div class="lista-gora">
+      <button type="button" class="zwin-wszystko" id="t-zwin-wszystko">${
+        wszystkoZwiniete ? 'Rozwiń wszystkie' : 'Zwiń wszystkie'}</button>
+    </div>` : ''}
     <div class="zadania">${lista.map((w) => wiersz(w, 0)).join('') ||
-      '<p class="pusto">Nic tu nie ma. Wpisz pierwsze zadanie powyżej.</p>'}</div>`;
+      (szukamy() ? '<p class="pusto">Nic nie pasuje do tej frazy.</p>'
+        : '<p class="pusto">Nic tu nie ma. Wpisz pierwsze zadanie powyżej.</p>')}</div>`;
 
-  document.getElementById('f-czas').onclick = (ev) => {
+  const poleSzukaj = document.getElementById('t-szukaj');
+  const szukajTeraz = () => {
+    const nowa = poleSzukaj.value.trim();
+    // Jedna litera nie jest jeszcze pytaniem — nie kasujemy przez nią widoku.
+    if (nowa.length === 1) { toast('Wpisz co najmniej dwa znaki.', 'blad'); return; }
+    fraza = nowa;
+    nowyId = null;
+    wczytaj();
+  };
+  document.getElementById('t-szukaj-btn').onclick = szukajTeraz;
+  poleSzukaj.onkeydown = (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); szukajTeraz(); }
+    if (ev.key === 'Escape' && szukamy()) { fraza = ''; wczytaj(); }
+  };
+  const czysc = document.getElementById('t-szukaj-x');
+  if (czysc) czysc.onclick = () => { fraza = ''; nowyId = null; wczytaj(); };
+
+  // Zwijanie hurtem. Osobny przycisk, a nie gest na liście: „zwiń wszystko" to
+  // czynność jednorazowa przy porządkowaniu, a nie coś, co ma się dziać
+  // przypadkiem przy przewijaniu.
+  const zwinBtn = document.getElementById('t-zwin-wszystko');
+  if (zwinBtn) zwinBtn.onclick = () => {
+    const zRodzicami = zadania.filter((z) => zadania.some((x) => x.parent_id === z.id));
+    // Stan czytamy Z DANYCH, nie z zapamiętanej flagi: lista przerysowuje się
+    // po każdej zmianie, a zapamiętane „zwinięte" kazałoby pierwszemu
+    // stuknięciu rozwijać coś, co już jest rozwinięte.
+    const wszystkieZwiniete = zRodzicami.length > 0
+      && zRodzicami.every((z) => zwiniete.has(z.id));
+    if (wszystkieZwiniete) zwiniete.clear();
+    else zRodzicami.forEach((z) => zwiniete.add(z.id));
+    rysuj();
+  };
+
+  // Rzędy filtrów znikają na czas wyszukiwania — stąd sprawdzenie, a nie
+  // bezwarunkowe podpięcie.
+  const rzadCzas = document.getElementById('f-czas');
+  if (rzadCzas) rzadCzas.onclick = (ev) => {
     const b = ev.target.closest('[data-c]');
     if (!b) return;
     czas = b.dataset.c;
@@ -1647,7 +1722,8 @@ function rysujLista() {
     nowyId = null;
     wczytaj();
   };
-  document.getElementById('f-stan').onclick = (ev) => {
+  const rzadStan = document.getElementById('f-stan');
+  if (rzadStan) rzadStan.onclick = (ev) => {
     const b = ev.target.closest('[data-s]');
     if (!b) return;
     stan = b.dataset.s;

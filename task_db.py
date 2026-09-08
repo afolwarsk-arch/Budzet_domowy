@@ -426,18 +426,58 @@ def lista(household_id, user_id, czas="wszystko", status="otwarte",
         # wypychałaby ważne zadanie z odległym terminem nad to, które płonie dziś.
         cur.execute(f"SELECT {_POLA} FROM task_zadania WHERE " + " AND ".join(warunki)
                     + " ORDER BY termin NULLS LAST, priorytet DESC, kolejnosc, id", p)
-        wiersze = [dict(r) for r in cur.fetchall()]
-        znane = {w["id"] for w in wiersze}
-        brakujacy = {w["parent_id"] for w in wiersze if w["parent_id"] and w["parent_id"] not in znane}
-        while brakujacy:
-            cur.execute(f"SELECT {_POLA} FROM task_zadania WHERE {_WIDOCZNE} "
-                        "AND id = ANY(%s)", _p(household_id, user_id, list(brakujacy)))
-            dorzuc = [dict(r) for r in cur.fetchall()]
-            if not dorzuc:
-                break
-            wiersze.extend(dorzuc)
-            znane |= {w["id"] for w in dorzuc}
-            brakujacy = {w["parent_id"] for w in dorzuc if w["parent_id"] and w["parent_id"] not in znane}
+        wiersze = _dociagnij_przodkow(cur, [dict(r) for r in cur.fetchall()],
+                                      household_id, user_id)
+        return _z_postepem(wiersze, household_id, user_id)
+
+
+def _dociagnij_przodkow(cur, wiersze, household_id, user_id):
+    """Dokłada brakujących przodków znalezionych zadań.
+
+    Bez tego krok pasujący do filtra albo do wyszukiwania wisiałby na liście
+    bez rodzica: front składa drzewo po `parent_id` i sierota nie ma się gdzie
+    zaczepić — a przy kroku nazwanym „zadzwonić" cała treść siedzi w nazwie
+    projektu nad nim.
+    """
+    znane = {w["id"] for w in wiersze}
+    brakujacy = {w["parent_id"] for w in wiersze if w["parent_id"] and w["parent_id"] not in znane}
+    while brakujacy:
+        cur.execute(f"SELECT {_POLA} FROM task_zadania WHERE {_WIDOCZNE} "
+                    "AND id = ANY(%s)", _p(household_id, user_id, list(brakujacy)))
+        dorzuc = [dict(r) for r in cur.fetchall()]
+        if not dorzuc:
+            break
+        wiersze.extend(dorzuc)
+        znane |= {w["id"] for w in dorzuc}
+        brakujacy = {w["parent_id"] for w in dorzuc if w["parent_id"] and w["parent_id"] not in znane}
+    return wiersze
+
+
+def szukaj(household_id, user_id, fraza, limit=200):
+    """Wyszukiwanie po tytule i opisie — PONAD filtrami czasu i stanu.
+
+    Tak samo jak wyszukiwarka w finansach: skoro się czegoś szuka, to zwykle
+    dlatego, że nie wiadomo, gdzie to jest — a filtr, który właśnie jest
+    ustawiony, jest wtedy przeszkodą, nie pomocą. Zamknięte też wchodzą i to
+    bez ograniczenia do 90 dni: szuka się często właśnie czegoś dawnego.
+
+    Kolejność: najpierw otwarte, potem wstrzymane, na końcu zrobione — wynik,
+    z którym da się jeszcze coś zrobić, ma stać nad archiwum.
+    """
+    fraza = (fraza or "").strip()
+    if len(fraza) < 2:
+        return []
+    like = f"%{fraza}%"
+    with get_db() as cur:
+        cur.execute(
+            f"SELECT {_POLA} FROM task_zadania WHERE {_WIDOCZNE} "
+            "  AND (tytul ILIKE %s OR opis ILIKE %s) "
+            "ORDER BY CASE status WHEN 'otwarte' THEN 0 WHEN 'wstrzymane' THEN 1 ELSE 2 END, "
+            "         termin NULLS LAST, priorytet DESC, id DESC LIMIT %s",
+            _p(household_id, user_id, like, like, limit),
+        )
+        wiersze = _dociagnij_przodkow(cur, [dict(r) for r in cur.fetchall()],
+                                      household_id, user_id)
         return _z_postepem(wiersze, household_id, user_id)
 
 

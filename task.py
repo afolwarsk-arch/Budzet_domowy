@@ -94,6 +94,12 @@ def lista_zadan(czas: str = "wszystko", status: str = "otwarte",
                                      czas, status, osoba, strefa)}
 
 
+@router.get("/szukaj")
+def szukaj_zadan(q: str = "", current_user: dict = Depends(get_current_user)):
+    """Wyszukiwanie ponad filtrami — patrz `task_db.szukaj`."""
+    return {"zadania": task_db.szukaj(_hid(current_user), current_user["user_id"], q)}
+
+
 @router.get("/zadania/{zadanie_id}/komentarze")
 def lista_komentarzy(zadanie_id: int, current_user: dict = Depends(get_current_user)):
     return {"komentarze": task_db.komentarze(_hid(current_user), current_user["user_id"],
