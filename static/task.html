@@ -412,13 +412,14 @@
        szarych kafelków w rzędzie nic nie mówi na pierwszy rzut oka. */
     .zad-obszar.jest { color: var(--marka); border-color: var(--marka); }
 
-    /* Kafelek priorytetu. Zwykły jest myślnikiem w kolorze podpisu — ma być
-       widoczny jako miejsce do stuknięcia, ale nie ma krzyczeć, bo „zwykły"
-       to stan domyślny większości zadań. Wysoki bierze kolor ostrzeżenia,
-       niski zostaje szary i lżejszy. */
+    /* Kafelek priorytetu. Pusty stan to CHORĄGIEWKA — ikona mówi „tu ustawia
+       się ważność", a znak („!" albo strzałka) pojawia się dopiero wtedy, gdy
+       ważność ustawiono. Ten sam układ co przy wykonawcy: ikona ludzików,
+       dopóki nikogo nie ma, inicjały potem. */
     .zad-prio-kafel { font-weight: 700; }
     .zad-prio-kafel.wysoki { color: var(--danger); border-color: var(--danger); }
     .zad-prio-kafel.niski { color: var(--muted); font-weight: 400; }
+    .zad-prio-kafel .ikona svg { width: 15px; height: 15px; }
 
     .zad { padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
     /* Przycisk „+” — dopisuje krok bez opuszczania listy. Widoczny zawsze,

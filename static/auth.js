@@ -1027,6 +1027,9 @@ const IKONY_SVG = {
   kropki: '<circle cx="12" cy="5.4" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="18.6" r="1.7" fill="currentColor" stroke="none"/>',
   uwaga: '<path d="M12 3.8l9 15.6H3z"/><path class="akc" d="M12 9.6v4.2"/><circle class="kropka" cx="12" cy="16.6" r="1.3"/>',
   gwiazdka: '<path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
+  // Chorągiewka — znak priorytetu. Maszt schodzi niżej niż płótno, żeby przy
+  // 16 px nie czytało się to jak zwykły prostokąt.
+  flaga: '<path d="M6.4 3.6v17"/><path class="akc" d="M6.4 5.2h11l-2.5 3.5 2.5 3.5h-11z"/>',
   wymiana: '<path d="M4 8.4h13.2M14 5.2l3.2 3.2-3.2 3.2"/><path d="M20 15.6H6.8M10 12.4l-3.2 3.2 3.2 3.2"/>',
   do_salda: '<path class="akc" d="M12 4v10.4M8.4 11l3.6 3.6L15.6 11"/><path d="M5 19.2h14"/>',
   // Kod kreskowy: ramka aparatu z kreskami w środku. Sam prostokąt z kreskami

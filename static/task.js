@@ -1899,11 +1899,18 @@ function wiersz(w, poziom) {
              to trzecia rzecz zmieniana najczęściej, a wchodzenie po nią
              w formularz z kilkunastoma polami znaczyło, że nikt jej nie ruszy.
              Ten sam wzorzec co przy wykonawcy — kafelek jest etykietą listy
-             wyboru, więc stuknięcie otwiera natywny wybór systemu. -->
+             wyboru, więc stuknięcie otwiera natywny wybór systemu.
+
+             PUSTY STAN TO IKONA, nie znak. Wcześniej zwykły priorytet rysował
+             się myślnikiem, co czytało się jak „minus" albo jak coś zepsutego
+             i nie mówiło, że w ogóle jest w co stuknąć. Chorągiewka mówi
+             „tu ustawia się ważność", a znak pojawia się dopiero wtedy, gdy
+             ważność faktycznie ustawiono — dokładnie jak inicjały wykonawcy. -->
         <label class="zad-kto zad-prio-kafel${
-            Number(w.priorytet) > 0 ? ' wysoki' : (Number(w.priorytet) < 0 ? ' niski' : '')}"
-               title="Priorytet">
-          ${Number(w.priorytet) > 0 ? '!' : (Number(w.priorytet) < 0 ? '↓' : '–')}
+            Number(w.priorytet) > 0 ? ' jest wysoki' : (Number(w.priorytet) < 0 ? ' jest niski' : '')}"
+               title="Priorytet: ${Number(w.priorytet) > 0 ? 'wysoki'
+                 : (Number(w.priorytet) < 0 ? 'niski' : 'zwykły')}">
+          ${Number(w.priorytet) > 0 ? '!' : (Number(w.priorytet) < 0 ? '↓' : ikonaSvg('flaga'))}
           <select data-priorytet="${w.id}" aria-label="Priorytet zadania">
             <option value="1"${Number(w.priorytet) > 0 ? ' selected' : ''}>Wysoki</option>
             <option value="0"${!Number(w.priorytet) ? ' selected' : ''}>Zwykły</option>
