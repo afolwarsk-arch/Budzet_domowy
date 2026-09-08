@@ -1855,17 +1855,6 @@ function wiersz(w, poziom) {
         <div class="zad-glowna">
         <button class="ptaszek" type="button" data-ptaszek="${w.id}"
                 aria-label="Odhacz zadanie">${w.status === 'zrobione' ? ikonaSvg('ptaszek') : ''}</button>
-        <!-- ZWIJANIE PRZED TREŚCIĄ, nie w prawym rogu. Wcześniej licznik „2 z 5"
-             stał na końcu wiersza, bez ramki i w kolorze podpisu — Adam zgłosił,
-             że jest niewidoczny i nie wygląda na klikalny. Daszek z lewej to
-             wzorzec drzewa, który czyta się bez tłumaczenia (tak samo działa
-             kolumna nazw na wykresie Gantta), a ramka mówi „to jest przycisk". -->
-        ${p.razem && !w.kamien_milowy ? `<button class="zad-zwin${
-            zwiniete.has(w.id) ? ' zwiniety' : ''}" type="button" data-zwin="${w.id}"
-            aria-expanded="${!zwiniete.has(w.id)}"
-            aria-label="${zwiniete.has(w.id) ? 'Pokaż kroki' : 'Zwiń kroki'}"
-            title="${zwiniete.has(w.id) ? 'Pokaż kroki' : 'Zwiń kroki'}"
-            ><span class="zad-daszek">›</span>${p.gotowe}/${p.razem}</button>` : ''}
         <div class="zad-tresc">
           <!-- Plakietka „projekt" przy tytule: bez niej przedsięwzięcie wygląda
                na liście dokładnie jak zwykłe zadanie, a to ono zbiera kroki
@@ -1886,6 +1875,18 @@ function wiersz(w, poziom) {
              szczegółów i przewijania. Data jest jednocześnie etykietą: gdy jest
              ustawiona, widać ją zamiast ikony. -->
         <div class="zad-akcje">
+        <!-- ZWIJANIE KROKÓW STOI W RZĘDZIE KAFELKÓW, nie przy ptaszku.
+             Przeszło tu z dwóch powodów naraz: przy ptaszku jego pole dotyku
+             sąsiadowało z odhaczaniem zadania (pomyłka zamyka zadanie, co jest
+             kosztowne), a wcześniej, na końcu wiersza, było niewidoczne.
+             Tutaj jest kafelkiem wśród kafelków — tak samo obsługiwanym
+             i tak samo widocznym jak termin czy wykonawca. -->
+        ${p.razem && !w.kamien_milowy ? `<button class="zad-plus zad-zwin${
+            zwiniete.has(w.id) ? ' zwiniety' : ''}" type="button" data-zwin="${w.id}"
+            aria-expanded="${!zwiniete.has(w.id)}"
+            aria-label="${zwiniete.has(w.id) ? 'Pokaż kroki' : 'Zwiń kroki'}"
+            title="${zwiniete.has(w.id) ? 'Pokaż kroki' : 'Zwiń kroki'}"
+            ><span class="zad-daszek">›</span>${p.gotowe}/${p.razem}</button>` : ''}
         <label class="zad-data${w.termin ? (spozniony ? ' po-czasie' : ' jest') : ''}"
                title="Termin">
           ${w.termin ? dataKrotka(w.termin) : ikonaSvg('kalendarz')}

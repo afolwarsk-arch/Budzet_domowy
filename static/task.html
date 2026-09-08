@@ -488,17 +488,15 @@
     .zad-nast { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .zad-termin { font-size: 12px; color: var(--muted); flex: none; }
     .zad-termin.po-czasie { color: var(--danger); font-weight: 600; }
-    /* Przycisk zwijania kroków. Stał wcześniej na KOŃCU wiersza, bez ramki
-       i w kolorze podpisu — czytało się to jak etykieta, nie jak przełącznik,
-       i ginęło przy prawej krawędzi. Teraz jest przed treścią (wzorzec drzewa),
-       ma ramkę i licznik w środku: widać, że jest klikalny, i widać, ile kroków
-       chowa. */
-    .zad-zwin { display: inline-flex; align-items: center; gap: 2px; flex: none;
-                border: 1px solid var(--border); border-radius: 8px;
-                background: var(--surface-2); font: inherit; font-size: 11.5px;
-                font-variant-numeric: tabular-nums; color: var(--text);
-                cursor: pointer; padding: 3px 7px 3px 4px; min-height: 30px; }
-    .zad-zwin:hover { border-color: var(--marka); color: var(--marka); }
+    /* Przycisk zwijania kroków — kafelek w rzędzie akcji. Stał kolejno:
+       na końcu wiersza (niewidoczny, w kolorze podpisu) i przy ptaszku (pole
+       dotyku sąsiadowało z odhaczaniem, a pomyłka zamyka zadanie). Tutaj jest
+       jednym z kafelków: ta sama wysokość, ta sama ramka, ten sam sposób
+       obsługi co termin i wykonawca. Szerszy od pozostałych, bo niesie licznik. */
+    .zad-zwin { display: inline-flex; align-items: center; justify-content: center;
+                gap: 1px; width: auto; padding: 0 7px 0 4px;
+                font-size: 11.5px; font-variant-numeric: tabular-nums;
+                color: var(--text); }
     .zad-daszek { display: inline-block; font-size: 15px; line-height: 1;
                   transform: rotate(90deg); transition: transform .15s; }
     .zad-zwin.zwiniety .zad-daszek { transform: rotate(0deg); }
@@ -557,10 +555,6 @@
        równa się szerokość ptaszka plus odstęp, więc kafelki stoją w jednej
        linii z tytułem. */
     .zad-glowna { display: flex; align-items: center; gap: 10px; }
-    /* Osobny, większy odstęp WYŁĄCZNIE między ptaszkiem a zwijaniem: to jedyna
-       para sąsiadów, w której pomyłka jest kosztowna (odhaczenie zamiast
-       zwinięcia zamyka zadanie). Reszta rzędu zostaje ciasna. */
-    .ptaszek + .zad-zwin { margin-left: 6px; }
     /* ZAWIJANIE JEST BEZPIECZNIKIEM, nie układem docelowym. Siedem kafelków
        mieści się w jednym rzędzie dopiero od ~340 px; bez `wrap` na węższym
        ekranie ostatni z nich (trzy kropki) wychodziłby poza kartę zamiast
