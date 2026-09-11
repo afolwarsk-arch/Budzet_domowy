@@ -730,8 +730,14 @@
          spadały do drugiej linijki. Węższy odstęp i o dwa piksele węższe
          kafelki dają 283 px — mieści się z zapasem. Wysokość (28 px) zostaje
          bez zmian, więc cel dotyku się nie kurczy. */
-      .zad-akcje { gap: 4px; }
-      .zad-akcje > * { min-width: 30px; }
+      .zad-akcje { gap: 3px; }
+      .zad-akcje > * { min-width: 28px; }
+      /* Kafelek terminu urósł o godzinę przypomnienia (39 → 79 px) i rząd
+         przestał się mieścić: zmierzone 328 px przy 293 dostępnych. Ustępuje
+         OBSZAR — jako jedyny z kafelków powtarza informację, która stoi już
+         w zakładkach na górze ekranu (Wszystkie / Praca / Dom), a ustawia się
+         go też w Szczegółach. Po tym cięciu rząd wraca do jednej linijki. */
+      .zad-akcje .zad-obszar { display: none; }
     }
 
     /* Na planie i w projektach nazwa widoku schodzi do roli podpisu —
