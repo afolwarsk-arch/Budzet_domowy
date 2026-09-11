@@ -64,6 +64,9 @@ let stan = TRYB_PROJEKTY ? 'otwarte' : (localStorage.getItem('task_stan') || 'ot
 // wejście na listę z aktywnym szukaniem sprzed tygodnia wyglądałoby jak
 // zniknięcie połowy zadań.
 let fraza = '';
+// Godzina, o której przypomina zadanie BEZ własnej pory — przychodzi z serwera
+// razem z listą. Wartość tutaj jest tylko do POKAZANIA; decyduje serwer.
+let domyslnaPora = '09:00';
 let zadania = [];           // płasko, jak z serwera
 let korzen = null;          // null = widok listy; liczba = wejście w zadanie
 let widok = 'lista';        // lista | szczegoly
@@ -324,7 +327,9 @@ async function wczytaj() {
       ? '/api/task/szukaj?q=' + encodeURIComponent(fraza.trim())
       : `/api/task/zadania?czas=${czas}&status=${stan}` + qStrefa();
     const r = await authFetch(adres);
-    zadania = (await r.json()).zadania || [];
+    const d = await r.json();
+    zadania = d.zadania || [];
+    if (d.domyslna_pora) domyslnaPora = d.domyslna_pora;
   } catch { zadania = []; toast('Nie udało się wczytać zadań.', 'blad'); }
   rysuj();
 }
@@ -578,6 +583,13 @@ function podepnijPtaszki() {
     const prio = ev.target.closest('[data-priorytet]');
     if (prio) {
       await zapiszSzybko(Number(prio.dataset.priorytet), { priorytet: Number(prio.value) });
+      return;
+    }
+    // Wyczyszczenie pola godziny wraca do pory domyślnej, a nie wyłącza
+    // przypominanie — inaczej pusta wartość znaczyłaby raz jedno, raz drugie.
+    const pora = ev.target.closest('[data-pora]');
+    if (pora) {
+      await zapiszSzybko(Number(pora.dataset.pora), { pora: pora.value || null });
     }
   };
 
@@ -1887,11 +1899,27 @@ function wiersz(w, poziom) {
             aria-label="${zwiniete.has(w.id) ? 'Pokaż kroki' : 'Zwiń kroki'}"
             title="${zwiniete.has(w.id) ? 'Pokaż kroki' : 'Zwiń kroki'}"
             ><span class="zad-daszek">›</span>${p.gotowe}/${p.razem}</button>` : ''}
-        <label class="zad-data${w.termin ? (spozniony ? ' po-czasie' : ' jest') : ''}"
-               title="Termin">
-          ${w.termin ? dataKrotka(w.termin) : ikonaSvg('kalendarz')}
-          <input type="date" data-termin="${w.id}" value="${esc((w.termin || '').slice(0, 10))}">
-        </label>
+        <!-- Termin i godzina przypomnienia w JEDNYM kafelku, rozdzielone kreską.
+             Godzina należy do terminu, a nie stoi obok niego — i dopiero razem
+             odpowiadają na pytanie „kiedy to zadzwoni".
+
+             Część z godziną pokazuje się WYŁĄCZNIE przy ustawionym terminie:
+             bez daty nie ma czego przypominać. Gdy pory nie wpisano, stoi tam
+             godzina domyślna przygaszonym pismem — zadanie i tak o niej
+             zadzwoni, a wcześniej nie było tego nigdzie widać (i przez to nie
+             wysłało się ani jedno przypomnienie). -->
+        <span class="zad-kiedy${w.termin ? (spozniony ? ' po-czasie' : ' jest') : ''}">
+          <label class="zad-data" title="Termin">
+            ${w.termin ? dataKrotka(w.termin) : ikonaSvg('kalendarz')}
+            <input type="date" data-termin="${w.id}" value="${esc((w.termin || '').slice(0, 10))}">
+          </label>
+          ${w.termin ? `<label class="zad-pora${w.pora ? ' jest' : ''}"
+                 title="${w.pora ? 'Przypomni o ' + esc(w.pora.slice(0, 5))
+                   : 'Przypomni o ' + esc(domyslnaPora) + ' (godzina domyślna)'}">
+            ${esc((w.pora || domyslnaPora).slice(0, 5))}
+            <input type="time" data-pora="${w.id}" value="${esc((w.pora || '').slice(0, 5))}">
+          </label>` : ''}
+        </span>
         <label class="zad-kto${w.wykonawca_user_id ? ' jest' : ''}" title="Wykonawca">
           ${skrotWykonawcy(w)}
           <select data-wykonawca="${w.id}">${opcjeWykonawcyKrotkie(w)}</select>
@@ -3402,6 +3430,9 @@ function rysujSzczegoly() {
     <div class="pole">
       <label for="s-pora">Godzina przypomnienia</label>
       <input id="s-pora" type="time" value="${esc((w.pora || '').slice(0, 5))}">
+      <div class="uwaga">${w.termin
+        ? `Puste = przypomni o ${esc(domyslnaPora)} (godzina domyślna).`
+        : 'Bez terminu nie ma czego przypominać — najpierw ustaw datę.'}</div>
     </div>
     <div class="pole">
       <label for="s-wykonawca">Wykonawca</label>

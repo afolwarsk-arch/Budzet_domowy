@@ -398,6 +398,28 @@
                           border: 1px solid var(--border); border-radius: 8px;
                           font-size: 11.5px; color: var(--muted); cursor: pointer;
                           white-space: nowrap; }
+
+    /* Termin + godzina jako JEDEN kafelek z kreską w środku. Wspólna ramka
+       zamiast dwóch osobnych oszczędza ~15 px w rzędzie, który na 390 px ma
+       dziesięć pikseli zapasu — a przy okazji mówi prawdę o tych dwóch polach:
+       godzina nie jest osobnym ustawieniem, tylko częścią terminu. */
+    .zad-kiedy { flex: none; display: inline-flex; align-items: stretch;
+                 height: 30px; border: 1px solid var(--border); border-radius: 8px;
+                 overflow: hidden; }
+    .zad-kiedy .zad-data, .zad-kiedy .zad-pora { border: none; border-radius: 0;
+                 height: 100%; min-width: 0; }
+    .zad-kiedy .zad-pora { position: relative; display: inline-flex; align-items: center;
+                 padding: 0 6px; font-size: 11px; color: var(--muted);
+                 cursor: pointer; white-space: nowrap;
+                 border-left: 1px dashed var(--border); }
+    /* Godzina WPISANA ręcznie jest zwyczajna, domyślna przygaszona: jedna mówi
+       „tak ustawiłem", druga „tak wyjdzie samo". */
+    .zad-kiedy .zad-pora.jest { color: var(--text); font-weight: 600; }
+    .zad-kiedy.jest { border-color: var(--border); }
+    .zad-kiedy.po-czasie { border-color: var(--danger); }
+    .zad-kiedy.po-czasie .zad-data { color: var(--danger); font-weight: 600; }
+    .zad-kiedy .zad-pora input { position: absolute; inset: 0; opacity: 0;
+                 width: 100%; height: 100%; cursor: pointer; border: none; padding: 0; }
     /* Ustawiona data jest ZWYCZAJNA, nie wyróżniona kolorem modułu: koralowa
        ramka przy każdym terminie czytała się jak ostrzeżenie, przez co
        naprawdę spóźnione zadania przestawały się wyróżniać. */

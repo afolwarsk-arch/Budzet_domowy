@@ -83,6 +83,26 @@ def init_task_db() -> None:
         cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS "
                     "priorytet SMALLINT NOT NULL DEFAULT 0")
 
+        # ── jednorazowe wyciszenie zaległych ────────────────────────────────
+        #
+        # Od chwili wprowadzenia domyślnej pory (patrz `domyslna_pora`) zadanie
+        # z terminem, ale bez godziny, zaczyna przypominać. Bez tego kroku
+        # wszystkie zaległe z okna dwóch dni zadzwoniłyby naraz zaraz po
+        # wdrożeniu — a przypomnienie o czymś, co miało być wczoraj, dostaje się
+        # wtedy nie dlatego, że nadszedł czas, tylko dlatego, że zmienił się kod.
+        #
+        # Wyciszamy WYŁĄCZNIE terminy SPRZED dzisiaj: to, co wypada dziś, ma
+        # zadziałać normalnie. Krok jest jednorazowy, pilnuje tego znacznik
+        # w `ustawienia` — inaczej przy każdym restarcie gasiłby wczorajsze.
+        import database
+        if database.get_ustawienie("task_pora_migracja", "") != "1":
+            cur.execute("""UPDATE task_zadania SET przypomniano_at = now()
+                WHERE status = 'otwarte' AND przypomniano_at IS NULL
+                  AND pora IS NULL AND termin IS NOT NULL
+                  AND termin < CURRENT_DATE""")
+            print(f"[task] domyslna pora przypomnien: wyciszono {cur.rowcount} zaleglych")
+            database.set_ustawienie("task_pora_migracja", "1")
+
         # ── cykliczność ────────────────────────────────────────────────────
         # NIE generujemy wystąpień z góry. Zadanie powtarzalne to jeden wiersz;
         # kolejne pojawia się dopiero PO ODHACZENIU poprzedniego. Generowanie
@@ -1016,6 +1036,33 @@ def usun(household_id, user_id, zadanie_id) -> bool:
         return cur.rowcount > 0
 
 
+# Godzina, o której przypomina zadanie BEZ własnej pory.
+#
+# POWÓD ISTNIENIA: przypomnienia o zadaniach nie wysłały się ani razu przez
+# dwa tygodnie od wdrożenia. Nic nie było zepsute — zapytanie niżej wymagało
+# `pora IS NOT NULL`, a pora jest osobnym polem w Szczegółach, do którego trzeba
+# się dokopać. Zmierzone na żywej bazie: 36 zadań, 25 z terminem, ZERO z porą.
+# Termin bez pory znaczył po cichu „nie przypominaj", i nic tego nie mówiło.
+#
+# Ustawienie globalne (tabela `ustawienia`), nie kolumna per gospodarstwo:
+# tik chodzi co minutę po wszystkich zadaniach naraz i czyta ją raz.
+POMYSL_KLUCZ_PORY = "task_pora_domyslna"
+POMYSL_PORA = "09:00"
+
+
+def domyslna_pora() -> str:
+    import database
+    wartosc = (database.get_ustawienie(POMYSL_KLUCZ_PORY, POMYSL_PORA) or "").strip()
+    # Śmieć w ustawieniu nie może wywalić tiku ani wysłać powiadomień o północy.
+    try:
+        g, m = wartosc.split(":")[:2]
+        if 0 <= int(g) <= 23 and 0 <= int(m) <= 59:
+            return f"{int(g):02d}:{int(m):02d}"
+    except (ValueError, AttributeError):
+        pass
+    return POMYSL_PORA
+
+
 def do_przypomnienia():
     """Zadania, którym właśnie minęła godzina przypomnienia.
 
@@ -1028,15 +1075,16 @@ def do_przypomnienia():
     z terminem sprzed miesiąca, nie ma sensu wysyłać powiadomienia w sekundę
     po zapisaniu — użytkownik właśnie na nie patrzy.
     """
+    domyslna = domyslna_pora()
     with get_db() as cur:
         cur.execute("""SELECT id, household_id, tytul, termin, wykonawca_user_id,
                               prywatne_dla
             FROM task_zadania
             WHERE status = 'otwarte' AND przypomniano_at IS NULL
-              AND termin IS NOT NULL AND pora IS NOT NULL
-              AND (termin + pora) <= (now() AT TIME ZONE 'Europe/Warsaw')
+              AND termin IS NOT NULL
+              AND (termin + COALESCE(pora, %s::time)) <= (now() AT TIME ZONE 'Europe/Warsaw')
               AND termin >= CURRENT_DATE - INTERVAL '2 days'
-            LIMIT 200""")
+            LIMIT 200""", (domyslna,))
         return [dict(r) for r in cur.fetchall()]
 
 

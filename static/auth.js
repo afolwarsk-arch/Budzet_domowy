@@ -641,6 +641,7 @@ function _showProfileModal() {
     ['pobranie', 'Nadchodzące pobranie',  'Zapewnij środki — coś ściągnie się samo'],
     ['lista',    'Lista zakupów',         'Ktoś z domu dopisał nowe pozycje'],
     ['raport',   'Raport miesięczny',     'Gdy doradca podsumuje zamknięty miesiąc'],
+    ['zadanie',  'Przypomnienie o zadaniu', 'O godzinie ustawionej przy zadaniu w wiem.task'],
   ];
   overlay.innerHTML = `
     <div class="pf-okno">

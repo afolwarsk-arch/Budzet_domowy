@@ -90,8 +90,12 @@ def lista_zadan(czas: str = "wszystko", status: str = "otwarte",
         raise HTTPException(400, "Nieznany zakres czasu")
     if status not in ("wszystkie", "otwarte", "zrobione", "wstrzymane"):
         raise HTTPException(400, "Nieznany stan")
+    # `domyslna_pora` jedzie razem z listą, bo lista musi pokazać, o której
+    # zadanie BEZ własnej godziny i tak zadzwoni. Osobne żądanie po jedną
+    # wartość byłoby drugim okrążeniem po to samo.
     return {"zadania": task_db.lista(_hid(current_user), current_user["user_id"],
-                                     czas, status, osoba, strefa)}
+                                     czas, status, osoba, strefa),
+            "domyslna_pora": task_db.domyslna_pora()}
 
 
 @router.get("/szukaj")

@@ -101,7 +101,7 @@ def _opis(p: dict) -> str:
 
 # Rodzaje powiadomień — po jednym na wyzwalacz. Nazwy trafiają do bazy
 # (`push_wylaczone.rodzaj`) i do interfejsu, więc NIE zmieniaj ich bez migracji.
-RODZAJE = ("przelew", "pobranie", "lista", "raport")
+RODZAJE = ("przelew", "pobranie", "lista", "raport", "zadanie")
 
 
 def wyslij_do_uzytkownika(user_id: int, tytul: str, tresc: str, url: str = "/",
@@ -321,15 +321,22 @@ def wyslij_przypomnienia_zadan() -> None:
         else:
             adresat_info = f"household {z['household_id']}"
 
+        # `rodzaj="zadanie"` — bez niego przypomnienia o zadaniach szły poza
+        # systemem wyciszeń: nie dało się ich ani wyłączyć, ani zobaczyć wśród
+        # rodzajów powiadomień w profilu. Wysyłka i tak działała, więc brak
+        # był niewidoczny aż do pytania „a powiadomienia do zadań?".
         try:
             if z["prywatne_dla"]:
-                wyslij_do_uzytkownika(z["prywatne_dla"], tytul, tresc, url="/task")
+                wyslij_do_uzytkownika(z["prywatne_dla"], tytul, tresc, url="/task",
+                                      rodzaj="zadanie")
             elif z["wykonawca_user_id"]:
-                wyslij_do_uzytkownika(z["wykonawca_user_id"], tytul, tresc, url="/task")
+                wyslij_do_uzytkownika(z["wykonawca_user_id"], tytul, tresc, url="/task",
+                                      rodzaj="zadanie")
             else:
                 # Nikt nie przypisany albo wykonawcą jest osoba bez konta —
                 # taka osoba nie ma gdzie odebrać powiadomienia.
-                wyslij_do_gospodarstwa(z["household_id"], tytul, tresc, url="/task")
+                wyslij_do_gospodarstwa(z["household_id"], tytul, tresc, url="/task",
+                                       rodzaj="zadanie")
         except Exception as e:
             print(f"[push] zadanie {z['id']} ({adresat_info}) — wysyłka nie poszła: {e!r}")
             continue
