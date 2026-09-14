@@ -109,7 +109,19 @@ def _start_scheduler():
             CronTrigger(minute="*", timezone=ZoneInfo("Europe/Warsaw")),
             id="task_przypomnienia", replace_existing=True, misfire_grace_time=120,
         )
+        # Przegląd tygodnia w NIEDZIELĘ WIECZOREM, a nie w poniedziałek rano:
+        # przychodzi wtedy, kiedy planuje się nadchodzący tydzień, a nie wtedy,
+        # gdy już się w nim jest. Godzina łaski jest tu długa (6 h) — to
+        # podsumowanie, więc spóźnione dalej ma sens, w przeciwieństwie do
+        # przypomnienia na konkretną godzinę.
+        _scheduler.add_job(
+            push.wyslij_przeglad_tygodnia,
+            CronTrigger(day_of_week="sun", hour=18, minute=0,
+                        timezone=ZoneInfo("Europe/Warsaw")),
+            id="task_przeglad", replace_existing=True, misfire_grace_time=21600,
+        )
         _scheduler.start()
+        print("[scheduler] przeglad tygodnia: niedziela 18:00 Europe/Warsaw")
         print("[scheduler] auto-raport zaplanowany: ostatni dzień miesiąca 18:00 Europe/Warsaw")
         print("[scheduler] purge osieroconych gospodarstw: codziennie 3:30 Europe/Warsaw")
         print(f"[scheduler] przypomnienia push: codziennie 9:00 Europe/Warsaw "
@@ -1834,6 +1846,33 @@ async def api_push_test(current_user: dict = Depends(get_current_user)):
     if not ile:
         raise HTTPException(400, "Nie udało się wysłać — brak zapisanych urządzeń albo kluczy na serwerze.")
     return {"ok": True, "urzadzen": ile}
+
+
+@app.post("/api/push/przeglad-test")
+async def api_push_przeglad_test(current_user: dict = Depends(get_current_user)):
+    """Przegląd tygodnia NA ŻĄDANIE, z własnymi liczbami.
+
+    Powstało z lekcji z przypomnieniami o zadaniach: funkcja chodząca raz na
+    tydzień potrafi milczeć miesiącami, a nikt nie zauważy, bo cisza wygląda
+    tak samo jak „nic nie masz". Tu sprawdzisz treść i dostarczenie od razu.
+
+    NIE oznaczamy tygodnia jako wysłanego — inaczej próba zabierałaby niedzielny
+    przegląd. Z tego samego powodu nie przechodzimy przez `wyslij_przeglad_tygodnia`.
+    """
+    hid = current_user.get("household_id")
+    if not hid:
+        raise HTTPException(400, "Brak gospodarstwa")
+    import task_db
+    p = task_db.przeglad(hid, current_user["user_id"])
+    ile = await run_in_threadpool(
+        push.wyslij_do_uzytkownika, current_user["user_id"],
+        "Przegląd tygodnia (próbny)", push._przeglad_tekst(p), "/task",
+        "przeglad-test", "przeglad",
+    )
+    if not ile:
+        raise HTTPException(400, "Nie udało się wysłać — brak urządzeń, kluczy "
+                                 "albo ten rodzaj jest wyciszony.")
+    return {"ok": True, "urzadzen": ile, "liczby": p}
 
 
 @app.get("/api/cykliczne")

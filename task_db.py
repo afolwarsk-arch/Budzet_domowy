@@ -1088,6 +1088,33 @@ def do_przypomnienia():
         return [dict(r) for r in cur.fetchall()]
 
 
+def przeglad(household_id, user_id) -> dict:
+    """Liczby do cotygodniowego przeglądu — dla JEDNEJ osoby, nie gospodarstwa.
+
+    Per osoba, bo `_WIDOCZNE` odsiewa zadania prywatne cudze i obszary, do
+    których ktoś nie należy. Zbiorcza liczba dla całego domu zdradzałaby, ile
+    ktoś ma spraw „tylko dla siebie".
+
+    Jedno zapytanie zamiast czterech: przegląd chodzi raz w tygodniu, ale po
+    wszystkich domownikach, a to i tak jest jedno przejście po tej samej tabeli.
+    """
+    with get_db() as cur:
+        cur.execute(
+            "SELECT "
+            "  COUNT(*) FILTER (WHERE status = 'otwarte' AND termin IS NOT NULL "
+            "                     AND termin < CURRENT_DATE) AS zalegle, "
+            "  COUNT(*) FILTER (WHERE status = 'otwarte' AND termin IS NOT NULL "
+            "                     AND termin BETWEEN CURRENT_DATE AND CURRENT_DATE + 7) AS na_tydzien, "
+            "  COUNT(*) FILTER (WHERE status = 'otwarte' AND termin IS NULL) AS bez_terminu, "
+            "  COUNT(*) FILTER (WHERE status = 'wstrzymane') AS wstrzymane, "
+            "  COUNT(*) FILTER (WHERE status = 'zrobione' "
+            "                     AND zrobione_at > now() - INTERVAL '7 days') AS zamkniete "
+            f"FROM task_zadania WHERE {_WIDOCZNE}",
+            _p(household_id, user_id),
+        )
+        return {k: int(v or 0) for k, v in dict(cur.fetchone()).items()}
+
+
 def oznacz_przypomniane(ids) -> None:
     """Znaczy zadania jako już przypomniane — po jednym locie wysyłki, żeby
     kolejny tik ich nie powtórzył."""

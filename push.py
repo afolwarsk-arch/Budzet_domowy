@@ -101,7 +101,7 @@ def _opis(p: dict) -> str:
 
 # Rodzaje powiadomień — po jednym na wyzwalacz. Nazwy trafiają do bazy
 # (`push_wylaczone.rodzaj`) i do interfejsu, więc NIE zmieniaj ich bez migracji.
-RODZAJE = ("przelew", "pobranie", "lista", "raport", "zadanie")
+RODZAJE = ("przelew", "pobranie", "lista", "raport", "zadanie", "przeglad")
 
 
 def wyslij_do_uzytkownika(user_id: int, tytul: str, tresc: str, url: str = "/",
@@ -354,6 +354,64 @@ def wyslij_przypomnienia_zadan() -> None:
                 print(f"[push] zadanie {z['id']} ({adresat_info}) — powiadomienie WYSŁANE, "
                       f"ale zapis stanu nie poszedł dwukrotnie ({e1!r}, {e2!r}) — "
                       f"pomijam dalej w tym procesie")
+
+
+# ── cotygodniowy przegląd zadań (scheduler, niedziela 18:00) ────────────────
+
+def _przeglad_tekst(p: dict) -> str:
+    """Zdanie z liczb. Pomijamy zera — „0 zaległych" to informacja o niczym,
+    a przy trzech takich członach zdanie przestaje się czytać."""
+    czesci = []
+    if p["zalegle"]:
+        czesci.append(f"{p['zalegle']} po terminie")
+    if p["na_tydzien"]:
+        czesci.append(f"{p['na_tydzien']} na najbliższy tydzień")
+    if p["wstrzymane"]:
+        czesci.append(f"{p['wstrzymane']} wstrzymanych")
+    glowne = ", ".join(czesci) if czesci else "Nic nie czeka z terminem"
+    if p["zamkniete"]:
+        n = p["zamkniete"]
+        glowne += f". W tym tygodniu zamknięte: {n} {_odmiana(n, 'zadanie', 'zadania', 'zadań')}"
+    return glowne + "."
+
+
+def wyslij_przeglad_tygodnia() -> None:
+    """Raz w tygodniu, w niedzielę wieczorem: co wisi i co udało się domknąć.
+
+    JEDNO powiadomienie na osobę, nie po jednym na zadanie — od tego są
+    przypomnienia z terminem. To jest spojrzenie z góry na cały tydzień,
+    więc ma być krótkie i ma przyjść wtedy, kiedy planuje się następny.
+
+    NIE WYSYŁAMY, gdy nie ma o czym mówić (zero zaległych, zero na tydzień,
+    zero zamkniętych). Cotygodniowe „nic nie masz" uczy ignorowania kanału,
+    a wtedy przepada też to powiadomienie, które będzie ważne.
+    """
+    if not skonfigurowane():
+        print("[push] brak kluczy VAPID — pomijam przegląd tygodnia")
+        return
+    import task_db
+
+    klucz = f"przeglad:{date.today().isocalendar().year}-W{date.today().isocalendar().week}"
+    print(f"[push] start przeglądu tygodnia ({klucz})")
+    for hid in database.get_all_household_ids():
+        try:
+            for czlonek in database.get_household_members(hid):
+                uid = czlonek["id"]
+                if not database.ma_push_subskrypcje(uid):
+                    continue
+                if "przeglad" in database.get_push_wylaczone(uid):
+                    continue
+                if database.push_juz_wyslany(uid, klucz):
+                    continue
+                p = task_db.przeglad(hid, uid)
+                if not (p["zalegle"] or p["na_tydzien"] or p["zamkniete"]):
+                    continue
+                wyslij_do_uzytkownika(uid, "Przegląd tygodnia", _przeglad_tekst(p),
+                                      url="/task", tag=klucz, rodzaj="przeglad")
+                database.oznacz_push_wyslany(uid, klucz)
+        except Exception as e:
+            # Jedno gospodarstwo nie może zabrać przeglądu pozostałym.
+            print(f"[push] przegląd tygodnia dla gospodarstwa {hid} nie poszedł: {e!r}")
 
 
 if __name__ == "__main__":
