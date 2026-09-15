@@ -867,7 +867,7 @@ function kalStan(w, dzis) {
   if (w.z.status === 'zrobione') return 'zrobione';
   if (w.z.status === 'wstrzymane') return 'wstrzymane';
   if (w.wirtualne) return 'powtorka';
-  return w.koniec < dzis ? 'po-czasie' : '';
+  return w.koniec && w.koniec < dzis ? 'po-czasie' : '';
 }
 
 // Dymek `title` — na myszy mówi to, czego nie zmieściła belka.
@@ -1026,23 +1026,21 @@ function kalPasZaleglych(lista, dzis) {
 // Pozycja na liście (pas całodniowy w widoku dnia).
 //
 // Z `dzien` zadanie wielodniowe rysuje się BELKĄ z krawędziami względem tego
-// dnia (pomysł Adama): ostra z lewej = zaczyna się dziś, rozmyta = trwa od
-// wcześniej; z prawej tak samo dla końca. Podpisy stoją PRZY krawędziach,
-// których dotyczą — samo rozmycie łatwo przeoczyć w słońcu na telefonie.
+// dnia (pomysł Adama): ostra z lewej = zaczyna się tego dnia, rozmyta = trwa od
+// wcześniej; z prawej tak samo dla końca. BEZ podpisów „od… / kończy się dziś"
+// — Adam kazał je zdjąć, bo belki robiły się za wysokie; daty są w podglądzie
+// i w dymku.
 function kalPozycja(w, dzis, dzien) {
   const stan = kalStan(w, dzis);
   if (dzien && w.start < w.koniec && w.start <= dzien && w.koniec >= dzien) {
     const odDzis = w.start.getTime() === dzien.getTime();
     const doDzis = w.koniec.getTime() === dzien.getTime();
-    const czyDzis = dzien.getTime() === dzis.getTime();
-    const lewy = odDzis ? (czyDzis ? 'zaczyna się dziś' : 'zaczyna się') : `od ${kalDzienKrotko(w.start)}`;
-    const prawy = doDzis ? (czyDzis ? 'kończy się dziś' : 'kończy się') : `do ${kalDzienKrotko(w.koniec)}`;
     const dopisek = { powtorka: 'kolejne powtórzenie', wstrzymane: 'wstrzymane',
                       'po-czasie': 'po terminie', zrobione: '' }[stan] || '';
-    return `<button type="button" class="kl-poz kl-poz-wielo ${stan}" ${kalAtrybuty(w)}>
+    return `<button type="button" class="kl-poz kl-poz-wielo ${stan}" ${kalAtrybuty(w)}
+        title="${esc(kalOpis(w, dzis))}">
       <span class="kl-belka ${odDzis ? 'od-dzis' : 'od-wczesniej'} ${doDzis ? 'do-dzis' : 'trwa-dalej'}">
         <span class="kl-tyt">${kalZnak(w.z)}${esc(w.z.tytul)}${dopisek ? ` <em>${dopisek}</em>` : ''}</span>
-        <small><span>${odDzis ? '' : '‹ '}${esc(lewy)}</span><span>${esc(prawy)}${doDzis ? '' : ' ›'}</span></small>
       </span>
     </button>`;
   }
@@ -1243,16 +1241,8 @@ function rysujKalendarz() {
     const d = ev.target.closest('[data-kal-dzien]');
     if (d) { kalDzien = doDaty(d.dataset.kalDzien); kalWidok = 'dzien'; rysuj(); }
   };
-
-  // Oś godzin startuje przewinięta do bieżącej godziny, gdy dziś jest
-  // w oknie — inaczej na telefonie widać poranek, a „teraz" jest pod ekranem.
-  const kreska = box().querySelector('.kl-teraz');
-  if (kreska && kalWidok !== 'miesiac') {
-    const r = kreska.getBoundingClientRect();
-    if (r.top > window.innerHeight * 0.8) {
-      window.scrollBy({ top: r.top - window.innerHeight * 0.4, behavior: 'instant' });
-    }
-  }
+  // BEZ przewijania do bieżącej godziny. Było — Adam: nie chce, żeby ekran
+  // sam wędrował do „teraz" przy wejściu w bieżący tydzień.
 }
 
 // ── podgląd zadania w kalendarzu ────────────────────────────────────────────
@@ -1306,7 +1296,11 @@ function kalPodgladHtml(w, dzis, zAkcjami) {
   const stan = kalStan(w, dzis);
 
   let kiedy;
-  if (w.start < w.koniec) {
+  if (!w.koniec) {
+    // Termin właśnie zdjęty kafelkiem — zadanie wypadło z kalendarza, ale
+    // podgląd zostaje otwarty, żeby dało się to cofnąć.
+    kiedy = 'bez terminu';
+  } else if (w.start < w.koniec) {
     const n = roznicaDni(w.start, w.koniec) + 1;
     kiedy = `${dataKrotka(w.start)} → ${dataKrotka(w.koniec)}, ${n} ${odmien(n, 'dzień', 'dni', 'dni')}`;
   } else {
@@ -1337,8 +1331,6 @@ function kalPodgladHtml(w, dzis, zAkcjami) {
     [z.status === 'zrobione' && z.zrobione_at ? 'Zrobione' : '', esc(kalChwila(z.zrobione_at, dzis))],
     [kto ? 'Kto' : '', esc(kto)],
     [z.opis ? 'Opis' : '', `<span class="klp-opis">${esc(z.opis)}</span>`],
-    [z.ile_komentarzy ? 'Dziennik' : '',
-     `${z.ile_komentarzy} ${odmien(Number(z.ile_komentarzy), 'wpis', 'wpisy', 'wpisów')}`],
   ].filter(([etykieta]) => etykieta);
 
   return `
@@ -1346,12 +1338,17 @@ function kalPodgladHtml(w, dzis, zAkcjami) {
       <div class="klp-uchwyt" aria-hidden="true"></div>
       <div class="klp-gora">
         <div class="klp-tytul">${kalZnak(z)}${esc(z.tytul)}</div>
+        <!-- Trzy kropki jak w wierszu na liście: to samo menu (Szczegóły,
+             Przenieś, Wstrzymaj, Usuń), więc nie ma drugiego zestawu do nauki. -->
+        <button type="button" class="zad-kropki klp-kropki" data-klp-menu
+                aria-label="Co z tym zadaniem" title="Więcej">${ikonaSvg('kropki')}</button>
         <button type="button" class="klp-zamknij" data-klp-zamknij aria-label="Zamknij podgląd">✕</button>
       </div>
       ${droga ? `<div class="klp-droga">${esc(droga)}</div>` : ''}
     </div>
     ${plakietki.length ? `<div class="klp-plakietki">${plakietki.map(([t, k]) =>
       `<span class="klp-plak ${k}">${t}</span>`).join('')}</div>` : ''}
+    ${stan !== 'powtorka' ? kalKafle(z) : ''}
     <dl class="klp-dane">${dane.map(([e, t]) => `<dt>${e}</dt><dd>${t}</dd>`).join('')}</dl>
     ${stan === 'powtorka' ? `<p class="klp-uwaga">Pojawi się na liście, gdy odhaczysz bieżące
       wystąpienie (termin ${esc(dataKrotka(z.termin))}).</p>` : ''}
@@ -1362,46 +1359,108 @@ function kalPodgladHtml(w, dzis, zAkcjami) {
     </div>` : ''}`;
 }
 
+// Kafelki jak w wierszu zadania na liście — termin z godziną, osoba, priorytet
+// i dziennik. Zmieniają JEDNO pole w miejscu, bez formularza, więc mieszczą się
+// w zasadzie „na telefonie tylko podgląd, bez okna edycji". Świadomie bez
+// odhaczania, usuwania i przenoszenia: tych nie cofa się jednym stuknięciem,
+// a panel otwiera się przy każdym zajrzeniu w zadanie (usuwanie i przenoszenie
+// są pod trzema kropkami, z własnym potwierdzeniem).
+function kalKafle(z) {
+  const p = Number(z.priorytet);
+  const ktos = z.wykonawca_user_id || z.wykonawca_virtual_id;
+  return `<div class="klp-kafle">
+    <span class="zad-kiedy${z.termin ? ' jest' : ''}">
+      <label class="zad-data" title="Termin">
+        ${z.termin ? esc(dataKrotka(z.termin)) : `${ikonaSvg('kalendarz')}<span>Termin</span>`}
+        <input type="date" data-klp-pole="termin" value="${esc((z.termin || '').slice(0, 10))}">
+      </label>
+      ${z.termin ? `<label class="zad-pora${z.pora ? ' jest' : ''}"
+             title="${z.pora ? 'Przypomni o ' + esc(String(z.pora).slice(0, 5))
+               : 'Przypomni o ' + esc(domyslnaPora) + ' (godzina domyślna)'}">
+        ${esc(String(z.pora || domyslnaPora).slice(0, 5))}
+        <input type="time" data-klp-pole="pora" value="${esc(String(z.pora || '').slice(0, 5))}">
+      </label>` : ''}
+    </span>
+    <label class="zad-kto${ktos ? ' jest' : ''}" title="Kto to zrobi">
+      ${skrotWykonawcy(z)}${ktos ? '' : '<span>Kto</span>'}
+      <select data-klp-pole="wyk" aria-label="Kto to zrobi">${opcjeWykonawcyKrotkie(z)}</select>
+    </label>
+    <label class="zad-kto zad-prio-kafel${p > 0 ? ' jest wysoki' : (p < 0 ? ' jest niski' : '')}"
+           title="Priorytet: ${p > 0 ? 'wysoki' : (p < 0 ? 'niski' : 'zwykły')}">
+      ${p > 0 ? '!' : (p < 0 ? '↓' : ikonaSvg('flaga'))}
+      <select data-klp-pole="priorytet" aria-label="Priorytet">
+        <option value="1"${p > 0 ? ' selected' : ''}>Wysoki</option>
+        <option value="0"${!p ? ' selected' : ''}>Zwykły</option>
+        <option value="-1"${p < 0 ? ' selected' : ''}>Niski</option>
+      </select>
+    </label>
+    <button class="zad-plus zad-komentarz${z.ile_komentarzy ? ' jest' : ''}" type="button"
+            data-komentarze="${z.id}" title="Dziennik zadania" aria-label="Dziennik zadania">${
+      z.ile_komentarzy ? z.ile_komentarzy : ikonaSvg('notatka')}</button>
+  </div>
+  <div class="zad-dziennik klp-dziennik" id="dziennik-${z.id}" hidden></div>`;
+}
+
 function kalPokazPodglad(el) {
   const id = Number(el.dataset.kalOtworz);
-  const z = zadania.find((x) => x.id === id);
-  if (!z) return;
   const klucz = `${id}|${el.dataset.kalOd}`;
   // Drugie stuknięcie w ten sam wpis zamyka — tak jak plusik na liście.
   if (kalPodglad && kalPodglad.klucz === klucz) { kalZamknijPodglad(); return; }
-  kalZamknijPodglad();
+  kalOtworzPodglad({ id, el, od: el.dataset.kalOd, do: el.dataset.kalDo,
+                     wirtualne: el.dataset.kalWirt === '1' });
+}
 
+// `el` może być pusty: po zmianie kafelkiem zadanie bywa już poza widokiem
+// (inny tydzień, zdjęty termin). Wtedy karta zostaje tam, gdzie stała.
+function kalOtworzPodglad({ id, el, od, do: doK, wirtualne, pozycja, bezAnimacji }) {
+  const z = zadania.find((x) => x.id === id);
+  kalZamknijPodglad();
+  if (!z) return;
   const w = {
-    z, start: doDaty(el.dataset.kalOd), koniec: doDaty(el.dataset.kalDo),
-    pora: z.pora ? String(z.pora).slice(0, 5) : null, wirtualne: el.dataset.kalWirt === '1',
+    z, start: doDaty(od), koniec: doDaty(doK),
+    pora: z.pora ? String(z.pora).slice(0, 5) : null, wirtualne: !!wirtualne,
   };
   const telefon = kalWaski.matches;
   const p = document.createElement('div');
   p.id = 'kl-podglad';
-  p.className = 'klp ' + (telefon ? 'arkusz' : 'karta');
+  p.className = 'klp ' + (telefon ? 'arkusz' : 'karta') + (bezAnimacji ? ' bez-animacji' : '');
   p.setAttribute('role', 'dialog');
   p.setAttribute('aria-label', 'Podgląd zadania: ' + z.tytul);
   p.innerHTML = kalPodgladHtml(w, dzisData(), !telefon);
   document.body.appendChild(p);
-  el.classList.add('kl-wybrany');
-  kalPodglad = { klucz, w };
+  if (el) el.classList.add('kl-wybrany');
+  kalPodglad = { klucz: `${id}|${od}`, w, pozycja: null };
 
   if (!telefon) {
     // Karta pod wpisem, a gdy pod nim brakuje miejsca — nad nim. W poziomie
     // przyciśnięta do ekranu: wpis z prawej kolumny tygodnia wypychałby ją poza.
-    const r = el.getBoundingClientRect();
-    const szer = p.offsetWidth, wys = p.offsetHeight;
-    const left = Math.min(Math.max(12, r.left), window.innerWidth - szer - 12);
-    let top = r.bottom + 6;
-    if (top + wys > window.innerHeight - 12 && r.top - wys - 6 > 12) top = r.top - wys - 6;
-    p.style.left = `${left + window.scrollX}px`;
-    p.style.top = `${top + window.scrollY}px`;
+    let left, top;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      const szer = p.offsetWidth, wys = p.offsetHeight;
+      left = Math.min(Math.max(12, r.left), window.innerWidth - szer - 12) + window.scrollX;
+      top = r.bottom + 6;
+      if (top + wys > window.innerHeight - 12 && r.top - wys - 6 > 12) top = r.top - wys - 6;
+      top += window.scrollY;
+    } else {
+      ({ left, top } = pozycja || { left: window.scrollX + 24, top: window.scrollY + 80 });
+    }
+    p.style.left = `${left}px`;
+    p.style.top = `${top}px`;
+    kalPodglad.pozycja = { left, top };
   } else {
     kalPodgladPrzeciaganie(p);
   }
 
   p.onclick = async (ev) => {
     if (ev.target.closest('[data-klp-zamknij]')) { kalZamknijPodglad(); return; }
+    if (ev.target.closest('[data-klp-menu]')) {
+      // Menu to arkusz nad całą stroną — podgląd pod nim byłby tylko zasłoną.
+      kalZamknijPodglad();
+      menuZadania(id);
+      return;
+    }
+    if (ev.target.closest('[data-komentarze]')) { przelaczDziennik(id); return; }
     if (ev.target.closest('[data-klp-szczegoly]')) {
       kalZamknijPodglad();
       otworzSzczegoly(id);
@@ -1409,6 +1468,36 @@ function kalPokazPodglad(el) {
     }
     if (ev.target.closest('[data-klp-zrobione]')) await kalOdhacz(z);
   };
+  p.onchange = (ev) => {
+    const pole = ev.target.closest('[data-klp-pole]');
+    if (!pole) return;
+    const v = pole.value;
+    const zmiany = {
+      termin: { termin: v || null },
+      pora: { pora: v || null },
+      priorytet: { priorytet: Number(v) || 0 },
+      wyk: { wykonawca_user_id: v.startsWith('u:') ? Number(v.slice(2)) : null,
+             wykonawca_virtual_id: v.startsWith('v:') ? Number(v.slice(2)) : null },
+    }[pole.dataset.klpPole];
+    if (zmiany) kalZmienPole(id, zmiany);
+  };
+}
+
+// Zapis kafelkiem przerysowuje kalendarz (zadanie mogło zmienić dzień), a to
+// zamyka podgląd — więc otwieramy go z powrotem na tym samym zadaniu. Kilka
+// zmian pod rząd (termin, potem osoba) nie wymaga szukania wpisu od nowa.
+async function kalZmienPole(id, zmiany) {
+  const pozycja = kalPodglad && kalPodglad.pozycja;
+  await zapiszSzybko(id, zmiany);
+  const z = zadania.find((x) => x.id === id);
+  if (!z) { kalZamknijPodglad(); return; }
+  const zz = zakresZadania(z);
+  const el = document.querySelector(`#tresc [data-kal-otworz="${id}"]:not([data-kal-wirt])`);
+  kalOtworzPodglad({
+    id, el, wirtualne: false, pozycja, bezAnimacji: true,
+    od: el ? el.dataset.kalOd : (zz ? isoLokalne(zz.start) : null),
+    do: el ? el.dataset.kalDo : (zz ? isoLokalne(zz.koniec) : null),
+  });
 }
 
 // Panel na telefonie zamyka się pociągnięciem w dół — za uchwyt i nagłówek.
@@ -1417,7 +1506,8 @@ function kalPodgladPrzeciaganie(p) {
   const chwyt = p.querySelector('.klp-chwyt');
   let y0 = null, dy = 0;
   chwyt.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('[data-klp-zamknij]')) return;   // przejęcie wskaźnika zjadłoby klik
+    // Przejęcie wskaźnika zjadłoby klik w przyciski nagłówka.
+    if (e.target.closest('[data-klp-zamknij], [data-klp-menu]')) return;
     y0 = e.clientY; dy = 0;
     chwyt.setPointerCapture(e.pointerId);
     p.style.transition = 'none';
@@ -1464,7 +1554,9 @@ async function kalOdhacz(z) {
 // obsługa kliknięcia kalendarza przełączy podgląd na tamten.
 document.addEventListener('pointerdown', (ev) => {
   if (!kalPodglad) return;
-  if (ev.target.closest('#kl-podglad, [data-kal-otworz]')) return;
+  // `.pyt-tlo` — okno potwierdzenia (np. usunięcie wpisu w dzienniku) otwiera
+  // się NAD podglądem i stuknięcie w nie nie jest stuknięciem obok.
+  if (ev.target.closest('#kl-podglad, [data-kal-otworz], .pyt-tlo')) return;
   kalZamknijPodglad();
 }, true);
 document.addEventListener('keydown', (ev) => {
