@@ -910,6 +910,10 @@ function kalBelka(s, dzis, pierwszyWiersz, zGodzina) {
   const klasy = ['kl-wpis', kalStan(s.w, dzis)];
   if (s.ciagL) klasy.push('ciag-l');
   if (s.ciagP) klasy.push('ciag-p');
+  // Belka wielodniowa kończąca się w widoku dostaje ostrą kreskę także
+  // z prawej — „tu się kończy". Jednodniowy wpis zostaje z jedną kreską,
+  // inaczej każdy kafelek w tygodniu miałby ramkę z dwóch stron.
+  else if (s.w.start < s.w.koniec) klasy.push('koniec');
   return `<button type="button" class="${klasy.join(' ').trim()}" ${kalAtrybuty(s.w)}
       style="grid-column:${s.c0 + 1} / ${s.c1 + 2}; grid-row:${s.tor + pierwszyWiersz}"
       title="${esc(kalOpis(s.w, dzis))}">${kalZnak(s.w.z)}${
@@ -1020,8 +1024,28 @@ function kalPasZaleglych(lista, dzis) {
 }
 
 // Pozycja na liście (pas całodniowy w widoku dnia).
-function kalPozycja(w, dzis) {
+//
+// Z `dzien` zadanie wielodniowe rysuje się BELKĄ z krawędziami względem tego
+// dnia (pomysł Adama): ostra z lewej = zaczyna się dziś, rozmyta = trwa od
+// wcześniej; z prawej tak samo dla końca. Podpisy stoją PRZY krawędziach,
+// których dotyczą — samo rozmycie łatwo przeoczyć w słońcu na telefonie.
+function kalPozycja(w, dzis, dzien) {
   const stan = kalStan(w, dzis);
+  if (dzien && w.start < w.koniec && w.start <= dzien && w.koniec >= dzien) {
+    const odDzis = w.start.getTime() === dzien.getTime();
+    const doDzis = w.koniec.getTime() === dzien.getTime();
+    const czyDzis = dzien.getTime() === dzis.getTime();
+    const lewy = odDzis ? (czyDzis ? 'zaczyna się dziś' : 'zaczyna się') : `od ${kalDzienKrotko(w.start)}`;
+    const prawy = doDzis ? (czyDzis ? 'kończy się dziś' : 'kończy się') : `do ${kalDzienKrotko(w.koniec)}`;
+    const dopisek = { powtorka: 'kolejne powtórzenie', wstrzymane: 'wstrzymane',
+                      'po-czasie': 'po terminie', zrobione: '' }[stan] || '';
+    return `<button type="button" class="kl-poz kl-poz-wielo ${stan}" ${kalAtrybuty(w)}>
+      <span class="kl-belka ${odDzis ? 'od-dzis' : 'od-wczesniej'} ${doDzis ? 'do-dzis' : 'trwa-dalej'}">
+        <span class="kl-tyt">${kalZnak(w.z)}${esc(w.z.tytul)}${dopisek ? ` <em>${dopisek}</em>` : ''}</span>
+        <small><span>${odDzis ? '' : '‹ '}${esc(lewy)}</span><span>${esc(prawy)}${doDzis ? '' : ' ›'}</span></small>
+      </span>
+    </button>`;
+  }
   const dopisek = [
     w.start < w.koniec ? `trwa ${dataKrotka(w.start)} → ${dataKrotka(w.koniec)}` : '',
     stan === 'powtorka' ? 'kolejne powtórzenie' : '',
@@ -1047,7 +1071,7 @@ function kalDzienWidok(dzis) {
     </section>` : ''}
     ${calodniowe.length ? `<section class="kl-karta" style="margin-bottom:12px">
       <div class="kl-karta-nag"><strong>Cały dzień</strong></div>
-      ${calodniowe.map((w) => kalPozycja(w, dzis)).join('')}
+      ${calodniowe.map((w) => kalPozycja(w, dzis, d)).join('')}
     </section>` : ''}
     <div class="kl-tyg kl-jeden">${kalSiatkaGodzin([d], wpisy, dzis)}</div>`;
 }

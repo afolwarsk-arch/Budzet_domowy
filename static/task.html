@@ -1034,29 +1034,48 @@
                font-size: 11.5px; height: var(--kl-tor); line-height: var(--kl-tor);
                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
                cursor: pointer; color: var(--text); background: var(--accent-soft);
-               box-shadow: inset 3px 0 0 var(--accent); }
+               --kreska: var(--accent); --gr: 3px;
+               box-shadow: inset var(--gr) 0 0 var(--kreska); }
     .kl-wpis b { font-weight: 600; font-variant-numeric: tabular-nums; }
     /* Stany — te same znaczenia co na Gancie. Spóźnienie niosą UKOŚNE PASKI,
        nie sam kolor: w tym module akcent i ostrzeżenie to prawie ta sama
-       czerwień. */
+       czerwień. Kolor kreski idzie ZMIENNĄ, bo krawędzie belki (niżej)
+       składają z niej jedną albo dwie kreski. */
     .kl-wpis.zrobione, .kl-poz.zrobione .kl-tyt { text-decoration: line-through;
                text-decoration-color: color-mix(in srgb, var(--muted) 70%, transparent); }
-    .kl-wpis.zrobione { background: var(--surface-2); color: var(--muted);
-               box-shadow: inset 3px 0 0 var(--good); }
-    .kl-wpis.wstrzymane { background: var(--surface-2); color: var(--muted);
-               box-shadow: inset 3px 0 0 var(--border); }
+    .kl-wpis.zrobione { background: var(--surface-2); color: var(--muted); --kreska: var(--good); }
+    .kl-wpis.wstrzymane { background: var(--surface-2); color: var(--muted); --kreska: var(--border); }
     .kl-wpis.po-czasie { background-color: var(--danger-bg);
                background-image: repeating-linear-gradient(135deg,
                  var(--danger-border) 0 3px, transparent 3px 8px);
-               box-shadow: inset 3px 0 0 var(--danger); }
+               --kreska: var(--danger); }
     /* Dorysowane powtórzenie nie istnieje jeszcze w bazie — obrys zamiast
        wypełnienia mówi „będzie", a nie „jest". */
     .kl-wpis.powtorka { background: transparent; color: var(--muted); box-shadow: none;
                outline: 1px dashed var(--accent-border); outline-offset: -1px; }
-    /* Belka ucięta krawędzią tygodnia: płaski bok mówi, że ciągnie się dalej. */
-    .kl-wpis.ciag-l { margin-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
-    .kl-wpis.ciag-l:not(.powtorka) { box-shadow: none; }
+
+    /* KRAWĘDZIE BELKI — pomysł Adama. Ten sam język w dniu, tygodniu i miesiącu:
+       - OSTRA krawędź z kreską = tu się zaczyna / tu się kończy,
+       - ROZMYTA krawędź = ciągnie się dalej, poza to, co widać.
+       Rozmycie to nakładka w kolorze TŁA pod belką, położona pod tekstem
+       (z-index -1 w kontekście belki), więc wygasza kolor, a nie litery.
+       Kolor tła podaje miejsce: w miesiącu weekend ma inne tło niż dzień
+       roboczy, w pasie całodniowym wszystko stoi na surface-2. */
+    .kl-wpis.koniec { box-shadow: inset var(--gr) 0 0 var(--kreska),
+                                  inset calc(-1 * var(--gr)) 0 0 var(--kreska); }
+    .kl-wpis.ciag-l { margin-left: 0; padding-left: 16px;
+                      border-top-left-radius: 0; border-bottom-left-radius: 0; }
     .kl-wpis.ciag-p { margin-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+    .kl-wpis.ciag-l:not(.powtorka) { box-shadow: none; }
+    .kl-wpis.ciag-l.koniec:not(.powtorka) { box-shadow: inset calc(-1 * var(--gr)) 0 0 var(--kreska); }
+    .kl-wpis.ciag-l::before, .kl-wpis.ciag-p::after {
+      content: ''; position: absolute; top: 0; bottom: 0; width: 26px; z-index: -1;
+      pointer-events: none; }
+    .kl-wpis.ciag-l::before { left: 0;
+      background: linear-gradient(to right, var(--kl-tlo-l, var(--surface)), transparent); }
+    .kl-wpis.ciag-p::after { right: 0;
+      background: linear-gradient(to left, var(--kl-tlo-p, var(--surface-2)), transparent); }
+    .kl-pas-tory .kl-wpis { --kl-tlo-l: var(--surface-2); --kl-tlo-p: var(--surface-2); }
     .kl-romb, .kl-kwadrat { display: inline-block; width: 7px; height: 7px; margin-right: 5px;
                vertical-align: 1px; background: var(--accent); }
     .kl-romb { transform: rotate(45deg); }
@@ -1098,8 +1117,12 @@
       .kl-mies .kl-wpis { font-size: 0; padding: 0; margin: 0 2px; border-radius: 3px;
                           box-shadow: none; outline: none; pointer-events: none;
                           background: var(--accent); }
-      .kl-mies .kl-wpis.ciag-l { margin-left: 0; }
+      .kl-mies .kl-wpis.ciag-l { margin-left: 0; padding: 0; }
       .kl-mies .kl-wpis.ciag-p { margin-right: 0; }
+      /* Kreska krawędzi na pasku o wysokości 6 px byłaby kropką — zostaje
+         samo rozmycie, które przy tej wielkości czyta się dobrze. */
+      .kl-mies .kl-wpis.koniec, .kl-mies .kl-wpis.ciag-l.koniec:not(.powtorka) { box-shadow: none; }
+      .kl-mies .kl-wpis.ciag-l::before, .kl-mies .kl-wpis.ciag-p::after { width: 18px; }
       .kl-mies .kl-wpis.zrobione { background: var(--good); opacity: .45; }
       .kl-mies .kl-wpis.wstrzymane { background: var(--border); }
       .kl-mies .kl-wpis.powtorka { background: var(--accent-border); }
@@ -1153,12 +1176,11 @@
       .kl-tyg-nag, .kl-pas, .kl-godziny { grid-template-columns: 34px minmax(0, 1fr); }
       .kl-skala span { right: 5px; font-size: 9.5px; }
       .kl-pas-podpis { font-size: 9px; padding-right: 3px; }
-      .kl-tyg:not(.kl-jeden) .kl-wpis { font-size: 10px; padding: 0 3px; margin: 0 1px;
-                                         box-shadow: inset 2px 0 0 var(--accent); }
-      .kl-tyg:not(.kl-jeden) .kl-wpis.zrobione { box-shadow: inset 2px 0 0 var(--good); }
-      .kl-tyg:not(.kl-jeden) .kl-wpis.po-czasie { box-shadow: inset 2px 0 0 var(--danger); }
-      .kl-tyg:not(.kl-jeden) .kl-wpis.ciag-l,
-      .kl-tyg:not(.kl-jeden) .kl-wpis.powtorka { box-shadow: none; }
+      .kl-tyg:not(.kl-jeden) .kl-wpis { font-size: 10px; padding: 0 3px; margin: 0 1px; --gr: 2px; }
+      .kl-tyg:not(.kl-jeden) .kl-wpis.ciag-l { margin-left: 0; padding-left: 10px; }
+      .kl-tyg:not(.kl-jeden) .kl-wpis.ciag-p { margin-right: 0; }
+      .kl-tyg:not(.kl-jeden) .kl-wpis.ciag-l::before,
+      .kl-tyg:not(.kl-jeden) .kl-wpis.ciag-p::after { width: 16px; }
       .kl-tyg:not(.kl-jeden) .kl-czas b { display: none; }
       .kl-tyg:not(.kl-jeden) .kl-czas { white-space: normal; line-height: 1.15; padding-top: 2px;
                                          word-break: break-all; }
@@ -1195,6 +1217,34 @@
                           var(--danger-bg) 0 4px, transparent 4px 10px); }
     .kl-poz.powtorka { color: var(--muted); box-shadow: inset 3px 0 0 var(--accent-border); }
     @media (hover: hover) { .kl-poz:hover { background-color: var(--surface-2); } }
+
+    /* Belka wielodniowa w widoku dnia. Tło składa się z gradientu: przy
+       krawędzi „trwa dalej" kolor schodzi do przezroczystości, przy krawędzi
+       „zaczyna/kończy się" stoi pełny, z ostrą kreską. Kolory przez zmienne,
+       żeby stany (zrobione, po terminie…) zmieniały tylko barwę, a nie układ. */
+    .kl-karta .kl-poz.kl-poz-wielo { box-shadow: none; background-image: none; padding: 6px 10px; }
+    .kl-belka { --kol: var(--accent-soft); --kreska: var(--accent); --l: var(--kol); --p: var(--kol);
+                flex: 1; min-width: 0; display: block; padding: 7px 12px; border-radius: 8px;
+                background: linear-gradient(to right, var(--l) 0, var(--kol) 40px,
+                                            var(--kol) calc(100% - 40px), var(--p) 100%); }
+    .kl-belka.od-wczesniej { --l: transparent; padding-left: 30px;
+                             border-top-left-radius: 0; border-bottom-left-radius: 0; }
+    .kl-belka.trwa-dalej { --p: transparent; padding-right: 30px;
+                           border-top-right-radius: 0; border-bottom-right-radius: 0; }
+    .kl-belka.od-dzis { box-shadow: inset 4px 0 0 var(--kreska); }
+    .kl-belka.do-dzis { box-shadow: inset -4px 0 0 var(--kreska); }
+    .kl-belka.od-dzis.do-dzis { box-shadow: inset 4px 0 0 var(--kreska), inset -4px 0 0 var(--kreska); }
+    .kl-belka .kl-tyt { display: block; }
+    .kl-belka .kl-tyt em { font-style: normal; font-size: 11.5px; color: var(--danger); font-weight: 600; }
+    .kl-belka small { display: flex; justify-content: space-between; gap: 10px; margin-top: 2px;
+                      font-size: 12px; color: var(--muted); }
+    .kl-belka.od-dzis small span:first-child, .kl-belka.do-dzis small span:last-child {
+      color: var(--text); font-weight: 600; }
+    .kl-poz.zrobione .kl-belka { --kol: var(--surface-2); --kreska: var(--good); }
+    .kl-poz.wstrzymane .kl-belka { --kol: var(--surface-2); --kreska: var(--border); }
+    .kl-poz.po-czasie .kl-belka { --kol: var(--danger-bg); --kreska: var(--danger); }
+    .kl-poz.powtorka .kl-belka { --kol: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+                                 --kreska: var(--accent-border); }
 
     /* Bez terminu: bez paska po lewej — pasek znaczy „stoi w kalendarzu",
        a te właśnie nie stoją. */
