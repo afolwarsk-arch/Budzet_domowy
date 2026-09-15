@@ -1098,6 +1098,47 @@
     .kl-poz.wyd .kl-belka { --kol: var(--wyd-soft); --kreska: var(--wyd); }
     .klp-plak.wyd { background: var(--wyd-soft); color: var(--wyd-strong); border-color: var(--wyd-border); }
     .lap-poz[hidden] { display: none; }
+
+    /* ── DODAWANIE Z KALENDARZA ─────────────────────────────────────────────
+       Przytrzymanie pustego miejsca. Bez `user-select` i `touch-callout`
+       przytrzymanie palcem zaznacza tekst i otwiera systemowe menu. */
+    .kl-mies, .kl-tyg { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    .kl-dzien { position: relative; }
+    .kl-pas-tory { position: relative; min-height: 24px; }
+    .kl-trzymanie { position: absolute; left: 2px; right: 2px; z-index: 4; pointer-events: none;
+                    border-radius: 6px; box-shadow: inset 0 0 0 2px var(--accent);
+                    background: color-mix(in srgb, var(--accent) 18%, transparent);
+                    animation: kl-trzymaj .5s ease-out both; }
+    @keyframes kl-trzymaj { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { .kl-trzymanie { animation: none; } }
+
+    /* „+" w komórce miesiąca — tylko przy myszy; na dotyku jest przytrzymanie. */
+    .kl-plus { grid-row: 1; justify-self: end; align-self: start; z-index: 2; width: 26px;
+               height: 26px; margin: 3px 3px 0 0; padding: 0; border: none; border-radius: 7px;
+               background: none; color: var(--muted); font: inherit; font-size: 18px;
+               line-height: 1; cursor: pointer; opacity: 0; }
+    @media (hover: hover) {
+      .kl-dzien:hover + .kl-plus, .kl-plus:hover { opacity: 1; }
+      .kl-plus:hover { background: var(--accent-soft); color: var(--accent-strong); }
+    }
+    .kl-plus:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: -2px; }
+    @media (hover: none) { .kl-plus { display: none; } }
+
+    .kl-podpowiedz { display: flex; align-items: center; gap: 10px; margin: -4px 0 12px;
+                     padding: 7px 6px 7px 12px; border-radius: 10px; font-size: 13px;
+                     line-height: 1.4; background: var(--accent-soft); color: var(--accent-strong); }
+    .kl-podpowiedz button { margin-left: auto; flex: none; width: 32px; height: 32px; border: none;
+                            border-radius: 8px; background: none; color: inherit; cursor: pointer; }
+
+    .kl-nowe-pyt { margin: 12px 0 10px; font-size: 14px; font-weight: 600; }
+    .kl-kafel-wyd .ikona { color: var(--wyd); }
+    @media (hover: hover) { .kl-kafel-wyd:hover { border-color: var(--wyd); } }
+    .kl-nowe-rodzaj { display: flex; align-items: center; gap: 8px; margin: 10px 0 10px; }
+    .kl-nowe-wroc { flex: none; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border);
+                    border-radius: 9px; background: var(--surface); color: var(--text);
+                    font: inherit; font-size: 18px; cursor: pointer; }
+    .kl-nowe-forma #kn-tytul { width: 100%; min-height: 46px; box-sizing: border-box; }
+    .klp.karta.kl-nowe { width: 360px; }
     .kl-wpis.ciag-l::before, .kl-wpis.ciag-p::after {
       content: ''; position: absolute; top: 0; bottom: 0; width: 26px; z-index: -1;
       pointer-events: none; }

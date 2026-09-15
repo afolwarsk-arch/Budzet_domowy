@@ -964,9 +964,13 @@ function kalMiesiac(dzis) {
       const ile = wpisy.filter((w) => w.start <= d && w.koniec >= d).length;
       const opis = kalWielka(d.toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }))
         + (ile ? `, ${ile} ${odmien(ile, 'zadanie', 'zadania', 'zadań')}` : '');
+      // „+" TUŻ PO komórce w kolejności dokumentu — wtedy `.kl-dzien:hover + .kl-plus`
+      // pokazuje go przy najechaniu. Na komputerze to jedyna droga dodania w miesiącu:
+      // pojedyncze kliknięcie dnia otwiera widok dnia, więc dwuklik nie dojdzie.
       return `<button type="button" class="${klasy.join(' ')}" style="grid-column:${c + 1}"
           data-kal-dzien="${isoLokalne(d)}" aria-label="${esc(opis)}"><span class="kl-nr">${
-        d.getDate()}</span></button>`;
+        d.getDate()}</span></button><button type="button" class="kl-plus" style="grid-column:${c + 1}"
+          data-kal-nowy="${isoLokalne(d)}" aria-label="Dodaj w tym dniu" title="Dodaj w tym dniu">+</button>`;
     }).join('');
     const wiecej = ukryte.map((n, c) => (n
       ? `<span class="kl-wiecej" style="grid-column:${c + 1}; grid-row:${MAX + 2}">+${n}</span>`
@@ -997,9 +1001,11 @@ function kalTydzien(dzis) {
   return `<div class="kl-tyg">
     <div class="kl-tyg-nag"><span></span><div class="kl-tyg-nag-dni">${nag}</div></div>
     ${kalPasZaleglych(zalegle, dzis)}
-    ${calodniowe.length ? `<div class="kl-pas"><span class="kl-pas-podpis">cały<br>dzień</span>
-      <div class="kl-pas-tory">${calodniowe.map((s) => kalBelka(s, dzis, 1, false)).join('')}</div>
-    </div>` : ''}
+    <!-- Pas stoi ZAWSZE, także pusty: to w niego przytrzymuje się palec, żeby
+         dodać coś na cały dzień. -->
+    <div class="kl-pas"><span class="kl-pas-podpis">cały<br>dzień</span>
+      <div class="kl-pas-tory" data-od="${isoLokalne(od)}">${calodniowe.map((s) => kalBelka(s, dzis, 1, false)).join('')}</div>
+    </div>
     ${kalSiatkaGodzin(dni, wpisy, dzis)}
   </div>`;
 }
@@ -1146,14 +1152,14 @@ function kalSiatkaGodzin(dni, wpisy, dzis) {
     const linia = czyDzis && minTeraz >= h0 * 60 && minTeraz < h1 * 60
       ? `<i class="kl-teraz" style="top:${y(minTeraz)}px"></i>` : '';
     const weekend = dni.length > 1 && i >= 5 ? ' weekend' : '';
-    return `<div class="kl-kol${weekend}">${chipy}${linia}</div>`;
+    return `<div class="kl-kol${weekend}" data-dzien="${isoLokalne(dni[i])}">${chipy}${linia}</div>`;
   }).join('');
 
   const podpisy = [];
   for (let h = h0; h <= h1; h++) podpisy.push(`<span style="top:${(h - h0) * KAL_H}px">${h}:00</span>`);
   return `<div class="kl-godziny" style="--h:${KAL_H}px">
     <div class="kl-skala" style="height:${(h1 - h0) * KAL_H}px" aria-hidden="true">${podpisy.join('')}</div>
-    <div class="kl-kolumny" style="grid-template-columns:repeat(${dni.length}, minmax(0, 1fr))">${kolumny}</div>
+    <div class="kl-kolumny" data-h0="${h0}" style="grid-template-columns:repeat(${dni.length}, minmax(0, 1fr))">${kolumny}</div>
   </div>`;
 }
 
@@ -1244,11 +1250,21 @@ function rysujKalendarz() {
                   ${kalWidacDzis() ? 'disabled' : ''}>Dziś</button>
         </div>
       </div>
+      ${kalPodpowiedz()}
       ${tresc}
       ${kalBezDaty()}
     </div>`;
 
-  box().querySelector('.kl-ekran').onclick = (ev) => {
+  const ekran = box().querySelector('.kl-ekran');
+  kalPodepnijDodawanie(ekran);
+  ekran.onclick = (ev) => {
+    if (ev.target.closest('[data-kal-podpowiedz]')) {
+      try { localStorage.setItem('task_kal_przytrzymaj', '1'); } catch { /* bez pamięci wróci */ }
+      rysuj();
+      return;
+    }
+    const nowy = ev.target.closest('[data-kal-nowy]');
+    if (nowy) { kalNoweOtworz({ dzien: nowy.dataset.kalNowy, pora: null }, { x: ev.clientX, y: ev.clientY }); return; }
     const w = ev.target.closest('[data-kal-widok]');
     if (w) {
       kalWidok = w.dataset.kalWidok;
@@ -1277,6 +1293,323 @@ function rysujKalendarz() {
   };
   // BEZ przewijania do bieżącej godziny. Było — Adam: nie chce, żeby ekran
   // sam wędrował do „teraz" przy wejściu w bieżący tydzień.
+}
+
+// ── dodawanie z kalendarza ──────────────────────────────────────────────────
+//
+// PRZYTRZYMANIE pustego miejsca (pomysł Adama), nie zwykłe stuknięcie: stuknięcie
+// łatwo zrobić przypadkiem przy przewijaniu, przytrzymanie to wyraźny zamiar.
+// Na komputerze przytrzymanie myszą jest nienaturalne — tam dwuklik w oś godzin
+// albo pas „cały dzień", a w miesiącu „+" przy dniu.
+//
+// Po zaskoczeniu NAJPIERW wybór: Zadanie albo Wydarzenie — bez domyślnego
+// (Adam: „musi być do wyboru"). Dopiero potem nazwa i kafelki.
+
+const KAL_PRZYTRZYMAJ_MS = 500;
+
+// Gest nie jest widoczny sam z siebie — jednorazowa podpowiedź, znika po ✕
+// albo po pierwszym dodaniu tą drogą.
+function kalPodpowiedz() {
+  let bylo = false;
+  try { bylo = !!localStorage.getItem('task_kal_przytrzymaj'); } catch { /* pokaż */ }
+  if (bylo) return '';
+  const dotyk = window.matchMedia('(hover: none)').matches;
+  return `<div class="kl-podpowiedz">
+    <span>${dotyk ? 'Przytrzymaj puste miejsce w kalendarzu'
+      : 'Kliknij dwukrotnie puste miejsce (w miesiącu: „+" przy dniu)'}, żeby dodać zadanie albo wydarzenie.</span>
+    <button type="button" data-kal-podpowiedz aria-label="Zamknij podpowiedź">✕</button>
+  </div>`;
+}
+
+// Co jest pod palcem: { dzien, pora, el, top? , kolumna? } albo null, gdy to
+// nie jest puste miejsce (wpis, nagłówek, zaległe, listy pod kalendarzem).
+function kalMiejsceZ(ev) {
+  const t = ev.target;
+  if (!(t instanceof Element) || t.closest('[data-kal-otworz], .kl-zal, .kl-gora, .kl-podpowiedz, .kl-karta, .kl-plus')) return null;
+  const kol = t.closest('.kl-kol');
+  if (kol) {
+    const h0 = Number(kol.closest('.kl-kolumny').dataset.h0) || 0;
+    const r = kol.getBoundingClientRect();
+    const min = Math.max(0, Math.min(24 * 60 - 30, h0 * 60 + ((ev.clientY - r.top) / KAL_H) * 60));
+    // Do pełnej albo wpół do: 14:20 znaczy „około drugiej", nie „14:20".
+    const slot = Math.floor(min / 30) * 30;
+    return { dzien: kol.dataset.dzien, el: kol, top: ((slot - h0 * 60) / 60) * KAL_H,
+             pora: `${String(Math.floor(slot / 60)).padStart(2, '0')}:${String(slot % 60).padStart(2, '0')}` };
+  }
+  const pas = t.closest('.kl-pas-tory');
+  if (pas) {
+    const r = pas.getBoundingClientRect();
+    const c = Math.max(0, Math.min(6, Math.floor(((ev.clientX - r.left) / r.width) * 7)));
+    return { dzien: isoLokalne(dodajDni(doDaty(pas.dataset.od), c)), pora: null, el: pas, kolumna: c };
+  }
+  const dz = t.closest('.kl-dzien');
+  if (dz) return { dzien: dz.dataset.kalDzien, pora: null, el: dz };
+  return null;
+}
+
+// Podświetlenie rośnie przez czas przytrzymania — widać, że coś się dzieje
+// i GDZIE wyląduje wpis, zanim palec zdąży się zniechęcić.
+function kalZnacznikTrzymania(m) {
+  const z = document.createElement('i');
+  z.className = 'kl-trzymanie';
+  if (m.top != null) {
+    z.style.top = `${m.top}px`;
+    z.style.height = `${KAL_H / 2 - 2}px`;
+  } else if (m.kolumna != null) {
+    z.style.left = `${(m.kolumna / 7) * 100}%`;
+    z.style.width = `${100 / 7}%`;
+    z.style.top = '0';
+    z.style.bottom = '0';
+  } else {
+    z.style.inset = '2px';
+  }
+  m.el.appendChild(z);
+  return z;
+}
+
+function kalPodepnijDodawanie(ekran) {
+  let timer = null, start = null, znacznik = null, pomin = false;
+  const przerwij = () => {
+    clearTimeout(timer);
+    timer = null;
+    start = null;
+    if (znacznik) { znacznik.remove(); znacznik = null; }
+  };
+  ekran.addEventListener('pointerdown', (ev) => {
+    pomin = false;
+    if (ev.pointerType === 'mouse' || !ev.isPrimary) return;
+    const m = kalMiejsceZ(ev);
+    if (!m) return;
+    start = { x: ev.clientX, y: ev.clientY };
+    znacznik = kalZnacznikTrzymania(m);
+    timer = setTimeout(() => {
+      const punkt = start;
+      przerwij();
+      // Kliknięcie, które przyjdzie po zdjęciu palca, nie może otworzyć dnia
+      // w miesiącu ani trafić w coś pod spodem.
+      pomin = true;
+      if (navigator.vibrate) navigator.vibrate(12);
+      kalNoweOtworz(m, punkt);
+    }, KAL_PRZYTRZYMAJ_MS);
+  });
+  // Ruch palca to przewijanie albo przesuwanie tygodni, nie dodawanie.
+  ekran.addEventListener('pointermove', (ev) => {
+    if (timer && start && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 10) przerwij();
+  });
+  ekran.addEventListener('pointerup', () => { if (timer) przerwij(); });
+  ekran.addEventListener('pointercancel', przerwij);
+  // Systemowe menu przytrzymania („kopiuj / zaznacz") wyskoczyłoby w tym samym miejscu.
+  ekran.addEventListener('contextmenu', (ev) => { if (pomin || kalMiejsceZ(ev)) ev.preventDefault(); });
+  ekran.addEventListener('click', (ev) => {
+    if (!pomin) return;
+    pomin = false;
+    ev.preventDefault();
+    ev.stopPropagation();
+  }, true);
+  ekran.addEventListener('dblclick', (ev) => {
+    const m = kalMiejsceZ(ev);
+    if (!m || m.el.classList.contains('kl-dzien')) return;
+    kalNoweOtworz(m, { x: ev.clientX, y: ev.clientY });
+  });
+}
+
+const kalNowe = { rodzaj: null, termin: null, pora: null, pora_koniec: null,
+                  wyk: '', priorytet: 0, przypomnij: '60', tytul: '' };
+
+function kalGodzinePozniej(pora) {
+  const [h, m] = pora.split(':').map(Number);
+  const razem = Math.min(23 * 60 + 59, h * 60 + m + 60);
+  return `${String(Math.floor(razem / 60)).padStart(2, '0')}:${String(razem % 60).padStart(2, '0')}`;
+}
+
+const kalNoweKiedy = () => `${kalDzienKrotko(doDaty(kalNowe.termin))}${kalNowe.pora ? ', ' + kalNowe.pora : ''}`;
+
+// Okienko korzysta z mechaniki podglądu (ten sam element i stan): zamyka się
+// tak samo — ✕, stuknięciem obok, Escape, pociągnięciem w dół — i tak samo
+// znika przy przerysowaniu kalendarza.
+function kalNoweOtworz(m, punkt) {
+  kalZamknijPodglad();
+  Object.assign(kalNowe, { rodzaj: null, termin: m.dzien, pora: m.pora || null,
+                           pora_koniec: m.pora ? kalGodzinePozniej(m.pora) : null,
+                           wyk: '', priorytet: 0, przypomnij: '60', tytul: '' });
+  const telefon = kalWaski.matches;
+  const p = document.createElement('div');
+  p.id = 'kl-podglad';
+  p.className = 'klp kl-nowe ' + (telefon ? 'arkusz' : 'karta');
+  p.setAttribute('role', 'dialog');
+  p.setAttribute('aria-label', 'Dodaj w kalendarzu');
+  p.innerHTML = `
+    <div class="klp-chwyt">
+      <div class="klp-uchwyt" aria-hidden="true"></div>
+      <div class="klp-gora">
+        <div class="klp-tytul"></div>
+        <button type="button" class="klp-zamknij" data-klp-zamknij aria-label="Zamknij">✕</button>
+      </div>
+    </div>
+    <div class="kl-nowe-tresc"></div>`;
+  document.body.appendChild(p);
+  kalPodglad = { klucz: 'nowe', pozycja: null };
+  kalNoweRysuj(p);
+
+  if (!telefon) {
+    const szer = p.offsetWidth, wys = p.offsetHeight;
+    const left = Math.min(Math.max(12, punkt.x - 24), window.innerWidth - szer - 12);
+    let top = punkt.y + 12;
+    if (top + wys > window.innerHeight - 12 && punkt.y - wys - 12 > 12) top = punkt.y - wys - 12;
+    p.style.left = `${left + window.scrollX}px`;
+    p.style.top = `${top + window.scrollY}px`;
+  } else {
+    kalPodgladPrzeciaganie(p);
+  }
+
+  const otwarto = Date.now();
+  p.onclick = (ev) => {
+    // Palec zdjęty z ekranu po przytrzymaniu może wylądować na kafelku, który
+    // właśnie wysunął się pod nim — to nie jest wybór.
+    if (Date.now() - otwarto < 400) return;
+    if (ev.target.closest('[data-klp-zamknij]')) { kalZamknijPodglad(); return; }
+    const r = ev.target.closest('[data-kn-rodzaj]');
+    if (r) {
+      kalNowe.rodzaj = r.dataset.knRodzaj;
+      kalNoweRysuj(p, true);
+      return;
+    }
+    if (ev.target.closest('[data-kn-wroc]')) { kalNowe.rodzaj = null; kalNoweRysuj(p); }
+  };
+  p.onchange = (ev) => {
+    const el = ev.target.closest('[data-kn]');
+    if (!el) return;
+    const v = el.value;
+    switch (el.dataset.kn) {
+      case 'termin':
+        if (!v) { el.value = kalNowe.termin; return; }   // bez dnia nie ma czego dodać do kalendarza
+        kalNowe.termin = v;
+        break;
+      case 'pora':
+        kalNowe.pora = v || null;
+        if (!v) kalNowe.pora_koniec = null;
+        else if (!kalNowe.pora_koniec || kalNowe.pora_koniec <= v) kalNowe.pora_koniec = kalGodzinePozniej(v);
+        break;
+      case 'pora_koniec': kalNowe.pora_koniec = v || null; break;
+      case 'wyk': kalNowe.wyk = v; break;
+      case 'priorytet': kalNowe.priorytet = Number(v) || 0; break;
+      case 'przypomnij': kalNowe.przypomnij = v; break;
+      default: return;
+    }
+    // Tylko kafelki i nagłówek — pole nazwy zostaje, razem z wpisanym tekstem i kursorem.
+    p.querySelector('.klp-kafle').innerHTML = kalNowePolaHtml();
+    p.querySelector('.klp-tytul').textContent = `Nowe na ${kalNoweKiedy()}`;
+  };
+}
+
+function kalNoweRysuj(p, doPola = false) {
+  p.querySelector('.klp-tytul').textContent = `Nowe na ${kalNoweKiedy()}`;
+  const tresc = p.querySelector('.kl-nowe-tresc');
+  if (!kalNowe.rodzaj) {
+    tresc.innerHTML = `
+      <p class="kl-nowe-pyt">Co chcesz dodać?</p>
+      <div class="lap-kafle">
+        <button type="button" class="lap-kafel" data-kn-rodzaj="zadanie">
+          ${ikonaSvg('zadania')}Zadanie<small>coś do zrobienia i odhaczenia</small>
+        </button>
+        <button type="button" class="lap-kafel kl-kafel-wyd" data-kn-rodzaj="wydarzenie">
+          ${ikonaSvg('gwiazdka')}Wydarzenie<small>dzieje się o danej porze</small>
+        </button>
+      </div>`;
+    return;
+  }
+  const wyd = kalNowe.rodzaj === 'wydarzenie';
+  tresc.innerHTML = `
+    <form class="kl-nowe-forma">
+      <div class="kl-nowe-rodzaj">
+        <button type="button" class="kl-nowe-wroc" data-kn-wroc aria-label="Zmień: zadanie czy wydarzenie">‹</button>
+        <span class="klp-plak ${wyd ? 'wyd' : ''}">${wyd ? 'wydarzenie' : 'zadanie'}</span>
+      </div>
+      <input id="kn-tytul" autocomplete="off" value="${esc(kalNowe.tytul)}"
+             placeholder="${wyd ? 'Co się wydarzy?' : 'Co jest do zrobienia?'}">
+      <div class="klp-kafle">${kalNowePolaHtml()}</div>
+      <div class="klp-akcje"><button type="submit" class="btn btn-primary">Dodaj</button></div>
+    </form>`;
+  const pole = tresc.querySelector('#kn-tytul');
+  pole.oninput = () => { kalNowe.tytul = pole.value; };
+  tresc.querySelector('form').onsubmit = (e) => { e.preventDefault(); kalNoweZapisz(); };
+  // Kursor w polu tylko przy wejściu w formularz: wybór rodzaju był już zamiarem
+  // pisania, więc klawiatura nie jest tu niespodzianką.
+  if (doPola) pole.focus();
+}
+
+function kalNowePolaHtml() {
+  const n = kalNowe;
+  const w = {
+    wykonawca_user_id: n.wyk.startsWith('u:') ? Number(n.wyk.slice(2)) : null,
+    wykonawca_virtual_id: n.wyk.startsWith('v:') ? Number(n.wyk.slice(2)) : null,
+  };
+  const wyd = n.rodzaj === 'wydarzenie';
+  const dzien = `<label class="zad-data" title="${wyd ? 'Dzień' : 'Termin'}">${esc(dataKrotka(n.termin))}
+      <input type="date" data-kn="termin" value="${esc(n.termin)}"></label>`;
+  const od = `<label class="zad-pora${n.pora ? ' jest' : ''}" title="${wyd ? 'Od godziny' : 'Godzina przypomnienia'}">${
+      n.pora ? esc(n.pora) : (wyd ? 'od' : esc(domyslnaPora))}
+      <input type="time" data-kn="pora" value="${esc(n.pora || '')}"></label>`;
+  const kto = `<label class="zad-kto${n.wyk ? ' jest' : ''}" title="Kto">
+      ${n.wyk ? skrotWykonawcy(w) : `${ikonaSvg('osoby')}<span>Kto</span>`}
+      <select data-kn="wyk" aria-label="Kto">${opcjeWykonawcyKrotkie(w)}</select></label>`;
+  if (wyd) {
+    const doG = n.pora ? `<label class="zad-pora${n.pora_koniec ? ' jest' : ''}" title="Do godziny">${
+        n.pora_koniec ? esc(n.pora_koniec) : 'do'}
+        <input type="time" data-kn="pora_koniec" value="${esc(n.pora_koniec || '')}"></label>` : '';
+    const przyp = PRZYPOMNIENIA.find(([k]) => k === n.przypomnij) || PRZYPOMNIENIA[0];
+    return `<span class="zad-kiedy jest">${dzien}${od}${doG}</span>${kto}
+      <label class="zad-kto${przyp[0] ? ' jest' : ''}" title="Przypomnienie">
+        ${ikonaSvg('alerty')}<span>${przyp[2]}</span>
+        <select data-kn="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(n.przypomnij || null)}</select></label>`;
+  }
+  const p = n.priorytet;
+  return `<span class="zad-kiedy jest">${dzien}${od}</span>${kto}
+    <label class="zad-kto zad-prio-kafel${p > 0 ? ' jest wysoki' : (p < 0 ? ' jest niski' : '')}" title="Priorytet">
+      ${p > 0 ? '!' : (p < 0 ? '↓' : ikonaSvg('flaga'))}
+      <select data-kn="priorytet" aria-label="Priorytet">
+        <option value="1"${p > 0 ? ' selected' : ''}>Wysoki</option>
+        <option value="0"${!p ? ' selected' : ''}>Zwykły</option>
+        <option value="-1"${p < 0 ? ' selected' : ''}>Niski</option>
+      </select></label>`;
+}
+
+async function kalNoweZapisz() {
+  const n = kalNowe;
+  const tytul = (n.tytul || '').trim();
+  if (!tytul) { document.getElementById('kn-tytul')?.focus(); return; }
+  const wyd = n.rodzaj === 'wydarzenie';
+  if (wyd && n.pora && n.pora_koniec && n.pora_koniec <= n.pora) {
+    toast('Koniec musi być po początku.', 'blad');
+    return;
+  }
+  const dane = {
+    tytul, rodzaj: n.rodzaj, termin: n.termin, pora: n.pora, strefa_id: strefa,
+    wykonawca_user_id: n.wyk.startsWith('u:') ? Number(n.wyk.slice(2)) : null,
+    wykonawca_virtual_id: n.wyk.startsWith('v:') ? Number(n.wyk.slice(2)) : null,
+  };
+  if (wyd) {
+    dane.pora_koniec = n.pora ? n.pora_koniec : null;
+    dane.przypomnij_min = n.przypomnij ? Number(n.przypomnij) : null;
+  } else {
+    dane.priorytet = n.priorytet;
+  }
+  const btn = document.querySelector('#kl-podglad [type="submit"]');
+  if (btn) btn.disabled = true;
+  const r = await authFetch('/api/task/zadania', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dane),
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    toast(e.detail || 'Nie udało się zapisać.', 'blad');
+    if (btn) btn.disabled = false;
+    return;
+  }
+  try { localStorage.setItem('task_kal_przytrzymaj', '1'); } catch { /* podpowiedź wróci */ }
+  const kiedy = kalNoweKiedy();
+  kalZamknijPodglad();
+  toast(`Dodano ${wyd ? 'wydarzenie' : 'zadanie'}: ${tytul}, ${kiedy}.`, 'ok');
+  await wczytaj();
 }
 
 // ── podgląd zadania w kalendarzu ────────────────────────────────────────────
