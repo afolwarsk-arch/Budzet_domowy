@@ -703,6 +703,8 @@ function rysuj() {
   // Dlatego na planie zdejmujemy je z kontenera treści i oddajemy gest osi.
   const t = box();
   if (t) t.style.touchAction = zakres === 'plan' ? '' : 'pan-y pinch-zoom';
+  // Podgląd wisi przy konkretnym wpisie, a przerysowanie ten wpis podmienia.
+  if (kalPodglad) kalZamknijPodglad();
   if (widok === 'szczegoly') return rysujSzczegoly();
   if (zakres === 'plan') return rysujPlan();
   if (zakres === 'kalendarz') return rysujKalendarz();
@@ -747,7 +749,9 @@ function rysujProjekty() {
 // - zadanie z początkiem i terminem to BELKA przez wszystkie dni,
 // - przyszłe powtórzenia cyklicznych DORYSOWUJEMY (obrysem): w bazie istnieje
 //   tylko bieżące wystąpienie, więc miesiąc do przodu wyglądałby na pusty,
-// - przeciąganie zadań po kalendarzu — później; na razie podgląd i Szczegóły.
+// - przeciąganie zadań po kalendarzu — później,
+// - stuknięcie w zadanie pokazuje PODGLĄD, nie formularz; na telefonie wyłącznie
+//   podgląd, bez przycisków (patrz `kalPokazPodglad`).
 //
 // Zadanie BEZ GODZINY stoi w pasie „cały dzień", mimo że przypomnienie przyjdzie
 // o porze domyślnej: postawienie go na 9:00 udawałoby umówioną godzinę.
@@ -906,7 +910,7 @@ function kalBelka(s, dzis, pierwszyWiersz, zGodzina) {
   const klasy = ['kl-wpis', kalStan(s.w, dzis)];
   if (s.ciagL) klasy.push('ciag-l');
   if (s.ciagP) klasy.push('ciag-p');
-  return `<button type="button" class="${klasy.join(' ').trim()}" data-kal-otworz="${s.w.z.id}"
+  return `<button type="button" class="${klasy.join(' ').trim()}" ${kalAtrybuty(s.w)}
       style="grid-column:${s.c0 + 1} / ${s.c1 + 2}; grid-row:${s.tor + pierwszyWiersz}"
       title="${esc(kalOpis(s.w, dzis))}">${kalZnak(s.w.z)}${
     zGodzina && kalGodzinowy(s.w) ? `<b>${s.w.pora}</b> ` : ''}${esc(s.w.z.tytul)}</button>`;
@@ -981,7 +985,7 @@ function kalPozycja(w, dzis) {
     stan === 'wstrzymane' ? 'wstrzymane' : '',
     stan === 'po-czasie' ? 'po terminie' : '',
   ].filter(Boolean).join(', ');
-  return `<button type="button" class="kl-poz ${stan}" data-kal-otworz="${w.z.id}">
+  return `<button type="button" class="kl-poz ${stan}" ${kalAtrybuty(w)}>
     <span class="kl-tyt">${kalZnak(w.z)}${esc(w.z.tytul)}${dopisek ? `<small>${esc(dopisek)}</small>` : ''}</span>
   </button>`;
 }
@@ -1029,7 +1033,7 @@ function kalSiatkaGodzin(dni, wpisy, dzis) {
     });
     const szer = 100 / Math.max(1, konce.length);
     const chipy = ulozone.map(({ w, m, k }) => `<button type="button"
-        class="kl-wpis kl-czas ${kalStan(w, dzis)}" data-kal-otworz="${w.z.id}"
+        class="kl-wpis kl-czas ${kalStan(w, dzis)}" ${kalAtrybuty(w)}
         style="top:${y(m)}px; left:calc(${k * szer}% + 2px); width:calc(${szer}% - 4px)"
         title="${esc(kalOpis(w, dzis))}"><b>${w.pora}</b> ${kalZnak(w.z)}${esc(w.z.tytul)}</button>`).join('');
     const czyDzis = dni[i].getTime() === dzis.getTime();
@@ -1061,7 +1065,7 @@ function kalBezDaty() {
     <p class="kl-bez-opis">Nie stoją w kalendarzu, bo nie mają daty. Stuknij, żeby ją ustawić.</p>
     ${lista.map((z) => {
       const droga = sciezkaDo(z.id).slice(0, -1).map((x) => x.tytul).join(' › ');
-      return `<button type="button" class="kl-poz" data-kal-otworz="${z.id}">
+      return `<button type="button" class="kl-poz" data-kal-edytuj="${z.id}">
         <span class="kl-tyt">${kalZnak(z)}${esc(z.tytul)}${droga ? `<small>${esc(droga)}</small>` : ''}</span>
       </button>`;
     }).join('')}
@@ -1148,8 +1152,12 @@ function rysujKalendarz() {
     }
     const k = ev.target.closest('[data-kal-krok]');
     if (k) { kalPrzesun(Number(k.dataset.kalKrok)); return; }
+    // Wpis w kalendarzu → PODGLĄD. Zadanie z listy „Bez terminu" → od razu
+    // Szczegóły: tam nazwa jest cała, a stuka się po to, żeby ustawić datę.
     const o = ev.target.closest('[data-kal-otworz]');
-    if (o) { otworzSzczegoly(Number(o.dataset.kalOtworz)); return; }
+    if (o) { kalPokazPodglad(o); return; }
+    const e = ev.target.closest('[data-kal-edytuj]');
+    if (e) { otworzSzczegoly(Number(e.dataset.kalEdytuj)); return; }
     // Stuknięcie w dzień otwiera jego widok, ale NIE zapisuje „dnia" jako
     // ulubionego widoku — to zajrzenie, a nie zmiana ustawienia.
     const d = ev.target.closest('[data-kal-dzien]');
@@ -1166,6 +1174,223 @@ function rysujKalendarz() {
     }
   }
 }
+
+// ── podgląd zadania w kalendarzu ────────────────────────────────────────────
+//
+// Stuknięcie w zadanie pokazuje PODGLĄD, a nie formularz. W wąskich kolumnach
+// tygodnia z nazwy zostaje kilka liter, a wchodzenie w edycję tylko po to,
+// żeby przeczytać tytuł, i wychodzenie z niej to dwa ekrany za dużo.
+//
+// Telefon: panel od dołu, WYŁĄCZNIE podgląd, bez przycisków — Adam wprost:
+// „na telefonie tylko podgląd bez otwierania okna edycji". Komputer: karta
+// przy wpisie z „Szczegóły" i „Zrobione".
+//
+// Podgląd siedzi POZA `#tresc`: przerysowanie kalendarza by go skasowało,
+// a gest przesuwania łapałby ruchy palca na panelu.
+
+let kalPodglad = null;   // { klucz, w } — otwarty podgląd
+
+// Wpis niesie w atrybutach SWOJE daty, nie tylko id zadania: dorysowane
+// powtórzenie ma inną datę niż wiersz w bazie, a podgląd ma pokazać tę,
+// w którą się stuknęło.
+function kalAtrybuty(w) {
+  return `data-kal-otworz="${w.z.id}" data-kal-od="${isoLokalne(w.start)}"
+    data-kal-do="${isoLokalne(w.koniec)}"${w.wirtualne ? ' data-kal-wirt="1"' : ''}`;
+}
+
+function kalZamknijPodglad() {
+  document.getElementById('kl-podglad')?.remove();
+  document.querySelectorAll('.kl-wybrany').forEach((e) => e.classList.remove('kl-wybrany'));
+  kalPodglad = null;
+}
+
+// Otwarte kroki w całym poddrzewie — do pytania o zamknięcie ich razem z zadaniem.
+function kalOtwarteKroki(id) {
+  return zadania.filter((x) => x.parent_id === id)
+    .reduce((n, x) => n + (x.status !== 'zrobione' ? 1 : 0) + kalOtwarteKroki(x.id), 0);
+}
+
+// „13 września, 16:42" — w tym samym brzmieniu co „Kiedy" wiersz wyżej;
+// „13.09.26, 16:42" obok pełnej daty czytało się jak z innego systemu.
+function kalChwila(iso, dzis) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const rok = d.getFullYear() !== dzis.getFullYear() ? { year: 'numeric' } : {};
+  return `${d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', ...rok })}, ${
+    d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+function kalPodgladHtml(w, dzis, zAkcjami) {
+  const z = w.z;
+  const droga = sciezkaDo(z.id).slice(0, -1).map((x) => x.tytul).join(' › ');
+  const stan = kalStan(w, dzis);
+
+  let kiedy;
+  if (w.start < w.koniec) {
+    const n = roznicaDni(w.start, w.koniec) + 1;
+    kiedy = `${dataKrotka(w.start)} → ${dataKrotka(w.koniec)}, ${n} ${odmien(n, 'dzień', 'dni', 'dni')}`;
+  } else {
+    const rok = w.koniec.getFullYear() !== dzis.getFullYear() ? { year: 'numeric' } : {};
+    kiedy = kalWielka(w.koniec.toLocaleDateString('pl-PL',
+      { weekday: 'long', day: 'numeric', month: 'long', ...rok }));
+    if (w.pora) kiedy += `, ${w.pora}`;
+  }
+  const m = (household?.members || []).find((x) => x.id === z.wykonawca_user_id);
+  const v = (household?.virtual_members || []).find((x) => x.id === z.wykonawca_virtual_id);
+  const kto = m ? (m.display_name || m.name) : (v ? v.name : '');
+
+  const plakietki = [
+    stan === 'po-czasie' && ['po terminie', 'zle'],
+    stan === 'zrobione' && ['zrobione', 'ok'],
+    stan === 'wstrzymane' && ['wstrzymane', ''],
+    stan === 'powtorka' && ['kolejne powtórzenie', ''],
+    Number(z.priorytet) > 0 && ['wysoki priorytet', 'zle'],
+    Number(z.priorytet) < 0 && ['niski priorytet', ''],
+    z.kamien_milowy && ['kamień milowy', ''],
+    z.projekt && ['projekt', ''],
+  ].filter(Boolean);
+
+  const dane = [
+    ['Kiedy', `${esc(kiedy)}${z.powtarzaj ? `<small>powtarza się ${esc(opisPowtarzania(z))}</small>` : ''}`],
+    // Data WYKONANIA, nie terminu: w kalendarzu zamknięte zadanie stoi na dniu
+    // terminu, więc bez tego nie widać, kiedy faktycznie zostało zrobione.
+    [z.status === 'zrobione' && z.zrobione_at ? 'Zrobione' : '', esc(kalChwila(z.zrobione_at, dzis))],
+    [kto ? 'Kto' : '', esc(kto)],
+    [z.opis ? 'Opis' : '', `<span class="klp-opis">${esc(z.opis)}</span>`],
+    [z.ile_komentarzy ? 'Dziennik' : '',
+     `${z.ile_komentarzy} ${odmien(Number(z.ile_komentarzy), 'wpis', 'wpisy', 'wpisów')}`],
+  ].filter(([etykieta]) => etykieta);
+
+  return `
+    <div class="klp-chwyt">
+      <div class="klp-uchwyt" aria-hidden="true"></div>
+      <div class="klp-gora">
+        <div class="klp-tytul">${kalZnak(z)}${esc(z.tytul)}</div>
+        <button type="button" class="klp-zamknij" data-klp-zamknij aria-label="Zamknij podgląd">✕</button>
+      </div>
+      ${droga ? `<div class="klp-droga">${esc(droga)}</div>` : ''}
+    </div>
+    ${plakietki.length ? `<div class="klp-plakietki">${plakietki.map(([t, k]) =>
+      `<span class="klp-plak ${k}">${t}</span>`).join('')}</div>` : ''}
+    <dl class="klp-dane">${dane.map(([e, t]) => `<dt>${e}</dt><dd>${t}</dd>`).join('')}</dl>
+    ${stan === 'powtorka' ? `<p class="klp-uwaga">Pojawi się na liście, gdy odhaczysz bieżące
+      wystąpienie (termin ${esc(dataKrotka(z.termin))}).</p>` : ''}
+    ${zAkcjami ? `<div class="klp-akcje">
+      ${stan !== 'powtorka' ? `<button type="button" class="btn btn-outline" data-klp-zrobione>${
+        z.status === 'zrobione' ? 'Przywróć' : 'Zrobione'}</button>` : ''}
+      <button type="button" class="btn btn-primary" data-klp-szczegoly>Szczegóły</button>
+    </div>` : ''}`;
+}
+
+function kalPokazPodglad(el) {
+  const id = Number(el.dataset.kalOtworz);
+  const z = zadania.find((x) => x.id === id);
+  if (!z) return;
+  const klucz = `${id}|${el.dataset.kalOd}`;
+  // Drugie stuknięcie w ten sam wpis zamyka — tak jak plusik na liście.
+  if (kalPodglad && kalPodglad.klucz === klucz) { kalZamknijPodglad(); return; }
+  kalZamknijPodglad();
+
+  const w = {
+    z, start: doDaty(el.dataset.kalOd), koniec: doDaty(el.dataset.kalDo),
+    pora: z.pora ? String(z.pora).slice(0, 5) : null, wirtualne: el.dataset.kalWirt === '1',
+  };
+  const telefon = kalWaski.matches;
+  const p = document.createElement('div');
+  p.id = 'kl-podglad';
+  p.className = 'klp ' + (telefon ? 'arkusz' : 'karta');
+  p.setAttribute('role', 'dialog');
+  p.setAttribute('aria-label', 'Podgląd zadania: ' + z.tytul);
+  p.innerHTML = kalPodgladHtml(w, dzisData(), !telefon);
+  document.body.appendChild(p);
+  el.classList.add('kl-wybrany');
+  kalPodglad = { klucz, w };
+
+  if (!telefon) {
+    // Karta pod wpisem, a gdy pod nim brakuje miejsca — nad nim. W poziomie
+    // przyciśnięta do ekranu: wpis z prawej kolumny tygodnia wypychałby ją poza.
+    const r = el.getBoundingClientRect();
+    const szer = p.offsetWidth, wys = p.offsetHeight;
+    const left = Math.min(Math.max(12, r.left), window.innerWidth - szer - 12);
+    let top = r.bottom + 6;
+    if (top + wys > window.innerHeight - 12 && r.top - wys - 6 > 12) top = r.top - wys - 6;
+    p.style.left = `${left + window.scrollX}px`;
+    p.style.top = `${top + window.scrollY}px`;
+  } else {
+    kalPodgladPrzeciaganie(p);
+  }
+
+  p.onclick = async (ev) => {
+    if (ev.target.closest('[data-klp-zamknij]')) { kalZamknijPodglad(); return; }
+    if (ev.target.closest('[data-klp-szczegoly]')) {
+      kalZamknijPodglad();
+      otworzSzczegoly(id);
+      return;
+    }
+    if (ev.target.closest('[data-klp-zrobione]')) await kalOdhacz(z);
+  };
+}
+
+// Panel na telefonie zamyka się pociągnięciem w dół — za uchwyt i nagłówek.
+// Tylko tam: niżej panel przewija się w pionie i ten sam ruch znaczy „czytaj dalej".
+function kalPodgladPrzeciaganie(p) {
+  const chwyt = p.querySelector('.klp-chwyt');
+  let y0 = null, dy = 0;
+  chwyt.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('[data-klp-zamknij]')) return;   // przejęcie wskaźnika zjadłoby klik
+    y0 = e.clientY; dy = 0;
+    chwyt.setPointerCapture(e.pointerId);
+    p.style.transition = 'none';
+  });
+  chwyt.addEventListener('pointermove', (e) => {
+    if (y0 == null) return;
+    dy = Math.max(0, e.clientY - y0);
+    p.style.transform = `translateY(${dy}px)`;
+  });
+  const pusc = () => {
+    if (y0 == null) return;
+    y0 = null;
+    p.style.transition = '';
+    if (dy > 60) kalZamknijPodglad(); else p.style.transform = '';
+  };
+  chwyt.addEventListener('pointerup', pusc);
+  chwyt.addEventListener('pointercancel', pusc);
+}
+
+async function kalOdhacz(z) {
+  const zrobione = z.status !== 'zrobione';
+  // Podgląd zamykamy PRZED pytaniem: stuknięcie w okno potwierdzenia jest
+  // stuknięciem „obok podglądu" i zamknęłoby go w połowie.
+  kalZamknijPodglad();
+  let kaskada = false;
+  const otwarte = zrobione ? kalOtwarteKroki(z.id) : 0;
+  if (otwarte > 0) {
+    kaskada = await potwierdz({
+      tytul: 'Zamknąć też kroki?',
+      tresc: `To zadanie ma ${otwarte} ${odmien(otwarte, 'nieskończony krok', 'nieskończone kroki', 'nieskończonych kroków')}.`,
+      tak: 'Zamknij wszystko', nie: 'Tylko to zadanie',
+    });
+  }
+  const r = await authFetch(`/api/task/zadania/${z.id}/status`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ zrobione, kaskada }),
+  });
+  if (!r.ok) { toast('Nie udało się zmienić zadania.', 'blad'); return; }
+  toast(zrobione ? 'Zrobione.' : 'Przywrócone.', 'ok');
+  await wczytaj();
+}
+
+// Stuknięcie obok zamyka podgląd. Stuknięcie w INNY wpis nie zamyka tutaj —
+// obsługa kliknięcia kalendarza przełączy podgląd na tamten.
+document.addEventListener('pointerdown', (ev) => {
+  if (!kalPodglad) return;
+  if (ev.target.closest('#kl-podglad, [data-kal-otworz]')) return;
+  kalZamknijPodglad();
+}, true);
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && kalPodglad) kalZamknijPodglad();
+});
+window.addEventListener('resize', () => { if (kalPodglad && !kalWaski.matches) kalZamknijPodglad(); });
 
 // ── wykres Gantta ───────────────────────────────────────────────────────────
 //
