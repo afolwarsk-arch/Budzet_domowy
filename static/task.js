@@ -963,16 +963,59 @@ function kalTydzien(dzis) {
   const dni = KAL_DNI.map((_, i) => dodajDni(od, i));
   const wpisy = kalWpisy(od, dodajDni(od, 7));
   const calodniowe = kalTory(od, 7, wpisy.filter((w) => !kalGodzinowy(w)));
+  // Zaległości tylko w BIEŻĄCYM tygodniu (decyzja Adama): tu planuje się, co
+  // nadrobić, a w każdym przyszłym tygodniu ta sama lista powtarzałaby się.
+  const zalegle = od.getTime() === poczatekTygodnia(dzis).getTime() ? kalZalegle(od) : [];
   const nag = dni.map((d, i) => `<button type="button" data-kal-dzien="${isoLokalne(d)}"
       class="${d.getTime() === dzis.getTime() ? 'dzis' : ''}"
       aria-label="${esc(kalWielka(d.toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })))}">
       <span>${KAL_DNI[i]}</span><strong>${d.getDate()}</strong></button>`).join('');
   return `<div class="kl-tyg">
     <div class="kl-tyg-nag"><span></span><div class="kl-tyg-nag-dni">${nag}</div></div>
+    ${kalPasZaleglych(zalegle, dzis)}
     ${calodniowe.length ? `<div class="kl-pas"><span class="kl-pas-podpis">cały<br>dzień</span>
       <div class="kl-pas-tory">${calodniowe.map((s) => kalBelka(s, dzis, 1, false)).join('')}</div>
     </div>` : ''}
     ${kalSiatkaGodzin(dni, wpisy, dzis)}
+  </div>`;
+}
+
+// ── zaległe ──
+// Niezrobione zadania z terminem sprzed wskazanego dnia. Adam chciał je widzieć
+// w bieżącym tygodniu, „ale żeby się odznaczały" — stąd osobny pas nad
+// siatką, a nie wrzucenie w poniedziałek: w konkretnym dniu udawałyby nowy
+// termin. Od najstarszego, bo najdłużej wiszące najłatwiej przeoczyć.
+let kalZaleglePokaz = localStorage.getItem('task_kal_zalegle') !== '0';
+
+const kalDzienKrotko = (d) => `${KAL_DNI[(d.getDay() + 6) % 7].toLowerCase()} ${dataKrotka(d)}`;
+
+function kalZalegle(przed) {
+  return zadania
+    .map((z) => ({ z, zz: zakresZadania(z) }))
+    .filter(({ z, zz }) => zz && z.status === 'otwarte' && zz.koniec < przed)
+    .sort((a, b) => a.zz.koniec - b.zz.koniec || kalPorzadek(
+      { z: a.z, start: a.zz.start, koniec: a.zz.koniec }, { z: b.z, start: b.zz.start, koniec: b.zz.koniec }))
+    .map(({ z, zz }) => ({ z, start: zz.start, koniec: zz.koniec,
+                           pora: z.pora ? String(z.pora).slice(0, 5) : null, wirtualne: false }));
+}
+
+// Nagłówek zwija i rozwija — przy kilkunastu zaległościach pas zjadałby pół
+// tygodnia, a samą liczbę i tak widać po zwinięciu.
+function kalZalNaglowek(ile, skad) {
+  return `<button type="button" class="kl-zal-nag" data-kal-zalegle aria-expanded="${kalZaleglePokaz}">
+    <strong>Zaległe</strong><em>${ile}</em><span class="kl-zal-skad">${skad}</span>
+    <span class="kl-zal-daszek" aria-hidden="true">›</span>
+  </button>`;
+}
+
+function kalPasZaleglych(lista, dzis) {
+  if (!lista.length) return '';
+  return `<div class="kl-zal">
+    ${kalZalNaglowek(lista.length, 'sprzed tego tygodnia')}
+    ${kalZaleglePokaz ? `<div class="kl-zal-wpisy">${lista.map((w) => `<button type="button"
+        class="kl-wpis po-czasie" ${kalAtrybuty(w)} title="${esc(kalOpis(w, dzis))}">${
+        kalZnak(w.z)}${esc(w.z.tytul)}<small>z ${kalDzienKrotko(w.koniec)}</small></button>`).join('')}
+    </div>` : ''}
   </div>`;
 }
 
@@ -983,7 +1026,7 @@ function kalPozycja(w, dzis) {
     w.start < w.koniec ? `trwa ${dataKrotka(w.start)} → ${dataKrotka(w.koniec)}` : '',
     stan === 'powtorka' ? 'kolejne powtórzenie' : '',
     stan === 'wstrzymane' ? 'wstrzymane' : '',
-    stan === 'po-czasie' ? 'po terminie' : '',
+    stan === 'po-czasie' ? `termin minął ${kalDzienKrotko(w.koniec)}` : '',
   ].filter(Boolean).join(', ');
   return `<button type="button" class="kl-poz ${stan}" ${kalAtrybuty(w)}>
     <span class="kl-tyt">${kalZnak(w.z)}${esc(w.z.tytul)}${dopisek ? `<small>${esc(dopisek)}</small>` : ''}</span>
@@ -994,7 +1037,14 @@ function kalDzienWidok(dzis) {
   const d = kalDzien;
   const wpisy = kalWpisy(d, dodajDni(d, 1));
   const calodniowe = wpisy.filter((w) => !kalGodzinowy(w)).sort(kalPorzadek);
+  // Dziś: zaległe z WSZYSTKICH wcześniejszych dni, także z tego tygodnia —
+  // widok dnia nie pokazuje wczorajszej kolumny, więc inaczej by zniknęły.
+  const zalegle = d.getTime() === dzis.getTime() ? kalZalegle(d) : [];
   return `
+    ${zalegle.length ? `<section class="kl-karta kl-zal-karta" style="margin-bottom:12px">
+      ${kalZalNaglowek(zalegle.length, 'z poprzednich dni')}
+      ${kalZaleglePokaz ? zalegle.map((w) => kalPozycja(w, dzis)).join('') : ''}
+    </section>` : ''}
     ${calodniowe.length ? `<section class="kl-karta" style="margin-bottom:12px">
       <div class="kl-karta-nag"><strong>Cały dzień</strong></div>
       ${calodniowe.map((w) => kalPozycja(w, dzis)).join('')}
@@ -1152,6 +1202,12 @@ function rysujKalendarz() {
     }
     const k = ev.target.closest('[data-kal-krok]');
     if (k) { kalPrzesun(Number(k.dataset.kalKrok)); return; }
+    if (ev.target.closest('[data-kal-zalegle]')) {
+      kalZaleglePokaz = !kalZaleglePokaz;
+      localStorage.setItem('task_kal_zalegle', kalZaleglePokaz ? '1' : '0');
+      rysuj();
+      return;
+    }
     // Wpis w kalendarzu → PODGLĄD. Zadanie z listy „Bez terminu" → od razu
     // Szczegóły: tam nazwa jest cała, a stuka się po to, żeby ustawić datę.
     const o = ev.target.closest('[data-kal-otworz]');
@@ -2345,6 +2401,7 @@ function rysujLista() {
           ${ikonaSvg('mikrofon')}</button>` : ''}
       <button class="btn btn-primary" type="submit">Dodaj</button>
     </form>
+    <div class="sz-pola" id="sz-pola"${szWybrano() ? '' : ' hidden'}>${szPolaHtml()}</div>
     <!-- Druga droga zapełniania projektu: nie „napisz nowe", tylko „weź to,
          co już leży luzem". Stoi pod polem, bo jest rzadsza — projekt zbiera
          się raz, a kroki dopisuje przez cały czas jego trwania. -->
@@ -2424,6 +2481,7 @@ function rysujLista() {
     przenZbieraj({ id: aktualny.id, tytul: aktualny.tytul });
   const btnMowa = document.getElementById('sz-mowa');
   if (btnMowa) btnMowa.onclick = () => dyktuj(btnMowa);
+  szPodepnij();
   document.getElementById('szybkie').onsubmit = async (ev) => {
     ev.preventDefault();
     const pole = document.getElementById('sz-tytul');
@@ -2433,27 +2491,123 @@ function rysujLista() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       // Strefa bieżąca dla nowego korzenia. Przy `parent_id` serwer ją
       // zignoruje i weźmie strefę rodzica — krok należy tam, gdzie sprawa.
-      body: JSON.stringify({ tytul: t.trim(), parent_id: korzen, strefa_id: strefa }),
+      body: JSON.stringify({
+        tytul: t.trim(), parent_id: korzen, strefa_id: strefa,
+        // Pora bez terminu nie ma czego przypominać — wysyłamy ją tylko z datą.
+        termin: szNowe.termin, pora: szNowe.termin ? szNowe.pora : null,
+        wykonawca_user_id: szNowe.wyk.startsWith('u:') ? Number(szNowe.wyk.slice(2)) : null,
+        wykonawca_virtual_id: szNowe.wyk.startsWith('v:') ? Number(szNowe.wyk.slice(2)) : null,
+        priorytet: szNowe.priorytet,
+      }),
     });
     if (r.ok) {
       const j = await r.json().catch(() => ({}));
+      const termin = szNowe.termin;
       pole.value = '';
+      szWyczysc();
       nowyId = j.id || null;
       await wczytaj();
       // Zadanie bez terminu nie pasuje do „Dziś", więc dodane na tym filtrze
       // znikało bez śladu i wyglądało, jakby zapis się nie udał. Przechodzimy
-      // tam, gdzie faktycznie wylądowało, i mówimy o tym.
+      // tam, gdzie faktycznie wylądowało, i mówimy o tym. Z terminem od
+      // kafelka może wypaść poza „Dziś" i „Wkrótce" — wtedy „Cały czas".
       if (nowyId && !zadania.some((z) => z.id === nowyId)) {
-        czas = 'wkrotce';
+        czas = termin ? 'wszystko' : 'wkrotce';
         localStorage.setItem('task_czas', czas);
         await wczytaj();
-        toast('Zadanie bez terminu — szukaj go w „Wkrótce".', 'ok');
+        toast(termin ? `Zadanie na ${dataKrotka(termin)} — pokazuję „Cały czas".`
+          : 'Zadanie bez terminu — szukaj go w „Wkrótce".', 'ok');
       }
     } else {
       toast('Nie udało się zapisać zadania.', 'blad');
     }
   };
   podepnijPtaszki();
+}
+
+// ── termin, osoba i priorytet przy dodawaniu ────────────────────────────────
+//
+// Pole „Co jest do zrobienia?" zapisywało sam tytuł, a resztę ustawiało się
+// kafelkami w wierszu PO dodaniu — Adam chciał wybrać to od razu. Kafelki są
+// TE SAME co w wierszu zadania (kalendarz / ludziki / chorągiewka), żeby nie
+// uczyć się drugiego zestawu znaczków.
+//
+// Rząd pojawia się dopiero, gdy coś się wpisuje (albo gdy już coś wybrano):
+// stały rząd kafelków pod pustym polem dokładałby wysokość każdemu wejściu
+// na listę, a przy przeglądaniu zadań nikt go nie potrzebuje.
+//
+// Stan trzymamy POZA rysowaniem: lista przerysowuje się przy wielu okazjach
+// (odświeżenie obszaru, zmiana filtra) i wybrana data nie może wtedy przepaść.
+
+const szNowe = { termin: null, pora: null, wyk: '', priorytet: 0 };
+
+const szWybrano = () => !!(szNowe.termin || szNowe.wyk || szNowe.priorytet);
+const szWidac = () => szWybrano() || !!document.getElementById('sz-tytul')?.value.trim();
+
+function szWyczysc() {
+  Object.assign(szNowe, { termin: null, pora: null, wyk: '', priorytet: 0 });
+  const rzad = document.getElementById('sz-pola');
+  if (rzad) { rzad.innerHTML = szPolaHtml(); rzad.hidden = true; }
+}
+
+function szPolaHtml() {
+  const w = {
+    wykonawca_user_id: szNowe.wyk.startsWith('u:') ? Number(szNowe.wyk.slice(2)) : null,
+    wykonawca_virtual_id: szNowe.wyk.startsWith('v:') ? Number(szNowe.wyk.slice(2)) : null,
+  };
+  const p = szNowe.priorytet;
+  // Pusty kafelek dostaje SŁOWO obok ikony, inaczej niż w wierszu zadania.
+  // W wierszu znaczki czyta się w kontekście gotowego zadania; tu, pod pustym
+  // polem, trzy same ikony nie mówią, że to termin, osoba i ważność.
+  return `
+    <span class="zad-kiedy sz-kafel${szNowe.termin ? ' jest' : ''}">
+      <label class="zad-data" title="Termin">
+        ${szNowe.termin ? esc(dataKrotka(szNowe.termin)) : `${ikonaSvg('kalendarz')}<span>Termin</span>`}
+        <input type="date" data-sz="termin" value="${esc(szNowe.termin || '')}">
+      </label>
+      ${szNowe.termin ? `<label class="zad-pora${szNowe.pora ? ' jest' : ''}"
+             title="${szNowe.pora ? 'Przypomni o ' + esc(szNowe.pora) : 'Przypomni o ' + esc(domyslnaPora) + ' (godzina domyślna)'}">
+        ${esc((szNowe.pora || domyslnaPora).slice(0, 5))}
+        <input type="time" data-sz="pora" value="${esc(szNowe.pora || '')}">
+      </label>` : ''}
+    </span>
+    <label class="zad-kto sz-kafel${szNowe.wyk ? ' jest' : ''}" title="Kto to zrobi">
+      ${szNowe.wyk ? skrotWykonawcy(w) : `${ikonaSvg('osoby')}<span>Kto</span>`}
+      <select data-sz="wyk" aria-label="Kto to zrobi">${opcjeWykonawcyKrotkie(w)}</select>
+    </label>
+    <label class="zad-kto zad-prio-kafel sz-kafel${p > 0 ? ' jest wysoki' : (p < 0 ? ' jest niski' : '')}"
+           title="Priorytet: ${p > 0 ? 'wysoki' : (p < 0 ? 'niski' : 'zwykły')}">
+      ${p > 0 ? '!<span>Wysoki</span>' : (p < 0 ? '↓<span>Niski</span>' : `${ikonaSvg('flaga')}<span>Priorytet</span>`)}
+      <select data-sz="priorytet" aria-label="Priorytet">
+        <option value="1"${p > 0 ? ' selected' : ''}>Wysoki</option>
+        <option value="0"${!p ? ' selected' : ''}>Zwykły</option>
+        <option value="-1"${p < 0 ? ' selected' : ''}>Niski</option>
+      </select>
+    </label>
+    ${szWybrano() ? '<button type="button" class="sz-wyczysc" data-sz-wyczysc>Wyczyść</button>' : ''}`;
+}
+
+function szPodepnij() {
+  const pole = document.getElementById('sz-tytul');
+  const rzad = document.getElementById('sz-pola');
+  if (!pole || !rzad) return;
+  // Pokazujemy/chowamy atrybutem, BEZ przerysowania — kursor zostaje w polu.
+  pole.addEventListener('input', () => { rzad.hidden = !szWidac(); });
+  rzad.onchange = (ev) => {
+    const el = ev.target.closest('[data-sz]');
+    if (!el) return;
+    const k = el.dataset.sz;
+    if (k === 'termin') szNowe.termin = el.value || null;
+    else if (k === 'pora') szNowe.pora = el.value || null;
+    else if (k === 'wyk') szNowe.wyk = el.value;
+    else if (k === 'priorytet') szNowe.priorytet = Number(el.value) || 0;
+    rzad.innerHTML = szPolaHtml();
+  };
+  rzad.onclick = (ev) => {
+    if (!ev.target.closest('[data-sz-wyczysc]')) return;
+    szWyczysc();
+    rzad.hidden = !szWidac();
+  };
 }
 
 // STRUKTURA JEST ZAGNIEŻDŻONA, NIE PŁASKA. Wcześniej każdy wiersz dostawał

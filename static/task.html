@@ -480,6 +480,23 @@
     /* Pole szybkiego dodawania w trybie „jestem w środku zadania” — ramka
        w kolorze modułu, żeby różnica była widoczna, a nie tylko napisana. */
     .szybkie.w-srodku input { border-color: var(--marka); }
+
+    /* Termin / Kto / Priorytet pod polem dodawania — te same kafelki co
+       w wierszu zadania, tylko wyższe (34 px, cel dotyku przy pisaniu)
+       i z podpisem w pustym stanie. */
+    .sz-pola { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+               margin: -8px 0 16px; }
+    .sz-pola[hidden] { display: none; }
+    .sz-pola .zad-kiedy { height: 34px; }
+    .sz-pola .zad-data, .sz-pola .zad-kto { height: 34px; gap: 5px; padding: 0 10px;
+                                            font-size: 12.5px; }
+    .sz-pola .zad-kiedy .zad-data { height: 100%; }
+    .sz-pola .zad-kiedy .zad-pora { font-size: 12px; padding: 0 9px; }
+    .sz-pola .zad-kto.jest:not(.zad-prio-kafel) { min-width: 40px; }
+    .sz-pola .zad-prio-kafel span { font-weight: 600; }
+    .sz-wyczysc { margin-left: auto; border: none; background: none; padding: 6px 4px;
+                  font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+    @media (hover: hover) { .sz-wyczysc:hover { color: var(--text); } }
     .zad.zrobione .zad-tytul { text-decoration: line-through; color: var(--muted); }
     /* Kwadrat, nie kółko: okrągłe pole czytało się jak przełącznik trybu, a to
        jest odhaczanie. Mniejsze niż wcześniej (20 zamiast 26) — na telefonie
@@ -1186,6 +1203,35 @@
     .kl-bez .kl-plak { background: var(--accent-soft); color: var(--accent-strong); }
     .kl-bez-opis { margin: 0; padding: 0 12px 9px; background: var(--surface-2);
                    font-size: 12.5px; color: var(--muted); }
+
+    /* ── ZALEGŁE ────────────────────────────────────────────────────────────
+       Pas nad siatką tygodnia. Odznacza się TYM SAMYM co zaległe wszędzie
+       indziej (ukośne paski, czerwony pasek z lewej), plus dopisek z dniem,
+       w którym termin minął — kolor sam nie mówi, jak długo coś wisi. */
+    .kl-zal { padding: 6px 10px 9px; border-bottom: 1px solid var(--border); }
+    .kl-zal-nag { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px;
+                  padding: 0; border: none; background: none; font: inherit; font-size: 13px;
+                  color: var(--text); text-align: left; cursor: pointer; }
+    .kl-zal-nag strong { color: var(--danger); }
+    .kl-zal-nag em { font-style: normal; font-size: 11px; font-weight: 600; padding: 1px 8px;
+                     border-radius: 999px; color: var(--danger); background: var(--danger-bg);
+                     border: 1px solid var(--danger-border); }
+    .kl-zal-skad { color: var(--muted); font-size: 12px; min-width: 0; overflow: hidden;
+                   text-overflow: ellipsis; white-space: nowrap; }
+    .kl-zal-daszek { margin-left: auto; color: var(--muted); font-size: 17px; line-height: 1;
+                     transform: rotate(90deg); transition: transform .15s; }
+    .kl-zal-nag[aria-expanded="false"] .kl-zal-daszek { transform: none; }
+    .kl-zal-nag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .kl-zal-wpisy { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+    /* Wyższe i zawijane, nie jednoliniowe jak w siatce: tu nie ma kolumn dnia,
+       które trzeba by trzymać w ryzach, a ucięta zaległość jest nie do rozpoznania. */
+    .kl-zal .kl-wpis, .kl-tyg:not(.kl-jeden) .kl-zal .kl-wpis {
+      height: auto; line-height: 1.3; margin: 0; max-width: 100%; padding: 5px 9px 5px 10px;
+      white-space: normal; font-size: 12.5px; box-shadow: inset 3px 0 0 var(--danger); }
+    .kl-zal .kl-wpis small { margin-left: 6px; font-size: 11px; color: var(--muted);
+                             white-space: nowrap; }
+    .kl-zal-karta .kl-zal-nag { padding: 7px 12px; background: var(--danger-bg); min-height: 40px; }
+    @media (prefers-reduced-motion: reduce) { .kl-zal-daszek { transition: none; } }
 
     /* ── PODGLĄD ZADANIA W KALENDARZU ───────────────────────────────────────
        Telefon: panel od dołu, bez przycisków (sam podgląd). Komputer: karta
