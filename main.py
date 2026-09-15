@@ -327,6 +327,13 @@ def task_plan_page():
     return _html("task.html")
 
 
+@app.get("/kalendarz")
+def task_kalendarz_page():
+    """Kalendarz zadań (dzień / tydzień / miesiąc) — ta sama strona, inny widok,
+    jak Plan i Projekty."""
+    return _html("task.html")
+
+
 @app.get("/kategorie")
 def kategorie_page():
     return _html("kategorie.html")

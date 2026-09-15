@@ -958,6 +958,234 @@
     }
 
     @media (max-width: 560px) { .pola-2 { grid-template-columns: 1fr; } }
+
+    /* ── KALENDARZ ──────────────────────────────────────────────────────────
+       Klasy z przedrostkiem `kl-`, bo `.kal-chip` jest już zajęte w style.css
+       (lista zakupów). Kolory WYŁĄCZNIE z tokenów modułu: `--accent-soft` pod
+       tekstem `--text` i `--accent` jako tło pod kolorem powierzchni mają już
+       sprawdzony kontrast w obu motywach — nowe odcienie trzeba by mierzyć.
+
+       Wyróżnia się jedna rzecz: DZIŚ (pełne kółko przy numerze dnia i kreska
+       „teraz" na osi godzin). Reszta jest cicha, bo kalendarz ma pokazać
+       zadania, a nie siebie. */
+
+    /* Nagłówkiem jest OKRES, nie słowo „Kalendarz" — nazwę widoku mówi już
+       dolny pasek, a „Wrzesień 2026" jest odpowiedzią na pierwsze pytanie
+       każdego, kto patrzy w kalendarz. */
+    .kl-gora { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px;
+               margin-bottom: 14px; }
+    .kl-okres { margin: 0; font-size: 1.35rem; font-weight: 700; letter-spacing: -.01em;
+                line-height: 1.2; }
+    .kl-strzalki { display: flex; gap: 4px; }
+    .kl-strz { width: 38px; height: 38px; border: 1px solid var(--border); border-radius: 10px;
+               background: var(--surface); color: var(--text); font: inherit; font-size: 20px;
+               line-height: 1; cursor: pointer; display: flex; align-items: center;
+               justify-content: center; }
+    .kl-prawo { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    /* Przełącznik widoku to SEGMENTY, nie chipy filtrów: chip zawęża, co widać,
+       a tu wybiera się jeden z trzech sposobów patrzenia — jeden wyklucza drugi
+       i kształt ma to mówić. */
+    .kl-widoki { display: flex; padding: 3px; gap: 2px; border: 1px solid var(--border);
+                 border-radius: 11px; background: var(--surface-2); }
+    .kl-widoki button { border: none; background: none; border-radius: 8px; padding: 0 13px;
+                        min-height: 34px; font: inherit; font-size: 13px; color: var(--muted);
+                        cursor: pointer; }
+    .kl-widoki button[aria-pressed="true"] { background: var(--surface); color: var(--text);
+                        font-weight: 600; box-shadow: 0 0 0 1px var(--border); }
+    .kl-dzis-btn { min-height: 40px; padding: 0 14px; border: 1px solid var(--border);
+                   border-radius: 10px; background: var(--surface); color: var(--text);
+                   font: inherit; font-size: 13px; cursor: pointer; }
+    .kl-dzis-btn:disabled { color: var(--muted); cursor: default; opacity: .6; }
+    .kl-strz:focus-visible, .kl-widoki button:focus-visible, .kl-dzis-btn:focus-visible,
+    .kl-dzien:focus-visible, .kl-wpis:focus-visible, .kl-poz:focus-visible,
+    .kl-karta-nag:focus-visible, .kl-tyg-nag button:focus-visible {
+      outline: 2px solid var(--accent); outline-offset: -2px; }
+    @media (hover: hover) {
+      .kl-strz:hover, .kl-dzis-btn:hover:not(:disabled) { border-color: var(--accent); }
+      .kl-widoki button:hover { color: var(--text); }
+    }
+    @media (max-width: 560px) {
+      .kl-okres { font-size: 1.2rem; flex: 1; min-width: 0; }
+      .kl-prawo { margin-left: 0; width: 100%; }
+      .kl-widoki { flex: 1; }
+      .kl-widoki button { flex: 1; padding: 0 6px; }
+    }
+
+    /* Wpis w siatce: belka albo pojedynczy dzień. */
+    .kl-wpis { position: relative; z-index: 1; display: block; min-width: 0; margin: 0 3px;
+               padding: 0 6px; border: none; border-radius: 5px; font: inherit;
+               font-size: 11.5px; height: var(--kl-tor); line-height: var(--kl-tor);
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
+               cursor: pointer; color: var(--text); background: var(--accent-soft);
+               box-shadow: inset 3px 0 0 var(--accent); }
+    .kl-wpis b { font-weight: 600; font-variant-numeric: tabular-nums; }
+    /* Stany — te same znaczenia co na Gancie. Spóźnienie niosą UKOŚNE PASKI,
+       nie sam kolor: w tym module akcent i ostrzeżenie to prawie ta sama
+       czerwień. */
+    .kl-wpis.zrobione, .kl-poz.zrobione .kl-tyt { text-decoration: line-through;
+               text-decoration-color: color-mix(in srgb, var(--muted) 70%, transparent); }
+    .kl-wpis.zrobione { background: var(--surface-2); color: var(--muted);
+               box-shadow: inset 3px 0 0 var(--good); }
+    .kl-wpis.wstrzymane { background: var(--surface-2); color: var(--muted);
+               box-shadow: inset 3px 0 0 var(--border); }
+    .kl-wpis.po-czasie { background-color: var(--danger-bg);
+               background-image: repeating-linear-gradient(135deg,
+                 var(--danger-border) 0 3px, transparent 3px 8px);
+               box-shadow: inset 3px 0 0 var(--danger); }
+    /* Dorysowane powtórzenie nie istnieje jeszcze w bazie — obrys zamiast
+       wypełnienia mówi „będzie", a nie „jest". */
+    .kl-wpis.powtorka { background: transparent; color: var(--muted); box-shadow: none;
+               outline: 1px dashed var(--accent-border); outline-offset: -1px; }
+    /* Belka ucięta krawędzią tygodnia: płaski bok mówi, że ciągnie się dalej. */
+    .kl-wpis.ciag-l { margin-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+    .kl-wpis.ciag-l:not(.powtorka) { box-shadow: none; }
+    .kl-wpis.ciag-p { margin-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+    .kl-romb, .kl-kwadrat { display: inline-block; width: 7px; height: 7px; margin-right: 5px;
+               vertical-align: 1px; background: var(--accent); }
+    .kl-romb { transform: rotate(45deg); }
+    .kl-kwadrat { border-radius: 2px; }
+
+    /* Miesiąc */
+    .kl-mies { --kl-nr: 28px; --kl-tor: 21px; --kl-wiecej: 18px;
+               border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+               overflow: hidden; margin-bottom: 18px; }
+    .kl-dni-tyg { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+                  border-bottom: 1px solid var(--border); font-size: 11.5px; color: var(--muted); }
+    .kl-dni-tyg span { padding: 7px 8px; }
+    .kl-tydz { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); row-gap: 2px;
+               min-height: 104px; border-bottom: 1px solid var(--border-soft); }
+    .kl-tydz:last-child { border-bottom: none; }
+    .kl-dzien { grid-row: 1 / -1; display: flex; align-items: flex-start; padding: 4px 5px;
+                border: none; border-right: 1px solid var(--border-soft); background: none;
+                font: inherit; color: var(--text); cursor: pointer; }
+    .kl-dzien.ost { border-right: none; }
+    /* Weekend delikatnie odcięty — rytm tygodnia, jak pasy na Gancie. */
+    .kl-dzien.weekend { background: var(--surface-2); }
+    .kl-nr { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center;
+             justify-content: center; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+    .kl-dzien.obcy .kl-nr { color: var(--muted); opacity: .55; }
+    .kl-dzien.dzis .kl-nr, .kl-tyg-nag button.dzis strong {
+      background: var(--accent); color: var(--surface); font-weight: 700; opacity: 1; }
+    .kl-wiecej { z-index: 1; padding: 0 7px; font-size: 11px; color: var(--muted);
+                 pointer-events: none; align-self: start; }
+    @media (hover: hover) { .kl-dzien:hover { background: var(--accent-soft); } }
+    /* Telefon: siedem kolumn po ~45 px nie mieści żadnego tytułu, więc wpisy
+       są KRESKAMI (belka dalej ciągnie się przez dni), a stuknięcie w dzień
+       otwiera jego widok. Kreski przepuszczają dotyk do komórki pod spodem —
+       trafienie w kreskę o wysokości 6 px byłoby loterią. */
+    @media (max-width: 700px) {
+      .kl-mies { --kl-nr: 30px; --kl-tor: 6px; --kl-wiecej: 14px; }
+      .kl-tydz { min-height: 68px; row-gap: 3px; }
+      .kl-dni-tyg span { padding: 7px 0; text-align: center; }
+      .kl-dzien { justify-content: center; padding: 3px 0; }
+      .kl-mies .kl-wpis { font-size: 0; padding: 0; margin: 0 2px; border-radius: 3px;
+                          box-shadow: none; outline: none; pointer-events: none;
+                          background: var(--accent); }
+      .kl-mies .kl-wpis.ciag-l { margin-left: 0; }
+      .kl-mies .kl-wpis.ciag-p { margin-right: 0; }
+      .kl-mies .kl-wpis.zrobione { background: var(--good); opacity: .45; }
+      .kl-mies .kl-wpis.wstrzymane { background: var(--border); }
+      .kl-mies .kl-wpis.powtorka { background: var(--accent-border); }
+      .kl-mies .kl-wpis.po-czasie { background-color: var(--danger);
+        background-image: repeating-linear-gradient(135deg,
+          rgba(255,255,255,.45) 0 2px, transparent 2px 5px); }
+      .kl-wiecej { padding: 0; text-align: center; font-size: 10px; line-height: 14px; }
+    }
+
+    /* Tydzień i dzień: nagłówek dni, pas całodniowy, oś godzin */
+    .kl-tyg { border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+              overflow: hidden; margin-bottom: 18px; }
+    .kl-tyg-nag, .kl-pas { display: grid; grid-template-columns: 48px minmax(0, 1fr); }
+    .kl-tyg-nag { border-bottom: 1px solid var(--border); }
+    .kl-tyg-nag-dni { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    .kl-tyg-nag button { display: flex; flex-direction: column; align-items: center; gap: 2px;
+                         padding: 7px 2px; border: none; background: none; font: inherit;
+                         font-size: 11.5px; color: var(--muted); cursor: pointer; }
+    .kl-tyg-nag strong { width: 30px; height: 30px; border-radius: 50%; display: flex;
+                         align-items: center; justify-content: center; font-size: 15px;
+                         color: var(--text); font-variant-numeric: tabular-nums; }
+    @media (hover: hover) { .kl-tyg-nag button:hover strong { background: var(--accent-soft); }
+                            .kl-tyg-nag button.dzis:hover strong { background: var(--accent); } }
+    .kl-pas { border-bottom: 1px solid var(--border); padding: 5px 0; background: var(--surface-2); }
+    .kl-pas-podpis { font-size: 10.5px; color: var(--muted); text-align: right; padding: 4px 7px 0 0;
+                     line-height: 1.15; }
+    .kl-pas-tory { --kl-tor: 22px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+                   grid-auto-rows: var(--kl-tor); row-gap: 3px; }
+
+    .kl-godziny { display: grid; grid-template-columns: 48px minmax(0, 1fr); padding: 12px 0; }
+    .kl-skala { position: relative; }
+    .kl-skala span { position: absolute; right: 8px; transform: translateY(-50%);
+                     font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .kl-kolumny { position: relative; display: grid; border-top: 1px solid var(--border-soft);
+                  background-image: repeating-linear-gradient(to bottom,
+                    transparent 0 calc(var(--h) - 1px), var(--border-soft) calc(var(--h) - 1px) var(--h)); }
+    .kl-kol { position: relative; border-left: 1px solid var(--border-soft); }
+    .kl-kol.weekend { background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
+    .kl-czas { --kl-tor: calc(var(--h) / 2 - 2px); position: absolute; margin: 0; padding: 0 6px; }
+    /* Kreska „teraz" z kropką na początku — jedyny element, który się
+       zmienia bez dotykania, więc jako jedyny ma pełny kolor akcentu. */
+    .kl-teraz { position: absolute; left: -1px; right: 0; height: 2px; margin-top: -1px;
+                background: var(--accent); z-index: 3; pointer-events: none; }
+    .kl-teraz::before { content: ''; position: absolute; left: -4px; top: -4px; width: 10px;
+                        height: 10px; border-radius: 50%; background: var(--accent); }
+
+    /* Tydzień na telefonie zostaje SIATKĄ GODZIN, jak w Outlooku (Adam wprost:
+       „z godzinami"). Siedem kolumn po ~39 px mieści kilka liter tytułu, więc
+       godzina znika z wpisu — i tak widać ją po wysokości na osi. */
+    @media (max-width: 700px) {
+      .kl-tyg-nag, .kl-pas, .kl-godziny { grid-template-columns: 34px minmax(0, 1fr); }
+      .kl-skala span { right: 5px; font-size: 9.5px; }
+      .kl-pas-podpis { font-size: 9px; padding-right: 3px; }
+      .kl-tyg:not(.kl-jeden) .kl-wpis { font-size: 10px; padding: 0 3px; margin: 0 1px;
+                                         box-shadow: inset 2px 0 0 var(--accent); }
+      .kl-tyg:not(.kl-jeden) .kl-wpis.zrobione { box-shadow: inset 2px 0 0 var(--good); }
+      .kl-tyg:not(.kl-jeden) .kl-wpis.po-czasie { box-shadow: inset 2px 0 0 var(--danger); }
+      .kl-tyg:not(.kl-jeden) .kl-wpis.ciag-l,
+      .kl-tyg:not(.kl-jeden) .kl-wpis.powtorka { box-shadow: none; }
+      .kl-tyg:not(.kl-jeden) .kl-czas b { display: none; }
+      .kl-tyg:not(.kl-jeden) .kl-czas { white-space: normal; line-height: 1.15; padding-top: 2px;
+                                         word-break: break-all; }
+      .kl-tyg-nag button { font-size: 10.5px; padding: 6px 0; }
+      .kl-tyg-nag strong { width: 26px; height: 26px; font-size: 13.5px; }
+    }
+
+    /* Karty: pas całodniowy w widoku dnia i lista zadań bez terminu. */
+    .kl-karta { border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+                overflow: hidden; }
+    .kl-karta-nag { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 9px 12px;
+                    border: none; background: var(--surface-2); font: inherit; font-size: 13.5px;
+                    color: var(--text); text-align: left; }
+    button.kl-karta-nag { cursor: pointer; }
+    .kl-karta-nag span { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+    .kl-plak { margin-left: auto; font-style: normal; font-size: 11px; font-weight: 600;
+               padding: 1px 8px; border-radius: 999px; background: var(--accent);
+               color: var(--surface); }
+    .kl-pusto { padding: 9px 12px; font-size: 12.5px; color: var(--muted); }
+    .kl-poz { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 44px;
+              padding: 9px 12px; border: none; border-top: 1px solid var(--border-soft);
+              background: none; font: inherit; font-size: 14px; line-height: 1.35;
+              color: var(--text); text-align: left; cursor: pointer;
+              box-shadow: inset 3px 0 0 var(--accent); }
+    .kl-karta-nag + .kl-poz { border-top: none; }
+    .kl-poz .kl-godz { flex: none; width: 42px; font-size: 12.5px; font-weight: 600;
+                       color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
+    .kl-poz .kl-tyt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .kl-poz small { display: block; font-size: 12px; color: var(--muted); margin-top: 1px; }
+    .kl-poz.zrobione { color: var(--muted); box-shadow: inset 3px 0 0 var(--good); }
+    .kl-poz.wstrzymane { color: var(--muted); box-shadow: inset 3px 0 0 var(--border); }
+    .kl-poz.po-czasie { box-shadow: inset 3px 0 0 var(--danger);
+                        background-image: repeating-linear-gradient(135deg,
+                          var(--danger-bg) 0 4px, transparent 4px 10px); }
+    .kl-poz.powtorka { color: var(--muted); box-shadow: inset 3px 0 0 var(--accent-border); }
+    @media (hover: hover) { .kl-poz:hover { background-color: var(--surface-2); } }
+
+    /* Bez terminu: bez paska po lewej — pasek znaczy „stoi w kalendarzu",
+       a te właśnie nie stoją. */
+    .kl-bez { margin-bottom: 18px; }
+    .kl-bez .kl-poz { box-shadow: none; }
+    .kl-bez .kl-plak { background: var(--accent-soft); color: var(--accent-strong); }
+    .kl-bez-opis { margin: 0; padding: 0 12px 9px; background: var(--surface-2);
+                   font-size: 12.5px; color: var(--muted); }
   </style>
 </head>
 <body>

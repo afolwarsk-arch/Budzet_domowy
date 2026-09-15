@@ -47,6 +47,8 @@ const TRYB_PLANU = location.pathname.replace(/\/$/, '') === '/plan';
 // w dół — a przedsięwzięcia przegląda się w zupełnie innym momencie niż
 // „co mam dziś do zrobienia".
 const TRYB_PROJEKTY = location.pathname.replace(/\/$/, '') === '/projekty';
+// Kalendarz — ten sam wzorzec: własny adres, ta sama strona. Patrz `rysujKalendarz`.
+const TRYB_KALENDARZA = location.pathname.replace(/\/$/, '') === '/kalendarz';
 // Wybrany zakres PRZEŻYWA odświeżenie strony. Bez tego każde wejście
 // w szczegóły i powrót wracało do „Dziś", więc praca nad czymś odległym
 // w czasie znaczyła przestawianie filtra po każdej zmianie.
@@ -56,7 +58,7 @@ const TRYB_PROJEKTY = location.pathname.replace(/\/$/, '') === '/projekty';
 // „Dziś" znaczyło też „tylko otwarte", a „Zrobione" — „kiedykolwiek". Nie dało
 // się przez to zobaczyć, co w projekcie zostało domknięte, a co wisi; a przy
 // otwartym kroku to właśnie zamknięte poprzedniki niosą kontekst.
-let zakres = TRYB_PLANU ? 'plan' : 'lista';   // tylko rozróżnienie widoku
+let zakres = TRYB_PLANU ? 'plan' : (TRYB_KALENDARZA ? 'kalendarz' : 'lista');   // tylko rozróżnienie widoku
 let czas = TRYB_PROJEKTY ? 'wszystko' : (localStorage.getItem('task_czas') || 'wszystko');
 let stan = TRYB_PROJEKTY ? 'otwarte' : (localStorage.getItem('task_stan') || 'otwarte');
 // Szukana fraza. NIE zapisujemy jej w localStorage — filtr przeżywa
@@ -320,6 +322,7 @@ async function wczytaj() {
   // Plan ma własne wejście: bierze zadania z JAKĄKOLWIEK datą, niezależnie od
   // tego, czy termin już minął — oś czasu pokazuje rozpiętość, a nie „co dziś".
   if (zakres === 'plan') return wczytajPlan();
+  if (zakres === 'kalendarz') return wczytajKalendarz();
   try {
     // Szukanie omija filtry ORAZ zawężenie do obszaru: skoro się czegoś szuka,
     // to zwykle dlatego, że nie wiadomo, gdzie to jest.
@@ -374,8 +377,11 @@ function podepnijGesty() {
     // ZNIKNĄĆ, żeby oś Gantta dała się przewijać palcem, a podpięcie gestu
     // dzieje się PO pierwszym rysowaniu i nadpisywało tamtą decyzję.
     touchAction: false,
-    wLewo: () => przesunObszar(1),
-    wPrawo: () => przesunObszar(-1),
+    // W kalendarzu gest przewija CZAS (dzień / tydzień / miesiąc), nie obszary:
+    // tak działa każdy kalendarz w telefonie, a obszary zmienia się tam
+    // zakładkami na górze.
+    wLewo: () => (zakres === 'kalendarz' ? kalPrzesun(1) : przesunObszar(1)),
+    wPrawo: () => (zakres === 'kalendarz' ? kalPrzesun(-1) : przesunObszar(-1)),
     // Na wykresie gest należy do OSI CZASU, którą przewija się w poziomie,
     // a w formularzu szczegółów i w środku projektu nie ma między czym
     // przeskakiwać.
@@ -699,6 +705,7 @@ function rysuj() {
   if (t) t.style.touchAction = zakres === 'plan' ? '' : 'pan-y pinch-zoom';
   if (widok === 'szczegoly') return rysujSzczegoly();
   if (zakres === 'plan') return rysujPlan();
+  if (zakres === 'kalendarz') return rysujKalendarz();
   if (TRYB_PROJEKTY && korzen == null) return rysujProjekty();
   return rysujLista();
 }
@@ -722,6 +729,442 @@ function rysujProjekty() {
     nowyId = null;
     rysuj();
   };
+}
+
+// ── kalendarz ───────────────────────────────────────────────────────────────
+//
+// Te same zadania co na wykresie Gantta, ułożone w dni: widok dnia, tygodnia
+// (z osią godzin, jak w Outlooku) i miesiąca. Rysowany zwykłym HTML-em, bez
+// biblioteki — z tego samego powodu co Gantt.
+//
+// Dane: `/plan` RAZEM ZE ZROBIONYMI (w kalendarzu liczy się też to, co już
+// było) plus otwarte zadania BEZ DATY z listy, wypisane pod siatką. Adam chciał
+// ich tam wprost, żeby niczego nie przeoczyć: zadanie bez terminu nie ma gdzie
+// stanąć w kalendarzu, a patrzenie w sam kalendarz nie może znaczyć, że część
+// spraw zniknęła z oczu.
+//
+// Decyzje Adama z 2026-09-15:
+// - zadanie z początkiem i terminem to BELKA przez wszystkie dni,
+// - przyszłe powtórzenia cyklicznych DORYSOWUJEMY (obrysem): w bazie istnieje
+//   tylko bieżące wystąpienie, więc miesiąc do przodu wyglądałby na pusty,
+// - przeciąganie zadań po kalendarzu — później; na razie podgląd i Szczegóły.
+//
+// Zadanie BEZ GODZINY stoi w pasie „cały dzień", mimo że przypomnienie przyjdzie
+// o porze domyślnej: postawienie go na 9:00 udawałoby umówioną godzinę.
+
+const KAL_WIDOKI = [['dzien', 'Dzień'], ['tydzien', 'Tydzień'], ['miesiac', 'Miesiąc']];
+const KAL_DNI = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
+const KAL_H = 48;   // px na godzinę osi; wpis godzinowy zajmuje pół godziny
+
+// Wybrany widok przeżywa odświeżenie, oglądany dzień — nie: wejście
+// w kalendarz ma pokazywać „teraz", a nie miejsce sprzed tygodnia.
+let kalWidok = (() => {
+  const v = localStorage.getItem('task_kal_widok');
+  return KAL_WIDOKI.some(([k]) => k === v) ? v : 'miesiac';
+})();
+let kalDzien = new Date(new Date().toDateString());
+
+// Miesiąc na telefonie rysuje kreski zamiast podpisów (i mieści więcej torów),
+// więc przy obróceniu ekranu siatkę trzeba ułożyć od nowa.
+const kalWaski = window.matchMedia('(max-width: 700px)');
+if (kalWaski.addEventListener) kalWaski.addEventListener('change', () => {
+  if (zakres === 'kalendarz' && widok === 'lista') rysuj();
+});
+
+// Daty zawsze o północy CZASU LOKALNEGO, dodawane przez kalendarz, nie przez
+// milisekundy — przy zmianie czasu doba ma 23 albo 25 godzin.
+const dodajDni = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const poczatekTygodnia = (d) => dodajDni(d, -((d.getDay() + 6) % 7));
+const roznicaDni = (a, b) => Math.round((b - a) / DZIEN_MS);
+const dzisData = () => new Date(new Date().toDateString());
+const kalWielka = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const kalGodzinowy = (w) => !!w.pora && w.start.getTime() === w.koniec.getTime();
+const kalZnak = (z) => (z.kamien_milowy ? '<i class="kl-romb"></i>'
+  : (z.projekt ? '<i class="kl-kwadrat"></i>' : ''));
+
+async function wczytajKalendarz() {
+  try {
+    const [rp, rl] = await Promise.all([
+      authFetch('/api/task/plan?zrobione=true' + qStrefa()),
+      authFetch('/api/task/zadania?czas=wszystko&status=otwarte' + qStrefa()),
+    ]);
+    const dp = await rp.json();
+    const dl = await rl.json();
+    // Oba źródła zwracają część tych samych wierszy (otwarte z datą) — sklejamy
+    // po id, żeby nic nie stanęło w kalendarzu dwa razy.
+    const wg = new Map();
+    for (const z of dl.zadania || []) wg.set(z.id, z);
+    for (const z of dp.zadania || []) wg.set(z.id, z);
+    zadania = [...wg.values()];
+    zaleznosci = dp.zaleznosci || [];
+    if (dl.domyslna_pora) domyslnaPora = dl.domyslna_pora;
+  } catch {
+    zadania = []; zaleznosci = [];
+    toast('Nie udało się wczytać kalendarza.', 'blad');
+  }
+  rysuj();
+}
+
+// Lustro `task_db.nastepna_data`: miesiące i lata kalendarzowo, z cofnięciem do
+// ostatniego dnia krótszego miesiąca. Kolejne wystąpienie liczy się od
+// POPRZEDNIEGO terminu — tak samo jak na serwerze, więc dorysowane powtórzenia
+// wypadają dokładnie tam, gdzie powstaną po odhaczeniu.
+function kalNastepna(d, okres, co) {
+  const n = Math.max(1, Number(co) || 1);
+  if (okres === 'dzien') return dodajDni(d, n);
+  if (okres === 'tydzien') return dodajDni(d, 7 * n);
+  if (okres !== 'miesiac' && okres !== 'rok') return null;
+  const mies = d.getMonth() + (okres === 'miesiac' ? n : 12 * n);
+  const r = d.getFullYear() + Math.floor(mies / 12);
+  const m = mies % 12;
+  return new Date(r, m, Math.min(d.getDate(), new Date(r, m + 1, 0).getDate()));
+}
+
+// Wpisy zachodzące na okno [od, doK): { z, start, koniec, pora, wirtualne }.
+function kalWpisy(od, doK) {
+  const dzis = dzisData();
+  const wynik = [];
+  for (const z of zadania) {
+    const zz = zakresZadania(z);
+    if (!zz) continue;
+    const pora = z.pora ? String(z.pora).slice(0, 5) : null;
+    const wstaw = (start, koniec, wirtualne) => {
+      if (koniec >= od && start < doK) wynik.push({ z, start, koniec, pora, wirtualne });
+    };
+    wstaw(zz.start, zz.koniec, false);
+    // Powtórzenia tylko od OTWARTEGO wystąpienia: zamknięte już urodziło
+    // następne, które przyszło z serwera jako osobny wiersz.
+    if (!z.powtarzaj || z.status !== 'otwarte' || !z.termin) continue;
+    const dlugosc = roznicaDni(zz.start, zz.koniec);
+    let termin = zz.koniec;
+    for (let i = 0; i < 4000; i++) {
+      termin = kalNastepna(termin, z.powtarzaj, z.powtarzaj_co);
+      if (!termin) break;
+      const start = dodajDni(termin, -dlugosc);
+      if (start >= doK) break;
+      // Przeszłych nie dorysowujemy: zaległe wystąpienie świeci już paskami,
+      // a rząd „widm" za nim tylko zaśmiecałby miniony tydzień.
+      if (termin >= dzis) wstaw(start, termin, true);
+    }
+  }
+  return wynik;
+}
+
+// Kolejność w obrębie dnia: najpierw całodniowe, potem godzinowe od
+// najwcześniejszej; remis rozstrzyga priorytet, jak na liście.
+function kalPorzadek(a, b) {
+  return (kalGodzinowy(a) ? 1 : 0) - (kalGodzinowy(b) ? 1 : 0)
+    || String(a.pora || '').localeCompare(String(b.pora || ''))
+    || (b.z.priorytet || 0) - (a.z.priorytet || 0)
+    || String(a.z.tytul).localeCompare(String(b.z.tytul), 'pl');
+}
+
+function kalStan(w, dzis) {
+  if (w.z.status === 'zrobione') return 'zrobione';
+  if (w.z.status === 'wstrzymane') return 'wstrzymane';
+  if (w.wirtualne) return 'powtorka';
+  return w.koniec < dzis ? 'po-czasie' : '';
+}
+
+// Dymek `title` — na myszy mówi to, czego nie zmieściła belka.
+function kalOpis(w, dzis) {
+  const czesci = [w.z.tytul, w.start < w.koniec
+    ? `${dataKrotka(w.start)} → ${dataKrotka(w.koniec)}` : dataKrotka(w.koniec)];
+  if (w.pora) czesci.push(w.pora);
+  const stan = { zrobione: 'zrobione', wstrzymane: 'wstrzymane',
+                 powtorka: 'kolejne powtórzenie', 'po-czasie': 'po terminie' }[kalStan(w, dzis)];
+  if (stan) czesci.push(stan);
+  return czesci.join(', ');
+}
+
+// Tory (piętra) w rzędzie dni: wpis dostaje najniższe piętro wolne we
+// WSZYSTKICH dniach, przez które przechodzi — inaczej belki nachodziłyby na
+// siebie. Układamy od lewej, a przy tym samym dniu od najdłuższej, żeby długa
+// belka nie łamała się na schodki pod krótkimi.
+function kalTory(od, n, wpisy) {
+  const ostatni = dodajDni(od, n - 1);
+  const seg = wpisy.map((w) => ({
+    w,
+    c0: Math.max(0, roznicaDni(od, w.start)),
+    c1: Math.min(n - 1, roznicaDni(od, w.koniec)),
+    ciagL: w.start < od,
+    ciagP: w.koniec > ostatni,
+  })).filter((s) => s.c1 >= 0 && s.c0 <= n - 1)
+    .sort((a, b) => a.c0 - b.c0 || (b.c1 - b.c0) - (a.c1 - a.c0) || kalPorzadek(a.w, b.w));
+  const zajete = [];
+  for (const s of seg) {
+    let tor = 0;
+    while (zajete[tor] && zajete[tor].slice(s.c0, s.c1 + 1).some(Boolean)) tor++;
+    if (!zajete[tor]) zajete[tor] = new Array(n).fill(false);
+    for (let c = s.c0; c <= s.c1; c++) zajete[tor][c] = true;
+    s.tor = tor;
+  }
+  return seg;
+}
+
+function kalBelka(s, dzis, pierwszyWiersz, zGodzina) {
+  const klasy = ['kl-wpis', kalStan(s.w, dzis)];
+  if (s.ciagL) klasy.push('ciag-l');
+  if (s.ciagP) klasy.push('ciag-p');
+  return `<button type="button" class="${klasy.join(' ').trim()}" data-kal-otworz="${s.w.z.id}"
+      style="grid-column:${s.c0 + 1} / ${s.c1 + 2}; grid-row:${s.tor + pierwszyWiersz}"
+      title="${esc(kalOpis(s.w, dzis))}">${kalZnak(s.w.z)}${
+    zGodzina && kalGodzinowy(s.w) ? `<b>${s.w.pora}</b> ` : ''}${esc(s.w.z.tytul)}</button>`;
+}
+
+function kalMiesiac(dzis) {
+  const r = kalDzien.getFullYear(), m = kalDzien.getMonth();
+  const od = poczatekTygodnia(new Date(r, m, 1));
+  const doK = dodajDni(poczatekTygodnia(new Date(r, m + 1, 0)), 7);
+  const wpisy = kalWpisy(od, doK);
+  // Na telefonie wpisy są kreskami po 6 px, więc mieści się ich więcej.
+  const MAX = kalWaski.matches ? 4 : 3;
+  const tygodnie = [];
+  for (let t0 = od; t0 < doK; t0 = dodajDni(t0, 7)) {
+    const seg = kalTory(t0, 7, wpisy);
+    const ukryte = new Array(7).fill(0);
+    for (const s of seg) {
+      if (s.tor >= MAX) for (let c = s.c0; c <= s.c1; c++) ukryte[c]++;
+    }
+    const dni = KAL_DNI.map((_, c) => {
+      const d = dodajDni(t0, c);
+      const klasy = ['kl-dzien'];
+      if (d.getMonth() !== m) klasy.push('obcy');
+      if (c >= 5) klasy.push('weekend');
+      if (c === 6) klasy.push('ost');
+      if (d.getTime() === dzis.getTime()) klasy.push('dzis');
+      const ile = wpisy.filter((w) => w.start <= d && w.koniec >= d).length;
+      const opis = kalWielka(d.toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' }))
+        + (ile ? `, ${ile} ${odmien(ile, 'zadanie', 'zadania', 'zadań')}` : '');
+      return `<button type="button" class="${klasy.join(' ')}" style="grid-column:${c + 1}"
+          data-kal-dzien="${isoLokalne(d)}" aria-label="${esc(opis)}"><span class="kl-nr">${
+        d.getDate()}</span></button>`;
+    }).join('');
+    const wiecej = ukryte.map((n, c) => (n
+      ? `<span class="kl-wiecej" style="grid-column:${c + 1}; grid-row:${MAX + 2}">+${n}</span>`
+      : '')).join('');
+    tygodnie.push(`<div class="kl-tydz"
+        style="grid-template-rows:var(--kl-nr) repeat(${MAX}, var(--kl-tor)) minmax(var(--kl-wiecej), 1fr)">
+      ${dni}${seg.filter((s) => s.tor < MAX).map((s) => kalBelka(s, dzis, 2, true)).join('')}${wiecej}
+    </div>`);
+  }
+  return `<div class="kl-mies">
+    <div class="kl-dni-tyg" aria-hidden="true">${KAL_DNI.map((d) => `<span>${d}</span>`).join('')}</div>
+    ${tygodnie.join('')}
+  </div>`;
+}
+
+function kalTydzien(dzis) {
+  const od = poczatekTygodnia(kalDzien);
+  const dni = KAL_DNI.map((_, i) => dodajDni(od, i));
+  const wpisy = kalWpisy(od, dodajDni(od, 7));
+  const calodniowe = kalTory(od, 7, wpisy.filter((w) => !kalGodzinowy(w)));
+  const nag = dni.map((d, i) => `<button type="button" data-kal-dzien="${isoLokalne(d)}"
+      class="${d.getTime() === dzis.getTime() ? 'dzis' : ''}"
+      aria-label="${esc(kalWielka(d.toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })))}">
+      <span>${KAL_DNI[i]}</span><strong>${d.getDate()}</strong></button>`).join('');
+  return `<div class="kl-tyg">
+    <div class="kl-tyg-nag"><span></span><div class="kl-tyg-nag-dni">${nag}</div></div>
+    ${calodniowe.length ? `<div class="kl-pas"><span class="kl-pas-podpis">cały<br>dzień</span>
+      <div class="kl-pas-tory">${calodniowe.map((s) => kalBelka(s, dzis, 1, false)).join('')}</div>
+    </div>` : ''}
+    ${kalSiatkaGodzin(dni, wpisy, dzis)}
+  </div>`;
+}
+
+// Pozycja na liście (pas całodniowy w widoku dnia).
+function kalPozycja(w, dzis) {
+  const stan = kalStan(w, dzis);
+  const dopisek = [
+    w.start < w.koniec ? `trwa ${dataKrotka(w.start)} → ${dataKrotka(w.koniec)}` : '',
+    stan === 'powtorka' ? 'kolejne powtórzenie' : '',
+    stan === 'wstrzymane' ? 'wstrzymane' : '',
+    stan === 'po-czasie' ? 'po terminie' : '',
+  ].filter(Boolean).join(', ');
+  return `<button type="button" class="kl-poz ${stan}" data-kal-otworz="${w.z.id}">
+    <span class="kl-tyt">${kalZnak(w.z)}${esc(w.z.tytul)}${dopisek ? `<small>${esc(dopisek)}</small>` : ''}</span>
+  </button>`;
+}
+
+function kalDzienWidok(dzis) {
+  const d = kalDzien;
+  const wpisy = kalWpisy(d, dodajDni(d, 1));
+  const calodniowe = wpisy.filter((w) => !kalGodzinowy(w)).sort(kalPorzadek);
+  return `
+    ${calodniowe.length ? `<section class="kl-karta" style="margin-bottom:12px">
+      <div class="kl-karta-nag"><strong>Cały dzień</strong></div>
+      ${calodniowe.map((w) => kalPozycja(w, dzis)).join('')}
+    </section>` : ''}
+    <div class="kl-tyg kl-jeden">${kalSiatkaGodzin([d], wpisy, dzis)}</div>`;
+}
+
+// Oś godzin dla jednego albo siedmiu dni. Zakres: 7–21, poszerzany, gdy coś
+// wypada wcześniej albo później — cała doba na ekranie to przewijanie przez
+// noc, w której nic się nie dzieje.
+function kalSiatkaGodzin(dni, wpisy, dzis) {
+  const minuty = (w) => {
+    const [h, m] = w.pora.split(':').map(Number);
+    return h * 60 + (m || 0);
+  };
+  const naDzien = dni.map((d) => wpisy
+    .filter((w) => kalGodzinowy(w) && w.start.getTime() === d.getTime())
+    .sort(kalPorzadek));
+  const godziny = naDzien.flat().map((w) => Math.floor(minuty(w) / 60));
+  const h0 = Math.max(0, Math.min(7, ...godziny));
+  const h1 = Math.min(24, Math.max(21, ...godziny.map((h) => h + 1)));
+  const teraz = new Date();
+  const minTeraz = teraz.getHours() * 60 + teraz.getMinutes();
+  const y = (min) => ((min - h0 * 60) / 60) * KAL_H;
+
+  const kolumny = naDzien.map((lista, i) => {
+    // Zadania o tej samej porze stają OBOK siebie, nie na sobie — zasłonięte
+    // byłoby nie do znalezienia.
+    const konce = [];
+    const ulozone = lista.map((w) => {
+      const m = minuty(w);
+      let k = konce.findIndex((x) => x <= m);
+      if (k < 0) { k = konce.length; konce.push(0); }
+      konce[k] = m + 30;
+      return { w, m, k };
+    });
+    const szer = 100 / Math.max(1, konce.length);
+    const chipy = ulozone.map(({ w, m, k }) => `<button type="button"
+        class="kl-wpis kl-czas ${kalStan(w, dzis)}" data-kal-otworz="${w.z.id}"
+        style="top:${y(m)}px; left:calc(${k * szer}% + 2px); width:calc(${szer}% - 4px)"
+        title="${esc(kalOpis(w, dzis))}"><b>${w.pora}</b> ${kalZnak(w.z)}${esc(w.z.tytul)}</button>`).join('');
+    const czyDzis = dni[i].getTime() === dzis.getTime();
+    const linia = czyDzis && minTeraz >= h0 * 60 && minTeraz < h1 * 60
+      ? `<i class="kl-teraz" style="top:${y(minTeraz)}px"></i>` : '';
+    const weekend = dni.length > 1 && i >= 5 ? ' weekend' : '';
+    return `<div class="kl-kol${weekend}">${chipy}${linia}</div>`;
+  }).join('');
+
+  const podpisy = [];
+  for (let h = h0; h <= h1; h++) podpisy.push(`<span style="top:${(h - h0) * KAL_H}px">${h}:00</span>`);
+  return `<div class="kl-godziny" style="--h:${KAL_H}px">
+    <div class="kl-skala" style="height:${(h1 - h0) * KAL_H}px" aria-hidden="true">${podpisy.join('')}</div>
+    <div class="kl-kolumny" style="grid-template-columns:repeat(${dni.length}, minmax(0, 1fr))">${kolumny}</div>
+  </div>`;
+}
+
+// Otwarte zadania bez daty. Pomijamy te, które mają OTWARTE kroki: projekt
+// „Remont" bez własnej daty nie jest przeoczony, jeśli jego kroki stoją
+// w kalendarzu albo same są na tej liście.
+function kalBezDaty() {
+  const zDziecmi = new Set(zadania
+    .filter((z) => z.status === 'otwarte' && z.parent_id != null).map((z) => z.parent_id));
+  const lista = zadania.filter((z) => z.status === 'otwarte' && !z.termin && !z.data_start
+    && !zDziecmi.has(z.id));
+  if (!lista.length) return '';
+  return `<section class="kl-karta kl-bez">
+    <div class="kl-karta-nag"><strong>Bez terminu</strong><em class="kl-plak">${lista.length}</em></div>
+    <p class="kl-bez-opis">Nie stoją w kalendarzu, bo nie mają daty. Stuknij, żeby ją ustawić.</p>
+    ${lista.map((z) => {
+      const droga = sciezkaDo(z.id).slice(0, -1).map((x) => x.tytul).join(' › ');
+      return `<button type="button" class="kl-poz" data-kal-otworz="${z.id}">
+        <span class="kl-tyt">${kalZnak(z)}${esc(z.tytul)}${droga ? `<small>${esc(droga)}</small>` : ''}</span>
+      </button>`;
+    }).join('')}
+  </section>`;
+}
+
+function kalOkres() {
+  const d = kalDzien;
+  const biezacyRok = d.getFullYear() === new Date().getFullYear();
+  if (kalWidok === 'miesiac') {
+    return kalWielka(d.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' }));
+  }
+  if (kalWidok === 'dzien') {
+    return kalWielka(d.toLocaleDateString('pl-PL', biezacyRok
+      ? { weekday: 'long', day: 'numeric', month: 'long' }
+      : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }));
+  }
+  const od = poczatekTygodnia(d), ost = dodajDni(od, 6);
+  const rok = biezacyRok && ost.getFullYear() === od.getFullYear() ? {} : { year: 'numeric' };
+  if (od.getMonth() === ost.getMonth()) {
+    return `${od.getDate()}–${ost.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', ...rok })}`;
+  }
+  return `${od.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })} – ${
+    ost.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', ...rok })}`;
+}
+
+// Czy oglądany okres obejmuje dzisiejszy dzień — wtedy „Dziś" nie ma dokąd prowadzić.
+function kalWidacDzis() {
+  const dzis = dzisData();
+  if (kalWidok === 'dzien') return kalDzien.getTime() === dzis.getTime();
+  if (kalWidok === 'tydzien') return poczatekTygodnia(kalDzien).getTime() === poczatekTygodnia(dzis).getTime();
+  return kalDzien.getFullYear() === dzis.getFullYear() && kalDzien.getMonth() === dzis.getMonth();
+}
+
+function kalPrzesun(o) {
+  const dzis = dzisData();
+  if (!o) {
+    kalDzien = dzis;
+  } else if (kalWidok === 'miesiac') {
+    const d = new Date(kalDzien.getFullYear(), kalDzien.getMonth() + o, 1);
+    // Powrót do bieżącego miesiąca stawia z powrotem na dzisiejszym dniu —
+    // przełączenie potem na tydzień ma pokazać ten tydzień, a nie pierwszy.
+    kalDzien = d.getFullYear() === dzis.getFullYear() && d.getMonth() === dzis.getMonth() ? dzis : d;
+  } else {
+    kalDzien = dodajDni(kalDzien, o * (kalWidok === 'tydzien' ? 7 : 1));
+  }
+  rysuj();
+}
+
+function rysujKalendarz() {
+  const dzis = dzisData();
+  const tresc = kalWidok === 'dzien' ? kalDzienWidok(dzis)
+    : (kalWidok === 'tydzien' ? kalTydzien(dzis) : kalMiesiac(dzis));
+  const nazwaKroku = { dzien: 'dzień', tydzien: 'tydzień', miesiac: 'miesiąc' }[kalWidok];
+  box().innerHTML = `
+    <div class="kl-ekran">
+      <div class="kl-gora">
+        <h1 class="kl-okres" aria-live="polite">${esc(kalOkres())}</h1>
+        <div class="kl-strzalki">
+          <button class="kl-strz" type="button" data-kal-krok="-1"
+                  aria-label="Poprzedni ${nazwaKroku}" title="Poprzedni ${nazwaKroku}">‹</button>
+          <button class="kl-strz" type="button" data-kal-krok="1"
+                  aria-label="Następny ${nazwaKroku}" title="Następny ${nazwaKroku}">›</button>
+        </div>
+        <div class="kl-prawo">
+          <div class="kl-widoki" role="group" aria-label="Widok kalendarza">${
+            KAL_WIDOKI.map(([k, l]) => `<button type="button" data-kal-widok="${k}"
+              aria-pressed="${k === kalWidok}">${l}</button>`).join('')}</div>
+          <button class="kl-dzis-btn" type="button" data-kal-krok="0"
+                  ${kalWidacDzis() ? 'disabled' : ''}>Dziś</button>
+        </div>
+      </div>
+      ${tresc}
+      ${kalBezDaty()}
+    </div>`;
+
+  box().querySelector('.kl-ekran').onclick = (ev) => {
+    const w = ev.target.closest('[data-kal-widok]');
+    if (w) {
+      kalWidok = w.dataset.kalWidok;
+      localStorage.setItem('task_kal_widok', kalWidok);
+      rysuj();
+      return;
+    }
+    const k = ev.target.closest('[data-kal-krok]');
+    if (k) { kalPrzesun(Number(k.dataset.kalKrok)); return; }
+    const o = ev.target.closest('[data-kal-otworz]');
+    if (o) { otworzSzczegoly(Number(o.dataset.kalOtworz)); return; }
+    // Stuknięcie w dzień otwiera jego widok, ale NIE zapisuje „dnia" jako
+    // ulubionego widoku — to zajrzenie, a nie zmiana ustawienia.
+    const d = ev.target.closest('[data-kal-dzien]');
+    if (d) { kalDzien = doDaty(d.dataset.kalDzien); kalWidok = 'dzien'; rysuj(); }
+  };
+
+  // Oś godzin startuje przewinięta do bieżącej godziny, gdy dziś jest
+  // w oknie — inaczej na telefonie widać poranek, a „teraz" jest pod ekranem.
+  const kreska = box().querySelector('.kl-teraz');
+  if (kreska && kalWidok !== 'miesiac') {
+    const r = kreska.getBoundingClientRect();
+    if (r.top > window.innerHeight * 0.8) {
+      window.scrollBy({ top: r.top - window.innerHeight * 0.4, behavior: 'instant' });
+    }
+  }
 }
 
 // ── wykres Gantta ───────────────────────────────────────────────────────────
@@ -3390,7 +3833,9 @@ async function otworzSzczegoly(id) {
 
 function rysujSzczegoly() {
   const w = zadania.find((z) => z.id === szczegolyId);
-  if (!w) { widok = 'lista'; rysujLista(); return; }
+  // `rysuj()`, nie `rysujLista()`: z planu czy kalendarza powrót ma trafić
+  // tam, skąd przyszliśmy, a nie na listę pod cudzym adresem.
+  if (!w) { widok = 'lista'; rysuj(); return; }
   // Zadanie z rodzicem dziedziczy po nim prywatność, a backend to wymusza —
   // dlatego przełącznik jest tu wyłączony, a nie tylko odradzany.
   const maRodzica = w.parent_id != null;
