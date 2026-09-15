@@ -49,6 +49,8 @@ const TRYB_PLANU = location.pathname.replace(/\/$/, '') === '/plan';
 const TRYB_PROJEKTY = location.pathname.replace(/\/$/, '') === '/projekty';
 // Kalendarz — ten sam wzorzec: własny adres, ta sama strona. Patrz `rysujKalendarz`.
 const TRYB_KALENDARZA = location.pathname.replace(/\/$/, '') === '/kalendarz';
+// Wydarzenia — osobna zakładka, żeby lista zadań została listą rzeczy do zrobienia.
+const TRYB_WYDARZEN = location.pathname.replace(/\/$/, '') === '/wydarzenia';
 // Wybrany zakres PRZEŻYWA odświeżenie strony. Bez tego każde wejście
 // w szczegóły i powrót wracało do „Dziś", więc praca nad czymś odległym
 // w czasie znaczyła przestawianie filtra po każdej zmianie.
@@ -58,7 +60,8 @@ const TRYB_KALENDARZA = location.pathname.replace(/\/$/, '') === '/kalendarz';
 // „Dziś" znaczyło też „tylko otwarte", a „Zrobione" — „kiedykolwiek". Nie dało
 // się przez to zobaczyć, co w projekcie zostało domknięte, a co wisi; a przy
 // otwartym kroku to właśnie zamknięte poprzedniki niosą kontekst.
-let zakres = TRYB_PLANU ? 'plan' : (TRYB_KALENDARZA ? 'kalendarz' : 'lista');   // tylko rozróżnienie widoku
+let zakres = TRYB_PLANU ? 'plan' : (TRYB_KALENDARZA ? 'kalendarz'
+  : (TRYB_WYDARZEN ? 'wydarzenia' : 'lista'));   // tylko rozróżnienie widoku
 let czas = TRYB_PROJEKTY ? 'wszystko' : (localStorage.getItem('task_czas') || 'wszystko');
 let stan = TRYB_PROJEKTY ? 'otwarte' : (localStorage.getItem('task_stan') || 'otwarte');
 // Szukana fraza. NIE zapisujemy jej w localStorage — filtr przeżywa
@@ -323,6 +326,7 @@ async function wczytaj() {
   // tego, czy termin już minął — oś czasu pokazuje rozpiętość, a nie „co dziś".
   if (zakres === 'plan') return wczytajPlan();
   if (zakres === 'kalendarz') return wczytajKalendarz();
+  if (zakres === 'wydarzenia') return wczytajWydarzenia();
   try {
     // Szukanie omija filtry ORAZ zawężenie do obszaru: skoro się czegoś szuka,
     // to zwykle dlatego, że nie wiadomo, gdzie to jest.
@@ -708,6 +712,7 @@ function rysuj() {
   if (widok === 'szczegoly') return rysujSzczegoly();
   if (zakres === 'plan') return rysujPlan();
   if (zakres === 'kalendarz') return rysujKalendarz();
+  if (zakres === 'wydarzenia') return rysujWydarzenia();
   if (TRYB_PROJEKTY && korzen == null) return rysujProjekty();
   return rysujLista();
 }
@@ -789,7 +794,7 @@ const kalZnak = (z) => (z.kamien_milowy ? '<i class="kl-romb"></i>'
 async function wczytajKalendarz() {
   try {
     const [rp, rl] = await Promise.all([
-      authFetch('/api/task/plan?zrobione=true' + qStrefa()),
+      authFetch('/api/task/plan?zrobione=true&wydarzenia=true' + qStrefa()),
       authFetch('/api/task/zadania?czas=wszystko&status=otwarte' + qStrefa()),
     ]);
     const dp = await rp.json();
@@ -864,10 +869,25 @@ function kalPorzadek(a, b) {
 }
 
 function kalStan(w, dzis) {
+  // Wydarzenie nie bywa zrobione ani po terminie — po prostu mija. Klasa
+  // `wyd` niesie kolor; dorysowane powtórzenie dostaje obrys jak u zadań.
+  if (w.z.rodzaj === 'wydarzenie') return w.wirtualne ? 'wyd powtorka' : 'wyd';
   if (w.z.status === 'zrobione') return 'zrobione';
   if (w.z.status === 'wstrzymane') return 'wstrzymane';
   if (w.wirtualne) return 'powtorka';
   return w.koniec && w.koniec < dzis ? 'po-czasie' : '';
+}
+
+const kalPrzedzial = (z) => (z.pora
+  ? `${String(z.pora).slice(0, 5)}${z.pora_koniec ? '–' + String(z.pora_koniec).slice(0, 5) : ''}` : '');
+
+const PRZYPOMNIENIA = [['', 'bez przypomnienia', 'bez'], ['15', '15 min przed', '15 min'],
+                       ['60', '1 godz. przed', '1 godz.'], ['1440', '1 dzień przed', '1 dzień']];
+
+function opcjePrzypomnienia(v) {
+  const teraz = v == null ? '' : String(v);
+  return PRZYPOMNIENIA.map(([k, l]) =>
+    `<option value="${k}"${k === teraz ? ' selected' : ''}>${l}</option>`).join('');
 }
 
 // Dymek `title` — na myszy mówi to, czego nie zmieściła belka.
@@ -996,7 +1016,7 @@ const kalDzienKrotko = (d) => `${KAL_DNI[(d.getDay() + 6) % 7].toLowerCase()} ${
 function kalZalegle(przed) {
   return zadania
     .map((z) => ({ z, zz: zakresZadania(z) }))
-    .filter(({ z, zz }) => zz && z.status === 'otwarte' && zz.koniec < przed)
+    .filter(({ z, zz }) => zz && z.rodzaj !== 'wydarzenie' && z.status === 'otwarte' && zz.koniec < przed)
     .sort((a, b) => a.zz.koniec - b.zz.koniec || kalPorzadek(
       { z: a.z, start: a.zz.start, koniec: a.zz.koniec }, { z: b.z, start: b.zz.start, koniec: b.zz.koniec }))
     .map(({ z, zz }) => ({ z, start: zz.start, koniec: zz.koniec,
@@ -1085,9 +1105,17 @@ function kalSiatkaGodzin(dni, wpisy, dzis) {
   const naDzien = dni.map((d) => wpisy
     .filter((w) => kalGodzinowy(w) && w.start.getTime() === d.getTime())
     .sort(kalPorzadek));
+  // Wydarzenie TRWA: blok od początku do końca (co najmniej pół godziny).
+  // Zadanie to punkt — przypomnienie — więc zostaje półgodzinnym kafelkiem.
+  const trwanie = (w) => {
+    if (w.z.rodzaj !== 'wydarzenie' || !w.z.pora_koniec) return 30;
+    const [h, m] = String(w.z.pora_koniec).split(':').map(Number);
+    return Math.max(30, h * 60 + (m || 0) - minuty(w));
+  };
   const godziny = naDzien.flat().map((w) => Math.floor(minuty(w) / 60));
+  const konceGodzin = naDzien.flat().map((w) => Math.ceil((minuty(w) + trwanie(w)) / 60));
   const h0 = Math.max(0, Math.min(7, ...godziny));
-  const h1 = Math.min(24, Math.max(21, ...godziny.map((h) => h + 1)));
+  const h1 = Math.min(24, Math.max(21, ...godziny.map((h) => h + 1), ...konceGodzin));
   const teraz = new Date();
   const minTeraz = teraz.getHours() * 60 + teraz.getMinutes();
   const y = (min) => ((min - h0 * 60) / 60) * KAL_H;
@@ -1100,14 +1128,20 @@ function kalSiatkaGodzin(dni, wpisy, dzis) {
       const m = minuty(w);
       let k = konce.findIndex((x) => x <= m);
       if (k < 0) { k = konce.length; konce.push(0); }
-      konce[k] = m + 30;
-      return { w, m, k };
+      konce[k] = m + trwanie(w);
+      return { w, m, k, dl: trwanie(w) };
     });
     const szer = 100 / Math.max(1, konce.length);
-    const chipy = ulozone.map(({ w, m, k }) => `<button type="button"
-        class="kl-wpis kl-czas ${kalStan(w, dzis)}" ${kalAtrybuty(w)}
-        style="top:${y(m)}px; left:calc(${k * szer}% + 2px); width:calc(${szer}% - 4px)"
-        title="${esc(kalOpis(w, dzis))}"><b>${w.pora}</b> ${kalZnak(w.z)}${esc(w.z.tytul)}</button>`).join('');
+    const chipy = ulozone.map(({ w, m, k, dl }) => {
+      const wys = Math.round((dl / 60) * KAL_H) - 2;
+      const dlugi = dl > 30 ? ' dlugi' : '';
+      return `<button type="button"
+        class="kl-wpis kl-czas${dlugi} ${kalStan(w, dzis)}" ${kalAtrybuty(w)}
+        style="top:${y(m)}px; left:calc(${k * szer}% + 2px); width:calc(${szer}% - 4px)${
+          dlugi ? `; height:${wys}px` : ''}"
+        title="${esc(kalOpis(w, dzis))}"><b>${w.z.rodzaj === 'wydarzenie' ? kalPrzedzial(w.z) : w.pora}</b> ${
+        kalZnak(w.z)}${esc(w.z.tytul)}</button>`;
+    }).join('');
     const czyDzis = dni[i].getTime() === dzis.getTime();
     const linia = czyDzis && minTeraz >= h0 * 60 && minTeraz < h1 * 60
       ? `<i class="kl-teraz" style="top:${y(minTeraz)}px"></i>` : '';
@@ -1130,7 +1164,7 @@ function kalBezDaty() {
   const zDziecmi = new Set(zadania
     .filter((z) => z.status === 'otwarte' && z.parent_id != null).map((z) => z.parent_id));
   const lista = zadania.filter((z) => z.status === 'otwarte' && !z.termin && !z.data_start
-    && !zDziecmi.has(z.id));
+    && z.rodzaj !== 'wydarzenie' && !zDziecmi.has(z.id));
   if (!lista.length) return '';
   return `<section class="kl-karta kl-bez">
     <div class="kl-karta-nag"><strong>Bez terminu</strong><em class="kl-plak">${lista.length}</em></div>
@@ -1295,6 +1329,7 @@ function kalPodgladHtml(w, dzis, zAkcjami) {
   const droga = sciezkaDo(z.id).slice(0, -1).map((x) => x.tytul).join(' › ');
   const stan = kalStan(w, dzis);
 
+  const wydarzenie = z.rodzaj === 'wydarzenie';
   let kiedy;
   if (!w.koniec) {
     // Termin właśnie zdjęty kafelkiem — zadanie wypadło z kalendarza, ale
@@ -1307,13 +1342,19 @@ function kalPodgladHtml(w, dzis, zAkcjami) {
     const rok = w.koniec.getFullYear() !== dzis.getFullYear() ? { year: 'numeric' } : {};
     kiedy = kalWielka(w.koniec.toLocaleDateString('pl-PL',
       { weekday: 'long', day: 'numeric', month: 'long', ...rok }));
-    if (w.pora) kiedy += `, ${w.pora}`;
+    if (wydarzenie) kiedy += z.pora ? `, ${kalPrzedzial(z)}` : ', cały dzień';
+    else if (w.pora) kiedy += `, ${w.pora}`;
   }
+  if (wydarzenie && w.start < w.koniec && z.pora) kiedy += `, od ${kalPrzedzial(z)}`;
   const m = (household?.members || []).find((x) => x.id === z.wykonawca_user_id);
   const v = (household?.virtual_members || []).find((x) => x.id === z.wykonawca_virtual_id);
   const kto = m ? (m.display_name || m.name) : (v ? v.name : '');
 
   const plakietki = [
+    wydarzenie && ['wydarzenie', 'wyd'],
+    wydarzenie && w.wirtualne && ['kolejne powtórzenie', ''],
+    wydarzenie && z.przypomnij_min != null && [`przypomni ${
+      (PRZYPOMNIENIA.find(([k]) => k === String(z.przypomnij_min)) || [, ''])[1]}`, ''],
     stan === 'po-czasie' && ['po terminie', 'zle'],
     stan === 'zrobione' && ['zrobione', 'ok'],
     stan === 'wstrzymane' && ['wstrzymane', ''],
@@ -1348,12 +1389,13 @@ function kalPodgladHtml(w, dzis, zAkcjami) {
     </div>
     ${plakietki.length ? `<div class="klp-plakietki">${plakietki.map(([t, k]) =>
       `<span class="klp-plak ${k}">${t}</span>`).join('')}</div>` : ''}
-    ${stan !== 'powtorka' ? kalKafle(z) : ''}
+    ${w.wirtualne ? '' : (wydarzenie ? kalKafleWydarzenia(z) : kalKafle(z))}
     <dl class="klp-dane">${dane.map(([e, t]) => `<dt>${e}</dt><dd>${t}</dd>`).join('')}</dl>
-    ${stan === 'powtorka' ? `<p class="klp-uwaga">Pojawi się na liście, gdy odhaczysz bieżące
-      wystąpienie (termin ${esc(dataKrotka(z.termin))}).</p>` : ''}
+    ${w.wirtualne ? `<p class="klp-uwaga">${wydarzenie
+      ? `Kolejne powtórzenie. Zmiany ustawia się na najbliższym wystąpieniu (${esc(dataKrotka(z.termin))}).`
+      : `Pojawi się na liście, gdy odhaczysz bieżące wystąpienie (termin ${esc(dataKrotka(z.termin))}).`}</p>` : ''}
     ${zAkcjami ? `<div class="klp-akcje">
-      ${stan !== 'powtorka' ? `<button type="button" class="btn btn-outline" data-klp-zrobione>${
+      ${!w.wirtualne && !wydarzenie ? `<button type="button" class="btn btn-outline" data-klp-zrobione>${
         z.status === 'zrobione' ? 'Przywróć' : 'Zrobione'}</button>` : ''}
       <button type="button" class="btn btn-primary" data-klp-szczegoly>Szczegóły</button>
     </div>` : ''}`;
@@ -1396,6 +1438,43 @@ function kalKafle(z) {
     </label>
     <button class="zad-plus zad-komentarz${z.ile_komentarzy ? ' jest' : ''}" type="button"
             data-komentarze="${z.id}" title="Dziennik zadania" aria-label="Dziennik zadania">${
+      z.ile_komentarzy ? z.ile_komentarzy : ikonaSvg('notatka')}</button>
+  </div>
+  <div class="zad-dziennik klp-dziennik" id="dziennik-${z.id}" hidden></div>`;
+}
+
+// Kafelki wydarzenia: dzień, od, do, kto, przypomnienie i dziennik. Bez
+// priorytetu — wydarzenie nie konkuruje z innymi o kolejność, dzieje się o porze.
+function kalKafleWydarzenia(z) {
+  const ktos = z.wykonawca_user_id || z.wykonawca_virtual_id;
+  const od = z.pora ? String(z.pora).slice(0, 5) : '';
+  const doG = z.pora_koniec ? String(z.pora_koniec).slice(0, 5) : '';
+  const przyp = PRZYPOMNIENIA.find(([k]) => k === (z.przypomnij_min == null ? '' : String(z.przypomnij_min)));
+  return `<div class="klp-kafle">
+    <span class="zad-kiedy jest">
+      <label class="zad-data" title="Dzień">
+        ${esc(dataKrotka(z.termin))}
+        <input type="date" data-klp-pole="termin" value="${esc((z.termin || '').slice(0, 10))}">
+      </label>
+      <label class="zad-pora${od ? ' jest' : ''}" title="Od godziny">
+        ${od || 'od'}
+        <input type="time" data-klp-pole="pora" value="${esc(od)}">
+      </label>
+      ${od ? `<label class="zad-pora${doG ? ' jest' : ''}" title="Do godziny">
+        ${doG || 'do'}
+        <input type="time" data-klp-pole="pora_koniec" value="${esc(doG)}">
+      </label>` : ''}
+    </span>
+    <label class="zad-kto${ktos ? ' jest' : ''}" title="Kto">
+      ${skrotWykonawcy(z)}${ktos ? '' : '<span>Kto</span>'}
+      <select data-klp-pole="wyk" aria-label="Kto">${opcjeWykonawcyKrotkie(z)}</select>
+    </label>
+    <label class="zad-kto${przyp && przyp[0] ? ' jest' : ''}" title="Przypomnienie">
+      ${ikonaSvg('alerty')}<span>${przyp ? przyp[2] : 'bez'}</span>
+      <select data-klp-pole="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(z.przypomnij_min)}</select>
+    </label>
+    <button class="zad-plus zad-komentarz${z.ile_komentarzy ? ' jest' : ''}" type="button"
+            data-komentarze="${z.id}" title="Dziennik" aria-label="Dziennik">${
       z.ile_komentarzy ? z.ile_komentarzy : ikonaSvg('notatka')}</button>
   </div>
   <div class="zad-dziennik klp-dziennik" id="dziennik-${z.id}" hidden></div>`;
@@ -1472,9 +1551,18 @@ function kalOtworzPodglad({ id, el, od, do: doK, wirtualne, pozycja, bezAnimacji
     const pole = ev.target.closest('[data-klp-pole]');
     if (!pole) return;
     const v = pole.value;
+    // Wydarzenie bez dnia nie istnieje — wyczyszczenie pola daty ignorujemy,
+    // zamiast wysyłać zapis, który serwer i tak odrzuci.
+    if (pole.dataset.klpPole === 'termin' && !v && z.rodzaj === 'wydarzenie') {
+      pole.value = (z.termin || '').slice(0, 10);
+      return;
+    }
     const zmiany = {
       termin: { termin: v || null },
-      pora: { pora: v || null },
+      // Zdjęcie godziny początku zdejmuje też koniec — „do 15:00" bez „od" to cały dzień.
+      pora: v || z.rodzaj !== 'wydarzenie' ? { pora: v || null } : { pora: null, pora_koniec: null },
+      pora_koniec: { pora_koniec: v || null },
+      przypomnij: { przypomnij_min: v ? Number(v) : null },
       priorytet: { priorytet: Number(v) || 0 },
       wyk: { wykonawca_user_id: v.startsWith('u:') ? Number(v.slice(2)) : null,
              wykonawca_virtual_id: v.startsWith('v:') ? Number(v.slice(2)) : null },
@@ -1563,6 +1651,196 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && kalPodglad) kalZamknijPodglad();
 });
 window.addEventListener('resize', () => { if (kalPodglad && !kalWaski.matches) kalZamknijPodglad(); });
+
+// ── zakładka Wydarzenia ─────────────────────────────────────────────────────
+//
+// Wydarzenie to coś, co SIĘ DZIEJE o danej porze (dentysta, urodziny), a nie
+// coś do odhaczenia — dlatego osobna zakładka, a lista zadań zostaje listą rzeczy
+// do zrobienia (decyzja Adama). Nadchodzące w grupach Dziś / Jutro / W tym
+// tygodniu / Później; minione z 30 dni zwinięte na dole, bo wydarzenie nie wisi
+// jak zaległe zadanie, tylko mija.
+//
+// Stuknięcie w wiersz otwiera TEN SAM podgląd co w kalendarzu (kafelki, trzy
+// kropki) — atrybuty `data-kal-*` są wspólne.
+
+const wydNowe = { termin: null, pora: null, pora_koniec: null, wyk: '', przypomnij: '60' };
+let wydMinionePokaz = false;
+
+async function wczytajWydarzenia() {
+  try {
+    const r = await authFetch('/api/task/wydarzenia?x=1' + qStrefa());
+    const d = await r.json();
+    zadania = d.zadania || [];
+    if (d.domyslna_pora) domyslnaPora = d.domyslna_pora;
+  } catch { zadania = []; toast('Nie udało się wczytać wydarzeń.', 'blad'); }
+  rysuj();
+}
+
+const wydWybrano = () => !!(wydNowe.termin || wydNowe.pora || wydNowe.wyk || wydNowe.przypomnij !== '60');
+
+function wydPolaHtml() {
+  const w = {
+    wykonawca_user_id: wydNowe.wyk.startsWith('u:') ? Number(wydNowe.wyk.slice(2)) : null,
+    wykonawca_virtual_id: wydNowe.wyk.startsWith('v:') ? Number(wydNowe.wyk.slice(2)) : null,
+  };
+  const przyp = PRZYPOMNIENIA.find(([k]) => k === wydNowe.przypomnij) || PRZYPOMNIENIA[0];
+  // Dzień podpowiadamy DZISIEJSZY, zamiast pustego kafelka: wydarzenie bez dnia
+  // nie istnieje, a „dziś" jest najczęstszą odpowiedzią i widać, co się zapisze.
+  return `
+    <span class="zad-kiedy jest sz-kafel">
+      <label class="zad-data" title="Dzień">
+        ${ikonaSvg('kalendarz')}<span>${esc(dataKrotka(wydNowe.termin || dzisIso()))}</span>
+        <input type="date" data-wyd="termin" value="${esc(wydNowe.termin || dzisIso())}">
+      </label>
+      <label class="zad-pora${wydNowe.pora ? ' jest' : ''}" title="Od godziny">
+        ${wydNowe.pora || 'od'}
+        <input type="time" data-wyd="pora" value="${esc(wydNowe.pora || '')}">
+      </label>
+      ${wydNowe.pora ? `<label class="zad-pora${wydNowe.pora_koniec ? ' jest' : ''}" title="Do godziny">
+        ${wydNowe.pora_koniec || 'do'}
+        <input type="time" data-wyd="pora_koniec" value="${esc(wydNowe.pora_koniec || '')}">
+      </label>` : ''}
+    </span>
+    <label class="zad-kto sz-kafel${wydNowe.wyk ? ' jest' : ''}" title="Kto">
+      ${wydNowe.wyk ? skrotWykonawcy(w) : `${ikonaSvg('osoby')}<span>Kto</span>`}
+      <select data-wyd="wyk" aria-label="Kto">${opcjeWykonawcyKrotkie(w)}</select>
+    </label>
+    <label class="zad-kto sz-kafel${przyp[0] ? ' jest' : ''}" title="Przypomnienie">
+      ${ikonaSvg('alerty')}<span>${przyp[2]}</span>
+      <select data-wyd="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(wydNowe.przypomnij || null)}</select>
+    </label>`;
+}
+
+function rysujWydarzenia() {
+  // Pływający guzik łapie ZADANIA — na zakładce wydarzeń wprowadzałby w błąd.
+  const fab = document.getElementById('fab-lap');
+  if (fab) fab.style.display = 'none';
+
+  const dzis = dzisData();
+  const jutro = dodajDni(dzis, 1);
+  const koniecTyg = dodajDni(poczatekTygodnia(dzis), 7);
+  const wszystkie = zadania
+    .filter((z) => z.rodzaj === 'wydarzenie')
+    .map((z) => {
+      const zz = zakresZadania(z);
+      return zz && { z, start: zz.start, koniec: zz.koniec,
+                     pora: z.pora ? String(z.pora).slice(0, 5) : null, wirtualne: false };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.start - b.start || String(a.z.pora || '').localeCompare(String(b.z.pora || '')));
+
+  const grupy = { dzis: [], jutro: [], tydzien: [], pozniej: [], minione: [] };
+  for (const w of wszystkie) {
+    if (w.koniec < dzis) grupy.minione.push(w);
+    else if (w.start <= dzis) grupy.dzis.push(w);           // także trwające od wczoraj
+    else if (w.start.getTime() === jutro.getTime()) grupy.jutro.push(w);
+    else if (w.start < koniecTyg) grupy.tydzien.push(w);
+    else grupy.pozniej.push(w);
+  }
+  grupy.minione.reverse();   // najświeższe minione na górze
+
+  const sekcja = (tytul, lista) => (lista.length ? `<section class="wyd-grupa">
+      <h2>${tytul}</h2>
+      <div class="kl-karta">${lista.map((w) => wydWiersz(w, dzis)).join('')}</div>
+    </section>` : '');
+  const nadchodzacych = grupy.dzis.length + grupy.jutro.length + grupy.tydzien.length + grupy.pozniej.length;
+
+  box().innerHTML = `
+    <div class="gora"><h1>Wydarzenia</h1></div>
+    <form class="szybkie" id="wyd-dodaj">
+      <input id="wyd-tytul" autocomplete="off" placeholder="Co się wydarzy?">
+      <button class="btn btn-primary" type="submit">Dodaj</button>
+    </form>
+    <div class="sz-pola" id="wyd-pola"${wydWybrano() ? '' : ' hidden'}>${wydPolaHtml()}</div>
+    <div class="wyd-lista">
+      ${sekcja('Dziś', grupy.dzis)}
+      ${sekcja('Jutro', grupy.jutro)}
+      ${sekcja('W tym tygodniu', grupy.tydzien)}
+      ${sekcja('Później', grupy.pozniej)}
+      ${nadchodzacych ? '' : `<p class="pusto">Nie masz nadchodzących wydarzeń.<br>
+        Wpisz pierwsze wyżej — np. „Dentysta" z dniem i godziną.</p>`}
+      ${grupy.minione.length ? `<section class="wyd-grupa wyd-minione">
+        <button type="button" class="kl-zal-nag wyd-minione-nag" data-wyd-minione
+                aria-expanded="${wydMinionePokaz}">
+          <strong>Minione</strong><em>${grupy.minione.length}</em>
+          <span class="kl-zal-skad">z ostatnich 30 dni</span>
+          <span class="kl-zal-daszek" aria-hidden="true">›</span>
+        </button>
+        ${wydMinionePokaz ? `<div class="kl-karta">${grupy.minione.map((w) => wydWiersz(w, dzis)).join('')}</div>` : ''}
+      </section>` : ''}
+    </div>`;
+
+  const pole = document.getElementById('wyd-tytul');
+  const rzad = document.getElementById('wyd-pola');
+  pole.addEventListener('input', () => { rzad.hidden = !(wydWybrano() || pole.value.trim()); });
+  rzad.onchange = (ev) => {
+    const el = ev.target.closest('[data-wyd]');
+    if (!el) return;
+    const k = el.dataset.wyd;
+    if (k === 'termin') wydNowe.termin = el.value || null;
+    else if (k === 'pora') { wydNowe.pora = el.value || null; if (!el.value) wydNowe.pora_koniec = null; }
+    else if (k === 'pora_koniec') wydNowe.pora_koniec = el.value || null;
+    else if (k === 'wyk') wydNowe.wyk = el.value;
+    else if (k === 'przypomnij') wydNowe.przypomnij = el.value;
+    rzad.innerHTML = wydPolaHtml();
+  };
+  document.getElementById('wyd-dodaj').onsubmit = async (ev) => {
+    ev.preventDefault();
+    const tytul = pole.value.trim();
+    if (!tytul) return;
+    if (wydNowe.pora && wydNowe.pora_koniec && wydNowe.pora_koniec <= wydNowe.pora) {
+      toast('Koniec musi być po początku.', 'blad');
+      return;
+    }
+    const termin = wydNowe.termin || dzisIso();
+    const r = await authFetch('/api/task/zadania', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tytul, rodzaj: 'wydarzenie', termin, strefa_id: strefa,
+        pora: wydNowe.pora, pora_koniec: wydNowe.pora ? wydNowe.pora_koniec : null,
+        wykonawca_user_id: wydNowe.wyk.startsWith('u:') ? Number(wydNowe.wyk.slice(2)) : null,
+        wykonawca_virtual_id: wydNowe.wyk.startsWith('v:') ? Number(wydNowe.wyk.slice(2)) : null,
+        przypomnij_min: wydNowe.przypomnij ? Number(wydNowe.przypomnij) : null,
+      }),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      toast(e.detail || 'Nie udało się zapisać wydarzenia.', 'blad');
+      return;
+    }
+    const kiedy = `${dataKrotka(termin)}${wydNowe.pora ? ' ' + wydNowe.pora : ''}`;
+    Object.assign(wydNowe, { termin: null, pora: null, pora_koniec: null, wyk: '', przypomnij: '60' });
+    toast(`Dodano: ${tytul}, ${kiedy}.`, 'ok');
+    await wczytaj();
+  };
+  box().querySelector('.wyd-lista').onclick = (ev) => {
+    if (ev.target.closest('[data-wyd-minione]')) {
+      wydMinionePokaz = !wydMinionePokaz;
+      rysuj();
+      return;
+    }
+    const o = ev.target.closest('[data-kal-otworz]');
+    if (o) kalPokazPodglad(o);
+  };
+}
+
+function wydWiersz(w, dzis) {
+  const z = w.z;
+  const wielo = w.start < w.koniec;
+  const dzien = wielo ? `${dataKrotka(w.start)} → ${dataKrotka(w.koniec)}` : kalDzienKrotko(w.start);
+  const godz = z.pora ? kalPrzedzial(z) : 'cały dzień';
+  const droga = sciezkaDo(z.id).slice(0, -1).map((x) => x.tytul).join(' › ');
+  const meta = [droga, z.powtarzaj ? opisPowtarzania(z) : ''].filter(Boolean).join(', ');
+  const ktos = z.wykonawca_user_id || z.wykonawca_virtual_id;
+  return `<button type="button" class="wyd-poz${w.koniec < dzis ? ' minione' : ''}" ${kalAtrybuty(w)}>
+    <span class="wyd-kiedy"><strong>${esc(dzien)}</strong><span>${esc(godz)}</span></span>
+    <span class="wyd-tresc">
+      <span class="wyd-tytul">${esc(z.tytul)}</span>
+      ${meta ? `<small>${esc(meta)}</small>` : ''}
+    </span>
+    ${ktos ? `<span class="wyd-kto" title="Kto">${skrotWykonawcy(z)}</span>` : ''}
+  </button>`;
+}
 
 // ── wykres Gantta ───────────────────────────────────────────────────────────
 //
@@ -3515,8 +3793,9 @@ function menuZadania(id) {
         ${ikonaSvg('przenies')}<span class="nazwa">Przenieś do…</span>
         <span class="ile">${w.parent_id != null ? 'zmień miejsce' : 'do projektu'}</span></button>
       <!-- Wstrzymanie sąsiaduje z przeniesieniem, a nie z usunięciem: to jest
-           odłożenie sprawy, nie pozbycie się jej. -->
-      <button type="button" class="lap-poz" id="menu-wstrzymaj">
+           odłożenie sprawy, nie pozbycie się jej. Wydarzenia się nie wstrzymuje
+           — dzieje się albo nie; odwołane się usuwa. -->
+      <button type="button" class="lap-poz" id="menu-wstrzymaj"${w.rodzaj === 'wydarzenie' ? ' hidden' : ''}>
         ${ikonaSvg(w.status === 'wstrzymane' ? 'zadania' : 'pauza')}
         <span class="nazwa">${w.status === 'wstrzymane' ? 'Wznów' : 'Wstrzymaj'}</span>
         <span class="ile">${w.status === 'wstrzymane'
@@ -4344,11 +4623,15 @@ function rysujSzczegoly() {
     + wirtualni.map((m) => `<option value="v:${m.id}"${wykWartosc === `v:${m.id}` ? ' selected' : ''}>${
         esc(m.name)}</option>`).join('');
 
+  // Wydarzenie ma inne pola niż zadanie: godzinę od–do i przypomnienie
+  // z wyprzedzeniem, a nie ma priorytetu, kamienia milowego, projektu ani
+  // zależności — nie odhacza się go, więc nie ma czego „kończyć przed".
+  const ev = w.rodzaj === 'wydarzenie';
   box().innerHTML = `
     <button class="wroc" type="button" id="s-wroc">← Wróć</button>
-    <div class="gora"><h1>Szczegóły zadania</h1></div>
+    <div class="gora"><h1>${ev ? 'Szczegóły wydarzenia' : 'Szczegóły zadania'}</h1></div>
     <div class="pole">
-      <label for="s-tytul">Tytuł</label>
+      <label for="s-tytul">${ev ? 'Nazwa' : 'Tytuł'}</label>
       <input id="s-tytul" value="${esc(w.tytul)}">
     </div>
     <div class="pole">
@@ -4359,25 +4642,42 @@ function rysujSzczegoly() {
       <!-- Początek jest opcjonalny i stoi PRZED terminem: zadanie bez niego
            to punkt na osi, z nim — odcinek. Dopiero to daje belkę na wykresie. -->
       <div class="pole">
-        <label for="s-start">Początek</label>
+        <label for="s-start">${ev ? 'Od dnia (kilkudniowe)' : 'Początek'}</label>
         <input id="s-start" type="date" value="${esc((w.data_start || '').slice(0, 10))}">
       </div>
       <div class="pole">
-        <label for="s-termin">Termin</label>
+        <label for="s-termin">${ev ? 'Dzień' : 'Termin'}</label>
         <input id="s-termin" type="date" value="${esc((w.termin || '').slice(0, 10))}">
       </div>
     </div>
+    ${ev ? `
+    <div class="pola-2">
+      <div class="pole">
+        <label for="s-pora">Od godziny</label>
+        <input id="s-pora" type="time" value="${esc((w.pora || '').slice(0, 5))}">
+      </div>
+      <div class="pole">
+        <label for="s-pora-koniec">Do godziny</label>
+        <input id="s-pora-koniec" type="time" value="${esc((w.pora_koniec || '').slice(0, 5))}">
+      </div>
+    </div>
+    <div class="uwaga" style="margin:-6px 0 12px">Bez godzin — wydarzenie na cały dzień.</div>
+    <div class="pole">
+      <label for="s-przypomnij">Przypomnienie</label>
+      <select id="s-przypomnij">${opcjePrzypomnienia(w.przypomnij_min)}</select>
+    </div>` : `
     <div class="pole">
       <label for="s-pora">Godzina przypomnienia</label>
       <input id="s-pora" type="time" value="${esc((w.pora || '').slice(0, 5))}">
       <div class="uwaga">${w.termin
         ? `Puste = przypomni o ${esc(domyslnaPora)} (godzina domyślna).`
         : 'Bez terminu nie ma czego przypominać — najpierw ustaw datę.'}</div>
-    </div>
+    </div>`}
     <div class="pole">
-      <label for="s-wykonawca">Wykonawca</label>
+      <label for="s-wykonawca">${ev ? 'Kto' : 'Wykonawca'}</label>
       <select id="s-wykonawca">${opcjeWykonawcy}</select>
     </div>
+    ${ev ? '' : `
     <!-- TRZY stopnie, nie pięć i nie macierz ważne × pilne: pilność niesie już
          termin, a dwuwymiarowa siatka wymaga decyzji przy każdym zadaniu.
          „Zwykły" jest domyślny i nie zostawia żadnego znaku na liście. -->
@@ -4389,16 +4689,18 @@ function rysujSzczegoly() {
         <option value="-1"${Number(w.priorytet) < 0 ? ' selected' : ''}>Niski</option>
       </select>
       <div class="uwaga">Przy równym terminie ważniejsze idzie wyżej na liście.</div>
-    </div>
+    </div>`}
     <!-- Przeniesienie pod inne zadanie. Baza obsługiwała to od początku
          (z wykrywaniem pętli), ale nie było na to żadnego wejścia — sprawa,
          która okazała się częścią większego przedsięwzięcia, wymagała
          usunięcia i wpisania od nowa. -->
     <div class="pole">
-      <label for="s-rodzic">Część zadania</label>
+      <label for="s-rodzic">${ev ? 'Należy do' : 'Część zadania'}</label>
       <select id="s-rodzic">${opcjeRodzica(w)}</select>
-      <div class="uwaga">Przenosi to zadanie razem z jego krokami.</div>
+      <div class="uwaga">${ev ? 'Np. projekt, którego to wydarzenie jest częścią.'
+        : 'Przenosi to zadanie razem z jego krokami.'}</div>
     </div>
+    ${ev ? '' : `
     <!-- Zależności: „skończ, zanim zaczniesz". Zadania bez powiązania idą
          równolegle — to stan domyślny i nie wymaga osobnego ustawienia. -->
     <div class="pole">
@@ -4409,7 +4711,7 @@ function rysujSzczegoly() {
     </div>
     <div class="pole-cb">
       <label><input type="checkbox" id="s-kamien" ${w.kamien_milowy ? 'checked' : ''}> Kamień milowy</label>
-    </div>
+    </div>`}
     <!-- Powtarzanie wymaga terminu — bez niego nie ma od czego liczyć kolejnej
          daty, więc pole jest wtedy wyłączone i mówi dlaczego. -->
     <div class="pole">
@@ -4438,8 +4740,10 @@ function rysujSzczegoly() {
         ${STREFY.map((s) => `<option value="${s.id}"${
           s.id === w.strefa_id ? ' selected' : ''}>${esc(s.nazwa)}</option>`).join('')}
       </select>
-      <div class="uwaga">Przeniesie też wszystkie kroki w środku.</div>
+      <div class="uwaga">${ev ? 'Wydarzenie pokaże się w zakładce tego obszaru.'
+        : 'Przeniesie też wszystkie kroki w środku.'}</div>
     </div>`}
+    ${ev ? '' : `
     <div class="pole-cb">
       <!-- Projektem może być tylko zadanie bez rodzica: przedsięwzięcie
            w środku innego przedsięwzięcia to etap, nie projekt. -->
@@ -4451,7 +4755,7 @@ function rysujSzczegoly() {
       ${maRodzica
         ? '<div class="uwaga">Krok jest częścią projektu nadrzędnego.</div>'
         : '<div class="uwaga">Wyróżnia zadanie na osi planu jako całe przedsięwzięcie.</div>'}
-    </div>
+    </div>`}
     <div class="pole-cb">
       <label class="${maRodzica ? 'wylaczone' : ''}">
         <input type="checkbox" id="s-prywatne" ${w.prywatne_dla != null ? 'checked' : ''}
@@ -4531,14 +4835,21 @@ function rysujSzczegoly() {
       termin: document.getElementById('s-termin').value || null,
       data_start: document.getElementById('s-start').value || null,
       pora: document.getElementById('s-pora').value || null,
-      priorytet: Number(document.getElementById('s-priorytet').value) || 0,
       wykonawca_user_id: wyk.startsWith('u:') ? Number(wyk.slice(2)) : null,
       wykonawca_virtual_id: wyk.startsWith('v:') ? Number(wyk.slice(2)) : null,
-      kamien_milowy: document.getElementById('s-kamien').checked,
-      projekt: !maRodzica && document.getElementById('s-projekt').checked,
       powtarzaj: document.getElementById('s-powtarzaj').value || null,
       powtarzaj_co: Number(document.getElementById('s-co-ile').value) || 1,
     };
+    if (ev) {
+      if (!dane.termin) { toast('Wydarzenie musi mieć dzień.', 'blad'); return; }
+      dane.pora_koniec = document.getElementById('s-pora-koniec').value || null;
+      dane.przypomnij_min = document.getElementById('s-przypomnij').value
+        ? Number(document.getElementById('s-przypomnij').value) : null;
+    } else {
+      dane.priorytet = Number(document.getElementById('s-priorytet').value) || 0;
+      dane.kamien_milowy = document.getElementById('s-kamien').checked;
+      dane.projekt = !maRodzica && document.getElementById('s-projekt').checked;
+    }
     // Łapiemy zamianę pól po stronie klienta, żeby nie wysyłać żądania, które
     // i tak wróci z błędem — komunikat pada od razu przy przycisku.
     if (dane.data_start && dane.termin && dane.data_start > dane.termin) {

@@ -1061,13 +1061,43 @@
        (z-index -1 w kontekście belki), więc wygasza kolor, a nie litery.
        Kolor tła podaje miejsce: w miesiącu weekend ma inne tło niż dzień
        roboczy, w pasie całodniowym wszystko stoi na surface-2. */
-    .kl-wpis.koniec { box-shadow: inset var(--gr) 0 0 var(--kreska),
+    .kl-wpis.koniec:not(.wyd) { box-shadow: inset var(--gr) 0 0 var(--kreska),
                                   inset calc(-1 * var(--gr)) 0 0 var(--kreska); }
     .kl-wpis.ciag-l { margin-left: 0; padding-left: 16px;
                       border-top-left-radius: 0; border-bottom-left-radius: 0; }
     .kl-wpis.ciag-p { margin-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
-    .kl-wpis.ciag-l:not(.powtorka) { box-shadow: none; }
-    .kl-wpis.ciag-l.koniec:not(.powtorka) { box-shadow: inset calc(-1 * var(--gr)) 0 0 var(--kreska); }
+    .kl-wpis.ciag-l:not(.powtorka):not(.wyd) { box-shadow: none; }
+    .kl-wpis.ciag-l.koniec:not(.powtorka):not(.wyd) { box-shadow: inset calc(-1 * var(--gr)) 0 0 var(--kreska); }
+
+    /* ── WYDARZENIA ─────────────────────────────────────────────────────────
+       Lawenda — koral to zadania, czerwień zaległe, a złoto, zieleń i turkus
+       należą do innych modułów. Kontrast zmierzony: tekst na tle 13,5:1 (jasny)
+       i 8,5:1 (ciemny), kreska na powierzchni 6,0 i 7,4.
+       Tło wydarzenia ma PRAWIE TĘ SAMĄ JASNOŚĆ co tło zadania (1,02:1) — różni
+       je tylko odcień. Dlatego wydarzenie różni się też KSZTAŁTEM: cienka ramka
+       dookoła zamiast paska z lewej. Działa bez rozróżniania barw. */
+    :root { --wyd: #6b4fbf; --wyd-soft: #efe9fb; --wyd-border: #d8ccf3; --wyd-strong: #4a3490; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --wyd: #b8a3f7; --wyd-soft: #2b2540;
+                                        --wyd-border: #43395f; --wyd-strong: #cfc0fa; }
+    }
+    :root[data-theme="dark"] { --wyd: #b8a3f7; --wyd-soft: #2b2540;
+                               --wyd-border: #43395f; --wyd-strong: #cfc0fa; }
+    .kl-wpis.wyd { background: var(--wyd-soft); color: var(--text);
+                   box-shadow: inset 0 0 0 1px var(--wyd-border); }
+    .kl-wpis.wyd b { color: var(--wyd-strong); }
+    .kl-wpis.wyd.powtorka { background: transparent; box-shadow: none; color: var(--muted);
+                            outline: 1px dashed var(--wyd-border); }
+    /* Blok dłuższy niż pół godziny: godzina nad nazwą, oba u GÓRY — przycisk
+       sam z siebie centruje treść w pionie, a blok 14:00–15:30 z nazwą w połowie
+       wysokości wygląda, jakby zaczynał się o 14:45. */
+    .kl-czas.dlugi { display: flex; flex-direction: column; justify-content: flex-start;
+                     align-items: flex-start; line-height: 1.25; padding-top: 3px;
+                     padding-bottom: 3px; white-space: normal; }
+    .kl-poz.wyd { box-shadow: inset 3px 0 0 var(--wyd); }
+    .kl-poz.wyd .kl-belka { --kol: var(--wyd-soft); --kreska: var(--wyd); }
+    .klp-plak.wyd { background: var(--wyd-soft); color: var(--wyd-strong); border-color: var(--wyd-border); }
+    .lap-poz[hidden] { display: none; }
     .kl-wpis.ciag-l::before, .kl-wpis.ciag-p::after {
       content: ''; position: absolute; top: 0; bottom: 0; width: 26px; z-index: -1;
       pointer-events: none; }
@@ -1124,6 +1154,8 @@
       .kl-mies .kl-wpis.koniec, .kl-mies .kl-wpis.ciag-l.koniec:not(.powtorka) { box-shadow: none; }
       .kl-mies .kl-wpis.ciag-l::before, .kl-mies .kl-wpis.ciag-p::after { width: 18px; }
       .kl-mies .kl-wpis.zrobione { background: var(--good); opacity: .45; }
+      .kl-mies .kl-wpis.wyd { background: var(--wyd); box-shadow: none; }
+      .kl-mies .kl-wpis.wyd.powtorka { background: var(--wyd-border); outline: none; }
       .kl-mies .kl-wpis.wstrzymane { background: var(--border); }
       .kl-mies .kl-wpis.powtorka { background: var(--accent-border); }
       .kl-mies .kl-wpis.po-czasie { background-color: var(--danger);
@@ -1242,6 +1274,36 @@
     .kl-poz.po-czasie .kl-belka { --kol: var(--danger-bg); --kreska: var(--danger); }
     .kl-poz.powtorka .kl-belka { --kol: color-mix(in srgb, var(--accent-soft) 45%, transparent);
                                  --kreska: var(--accent-border); }
+
+    /* Zakładka Wydarzenia: grupy dni, wiersz z godziną w stałej kolumnie po
+       lewej — przy przeglądaniu tygodnia oko idzie w dół po godzinach. */
+    .wyd-grupa { margin-bottom: 16px; }
+    .wyd-grupa h2 { margin: 0 0 6px 2px; font-size: 13px; font-weight: 600; color: var(--muted); }
+    .wyd-poz { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px;
+               padding: 9px 12px; border: none; border-top: 1px solid var(--border-soft);
+               background: none; font: inherit; color: var(--text); text-align: left;
+               cursor: pointer; box-shadow: inset 3px 0 0 var(--wyd); }
+    .kl-karta > .wyd-poz:first-child { border-top: none; }
+    .wyd-kiedy { flex: none; width: 92px; display: flex; flex-direction: column; gap: 1px;
+                 font-variant-numeric: tabular-nums; }
+    .wyd-kiedy strong { font-size: 13px; font-weight: 600; }
+    .wyd-kiedy span { font-size: 12px; color: var(--wyd-strong); }
+    .wyd-tresc { flex: 1; min-width: 0; }
+    .wyd-tytul { display: block; font-size: 14.5px; line-height: 1.35; overflow-wrap: anywhere; }
+    .wyd-tresc small { display: block; margin-top: 1px; font-size: 12px; color: var(--muted); }
+    .wyd-kto { flex: none; min-width: 30px; height: 30px; padding: 0 6px; border-radius: 999px;
+               display: flex; align-items: center; justify-content: center; font-size: 11.5px;
+               font-weight: 600; background: var(--wyd-soft); color: var(--wyd-strong); }
+    .wyd-poz.minione { box-shadow: inset 3px 0 0 var(--border); }
+    .wyd-poz.minione .wyd-tresc, .wyd-poz.minione .wyd-kiedy { opacity: .65; }
+    .wyd-poz.kl-wybrany { outline: 2px solid var(--wyd); outline-offset: -2px; }
+    .wyd-poz:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    @media (hover: hover) { .wyd-poz:hover { background: var(--surface-2); } }
+    /* Szary, nie czerwony jak „Zaległe": minione wydarzenie to nie zaniedbanie. */
+    .wyd-minione .wyd-minione-nag strong { color: var(--muted); }
+    .wyd-minione .wyd-minione-nag em { color: var(--muted); background: var(--surface-2);
+                                       border-color: var(--border); }
+    .wyd-minione .kl-karta { margin-top: 6px; }
 
     /* Bez terminu: bez paska po lewej — pasek znaczy „stoi w kalendarzu",
        a te właśnie nie stoją. */

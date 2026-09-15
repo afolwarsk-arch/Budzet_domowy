@@ -101,7 +101,7 @@ def _opis(p: dict) -> str:
 
 # Rodzaje powiadomień — po jednym na wyzwalacz. Nazwy trafiają do bazy
 # (`push_wylaczone.rodzaj`) i do interfejsu, więc NIE zmieniaj ich bez migracji.
-RODZAJE = ("przelew", "pobranie", "lista", "raport", "zadanie", "przeglad")
+RODZAJE = ("przelew", "pobranie", "lista", "raport", "zadanie", "przeglad", "wydarzenie")
 
 
 def wyslij_do_uzytkownika(user_id: int, tytul: str, tresc: str, url: str = "/",
@@ -279,6 +279,31 @@ def wyslij_przypomnienia_dzienne() -> None:
 _JUZ_WYSLANE: set[int] = set()
 
 
+def _kiedy_wydarzenie(z: dict) -> str:
+    """„Dziś o 14:00", „jutro o 9:30", „w piątek 18.09, cały dzień" — do treści
+    przypomnienia o wydarzeniu. Data z bazy jest w czasie Warszawy (tak ją wpisano),
+    a „dziś" liczymy tą samą strefą, co tik przypomnień."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    dzien = z.get("data_start") or z.get("termin")
+    if isinstance(dzien, str):
+        dzien = date.fromisoformat(dzien[:10])
+    dzis = datetime.now(ZoneInfo("Europe/Warsaw")).date()
+    dni = ("w poniedziałek", "we wtorek", "w środę", "w czwartek", "w piątek",
+           "w sobotę", "w niedzielę")
+    if dzien == dzis:
+        kiedy = "Dziś"
+    elif dzien == dzis + timedelta(days=1):
+        kiedy = "Jutro"
+    else:
+        kiedy = f"{dni[dzien.weekday()].capitalize()} {dzien.day:02d}.{dzien.month:02d}"
+    pora = z.get("pora")
+    if pora:
+        g, m = str(pora)[:5].split(":")
+        return f"{kiedy} o {int(g)}:{m}"
+    return f"{kiedy}, cały dzień"
+
+
 def wyslij_przypomnienia_zadan() -> None:
     """Tik przypomnień o zadaniach. Woła go harmonogram co minutę.
 
@@ -314,6 +339,13 @@ def wyslij_przypomnienia_zadan() -> None:
     for z in zadania:
         tytul = "Zadanie na dziś"
         tresc = z["tytul"]
+        rodzaj = "zadanie"
+        url = "/task"
+        if z.get("rodzaj") == "wydarzenie":
+            # Wydarzenie przypomina Z WYPRZEDZENIEM, więc treść musi mówić kiedy —
+            # „Dentysta" bez godziny nie mówi, czy to za kwadrans, czy jutro.
+            tytul, tresc = z["tytul"], _kiedy_wydarzenie(z)
+            rodzaj, url = "wydarzenie", "/wydarzenia"
         if z["prywatne_dla"]:
             adresat_info = f"user {z['prywatne_dla']}"
         elif z["wykonawca_user_id"]:
@@ -327,16 +359,16 @@ def wyslij_przypomnienia_zadan() -> None:
         # był niewidoczny aż do pytania „a powiadomienia do zadań?".
         try:
             if z["prywatne_dla"]:
-                wyslij_do_uzytkownika(z["prywatne_dla"], tytul, tresc, url="/task",
-                                      rodzaj="zadanie")
+                wyslij_do_uzytkownika(z["prywatne_dla"], tytul, tresc, url=url,
+                                      rodzaj=rodzaj)
             elif z["wykonawca_user_id"]:
-                wyslij_do_uzytkownika(z["wykonawca_user_id"], tytul, tresc, url="/task",
-                                      rodzaj="zadanie")
+                wyslij_do_uzytkownika(z["wykonawca_user_id"], tytul, tresc, url=url,
+                                      rodzaj=rodzaj)
             else:
                 # Nikt nie przypisany albo wykonawcą jest osoba bez konta —
                 # taka osoba nie ma gdzie odebrać powiadomienia.
-                wyslij_do_gospodarstwa(z["household_id"], tytul, tresc, url="/task",
-                                       rodzaj="zadanie")
+                wyslij_do_gospodarstwa(z["household_id"], tytul, tresc, url=url,
+                                       rodzaj=rodzaj)
         except Exception as e:
             print(f"[push] zadanie {z['id']} ({adresat_info}) — wysyłka nie poszła: {e!r}")
             continue

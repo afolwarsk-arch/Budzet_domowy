@@ -643,6 +643,7 @@ function _showProfileModal() {
     ['raport',   'Raport miesięczny',     'Gdy doradca podsumuje zamknięty miesiąc'],
     ['zadanie',  'Przypomnienie o zadaniu', 'O godzinie ustawionej przy zadaniu w wiem.task'],
     ['przeglad', 'Przegląd tygodnia',       'W niedzielę wieczorem: co wisi i co domknięte'],
+    ['wydarzenie', 'Przypomnienie o wydarzeniu', 'Z wyprzedzeniem ustawionym przy wydarzeniu'],
   ];
   overlay.innerHTML = `
     <div class="pf-okno">
@@ -1143,6 +1144,7 @@ const MODULY = [
     strony: [
       { href: '/task', ikona: 'zadania', label: 'Zadania', pelny: 'Zadania' },
       { href: '/kalendarz', ikona: 'kalendarz', label: 'Kalendarz', pelny: 'Kalendarz' },
+      { href: '/wydarzenia', ikona: 'gwiazdka', label: 'Wydarzenia', pelny: 'Wydarzenia' },
       { href: '/projekty', ikona: 'kompas', label: 'Projekty', pelny: 'Projekty' },
       { href: '/plan', ikona: 'analiza', label: 'Plan', pelny: 'Wykres Gantta' },
     ],

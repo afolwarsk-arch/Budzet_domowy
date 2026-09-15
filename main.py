@@ -327,6 +327,13 @@ def task_plan_page():
     return _html("task.html")
 
 
+@app.get("/wydarzenia")
+def task_wydarzenia_page():
+    """Wydarzenia (dentysta, urodziny) — ta sama strona, inny widok. Osobna
+    zakładka, żeby lista zadań została listą rzeczy do zrobienia."""
+    return _html("task.html")
+
+
 @app.get("/kalendarz")
 def task_kalendarz_page():
     """Kalendarz zadań (dzień / tydzień / miesiąc) — ta sama strona, inny widok,

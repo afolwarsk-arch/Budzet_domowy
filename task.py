@@ -70,6 +70,19 @@ def _dane(d: dict, nowe: bool) -> dict:
     # nie mogą go po cichu zerować przy każdym zapisie.
     if nowe or "priorytet" in d:
         dane["priorytet"] = d.get("priorytet") or 0
+    # Wydarzenia: te same zasady „brak klucza = nie ruszaj" (patrz `task_db.edytuj`).
+    if "rodzaj" in d:
+        if d.get("rodzaj") not in task_db.RODZAJE:
+            raise HTTPException(400, "Nieznany rodzaj.")
+        dane["rodzaj"] = d["rodzaj"]
+    if "pora_koniec" in d:
+        dane["pora_koniec"] = d.get("pora_koniec") or None
+    if "przypomnij_min" in d:
+        dane["przypomnij_min"] = d.get("przypomnij_min")
+    # Koniec przed początkiem tego samego dnia to pomylone pola, nie wydarzenie.
+    if (dane.get("pora_koniec") and dane["pora"] and dane["pora_koniec"] <= dane["pora"]
+            and (not dane["data_start"] or dane["data_start"] == dane["termin"])):
+        raise HTTPException(400, "Koniec musi być po początku.")
     # Data początku po terminie znaczy belkę cofniętą w czasie — wykres nie ma
     # jak tego narysować, a użytkownik prawie na pewno pomylił pola.
     if dane["data_start"] and dane["termin"] and dane["data_start"] > dane["termin"]:
@@ -154,16 +167,24 @@ def skasuj_zaleznosc(zadanie_id: int, poprzednik_id: int,
 
 @router.get("/plan")
 def plan_zadan(zrobione: bool = False, strefa: int | None = None,
+               wydarzenia: bool = False,
                current_user: dict = Depends(get_current_user)):
-    """Zadania z datami — wejście dla wykresu Gantta.
+    """Zadania z datami — wejście dla wykresu Gantta i kalendarza.
 
     Zrobione domyślnie poza wykresem: plan pokazuje, co przed nami. Włącza się
     je przełącznikiem, gdy chce się zobaczyć, jak przedsięwzięcie faktycznie
-    przebiegło.
+    przebiegło. `wydarzenia=true` (kalendarz) dokłada wydarzenia spoza projektów.
     """
     hid = _hid(current_user)
-    return {"zadania": task_db.plan(hid, current_user["user_id"], zrobione, strefa),
+    return {"zadania": task_db.plan(hid, current_user["user_id"], zrobione, strefa, wydarzenia),
             "zaleznosci": task_db.zaleznosci(hid)}
+
+
+@router.get("/wydarzenia")
+def lista_wydarzen(strefa: int | None = None, current_user: dict = Depends(get_current_user)):
+    """Zakładka „Wydarzenia": nadchodzące i minione z 30 dni."""
+    return {"zadania": task_db.wydarzenia(_hid(current_user), current_user["user_id"], strefa),
+            "domyslna_pora": task_db.domyslna_pora()}
 
 
 @router.get("/drzewo")

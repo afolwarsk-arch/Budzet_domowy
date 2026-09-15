@@ -201,6 +201,22 @@ def init_task_db() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS task_zadania_strefa "
                     "ON task_zadania (household_id, strefa_id)")
 
+        # ── wydarzenia ─────────────────────────────────────────────────────
+        # Wydarzenie to coś, co SIĘ DZIEJE o danej porze (dentysta, urodziny),
+        # a nie coś do odhaczenia. TA SAMA TABELA, nie nowa: podgląd, obszary,
+        # prywatność, projekty, dziennik i powiadomienia działają od razu,
+        # a różnice (brak odhaczania i zaległości, godzina końca, przypomnienie
+        # z wyprzedzeniem) to kilka warunków, nie drugi moduł.
+        #
+        # Istniejące wiersze dostają 'zadanie' — nic się nie zmienia w tym, co już jest.
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS "
+                    "rodzaj TEXT NOT NULL DEFAULT 'zadanie'")
+        # Godzina końca. Zadanie ma porę-punkt (przypomnienie), wydarzenie trwa.
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS pora_koniec TIME")
+        # Ile minut PRZED początkiem przypomnieć. NULL = bez przypomnienia.
+        # Tylko dla wydarzeń — zadanie przypomina o swojej porze.
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS przypomnij_min INTEGER")
+
 
 # Warunek widoczności dokładany do KAŻDEGO odczytu. Zadanie prywatne nie
 # istnieje dla nikogo poza właścicielem — także w postępie zadania nadrzędnego.
@@ -226,9 +242,27 @@ def _p(household_id, user_id, *reszta):
 _POLA = """id, parent_id, tytul, opis, termin, pora, data_start, projekt,
            powtarzaj, powtarzaj_co, strefa_id, priorytet,
            wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
-           status, zrobione_at, kolejnosc, utworzyl"""
+           status, zrobione_at, kolejnosc, utworzyl,
+           rodzaj, pora_koniec, przypomnij_min"""
 
 OKRESY = ("dzien", "tydzien", "miesiac", "rok")
+
+RODZAJE = ("zadanie", "wydarzenie")
+# Wyprzedzenie przypomnienia o wydarzeniu, w minutach. Krótka lista zamiast
+# dowolnej liczby — tyle wystarcza, a pole z liczbą minut to formularz.
+PRZYPOMNIENIA_MIN = (15, 60, 1440)
+PRZYPOMNIENIE_DOMYSLNE = 60   # decyzja Adama: godzina przed
+
+
+def _przypomnij(v) -> int | None:
+    """Wyprzedzenie przypomnienia o wydarzeniu → jedna z dozwolonych wartości
+    albo None („bez przypomnienia"). Śmieć też daje None: lepiej nie zadzwonić,
+    niż zadzwonić o dziwnej porze."""
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return None
+    return n if n in PRZYPOMNIENIA_MIN else None
 
 
 def _priorytet(v) -> int:
@@ -356,8 +390,11 @@ def postep_poddrzew(household_id: int, user_id: int) -> dict:
     bez powodu.
     """
     with get_db() as cur:
+        # Bez wydarzeń: nie odhacza się ich, więc projekt z wizytą u notariusza
+        # w środku nigdy nie doszedłby do „5 z 5".
         cur.execute(
-            f"SELECT id, parent_id, status FROM task_zadania WHERE {_WIDOCZNE}",
+            f"SELECT id, parent_id, status FROM task_zadania WHERE {_WIDOCZNE} "
+            "AND rodzaj = 'zadanie'",
             _p(household_id, user_id))
         wiersze = [(r["id"], r["parent_id"], r["status"]) for r in cur.fetchall()]
 
@@ -419,7 +456,9 @@ def lista(household_id, user_id, czas="wszystko", status="otwarte",
     do wszystkiego i do niczego, a mieszanie ich w każdy widok odbierałoby
     strefom sens.
     """
-    warunki = [_WIDOCZNE]
+    # Wydarzenia mają własną zakładkę (decyzja Adama) — lista zostaje listą
+    # rzeczy do zrobienia.
+    warunki = [_WIDOCZNE, "rodzaj = 'zadanie'"]
     p = list(_p(household_id, user_id))
     if strefa:
         warunki.append("strefa_id = %s")
@@ -491,7 +530,7 @@ def szukaj(household_id, user_id, fraza, limit=200):
     with get_db() as cur:
         cur.execute(
             f"SELECT {_POLA} FROM task_zadania WHERE {_WIDOCZNE} "
-            "  AND (tytul ILIKE %s OR opis ILIKE %s) "
+            "  AND rodzaj = 'zadanie' AND (tytul ILIKE %s OR opis ILIKE %s) "
             "ORDER BY CASE status WHEN 'otwarte' THEN 0 WHEN 'wstrzymane' THEN 1 ELSE 2 END, "
             "         termin NULLS LAST, priorytet DESC, id DESC LIMIT %s",
             _p(household_id, user_id, like, like, limit),
@@ -501,7 +540,7 @@ def szukaj(household_id, user_id, fraza, limit=200):
         return _z_postepem(wiersze, household_id, user_id)
 
 
-def plan(household_id, user_id, pokaz_zrobione=False, strefa=None):
+def plan(household_id, user_id, pokaz_zrobione=False, strefa=None, wszystkie_wydarzenia=False):
     """Zadania z rozpiętością w czasie — wejście dla wykresu Gantta.
 
     BIERZEMY WSZYSTKO, CO MA JAKĄKOLWIEK DATĘ, a nie tylko projekty: remont
@@ -517,6 +556,11 @@ def plan(household_id, user_id, pokaz_zrobione=False, strefa=None):
     if strefa:
         warunki.append("strefa_id = %s")
         p.append(strefa)
+    # Gantt: wydarzenia tylko w projektach, bo tam są etapem przedsięwzięcia
+    # („odbiór mieszkania"). Luźne wizyty u dentysty to nie plan. Kalendarz
+    # prosi o wszystkie.
+    if not wszystkie_wydarzenia:
+        warunki.append("(rodzaj = 'zadanie' OR parent_id IS NOT NULL)")
     if not pokaz_zrobione:
         warunki.append("status = 'otwarte'")
     with get_db() as cur:
@@ -559,7 +603,8 @@ def strefy(household_id, user_id) -> list[dict]:
             "SELECT s.id, s.nazwa, s.ikona, s.kolejnosc, "
             "       (o.user_id IS NOT NULL) AS moja, "
             "       (SELECT COUNT(*) FROM task_zadania z "
-            "        WHERE z.strefa_id = s.id AND z.status = 'otwarte') AS otwartych "
+            "        WHERE z.strefa_id = s.id AND z.status = 'otwarte' "
+            "          AND z.rodzaj = 'zadanie') AS otwartych "
             "FROM task_strefy s "
             "LEFT JOIN task_strefy_osob o ON o.strefa_id = s.id AND o.user_id = %s "
             "WHERE s.household_id = %s ORDER BY s.kolejnosc, s.id",
@@ -694,8 +739,9 @@ def drzewo_do_wyboru(household_id, user_id, strefa=None) -> list[dict]:
     """
     with get_db() as cur:
         cur.execute(
+            # Wydarzenie nie ma kroków — nie może być miejscem zapisu.
             f"SELECT id, tytul, parent_id, projekt, strefa_id FROM task_zadania "
-            f"WHERE {_WIDOCZNE} AND status = 'otwarte'"
+            f"WHERE {_WIDOCZNE} AND status = 'otwarte' AND rodzaj = 'zadanie'"
             + (" AND strefa_id = %s" if strefa else "")
             + " ORDER BY projekt DESC, kolejnosc, id",
             _p(household_id, user_id, strefa) if strefa else _p(household_id, user_id))
@@ -729,10 +775,15 @@ def dodaj(household_id, user_id, d) -> int:
     bo to reguła danych, a nie reguła interfejsu."""
     parent_id = d.get("parent_id")
     prywatne = d.get("prywatne_dla")
+    rodzaj = d.get("rodzaj") if d.get("rodzaj") in RODZAJE else "zadanie"
+    if rodzaj == "wydarzenie" and not d.get("termin"):
+        raise ValueError("Podaj datę wydarzenia.")
     if parent_id:
         rodzic = pobierz(household_id, user_id, parent_id)
         if not rodzic:
             raise ValueError("Nie ma takiego zadania nadrzędnego.")
+        if rodzic.get("rodzaj") == "wydarzenie":
+            raise ValueError("Wydarzenie nie ma kroków.")
         # Dziecko dziedziczy prywatność rodzica — inaczej tytuły dzieci
         # zdradzają treść prywatnego rodzica.
         prywatne = rodzic["prywatne_dla"]
@@ -747,20 +798,24 @@ def dodaj(household_id, user_id, d) -> int:
             (household_id, parent_id, tytul, opis, termin, pora, data_start, projekt,
              powtarzaj, powtarzaj_co, strefa_id, priorytet,
              wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
-             utworzyl, kolejnosc)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+             utworzyl, rodzaj, pora_koniec, przypomnij_min, kolejnosc)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     COALESCE((SELECT MAX(kolejnosc) + 1 FROM task_zadania
                               WHERE household_id = %s AND parent_id IS NOT DISTINCT FROM %s), 0))
             RETURNING id""",
             (household_id, parent_id, d["tytul"], d.get("opis"), d.get("termin"),
              d.get("pora"), d.get("data_start"),
              # Projektem może być tylko korzeń — krok w środku drzewa nie jest
-             # przedsięwzięciem, tylko jego częścią.
-             bool(d.get("projekt")) and not parent_id,
+             # przedsięwzięciem, tylko jego częścią. Wydarzenie projektem nie jest.
+             bool(d.get("projekt")) and not parent_id and rodzaj == "zadanie",
              d.get("powtarzaj"), d.get("powtarzaj_co") or 1, strefa,
-             _priorytet(d.get("priorytet")),
+             _priorytet(d.get("priorytet")) if rodzaj == "zadanie" else 0,
              d.get("wykonawca_user_id"), d.get("wykonawca_virtual_id"),
-             prywatne, bool(d.get("kamien_milowy")), user_id, household_id, parent_id))
+             prywatne, bool(d.get("kamien_milowy")) and rodzaj == "zadanie", user_id,
+             rodzaj,
+             d.get("pora_koniec") if rodzaj == "wydarzenie" else None,
+             _przypomnij(d.get("przypomnij_min", PRZYPOMNIENIE_DOMYSLNE)) if rodzaj == "wydarzenie" else None,
+             household_id, parent_id))
         return cur.fetchone()["id"]
 
 
@@ -776,12 +831,25 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
     stare = pobierz(household_id, user_id, zadanie_id)
     if not stare:
         return False
+    # Rodzaj, godzina końca i wyprzedzenie przypomnienia: BRAK KLUCZA = NIE
+    # RUSZAJ. Szybkie kafelki i stary formularz Szczegółów o nie nie pytają,
+    # a nadpisanie kompletu pól skasowałoby je przy zmianie samej daty.
+    rodzaj = d["rodzaj"] if d.get("rodzaj") in RODZAJE else stare.get("rodzaj") or "zadanie"
+    wydarzenie = rodzaj == "wydarzenie"
+    pora_koniec = d.get("pora_koniec") if "pora_koniec" in d else stare.get("pora_koniec")
+    przypomnij = (_przypomnij(d.get("przypomnij_min")) if "przypomnij_min" in d
+                  else stare.get("przypomnij_min"))
+    if wydarzenie and not d.get("termin"):
+        raise ValueError("Wydarzenie musi mieć datę.")
 
     zmiana_rodzica = "parent_id" in d
     nowy_parent = d.get("parent_id") if zmiana_rodzica else stare["parent_id"]
     if zmiana_rodzica and nowy_parent:
-        if not pobierz(household_id, user_id, nowy_parent):
+        nowy = pobierz(household_id, user_id, nowy_parent)
+        if not nowy:
             raise ValueError("Nie ma takiego zadania nadrzędnego.")
+        if nowy.get("rodzaj") == "wydarzenie":
+            raise ValueError("Wydarzenie nie ma kroków.")
         if wykryj_cykl(pary_gospodarstwa(household_id), zadanie_id, nowy_parent):
             raise ValueError("Zadanie nie może być własnym potomkiem.")
 
@@ -800,8 +868,15 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
               powtarzaj = %s, powtarzaj_co = %s, priorytet = %s,
               wykonawca_user_id = %s, wykonawca_virtual_id = %s,
               kamien_milowy = %s, prywatne_dla = %s,
+              rodzaj = %s, pora_koniec = %s, przypomnij_min = %s,
               przypomniano_at = CASE WHEN termin IS DISTINCT FROM %s
                                        OR pora IS DISTINCT FROM %s
+                                       -- Wydarzenie przypomina od POCZĄTKU i z
+                                       -- wyprzedzeniem, więc liczą się też one.
+                                       -- Zadaniu przesunięty na Gancie początek
+                                       -- nie może wzbudzić przypomnienia na nowo.
+                                       OR (%s AND (data_start IS DISTINCT FROM %s
+                                                   OR przypomnij_min IS DISTINCT FROM %s))
                                      THEN NULL ELSE przypomniano_at END
             WHERE household_id = %s AND id = %s""",
             (d["tytul"], d.get("opis"), d.get("termin"), d.get("pora"), nowy_parent,
@@ -817,7 +892,10 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
              # nie pytają (np. szybkie łapanie), nie mogą go po cichu zerować.
              _priorytet(d["priorytet"]) if "priorytet" in d else stare.get("priorytet", 0),
              d.get("wykonawca_user_id"), d.get("wykonawca_virtual_id"),
-             bool(d.get("kamien_milowy")), prywatne, d.get("termin"), d.get("pora"),
+             bool(d.get("kamien_milowy")) and not wydarzenie, prywatne,
+             rodzaj, pora_koniec if wydarzenie else None, przypomnij if wydarzenie else None,
+             d.get("termin"), d.get("pora"), wydarzenie, d.get("data_start"),
+             przypomnij if wydarzenie else None,
              household_id, zadanie_id))
         zmienione = cur.rowcount > 0
         # Prywatność musi zejść na całe poddrzewo — inaczej dzieci zadania
@@ -852,6 +930,8 @@ def przenies(household_id, user_id, zadania_ids, parent_id) -> int:
         rodzic = pobierz(household_id, user_id, parent_id)
         if not rodzic:
             raise ValueError("Nie ma takiego zadania nadrzędnego.")
+        if rodzic.get("rodzaj") == "wydarzenie":
+            raise ValueError("Wydarzenie nie ma kroków.")
     # Wszystkie odczyty PRZED otwarciem połączenia do zapisu: `pobierz` bierze
     # własne połączenie z puli, a zagnieżdżanie ich zjadałoby ją przy dłuższej
     # liście zadań (patrz nagłówek `database.get_db`).
@@ -1076,16 +1156,93 @@ def do_przypomnienia():
     po zapisaniu — użytkownik właśnie na nie patrzy.
     """
     domyslna = domyslna_pora()
+    # Cykliczne wydarzenia przesuwamy PRZED wyborem: urodziny sprzed tygodnia
+    # mają już czekać na przyszły rok i zdążyć przypomnieć o sobie na czas.
+    # Awaria przesuwania nie może zabrać przypomnień o zadaniach.
+    try:
+        przesun_minione_wydarzenia()
+    except Exception as e:
+        print(f"[task] przesuwanie cyklicznych wydarzeń nie poszło: {e!r}")
     with get_db() as cur:
-        cur.execute("""SELECT id, household_id, tytul, termin, wykonawca_user_id,
-                              prywatne_dla
+        cur.execute("""SELECT id, household_id, tytul, termin, data_start, pora, rodzaj,
+                              wykonawca_user_id, prywatne_dla
             FROM task_zadania
             WHERE status = 'otwarte' AND przypomniano_at IS NULL
               AND termin IS NOT NULL
-              AND (termin + COALESCE(pora, %s::time)) <= (now() AT TIME ZONE 'Europe/Warsaw')
-              AND termin >= CURRENT_DATE - INTERVAL '2 days'
-            LIMIT 200""", (domyslna,))
+              AND (
+                (rodzaj = 'zadanie'
+                  AND (termin + COALESCE(pora, %s::time)) <= (now() AT TIME ZONE 'Europe/Warsaw')
+                  AND termin >= CURRENT_DATE - INTERVAL '2 days')
+                OR
+                -- Wydarzenie: `przypomnij_min` przed POCZĄTKIEM, i tylko dopóki się
+                -- nie zaczęło — przypomnienie o czymś, co już trwa, jest spóźnione.
+                -- Całodniowe liczy się od pory domyślnej (godzina przed 9:00 = 8:00).
+                (rodzaj = 'wydarzenie' AND przypomnij_min IS NOT NULL
+                  AND (COALESCE(data_start, termin) + COALESCE(pora, %s::time))
+                        - make_interval(mins => przypomnij_min)
+                      <= (now() AT TIME ZONE 'Europe/Warsaw')
+                  AND (COALESCE(data_start, termin) + COALESCE(pora, %s::time))
+                      > (now() AT TIME ZONE 'Europe/Warsaw'))
+              )
+            LIMIT 200""", (domyslna, domyslna, domyslna))
         return [dict(r) for r in cur.fetchall()]
+
+
+def przesun_minione_wydarzenia() -> int:
+    """Cykliczne wydarzenie, które się skończyło, przeskakuje na następne wystąpienie.
+
+    Zadanie cykliczne rodzi kolejne po ODHACZENIU. Wydarzenia się nie odhacza —
+    ono po prostu mija — więc bez tego urodziny zostałyby na zawsze w zeszłym
+    roku, a przypomnienie nie przyszłoby już nigdy. Jeden wiersz przesuwany do
+    przodu, nie nowe wiersze: minione wystąpienie wydarzenia nie ma historii
+    (nic się w nim nie „zrobiło"), a mnożenie wierszy zaśmiecałoby zakładkę.
+    """
+    with get_db() as cur:
+        cur.execute("""SELECT id, termin, data_start, powtarzaj, powtarzaj_co
+            FROM task_zadania
+            WHERE rodzaj = 'wydarzenie' AND powtarzaj IS NOT NULL
+              AND termin IS NOT NULL AND termin < CURRENT_DATE
+            LIMIT 500""")
+        wiersze = [dict(r) for r in cur.fetchall()]
+    if not wiersze:
+        return 0
+    dzis = date.today()
+    with get_db() as cur:
+        for w in wiersze:
+            termin = w["termin"]
+            dlugosc = (termin - w["data_start"]) if w["data_start"] else None
+            for _ in range(5000):   # „co dzień" sprzed lat to kilka tysięcy kroków, nie nieskończoność
+                nastepny = nastepna_data(termin, w["powtarzaj"], w["powtarzaj_co"])
+                if not nastepny:
+                    break
+                termin = nastepny
+                if termin >= dzis:
+                    break
+            if termin == w["termin"] or termin < dzis:
+                continue
+            cur.execute("""UPDATE task_zadania SET termin = %s, data_start = %s,
+                                  przypomniano_at = NULL
+                           WHERE id = %s""",
+                        (termin, (termin - dlugosc) if dlugosc is not None else None, w["id"]))
+    return len(wiersze)
+
+
+def wydarzenia(household_id, user_id, strefa=None, minione_dni=30) -> list[dict]:
+    """Wydarzenia do zakładki „Wydarzenia": nadchodzące i minione z ostatnich
+    `minione_dni` (zwinięte na froncie). Z przodkami, bo wydarzenie w projekcie
+    bez nazwy projektu nad sobą traci kontekst („odbiór" — czego?)."""
+    warunki = [_WIDOCZNE, "rodzaj = 'wydarzenie'", "termin IS NOT NULL",
+               "termin >= CURRENT_DATE - make_interval(days => %s)"]
+    p = list(_p(household_id, user_id, int(minione_dni)))
+    if strefa:
+        warunki.append("strefa_id = %s")
+        p.append(strefa)
+    with get_db() as cur:
+        cur.execute(f"SELECT {_POLA} FROM task_zadania WHERE " + " AND ".join(warunki)
+                    + " ORDER BY COALESCE(data_start, termin), pora NULLS FIRST, id", p)
+        wiersze = _dociagnij_przodkow(cur, [dict(r) for r in cur.fetchall()],
+                                      household_id, user_id)
+        return _z_postepem(wiersze, household_id, user_id)
 
 
 def przeglad(household_id, user_id) -> dict:
@@ -1109,7 +1266,8 @@ def przeglad(household_id, user_id) -> dict:
             "  COUNT(*) FILTER (WHERE status = 'wstrzymane') AS wstrzymane, "
             "  COUNT(*) FILTER (WHERE status = 'zrobione' "
             "                     AND zrobione_at > now() - INTERVAL '7 days') AS zamkniete "
-            f"FROM task_zadania WHERE {_WIDOCZNE}",
+            # Bez wydarzeń: nie bywają „po terminie" ani „zamknięte".
+            f"FROM task_zadania WHERE {_WIDOCZNE} AND rodzaj = 'zadanie'",
             _p(household_id, user_id),
         )
         return {k: int(v or 0) for k, v in dict(cur.fetchone()).items()}
