@@ -701,6 +701,9 @@
 
     /* ── formularz szczegółów (przeniesione wiernie z health.html) ── */
     .pole { display: flex; flex-direction: column; gap: 4px; margin-bottom: 11px; }
+    /* `display:flex` wygrywa z domyślnym `[hidden]`, więc ukrywanie pola
+       atrybutem musi być tu powiedziane wprost. */
+    .pole[hidden] { display: none; }
     .pole label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
                   color: var(--muted); font-weight: 700; }
     .pole input, .pole select, .pole textarea {
@@ -1174,6 +1177,52 @@
     .kl-poz.wyd .kl-belka { --kol: var(--wyd-soft); --kreska: var(--wyd); }
     .klp-plak.wyd { background: var(--wyd-soft); color: var(--wyd-strong); border-color: var(--wyd-border); }
     .lap-poz[hidden] { display: none; }
+    /* Wybór przypomnień: lista z ptaszkami, bo to wybór WIELOKROTNY.
+       Ptaszek po lewej, żeby kolumna zaznaczeń czytała się jednym spojrzeniem. */
+    .przyp-poz[aria-pressed="true"] { border-color: var(--wyd); background: var(--wyd-soft); }
+    .przyp-ptak { flex: none; width: 20px; height: 20px; border: 1.5px solid var(--border);
+                  border-radius: 6px; display: flex; align-items: center; justify-content: center;
+                  color: #fff; }
+    .przyp-poz[aria-pressed="true"] .przyp-ptak { background: var(--wyd); border-color: var(--wyd); }
+    .przyp-ptak .ikona svg { width: 13px; height: 13px; stroke-width: 2.6; }
+
+    /* ── KIEDY SIĘ DZIEJE (wydarzenia) ──────────────────────────────────────
+       Trzy tryby, bo to trzy różne rzeczy, a nie stopnie tego samego: jeden
+       dzień, reguła licząca się bez końca i ręczna lista dat (zjazdy).
+       Przełącznik jest segmentowy, żeby było widać, że wybór jest jeden. */
+    .tryby-kiedy { display: flex; gap: 2px; padding: 3px; border-radius: 11px;
+                   background: var(--surface-2, rgba(0,0,0,.04)); }
+    .tryby-kiedy button { flex: 1; min-height: 34px; border: none; border-radius: 8px;
+                          background: none; color: var(--muted); font: inherit;
+                          font-size: 13px; font-weight: 600; cursor: pointer; }
+    .tryby-kiedy button[aria-pressed="true"] { background: var(--surface); color: var(--wyd-strong);
+                                               box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
+    /* Siedem kwadratów w rzędzie — kalendarzowa kolejność od poniedziałku,
+       więc nie trzeba ich czytać, wystarczy trafić w miejsce. */
+    .dni-tygodnia { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .dni-tygodnia button { min-height: 38px; border: 1px solid var(--border);
+                           border-radius: 9px; background: var(--surface);
+                           color: var(--text); font: inherit; font-size: 12.5px;
+                           font-weight: 600; cursor: pointer; }
+    .dni-tygodnia button[aria-pressed="true"] { background: var(--wyd); border-color: var(--wyd);
+                                                color: #fff; }
+
+    .terminy-lista { display: flex; flex-direction: column; gap: 6px; }
+    /* Data szeroka, dwie godziny wąskie, kasowanie na końcu — wiersz musi się
+       zmieścić na telefonie bez zawijania, stąd `minmax(0, …)` i małe pola. */
+    .termin-wiersz { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) 30px;
+                     gap: 5px; align-items: center; }
+    .termin-wiersz input { min-width: 0; border: 1px solid var(--border); border-radius: 9px;
+                           padding: 9px 7px; font: inherit; font-size: 13px;
+                           background: var(--surface); color: var(--text); }
+    .termin-usun { border: none; background: none; color: var(--muted); font-size: 15px;
+                   line-height: 1; min-height: 34px; cursor: pointer; }
+    .termin-usun:hover { color: var(--danger); }
+    .termin-dodaj { margin-top: 8px; width: 100%; min-height: 40px; border: 1px dashed var(--border);
+                    border-radius: 10px; background: none; color: var(--muted);
+                    font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+    .termin-dodaj:hover { border-color: var(--wyd); color: var(--wyd-strong); }
 
     /* ── DODAWANIE Z KALENDARZA ─────────────────────────────────────────────
        Przytrzymanie pustego miejsca. Bez `user-select` i `touch-callout`

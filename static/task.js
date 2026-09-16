@@ -76,6 +76,13 @@ let zadania = [];           // płasko, jak z serwera
 let korzen = null;          // null = widok listy; liczba = wejście w zadanie
 let widok = 'lista';        // lista | szczegoly
 let szczegolyId = null;     // id zadania otwartego w formularzu szczegółów
+let szczegolyPrzypomnienia = [];   // wybrane wyprzedzenia w otwartym formularzu
+// Tryb pola „kiedy" w otwartym formularzu wydarzenia: raz | regula | terminy.
+// Trzy tryby, bo to trzy różne pytania: jeden dzień, reguła bez końca albo
+// skończona lista konkretnych terminów (zjazdy).
+let szczegolyTryb = 'raz';
+let szczegolyDni = new Set();      // dni tygodnia reguły (1 = poniedziałek)
+let szczegolyTerminy = [];         // lista terminów serii w otwartym formularzu
 let nowyId = null;          // id ostatnio dodanego szybkim dodawaniem — przy nim pokazujemy „Szczegóły"
 let household = null;       // {members, virtual_members} — wczytywane raz, przy pierwszym otwarciu formularza
 let planZrobione = false;   // czy wykres pokazuje też zadania zamknięte
@@ -885,6 +892,16 @@ function jednostkaOkresu(okres, n) {
   return odmien(n, 'rok', 'lata', 'lat');
 }
 
+// Pełny opis reguły razem z dniami tygodnia: „co tydzień: pn, śr, nd".
+// Sam okres nie mówi wtedy prawdy — „co tydzień" przy trzech dniach znaczy
+// trzy razy w tygodniu.
+function opisCyklu(z) {
+  const okres = opisPowtarzania(z);
+  const dni = (z.dni_tygodnia || []).map(Number).sort((a, b) => a - b);
+  if (z.powtarzaj !== 'tydzien' || !dni.length) return okres;
+  return `${okres}: ${dni.map((n) => KAL_DNI[n - 1]).join(', ')}`;
+}
+
 // Podpis powtarzania na liście: przy „co 1" mówimy po ludzku („co tydzień"),
 // przy większych liczbach dopiero dokładamy liczebnik.
 function opisPowtarzania(z) {
@@ -1039,6 +1056,7 @@ async function wczytajKalendarz() {
     ]);
     const dp = await rp.json();
     const dl = await rl.json();
+    terminySerii = dp.terminy || {};
     // Oba źródła zwracają część tych samych wierszy (otwarte z datą) — sklejamy
     // po id, żeby nic nie stanęło w kalendarzu dwa razy.
     const wg = new Map();
@@ -1052,6 +1070,34 @@ async function wczytajKalendarz() {
     toast('Nie udało się wczytać kalendarza.', 'blad');
   }
   rysuj();
+}
+
+// Listy terminów serii: { id wydarzenia: [{data, pora, pora_koniec}] }.
+// Przychodzą osobno od zadań, bo jedno wydarzenie ma ich wiele.
+let terminySerii = {};
+
+const maSerie = (z) => !!(terminySerii[z.id] && terminySerii[z.id].length);
+
+// Następne wystąpienie reguły — z DNIAMI TYGODNIA. „Co tydzień w poniedziałki,
+// środy i niedziele" to jedna reguła, nie trzy zadania: kolejny raz wypada
+// w najbliższy dzień z listy. Lustro `task_db.nastepne_wystapienie`.
+function kalNastepneWystapienie(d, z) {
+  const dni = (z.dni_tygodnia || []).map(Number);
+  if (z.powtarzaj !== 'tydzien' || !dni.length) {
+    return kalNastepna(d, z.powtarzaj, z.powtarzaj_co);
+  }
+  const co = Math.max(1, Number(z.powtarzaj_co) || 1);
+  const dozwolone = new Set(dni);
+  const baza = poczatekTygodnia(d);
+  let k = d;
+  for (let i = 0; i < 400; i++) {
+    k = dodajDni(k, 1);
+    if (!dozwolone.has(((k.getDay() + 6) % 7) + 1)) continue;
+    // Przy „co dwa tygodnie" liczy się też, czy tydzień kandydata jest
+    // parzysty względem tygodnia, od którego liczymy.
+    if (Math.round((poczatekTygodnia(k) - baza) / (7 * DZIEN_MS)) % co === 0) return k;
+  }
+  return null;
 }
 
 // Lustro `task_db.nastepna_data`: miesiące i lata kalendarzowo, z cofnięciem do
@@ -1075,6 +1121,18 @@ function kalWpisy(od, doK) {
   const wynik = [];
   for (const z of zadania) {
     if (!pasujeOsoba(z)) continue;
+    // SERIA („zjazdy"): każdy termin ma własny dzień i własne godziny, więc
+    // rysujemy je osobno, a regularnego powtarzania już nie dokładamy.
+    if (maSerie(z)) {
+      for (const t of terminySerii[z.id]) {
+        const d = doDaty(t.data);
+        if (!d || d < od || d >= doK) continue;
+        wynik.push({ z: { ...z, pora: t.pora, pora_koniec: t.pora_koniec },
+                     start: d, koniec: d,
+                     pora: t.pora ? String(t.pora).slice(0, 5) : null, wirtualne: false });
+      }
+      continue;
+    }
     const zz = zakresZadania(z);
     if (!zz) continue;
     const pora = z.pora ? String(z.pora).slice(0, 5) : null;
@@ -1086,10 +1144,12 @@ function kalWpisy(od, doK) {
     // następne, które przyszło z serwera jako osobny wiersz.
     if (!z.powtarzaj || z.status !== 'otwarte' || !z.termin) continue;
     const dlugosc = roznicaDni(zz.start, zz.koniec);
+    const koniecSerii = z.powtarzaj_do ? doDaty(z.powtarzaj_do) : null;
     let termin = zz.koniec;
     for (let i = 0; i < 4000; i++) {
-      termin = kalNastepna(termin, z.powtarzaj, z.powtarzaj_co);
+      termin = kalNastepneWystapienie(termin, z);
       if (!termin) break;
+      if (koniecSerii && termin > koniecSerii) break;   // seria ma swój koniec
       const start = dodajDni(termin, -dlugosc);
       if (start >= doK) break;
       // Przeszłych nie dorysowujemy: zaległe wystąpienie świeci już paskami,
@@ -1122,8 +1182,75 @@ function kalStan(w, dzis) {
 const kalPrzedzial = (z) => (z.pora
   ? `${String(z.pora).slice(0, 5)}${z.pora_koniec ? '–' + String(z.pora_koniec).slice(0, 5) : ''}` : '');
 
-const PRZYPOMNIENIA = [['', 'bez przypomnienia', 'bez'], ['15', '15 min przed', '15 min'],
-                       ['60', '1 godz. przed', '1 godz.'], ['1440', '1 dzień przed', '1 dzień']];
+// KILKA PRZYPOMNIEŃ do jednego wydarzenia: o weselu chce się wiedzieć tydzień
+// wcześniej I w dniu wydarzenia. Wartości w minutach przed początkiem.
+const PRZYPOMNIENIA = [
+  [15, '15 minut przed', '15 min'],
+  [60, 'godzinę przed', '1 godz.'],
+  [180, '3 godziny przed', '3 godz.'],
+  [1440, 'dzień przed', '1 dzień'],
+  [2880, '2 dni przed', '2 dni'],
+  [10080, 'tydzień przed', 'tydzień'],
+];
+
+// Stare zapisy miały jedną wartość (`przypomnij_min`), nowe mają listę.
+const przypomnieniaZ = (z) => (Array.isArray(z.przypomnienia) && z.przypomnienia.length
+  ? z.przypomnienia.map(Number).sort((a, b) => a - b)
+  : (z.przypomnij_min != null ? [Number(z.przypomnij_min)] : []));
+
+// Podpis na kafelku: przy jednym mówimy które, przy kilku — ile, bo
+// „tydzień, 1 dzień, 1 godz." i tak się w kafelku nie mieści.
+// Pełny opis do miejsc, gdzie jest szerokość: „tydzień przed, dzień przed".
+function opisPrzypomnienPelny(lista) {
+  if (!lista.length) return 'Bez przypomnień';
+  return lista.slice().sort((a, b) => b - a)
+    .map((m) => (PRZYPOMNIENIA.find(([k]) => k === m) || [, '?'])[1])
+    .join(', ')
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+function opisPrzypomnien(lista) {
+  if (!lista.length) return 'bez';
+  if (lista.length === 1) return (PRZYPOMNIENIA.find(([k]) => k === lista[0]) || [, , '?'])[2];
+  return `${lista.length} przyp.`;
+}
+
+// Wybór przypomnień w arkuszu — lista z ptaszkami, bo to wybór WIELOKROTNY,
+// a natywna lista rozwijana z zaznaczaniem wielu pozycji na telefonie jest
+// nie do obsłużenia kciukiem.
+function przypomnieniaArkusz(aktualne, onZapis) {
+  const tlo = document.getElementById('strefy-tlo');
+  if (!tlo) return;
+  const wybrane = new Set(aktualne);
+  tlo.hidden = false;
+  const box = document.getElementById('strefy-krok');
+  const rysuj = () => {
+    box.innerHTML = `
+      <p class="lap-pyt">Przypomnij mi</p>
+      <div class="lap-lista">
+        ${PRZYPOMNIENIA.map(([min, opis]) => `
+          <button type="button" class="lap-poz przyp-poz" data-przyp="${min}"
+                  aria-pressed="${wybrane.has(min)}">
+            <span class="przyp-ptak">${wybrane.has(min) ? ikonaSvg('ptaszek') : ''}</span>
+            <span class="nazwa">${opis}</span>
+          </button>`).join('')}
+      </div>
+      <button type="button" class="lap-kafel pelny mocny" data-przyp-gotowe
+              style="margin-top:12px">Gotowe</button>`;
+    box.querySelectorAll('[data-przyp]').forEach((b) => {
+      b.onclick = () => {
+        const min = Number(b.dataset.przyp);
+        if (wybrane.has(min)) wybrane.delete(min); else wybrane.add(min);
+        rysuj();
+      };
+    });
+    box.querySelector('[data-przyp-gotowe]').onclick = () => {
+      strefyZamknij();
+      onZapis([...wybrane].sort((a, b) => a - b));
+    };
+  };
+  rysuj();
+}
 
 // Flagi wydarzeń — co to za rodzaj sprawy. Ikona idzie przed nazwą w kalendarzu
 // i w Wydarzeniach: urodziny wśród wizyt u lekarza rozpoznaje się wtedy z jednego
@@ -1159,11 +1286,7 @@ function kafelEtykiety(z, atrybut) {
   </label>`;
 }
 
-function opcjePrzypomnienia(v) {
-  const teraz = v == null ? '' : String(v);
-  return PRZYPOMNIENIA.map(([k, l]) =>
-    `<option value="${k}"${k === teraz ? ' selected' : ''}>${l}</option>`).join('');
-}
+
 
 // Dymek `title` — na myszy mówi to, czego nie zmieściła belka.
 function kalOpis(w, dzis) {
@@ -1713,7 +1836,7 @@ function kalPodepnijDodawanie(ekran) {
 }
 
 const kalNowe = { rodzaj: null, termin: null, pora: null, pora_koniec: null,
-                  wyk: '', priorytet: 0, przypomnij: '60', tytul: '',
+                  wyk: '', priorytet: 0, przypomnienia: [60], tytul: '',
                   powtarzaj: null, powtarzaj_co: 1, etykieta: '', doDnia: null, strefa: null,
                   // Krok dopisywany do zadania: rodzic znany z góry, rodzaju się
                   // nie wybiera (krok wydarzenia nie istnieje), a obszar i
@@ -1738,7 +1861,7 @@ function kalNoweOtworz(m, punkt) {
   Object.assign(kalNowe, { rodzaj: m.parent ? 'zadanie' : null, termin: m.dzien, pora: m.pora || null,
                            parent: m.parent || null, parentTytul: m.parentTytul || '',
                            pora_koniec: m.pora ? kalGodzinePozniej(m.pora) : null,
-                           wyk: '', priorytet: 0, przypomnij: '60', tytul: '',
+                           wyk: '', priorytet: 0, przypomnienia: [60], tytul: '',
                            powtarzaj: null, powtarzaj_co: 1, etykieta: '', doDnia: null,
                            strefa: strefaDoZapisu() });
   const telefon = kalWaski.matches;
@@ -1783,6 +1906,13 @@ function kalNoweOtworz(m, punkt) {
       kalNoweRysuj(p, true);
       return;
     }
+    if (ev.target.closest('[data-kn-przyp]')) {
+      przypomnieniaArkusz(kalNowe.przypomnienia || [], (lista) => {
+        kalNowe.przypomnienia = lista;
+        p.querySelector('.klp-kafle').innerHTML = kalNowePolaHtml();
+      });
+      return;
+    }
     if (ev.target.closest('[data-kn-wroc]')) { kalNowe.rodzaj = null; kalNoweRysuj(p); }
   };
   p.onchange = (ev) => {
@@ -1807,7 +1937,6 @@ function kalNoweOtworz(m, punkt) {
       case 'pora_koniec': kalNowe.pora_koniec = v || null; break;
       case 'wyk': kalNowe.wyk = v; break;
       case 'priorytet': kalNowe.priorytet = Number(v) || 0; break;
-      case 'przypomnij': kalNowe.przypomnij = v; break;
       case 'powtarzaj':
         kalNowe.powtarzaj = v || null;
         kalNowe.powtarzaj_co = 1;
@@ -2020,13 +2149,13 @@ function kalNowePolaHtml() {
     const doD = `<label class="zad-pora${n.doDnia ? ' jest' : ''}" title="Do dnia (kilkudniowe)">${
         n.doDnia ? esc(dataKrotka(n.doDnia)) : 'do dnia'}
         <input type="date" data-kn="do_dnia" value="${esc(n.doDnia || '')}"></label>`;
-    const przyp = PRZYPOMNIENIA.find(([k]) => k === n.przypomnij) || PRZYPOMNIENIA[0];
+    const przyp = n.przypomnienia || [];
     return `<span class="zad-kiedy jest">${dzien}${doD}</span>
       <span class="zad-kiedy jest">${od}${doG}</span>${kto}${cykl}${obszar}
       ${kafelEtykiety(n, 'data-kn="etykieta"')}
-      <label class="zad-kto${przyp[0] ? ' jest' : ''}" title="Przypomnienie">
-        ${ikonaSvg('alerty')}<span>${przyp[2]}</span>
-        <select data-kn="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(n.przypomnij || null)}</select></label>`;
+      <button type="button" class="zad-kto${przyp.length ? ' jest' : ''}" data-kn-przyp
+              title="Przypomnienia">
+        ${ikonaSvg('alerty')}<span>${opisPrzypomnien(przyp)}</span></button>`;
   }
   const p = n.priorytet;
   return `<span class="zad-kiedy jest">${dzien}${od}</span>${kto}${cykl}${obszar}
@@ -2065,7 +2194,7 @@ async function kalNoweZapisz() {
   };
   if (wyd) {
     dane.pora_koniec = n.pora ? n.pora_koniec : null;
-    dane.przypomnij_min = n.przypomnij ? Number(n.przypomnij) : null;
+    dane.przypomnienia = n.przypomnienia || [];
     dane.etykieta = n.etykieta || null;
   } else {
     dane.priorytet = n.priorytet;
@@ -2165,8 +2294,8 @@ function kalPodgladHtml(w, dzis, zAkcjami) {
   const plakietki = [
     wydarzenie && ['wydarzenie', 'wyd'],
     wydarzenie && w.wirtualne && ['kolejne powtórzenie', ''],
-    wydarzenie && z.przypomnij_min != null && [`przypomni ${
-      (PRZYPOMNIENIA.find(([k]) => k === String(z.przypomnij_min)) || [, ''])[1]}`, ''],
+    wydarzenie && przypomnieniaZ(z).length
+      && [`przypomni ${opisPrzypomnienPelny(przypomnieniaZ(z)).toLowerCase()}`, ''],
     stan === 'po-czasie' && ['po terminie', 'zle'],
     stan === 'zrobione' && ['zrobione', 'ok'],
     stan === 'wstrzymane' && ['wstrzymane', ''],
@@ -2273,7 +2402,7 @@ function kalKafleWydarzenia(z) {
   const ktos = z.wykonawca_user_id || z.wykonawca_virtual_id;
   const od = z.pora ? String(z.pora).slice(0, 5) : '';
   const doG = z.pora_koniec ? String(z.pora_koniec).slice(0, 5) : '';
-  const przyp = PRZYPOMNIENIA.find(([k]) => k === (z.przypomnij_min == null ? '' : String(z.przypomnij_min)));
+  const przyp = przypomnieniaZ(z);
   return `<div class="klp-kafle">
     <span class="zad-kiedy jest">
       <label class="zad-data" title="Dzień">
@@ -2293,10 +2422,9 @@ function kalKafleWydarzenia(z) {
       ${skrotWykonawcy(z)}${ktos ? '' : '<span>Kto</span>'}
       <select data-klp-pole="wyk" aria-label="Kto">${opcjeWykonawcyKrotkie(z)}</select>
     </label>
-    <label class="zad-kto${przyp && przyp[0] ? ' jest' : ''}" title="Przypomnienie">
-      ${ikonaSvg('alerty')}<span>${przyp ? przyp[2] : 'bez'}</span>
-      <select data-klp-pole="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(z.przypomnij_min)}</select>
-    </label>
+    <button type="button" class="zad-kto${przyp.length ? ' jest' : ''}" data-klp-przyp
+            title="Przypomnienia">
+      ${ikonaSvg('alerty')}<span>${opisPrzypomnien(przyp)}</span></button>
     ${kafelEtykiety(z, 'data-klp-pole="etykieta"')}
     ${kafelCyklu(z, 'data-klp-pole="powtarzaj"')}
     ${kafelObszaru(z)}
@@ -2374,6 +2502,10 @@ function kalOtworzPodglad({ id, el, od, do: doK, wirtualne, pozycja, bezAnimacji
                     poz ? { x: poz.left - window.scrollX, y: poz.top - window.scrollY } : { x: 24, y: 80 });
       return;
     }
+    if (ev.target.closest('[data-klp-przyp]')) {
+      przypomnieniaArkusz(przypomnieniaZ(z), (lista) => kalZmienPole(id, { przypomnienia: lista }));
+      return;
+    }
     if (ev.target.closest('[data-komentarze]')) { przelaczDziennik(id); return; }
     if (ev.target.closest('[data-klp-szczegoly]')) {
       kalZamknijPodglad();
@@ -2401,7 +2533,6 @@ function kalOtworzPodglad({ id, el, od, do: doK, wirtualne, pozycja, bezAnimacji
       // Zdjęcie godziny początku zdejmuje też koniec — „do 15:00" bez „od" to cały dzień.
       pora: v || z.rodzaj !== 'wydarzenie' ? { pora: v || null } : { pora: null, pora_koniec: null },
       pora_koniec: { pora_koniec: v || null },
-      przypomnij: { przypomnij_min: v ? Number(v) : null },
       // „Co ile" wraca do jedynki: kafelek zna tylko okres, a mieszanie starej
       // wielokrotności z nowym okresem dałoby „co 2 lata" z „co miesiąc".
       powtarzaj: { powtarzaj: v || null, powtarzaj_co: 1 },
@@ -2528,7 +2659,7 @@ window.addEventListener('resize', () => { if (kalPodglad && !kalWaski.matches) k
 // Stuknięcie w wiersz otwiera TEN SAM podgląd co w kalendarzu (kafelki, trzy
 // kropki) — atrybuty `data-kal-*` są wspólne.
 
-const wydNowe = { termin: null, pora: null, pora_koniec: null, wyk: '', przypomnij: '60',
+const wydNowe = { termin: null, pora: null, pora_koniec: null, wyk: '', przypomnienia: [60],
                   etykieta: '', doDnia: null, powtarzaj: null, powtarzaj_co: 1, strefa: null };
 let wydMinionePokaz = false;
 
@@ -2537,20 +2668,22 @@ async function wczytajWydarzenia() {
     const r = await authFetch('/api/task/wydarzenia?x=1' + qStrefa());
     const d = await r.json();
     zadania = d.zadania || [];
+    terminySerii = d.terminy || {};
     if (d.domyslna_pora) domyslnaPora = d.domyslna_pora;
-  } catch { zadania = []; toast('Nie udało się wczytać wydarzeń.', 'blad'); }
+  } catch { zadania = []; terminySerii = {}; toast('Nie udało się wczytać wydarzeń.', 'blad'); }
   rysuj();
 }
 
 const wydWybrano = () => !!(wydNowe.termin || wydNowe.pora || wydNowe.wyk || wydNowe.doDnia
-  || wydNowe.powtarzaj || wydNowe.etykieta || wydNowe.przypomnij !== '60');
+  || wydNowe.powtarzaj || wydNowe.etykieta
+  || (wydNowe.przypomnienia || []).join(',') !== '60');
 
 function wydPolaHtml() {
   const w = {
     wykonawca_user_id: wydNowe.wyk.startsWith('u:') ? Number(wydNowe.wyk.slice(2)) : null,
     wykonawca_virtual_id: wydNowe.wyk.startsWith('v:') ? Number(wydNowe.wyk.slice(2)) : null,
   };
-  const przyp = PRZYPOMNIENIA.find(([k]) => k === wydNowe.przypomnij) || PRZYPOMNIENIA[0];
+  const przyp = wydNowe.przypomnienia || [];
   // Dzień podpowiadamy DZISIEJSZY, zamiast pustego kafelka: wydarzenie bez dnia
   // nie istnieje, a „dziś" jest najczęstszą odpowiedzią i widać, co się zapisze.
   return `
@@ -2582,10 +2715,9 @@ function wydPolaHtml() {
       ${wydNowe.wyk ? skrotWykonawcy(w) : `${ikonaSvg('osoby')}<span>Kto</span>`}
       <select data-wyd="wyk" aria-label="Kto">${opcjeWykonawcyKrotkie(w)}</select>
     </label>
-    <label class="zad-kto sz-kafel${przyp[0] ? ' jest' : ''}" title="Przypomnienie">
-      ${ikonaSvg('alerty')}<span>${przyp[2]}</span>
-      <select data-wyd="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(wydNowe.przypomnij || null)}</select>
-    </label>
+    <button type="button" class="zad-kto sz-kafel${przyp.length ? ' jest' : ''}"
+            data-wyd-przyp title="Przypomnienia">
+      ${ikonaSvg('alerty')}<span>${opisPrzypomnien(przyp)}</span></button>
     ${kafelEtykiety(wydNowe, 'data-wyd="etykieta"').replace('class="zad-kto', 'class="zad-kto sz-kafel')}`;
 }
 
@@ -2603,10 +2735,20 @@ function rysujWydarzenia() {
   const koniecTyg = dodajDni(poczatekTygodnia(dzis), 7);
   const wszystkie = zadania
     .filter((z) => z.rodzaj === 'wydarzenie' && pasujeOsoba(z))
-    .map((z) => {
+    // Seria rozkłada się na osobne wiersze: zjazd w każdy inny weekend to
+    // osobna data w kalendarzu i osobna data na liście.
+    .flatMap((z) => {
+      if (maSerie(z)) {
+        return terminySerii[z.id].map((t) => {
+          const d = doDaty(t.data);
+          return d && { z: { ...z, pora: t.pora, pora_koniec: t.pora_koniec },
+                        start: d, koniec: d,
+                        pora: t.pora ? String(t.pora).slice(0, 5) : null, wirtualne: false };
+        });
+      }
       const zz = zakresZadania(z);
-      return zz && { z, start: zz.start, koniec: zz.koniec,
-                     pora: z.pora ? String(z.pora).slice(0, 5) : null, wirtualne: false };
+      return [zz && { z, start: zz.start, koniec: zz.koniec,
+                      pora: z.pora ? String(z.pora).slice(0, 5) : null, wirtualne: false }];
     })
     .filter(Boolean)
     .sort((a, b) => a.start - b.start || String(a.z.pora || '').localeCompare(String(b.z.pora || '')));
@@ -2655,6 +2797,13 @@ function rysujWydarzenia() {
   const pole = document.getElementById('wyd-tytul');
   const rzad = document.getElementById('wyd-pola');
   pole.addEventListener('input', () => { rzad.hidden = !(wydWybrano() || pole.value.trim()); });
+  rzad.onclick = (ev) => {
+    if (!ev.target.closest('[data-wyd-przyp]')) return;
+    przypomnieniaArkusz(wydNowe.przypomnienia || [], (lista) => {
+      wydNowe.przypomnienia = lista;
+      rzad.innerHTML = wydPolaHtml();
+    });
+  };
   rzad.onchange = (ev) => {
     const el = ev.target.closest('[data-wyd]');
     if (!el) return;
@@ -2663,7 +2812,6 @@ function rysujWydarzenia() {
     else if (k === 'pora') { wydNowe.pora = el.value || null; if (!el.value) wydNowe.pora_koniec = null; }
     else if (k === 'pora_koniec') wydNowe.pora_koniec = el.value || null;
     else if (k === 'wyk') wydNowe.wyk = el.value;
-    else if (k === 'przypomnij') wydNowe.przypomnij = el.value;
     else if (k === 'etykieta') wydNowe.etykieta = el.value;
     else if (k === 'strefa') wydNowe.strefa = el.value ? Number(el.value) : null;
     else if (k === 'powtarzaj') { wydNowe.powtarzaj = el.value || null; wydNowe.powtarzaj_co = 1; }
@@ -2692,7 +2840,7 @@ function rysujWydarzenia() {
         pora: wydNowe.pora, pora_koniec: wydNowe.pora ? wydNowe.pora_koniec : null,
         wykonawca_user_id: wydNowe.wyk.startsWith('u:') ? Number(wydNowe.wyk.slice(2)) : null,
         wykonawca_virtual_id: wydNowe.wyk.startsWith('v:') ? Number(wydNowe.wyk.slice(2)) : null,
-        przypomnij_min: wydNowe.przypomnij ? Number(wydNowe.przypomnij) : null,
+        przypomnienia: wydNowe.przypomnienia || [],
         etykieta: wydNowe.etykieta || null,
       }),
     });
@@ -2703,7 +2851,7 @@ function rysujWydarzenia() {
     }
     const kiedy = `${dataKrotka(termin)}${wydNowe.pora ? ' ' + wydNowe.pora : ''}`;
     Object.assign(wydNowe, { termin: null, pora: null, pora_koniec: null, wyk: '',
-                             przypomnij: '60', etykieta: '', doDnia: null,
+                             przypomnienia: [60], etykieta: '', doDnia: null,
                              powtarzaj: null, powtarzaj_co: 1, strefa: strefaDoZapisu() });
     toast(`Dodano: ${tytul}, ${kiedy}.`, 'ok');
     await wczytaj();
@@ -2728,7 +2876,6 @@ function rysujWydarzenia() {
       termin: v ? { termin: v } : null,
       pora: v ? { pora: v } : { pora: null, pora_koniec: null },
       pora_koniec: { pora_koniec: v || null },
-      przypomnij: { przypomnij_min: v ? Number(v) : null },
       etykieta: { etykieta: v || null },
       powtarzaj: { powtarzaj: v || null, powtarzaj_co: 1 },
       wyk: { wykonawca_user_id: v.startsWith('u:') ? Number(v.slice(2)) : null,
@@ -2739,6 +2886,13 @@ function rysujWydarzenia() {
     await zapiszSzybko(id, zmiany);
   };
   box().querySelector('.wyd-lista').onclick = (ev) => {
+    const przyp = ev.target.closest('[data-wl-przyp]');
+    if (przyp) {
+      const id = Number(przyp.dataset.wlPrzyp);
+      const z = zadania.find((x) => x.id === id);
+      przypomnieniaArkusz(przypomnieniaZ(z || {}), (lista) => zapiszSzybko(id, { przypomnienia: lista }));
+      return;
+    }
     if (ev.target.closest('[data-wyd-minione]')) {
       wydMinionePokaz = !wydMinionePokaz;
       rysuj();
@@ -2756,7 +2910,7 @@ function wydKafelkiHtml(z) {
   const ktos = z.wykonawca_user_id || z.wykonawca_virtual_id;
   const od = z.pora ? String(z.pora).slice(0, 5) : '';
   const doG = z.pora_koniec ? String(z.pora_koniec).slice(0, 5) : '';
-  const przyp = PRZYPOMNIENIA.find(([k]) => k === (z.przypomnij_min == null ? '' : String(z.przypomnij_min)));
+  const przyp = przypomnieniaZ(z);
   const e = etykietaWyd(z);
   const at = (pole) => `data-wl="${pole}" data-wl-id="${z.id}"`;
   return `<div class="wyd-kafelki">
@@ -2771,9 +2925,9 @@ function wydKafelkiHtml(z) {
     <label class="zad-kto${ktos ? ' jest' : ''}" title="Kto">
       ${skrotWykonawcy(z)}${ktos ? '' : '<span>Kto</span>'}
       <select ${at('wyk')} aria-label="Kto">${opcjeWykonawcyKrotkie(z)}</select></label>
-    <label class="zad-kto${przyp && przyp[0] ? ' jest' : ''}" title="Przypomnienie">
-      ${ikonaSvg('alerty')}<span>${przyp ? przyp[2] : 'bez'}</span>
-      <select ${at('przypomnij')} aria-label="Przypomnienie">${opcjePrzypomnienia(z.przypomnij_min)}</select></label>
+    <button type="button" class="zad-kto${przyp.length ? ' jest' : ''}"
+            data-wl-przyp="${z.id}" title="Przypomnienia">
+      ${ikonaSvg('alerty')}<span>${opisPrzypomnien(przyp)}</span></button>
     <label class="zad-kto${e ? ' jest' : ''}" title="Flaga wydarzenia">
       ${ikonaSvg(e ? e[2] : 'flaga')}<span>${e ? e[1] : 'Flaga'}</span>
       <select ${at('etykieta')} aria-label="Flaga wydarzenia">${opcjeEtykiety(z.etykieta || '')}</select></label>
@@ -2787,7 +2941,9 @@ function wydWiersz(w, dzis) {
   const dzien = wielo ? `${dataKrotka(w.start)} → ${dataKrotka(w.koniec)}` : kalDzienKrotko(w.start);
   const godz = z.pora ? kalPrzedzial(z) : 'cały dzień';
   const droga = sciezkaDo(z.id).slice(0, -1).map((x) => x.tytul).join(' › ');
-  const meta = [droga, z.powtarzaj ? opisPowtarzania(z) : ''].filter(Boolean).join(', ');
+  const seria = maSerie(z) ? `${terminySerii[z.id].length} ${
+    odmien(terminySerii[z.id].length, 'termin', 'terminy', 'terminów')} w serii` : '';
+  const meta = [droga, seria, z.powtarzaj ? opisCyklu(z) : ''].filter(Boolean).join(', ');
   const ktos = z.wykonawca_user_id || z.wykonawca_virtual_id;
   // Przycisk i kafelki jako RODZEŃSTWO, nie zagnieżdżone: lista wyboru w środku
   // przycisku to nieprawidłowy dokument i pułapka na stuknięcia.
@@ -5647,6 +5803,116 @@ async function otworzSzczegoly(id) {
   rysuj();
 }
 
+// ── pole „kiedy się dzieje" w Szczegółach wydarzenia ────────────────────────
+
+function kiedyPodepnij(w) {
+  szczegolyTryb = maSerie(w) ? 'terminy' : (w.powtarzaj ? 'regula' : 'raz');
+  szczegolyDni = new Set((w.dni_tygodnia || []).map(Number));
+  szczegolyTerminy = (terminySerii[w.id] || []).map((t) => ({
+    data: String(t.data).slice(0, 10),
+    pora: t.pora ? String(t.pora).slice(0, 5) : '',
+    pora_koniec: t.pora_koniec ? String(t.pora_koniec).slice(0, 5) : '',
+  }));
+
+  const box = document.getElementById('s-kiedy');
+  const przyciski = document.querySelectorAll('[data-tryb]');
+
+  const rysuj = () => {
+    przyciski.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tryb === szczegolyTryb)));
+    if (szczegolyTryb === 'raz') {
+      box.innerHTML = '<div class="uwaga">Dzień i godziny ustawiasz polami wyżej.</div>';
+      return;
+    }
+    if (szczegolyTryb === 'regula') {
+      const okres = w.powtarzaj || 'tydzien';
+      box.innerHTML = `
+        <div class="powtarzanie" style="margin-top:8px">
+          <select id="s-okres">
+            ${OKRESY.map(([k, l]) => `<option value="${k}"${
+              k === okres ? ' selected' : ''}>${l}</option>`).join('')}
+          </select>
+          <label class="co-ile">co <input type="number" id="s-co" min="1" max="99"
+            value="${Number(w.powtarzaj_co) || 1}"> <span id="s-co-jedn"></span></label>
+        </div>
+        <div id="s-dni-wrap" class="pole"${okres === 'tydzien' ? '' : ' hidden'}>
+          <label>W dni tygodnia</label>
+          <div class="dni-tygodnia" role="group" aria-label="Dni tygodnia">
+            ${KAL_DNI.map((l, i) => `<button type="button" data-dzien="${i + 1}"
+              aria-pressed="${szczegolyDni.has(i + 1)}">${l}</button>`).join('')}
+          </div>
+          <div class="uwaga">Bez wyboru powtarza się w dniu terminu.</div>
+        </div>
+        <div class="pole">
+          <label for="s-do-kiedy">Do kiedy (opcjonalnie)</label>
+          <input id="s-do-kiedy" type="date" value="${esc((w.powtarzaj_do || '').slice(0, 10))}">
+          <div class="uwaga">Puste — seria leci bez końca.</div>
+        </div>`;
+      const sel = document.getElementById('s-okres');
+      const jedn = document.getElementById('s-co-jedn');
+      const poleCo = document.getElementById('s-co');
+      const odswiez = () => {
+        jedn.textContent = jednostkaOkresu(sel.value, Number(poleCo.value) || 1);
+        document.getElementById('s-dni-wrap').hidden = sel.value !== 'tydzien';
+      };
+      sel.onchange = odswiez;
+      poleCo.oninput = odswiez;
+      odswiez();
+      box.querySelector('.dni-tygodnia').onclick = (e) => {
+        const b = e.target.closest('[data-dzien]');
+        if (!b) return;
+        const n = Number(b.dataset.dzien);
+        if (szczegolyDni.has(n)) szczegolyDni.delete(n); else szczegolyDni.add(n);
+        b.setAttribute('aria-pressed', String(szczegolyDni.has(n)));
+      };
+      return;
+    }
+    // Lista terminów — zjazdy. Każdy wiersz ma własne godziny, bo jeden zjazd
+    // bywa całodniowy, a drugi popołudniowy.
+    box.innerHTML = `
+      <div class="terminy-lista">
+        ${szczegolyTerminy.length ? szczegolyTerminy.map((t, i) => `
+          <div class="termin-wiersz">
+            <input type="date" data-t-data="${i}" value="${esc(t.data)}">
+            <input type="time" data-t-od="${i}" value="${esc(t.pora)}" aria-label="Od godziny">
+            <input type="time" data-t-do="${i}" value="${esc(t.pora_koniec)}" aria-label="Do godziny">
+            <button type="button" class="termin-usun" data-t-usun="${i}"
+                    aria-label="Usuń termin">✕</button>
+          </div>`).join('')
+          : '<div class="uwaga">Brak terminów. Dodaj pierwszy — np. weekend zjazdu.</div>'}
+      </div>
+      <button type="button" class="termin-dodaj" id="s-dodaj-termin">+ Dodaj termin</button>
+      <div class="uwaga">Przypomnienia zadziałają przed każdym terminem osobno.</div>`;
+    box.querySelector('.terminy-lista').onchange = (e) => {
+      const el = e.target;
+      const i = Number(el.dataset.tData ?? el.dataset.tOd ?? el.dataset.tDo);
+      if (Number.isNaN(i)) return;
+      if (el.dataset.tData != null) szczegolyTerminy[i].data = el.value;
+      else if (el.dataset.tOd != null) szczegolyTerminy[i].pora = el.value;
+      else szczegolyTerminy[i].pora_koniec = el.value;
+    };
+    box.querySelector('.terminy-lista').onclick = (e) => {
+      const b = e.target.closest('[data-t-usun]');
+      if (!b) return;
+      szczegolyTerminy.splice(Number(b.dataset.tUsun), 1);
+      rysuj();
+    };
+    document.getElementById('s-dodaj-termin').onclick = () => {
+      const ostatni = szczegolyTerminy[szczegolyTerminy.length - 1];
+      szczegolyTerminy.push({
+        data: ostatni ? isoLokalne(dodajDni(doDaty(ostatni.data), 14)) : (w.termin || dzisIso()).slice(0, 10),
+        pora: ostatni ? ostatni.pora : '',
+        pora_koniec: ostatni ? ostatni.pora_koniec : '',
+      });
+      rysuj();
+    };
+  };
+
+  przyciski.forEach((b) => {
+    b.onclick = () => { szczegolyTryb = b.dataset.tryb; rysuj(); };
+  });
+  rysuj();
+}
+
 function rysujSzczegoly() {
   const w = zadania.find((z) => z.id === szczegolyId);
   // `rysuj()`, nie `rysujLista()`: z planu czy kalendarza powrót ma trafić
@@ -5704,10 +5970,26 @@ function rysujSzczegoly() {
       </div>
     </div>
     <div class="uwaga" style="margin:-6px 0 12px">Bez godzin — wydarzenie na cały dzień.</div>
+    <!-- Trzy tryby zamiast jednego pola „Powtarzaj": jednorazowe, reguła
+         (liczy się sama, może nie mieć końca) i ręczna lista dat ze swoimi
+         godzinami — zjazdy. Reguła i lista wykluczają się nawzajem, więc
+         wybór jest jeden, a nie trzy niezależne ustawienia. -->
+    <div class="pole">
+      <label>Kiedy się dzieje</label>
+      <div class="tryby-kiedy" role="group" aria-label="Rodzaj powtarzania">
+        ${[['raz', 'Raz'], ['regula', 'Powtarza się'], ['terminy', 'Wybrane dni']]
+          .map(([k, l]) => `<button type="button" data-tryb="${k}">${l}</button>`).join('')}
+      </div>
+      <div id="s-kiedy"></div>
+    </div>
     <div class="pola-2">
       <div class="pole">
-        <label for="s-przypomnij">Przypomnienie</label>
-        <select id="s-przypomnij">${opcjePrzypomnienia(w.przypomnij_min)}</select>
+        <label>Przypomnienia</label>
+        <!-- Wybór WIELOKROTNY, nie lista rozwijana: „tydzień przed" i „godzinę
+             przed" to dwa różne sygnały o tym samym wydarzeniu. -->
+        <button type="button" class="btn btn-outline" id="s-przypomnienia"
+                style="width:100%; min-height:44px; justify-content:center">${
+          esc(opisPrzypomnienPelny(przypomnieniaZ(w)))}</button>
       </div>
       <div class="pole">
         <label for="s-etykieta">Flaga</label>
@@ -5761,8 +6043,10 @@ function rysujSzczegoly() {
       <label><input type="checkbox" id="s-kamien" ${w.kamien_milowy ? 'checked' : ''}> Kamień milowy</label>
     </div>`}
     <!-- Powtarzanie wymaga terminu — bez niego nie ma od czego liczyć kolejnej
-         daty, więc pole jest wtedy wyłączone i mówi dlaczego. -->
-    <div class="pole">
+         daty, więc pole jest wtedy wyłączone i mówi dlaczego.
+         Przy wydarzeniu ten sam wybór siedzi w trybie „Powtarza się" wyżej,
+         razem z dniami tygodnia i końcem serii. -->
+    <div class="pole"${ev ? ' hidden' : ''}>
       <label for="s-powtarzaj">Powtarzaj</label>
       <div class="powtarzanie">
         <select id="s-powtarzaj" ${w.termin ? '' : 'disabled'}>
@@ -5816,6 +6100,19 @@ function rysujSzczegoly() {
       <button class="btn btn-danger" type="button" id="s-usun">Usuń</button>
       <button class="btn btn-primary" type="button" id="s-zapisz">Zapisz</button>
     </div>`;
+
+  if (ev) kiedyPodepnij(w);
+
+  // Przypomnienia w formularzu trzymamy OBOK pól: to lista, a nie wartość
+  // jednego pola, i zapisuje się dopiero razem z resztą formularza.
+  szczegolyPrzypomnienia = przypomnieniaZ(w);
+  const przypBtn = document.getElementById('s-przypomnienia');
+  if (przypBtn) przypBtn.onclick = () => {
+    przypomnieniaArkusz(szczegolyPrzypomnienia, (lista) => {
+      szczegolyPrzypomnienia = lista;
+      przypBtn.textContent = opisPrzypomnienPelny(lista);
+    });
+  };
 
   document.getElementById('s-wroc').onclick = () => { widok = 'lista'; rysuj(); };
 
@@ -5891,9 +6188,22 @@ function rysujSzczegoly() {
     if (ev) {
       if (!dane.termin) { toast('Wydarzenie musi mieć dzień.', 'blad'); return; }
       dane.pora_koniec = document.getElementById('s-pora-koniec').value || null;
-      dane.przypomnij_min = document.getElementById('s-przypomnij').value
-        ? Number(document.getElementById('s-przypomnij').value) : null;
+      dane.przypomnienia = szczegolyPrzypomnienia;
       dane.etykieta = document.getElementById('s-etykieta').value || null;
+      // U wydarzeń o powtarzaniu decyduje wybrany tryb „kiedy się dzieje",
+      // a nie schowana lista „Powtarzaj" — reguła i lista terminów wykluczają
+      // się nawzajem, więc włączając jedną zawsze czyścimy drugą.
+      if (szczegolyTryb === 'regula') {
+        dane.powtarzaj = document.getElementById('s-okres').value || null;
+        dane.powtarzaj_co = Number(document.getElementById('s-co').value) || 1;
+        dane.dni_tygodnia = dane.powtarzaj === 'tydzien'
+          ? [...szczegolyDni].sort((a, b) => a - b) : [];
+        dane.powtarzaj_do = document.getElementById('s-do-kiedy').value || null;
+      } else {
+        dane.powtarzaj = null;
+        dane.dni_tygodnia = [];
+        dane.powtarzaj_do = null;
+      }
     } else {
       dane.priorytet = Number(document.getElementById('s-priorytet').value) || 0;
       dane.kamien_milowy = document.getElementById('s-kamien').checked;
@@ -5917,6 +6227,21 @@ function rysujSzczegoly() {
     const btn = document.getElementById('s-zapisz');
     btn.disabled = true;
     const ok = await zapiszSzczegoly(w.id, dane);
+    // Terminy serii to osobna tabela — wysyłamy je tylko dla wydarzeń i tylko
+    // wtedy, gdy jest co zmienić (pusta lista kasuje serię, np. po przejściu
+    // na „Raz" albo „Powtarza się").
+    if (ok && ev) {
+      const terminy = szczegolyTryb === 'terminy'
+        ? szczegolyTerminy.filter((t) => t.data).map((t) => ({
+            data: t.data, pora: t.pora || null, pora_koniec: t.pora_koniec || null }))
+        : [];
+      if (terminy.length || maSerie(w)) {
+        await authFetch(`/api/task/zadania/${w.id}/terminy`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ terminy }),
+        });
+      }
+    }
     // Strefa idzie OSOBNYM żądaniem, bo zmienia całe poddrzewo, a nie jeden
     // wiersz — wciśnięcie tego w zwykłą edycję znaczyłoby, że każdy zapis
     // szczegółów po cichu przepisuje wszystkie kroki w środku.
