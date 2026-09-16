@@ -91,8 +91,13 @@ def _dane(d: dict, nowe: bool) -> dict:
         dane["rodzaj"] = d["rodzaj"]
     if "pora_koniec" in d:
         dane["pora_koniec"] = d.get("pora_koniec") or None
-    if "przypomnij_min" in d:
-        dane["przypomnij_min"] = d.get("przypomnij_min")
+    # Kilka przypomnień do jednego wydarzenia (tydzień przed, dzień przed…).
+    # Stara, pojedyncza wartość przyjmowana dalej — starsza karta w przeglądarce
+    # nie może po cichu kasować ustawień.
+    if "przypomnienia" in d:
+        dane["przypomnienia"] = d.get("przypomnienia") or []
+    elif "przypomnij_min" in d:
+        dane["przypomnienia"] = [d["przypomnij_min"]] if d.get("przypomnij_min") else []
     if "etykieta" in d:
         e = d.get("etykieta")
         dane["etykieta"] = e if e in task_db.ETYKIETY else None

@@ -12,7 +12,7 @@ nie leży w poddrzewie przenoszonego zadania.
 """
 
 import calendar
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 
 from database import get_db
 from task_drzewo import wykryj_cykl  # re-eksport: używają go kolejne funkcje w tym pliku
@@ -216,6 +216,23 @@ def init_task_db() -> None:
         # Ile minut PRZED początkiem przypomnieć. NULL = bez przypomnienia.
         # Tylko dla wydarzeń — zadanie przypomina o swojej porze.
         cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS przypomnij_min INTEGER")
+        # KILKA PRZYPOMNIEŃ do jednego wydarzenia (tydzień przed, dzień przed,
+        # godzinę przed). Jedna wartość nie wystarczała: o weselu chce się
+        # wiedzieć z tygodniowym wyprzedzeniem I w dniu wydarzenia.
+        #
+        # `przypomnienia` to zestaw wyprzedzeń w minutach, `przypomniane` —
+        # te, które już poszły. Bez tego drugiego tik wysyłałby co minutę
+        # wszystkie, którym czas minął, bo nie miałby czego odhaczyć
+        # (`przypomniano_at` umie zapamiętać tylko jedno).
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS "
+                    "przypomnienia INTEGER[] NOT NULL DEFAULT '{}'::int[]")
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS "
+                    "przypomniane INTEGER[] NOT NULL DEFAULT '{}'::int[]")
+        # Przeniesienie starej, pojedynczej wartości. Warunek sam się nie
+        # powtórzy: po przepisaniu tablica nie jest już pusta.
+        cur.execute("""UPDATE task_zadania SET przypomnienia = ARRAY[przypomnij_min]
+            WHERE rodzaj = 'wydarzenie' AND przypomnij_min IS NOT NULL
+              AND cardinality(przypomnienia) = 0""")
         # Flaga wydarzenia: co to za rodzaj sprawy (urodziny, wyjazd, wizyta…).
         # STAŁA LISTA, nie dowolny tekst — wolne pole zamienia się w dziesięć
         # wariantów tego samego („urodziny", „Urodziny", „ur.") i przestaje
@@ -263,7 +280,7 @@ _POLA = """id, parent_id, tytul, opis, termin, pora, data_start, projekt,
            powtarzaj, powtarzaj_co, strefa_id, priorytet,
            wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
            status, zrobione_at, kolejnosc, utworzyl,
-           rodzaj, pora_koniec, przypomnij_min, etykieta"""
+           rodzaj, pora_koniec, przypomnij_min, etykieta, przypomnienia"""
 
 OKRESY = ("dzien", "tydzien", "miesiac", "rok")
 
@@ -271,9 +288,10 @@ RODZAJE = ("zadanie", "wydarzenie")
 # Flagi wydarzeń. Kolejność jest kolejnością wyboru w interfejsie, od najczęstszych.
 ETYKIETY = ("urodziny", "rocznica", "swieto", "wyjazd", "wizyta", "spotkanie",
             "impreza", "sport", "inne")
-# Wyprzedzenie przypomnienia o wydarzeniu, w minutach. Krótka lista zamiast
+# Wyprzedzenia przypomnień o wydarzeniu, w minutach. Krótka lista zamiast
 # dowolnej liczby — tyle wystarcza, a pole z liczbą minut to formularz.
-PRZYPOMNIENIA_MIN = (15, 60, 1440)
+# Do jednego wydarzenia można wybrać KILKA (tydzień przed i godzinę przed).
+PRZYPOMNIENIA_MIN = (15, 60, 180, 1440, 2880, 10080)
 PRZYPOMNIENIE_DOMYSLNE = 60   # decyzja Adama: godzina przed
 
 
@@ -286,6 +304,15 @@ def _przypomnij(v) -> int | None:
     except (TypeError, ValueError):
         return None
     return n if n in PRZYPOMNIENIA_MIN else None
+
+
+def _przypomnienia(v) -> list:
+    """Lista wyprzedzeń → posortowany zestaw dozwolonych wartości, bez duplikatów.
+    Śmieci wypadają po cichu; pusta lista znaczy „bez przypomnień"."""
+    if not isinstance(v, (list, tuple, set)):
+        return []
+    wynik = {n for n in (_przypomnij(x) for x in v) if n is not None}
+    return sorted(wynik)
 
 
 def _priorytet(v) -> int:
@@ -830,8 +857,8 @@ def dodaj(household_id, user_id, d) -> int:
             (household_id, parent_id, tytul, opis, termin, pora, data_start, projekt,
              powtarzaj, powtarzaj_co, strefa_id, priorytet,
              wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
-             utworzyl, rodzaj, pora_koniec, przypomnij_min, etykieta, kolejnosc)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+             utworzyl, rodzaj, pora_koniec, przypomnij_min, etykieta, przypomnienia, kolejnosc)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     COALESCE((SELECT MAX(kolejnosc) + 1 FROM task_zadania
                               WHERE household_id = %s AND parent_id IS NOT DISTINCT FROM %s), 0))
             RETURNING id""",
@@ -846,8 +873,11 @@ def dodaj(household_id, user_id, d) -> int:
              prywatne, bool(d.get("kamien_milowy")) and rodzaj == "zadanie", user_id,
              rodzaj,
              d.get("pora_koniec") if rodzaj == "wydarzenie" else None,
-             _przypomnij(d.get("przypomnij_min", PRZYPOMNIENIE_DOMYSLNE)) if rodzaj == "wydarzenie" else None,
+             # `przypomnij_min` zostaje wypełnione pierwszą wartością z listy —
+             # kolumna jest już nieużywana w logice, ale niech nie kłamie.
+             (_przypomnienia(d.get("przypomnienia"))[:1] or [None])[0] if rodzaj == "wydarzenie" else None,
              d.get("etykieta") if rodzaj == "wydarzenie" and d.get("etykieta") in ETYKIETY else None,
+             _przypomnienia(d.get("przypomnienia")) if rodzaj == "wydarzenie" else [],
              household_id, parent_id))
         return cur.fetchone()["id"]
 
@@ -870,8 +900,9 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
     rodzaj = d["rodzaj"] if d.get("rodzaj") in RODZAJE else stare.get("rodzaj") or "zadanie"
     wydarzenie = rodzaj == "wydarzenie"
     pora_koniec = d.get("pora_koniec") if "pora_koniec" in d else stare.get("pora_koniec")
-    przypomnij = (_przypomnij(d.get("przypomnij_min")) if "przypomnij_min" in d
-                  else stare.get("przypomnij_min"))
+    przypomnienia = (_przypomnienia(d.get("przypomnienia")) if "przypomnienia" in d
+                     else list(stare.get("przypomnienia") or []))
+    przypomnij = (przypomnienia[0] if przypomnienia else None)
     etykieta = (d.get("etykieta") if "etykieta" in d else stare.get("etykieta"))
     if etykieta not in ETYKIETY:
         etykieta = None
@@ -905,6 +936,14 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
               wykonawca_user_id = %s, wykonawca_virtual_id = %s,
               kamien_milowy = %s, prywatne_dla = %s,
               rodzaj = %s, pora_koniec = %s, przypomnij_min = %s, etykieta = %s,
+              przypomnienia = %s,
+              -- Przesunięte wydarzenie ma przypomnieć o sobie na nowo, więc
+              -- lista wysłanych wyprzedzeń zeruje się razem z terminem.
+              przypomniane = CASE WHEN %s AND (termin IS DISTINCT FROM %s
+                                               OR pora IS DISTINCT FROM %s
+                                               OR data_start IS DISTINCT FROM %s
+                                               OR przypomnienia IS DISTINCT FROM %s)
+                                  THEN '{}'::int[] ELSE przypomniane END,
               przypomniano_at = CASE WHEN termin IS DISTINCT FROM %s
                                        OR pora IS DISTINCT FROM %s
                                        -- Wydarzenie przypomina od POCZĄTKU i z
@@ -912,7 +951,7 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
                                        -- Zadaniu przesunięty na Gancie początek
                                        -- nie może wzbudzić przypomnienia na nowo.
                                        OR (%s AND (data_start IS DISTINCT FROM %s
-                                                   OR przypomnij_min IS DISTINCT FROM %s))
+                                                   OR przypomnienia IS DISTINCT FROM %s))
                                      THEN NULL ELSE przypomniano_at END
             WHERE household_id = %s AND id = %s""",
             (d["tytul"], d.get("opis"), d.get("termin"), d.get("pora"), nowy_parent,
@@ -931,8 +970,13 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
              bool(d.get("kamien_milowy")) and not wydarzenie, prywatne,
              rodzaj, pora_koniec if wydarzenie else None, przypomnij if wydarzenie else None,
              etykieta if wydarzenie else None,
+             przypomnienia if wydarzenie else [],
+             # zerowanie listy wysłanych
+             wydarzenie, d.get("termin"), d.get("pora"), d.get("data_start"),
+             przypomnienia if wydarzenie else [],
+             # zerowanie `przypomniano_at`
              d.get("termin"), d.get("pora"), wydarzenie, d.get("data_start"),
-             przypomnij if wydarzenie else None,
+             przypomnienia if wydarzenie else [],
              household_id, zadanie_id))
         zmienione = cur.rowcount > 0
         # Prywatność musi zejść na całe poddrzewo — inaczej dzieci zadania
@@ -1205,24 +1249,45 @@ def do_przypomnienia():
                               wykonawca_user_id, prywatne_dla
             FROM task_zadania
             WHERE status = 'otwarte' AND przypomniano_at IS NULL
-              AND termin IS NOT NULL
-              AND (
-                (rodzaj = 'zadanie'
-                  AND (termin + COALESCE(pora, %s::time)) <= (now() AT TIME ZONE 'Europe/Warsaw')
-                  AND termin >= CURRENT_DATE - INTERVAL '2 days')
-                OR
-                -- Wydarzenie: `przypomnij_min` przed POCZĄTKIEM, i tylko dopóki się
-                -- nie zaczęło — przypomnienie o czymś, co już trwa, jest spóźnione.
-                -- Całodniowe liczy się od pory domyślnej (godzina przed 9:00 = 8:00).
-                (rodzaj = 'wydarzenie' AND przypomnij_min IS NOT NULL
-                  AND (COALESCE(data_start, termin) + COALESCE(pora, %s::time))
-                        - make_interval(mins => przypomnij_min)
-                      <= (now() AT TIME ZONE 'Europe/Warsaw')
-                  AND (COALESCE(data_start, termin) + COALESCE(pora, %s::time))
-                      > (now() AT TIME ZONE 'Europe/Warsaw'))
-              )
-            LIMIT 200""", (domyslna, domyslna, domyslna))
-        return [dict(r) for r in cur.fetchall()]
+              AND rodzaj = 'zadanie' AND termin IS NOT NULL
+              AND (termin + COALESCE(pora, %s::time)) <= (now() AT TIME ZONE 'Europe/Warsaw')
+              AND termin >= CURRENT_DATE - INTERVAL '2 days'
+            LIMIT 200""", (domyslna,))
+        wynik = [dict(r) for r in cur.fetchall()]
+
+        # WYDARZENIA liczymy w Pythonie, nie w SQL-u: każde ma ZESTAW wyprzedzeń
+        # („tydzień przed" i „godzinę przed"), a zapytanie musiałoby rozwinąć
+        # tablicę, odjąć każdy element od początku i porównać z listą wysłanych.
+        # Wydarzeń z przypomnieniami są dziesiątki, nie tysiące, więc pętla jest
+        # tańsza od zapytania, którego nikt nie odczyta.
+        cur.execute("""SELECT id, household_id, tytul, termin, data_start, pora, rodzaj,
+                              wykonawca_user_id, prywatne_dla, przypomnienia, przypomniane
+            FROM task_zadania
+            WHERE rodzaj = 'wydarzenie' AND status = 'otwarte'
+              AND termin IS NOT NULL AND cardinality(przypomnienia) > 0
+              AND termin >= CURRENT_DATE - INTERVAL '1 day'
+            LIMIT 500""")
+        wydarzenia_db = [dict(r) for r in cur.fetchall()]
+
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    teraz = datetime.now(ZoneInfo("Europe/Warsaw")).replace(tzinfo=None)
+    g, m = (int(x) for x in domyslna.split(":")[:2])
+    for w in wydarzenia_db:
+        dzien = w.get("data_start") or w["termin"]
+        pora = w.get("pora")
+        poczatek = datetime.combine(dzien, pora) if pora else datetime.combine(dzien, time(g, m))
+        # Po rozpoczęciu nie przypominamy: „za godzinę dentysta" wysłane
+        # kwadrans po wizycie jest gorsze niż cisza.
+        if poczatek <= teraz:
+            continue
+        wyslane = set(w.get("przypomniane") or [])
+        for minuty in sorted(set(w.get("przypomnienia") or []), reverse=True):
+            if minuty in wyslane:
+                continue
+            if poczatek - timedelta(minutes=minuty) <= teraz:
+                wynik.append({**w, "minuty": minuty})
+    return wynik[:200]
 
 
 def przesun_minione_wydarzenia() -> int:
@@ -1258,7 +1323,7 @@ def przesun_minione_wydarzenia() -> int:
             if termin == w["termin"] or termin < dzis:
                 continue
             cur.execute("""UPDATE task_zadania SET termin = %s, data_start = %s,
-                                  przypomniano_at = NULL
+                                  przypomniano_at = NULL, przypomniane = '{}'::int[]
                            WHERE id = %s""",
                         (termin, (termin - dlugosc) if dlugosc is not None else None, w["id"]))
     return len(wiersze)
@@ -1306,6 +1371,16 @@ def przeglad(household_id, user_id) -> dict:
             _p(household_id, user_id),
         )
         return {k: int(v or 0) for k, v in dict(cur.fetchone()).items()}
+
+
+def oznacz_przypomnienie_wydarzenia(zadanie_id: int, minuty: int) -> None:
+    """Dopisuje wysłane wyprzedzenie do listy. Osobno od `oznacz_przypomniane`,
+    bo wydarzenie ma ich kilka i odhaczamy JEDNO — reszta ma jeszcze zadzwonić."""
+    with get_db() as cur:
+        cur.execute("UPDATE task_zadania "
+                    "SET przypomniane = array_append(przypomniane, %s) "
+                    "WHERE id = %s AND NOT (%s = ANY(przypomniane))",
+                    (minuty, zadanie_id, minuty))
 
 
 def oznacz_przypomniane(ids) -> None:

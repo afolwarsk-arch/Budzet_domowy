@@ -276,7 +276,7 @@ def wyslij_przypomnienia_dzienne() -> None:
 # znika przy restarcie procesu, ale restart to świeży start, nie powtórka tej
 # samej awarii. NIE usuwać jako „niepotrzebnej pamięci podręcznej" — to jedyna
 # zapora przed spamem, gdy zapis do bazy padnie trwale.
-_JUZ_WYSLANE: set[int] = set()
+_JUZ_WYSLANE: set[tuple] = set()   # (id zadania, wyprzedzenie w minutach albo None)
 
 
 def _kiedy_wydarzenie(z: dict) -> str:
@@ -332,7 +332,9 @@ def wyslij_przypomnienia_zadan() -> None:
     except Exception as e:
         print(f"[push] błąd pobrania listy zadań do przypomnień: {e!r}")
         return
-    zadania = [z for z in zadania if z["id"] not in _JUZ_WYSLANE]
+    # Klucz z wyprzedzeniem, nie sam identyfikator: wydarzenie ma kilka
+    # przypomnień i zablokowanie całego wiersza po jednym zabrałoby pozostałe.
+    zadania = [z for z in zadania if (z["id"], z.get("minuty")) not in _JUZ_WYSLANE]
     if not zadania:
         return
     print(f"[push] tik zadań: {len(zadania)} do wysyłki")
@@ -376,13 +378,19 @@ def wyslij_przypomnienia_zadan() -> None:
         # Wysyłka się powiodła. Oznaczenie próbujemy do dwóch razy — druga
         # próba od razu, bo chodzi o złapanie błędu chwilowego (np. krótka
         # niedostępność bazy), nie o odczekanie.
+        def oznacz():
+            if z.get("rodzaj") == "wydarzenie":
+                task_db.oznacz_przypomnienie_wydarzenia(z["id"], z["minuty"])
+            else:
+                task_db.oznacz_przypomniane([z["id"]])
+
         try:
-            task_db.oznacz_przypomniane([z["id"]])
+            oznacz()
         except Exception as e1:
             try:
-                task_db.oznacz_przypomniane([z["id"]])
+                oznacz()
             except Exception as e2:
-                _JUZ_WYSLANE.add(z["id"])
+                _JUZ_WYSLANE.add((z["id"], z.get("minuty")))
                 print(f"[push] zadanie {z['id']} ({adresat_info}) — powiadomienie WYSŁANE, "
                       f"ale zapis stanu nie poszedł dwukrotnie ({e1!r}, {e2!r}) — "
                       f"pomijam dalej w tym procesie")
