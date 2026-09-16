@@ -2063,6 +2063,10 @@ function kalKafle(z) {
     </label>
     ${kafelCyklu(z, 'data-klp-pole="powtarzaj"')}
     ${kafelObszaru(z)}
+    <!-- Dopisanie kroku wprost z kalendarza: ten sam plusik co na liście.
+         Wydarzenie go nie ma — nie składa się z kroków. -->
+    <button class="zad-plus" type="button" data-klp-krok title="Dodaj krok"
+            aria-label="Dodaj krok">+</button>
     <button class="zad-plus zad-komentarz${z.ile_komentarzy ? ' jest' : ''}" type="button"
             data-komentarze="${z.id}" title="Dziennik zadania" aria-label="Dziennik zadania">${
       z.ile_komentarzy ? z.ile_komentarzy : ikonaSvg('notatka')}</button>
@@ -2167,6 +2171,12 @@ function kalOtworzPodglad({ id, el, od, do: doK, wirtualne, pozycja, bezAnimacji
       // Menu to arkusz nad całą stroną — podgląd pod nim byłby tylko zasłoną.
       kalZamknijPodglad();
       menuZadania(id);
+      return;
+    }
+    if (ev.target.closest('[data-klp-krok]')) {
+      // Arkusz stoi nad wszystkim, więc podgląd pod nim byłby tylko zasłoną.
+      kalZamknijPodglad();
+      krokWArkuszu(id, z.tytul);
       return;
     }
     if (ev.target.closest('[data-komentarze]')) { przelaczDziennik(id); return; }
@@ -5059,7 +5069,9 @@ function krokWArkuszu(id, tytul) {
     if (!r.ok) { toast('Nie udało się zapisać kroku.', 'blad'); return; }
     strefyZamknij();
     toast('Krok dodany.', 'ok');
-    await wczytajPlan();
+    // `wczytaj`, nie `wczytajPlan`: ten sam arkusz otwiera teraz także podgląd
+    // w kalendarzu, a każdy widok ma własne wejście po dane.
+    await wczytaj();
   };
   document.getElementById('gi-zapisz-krok').onclick = zapisz;
   pole.onkeydown = (e) => { if (e.key === 'Enter') zapisz(); };
