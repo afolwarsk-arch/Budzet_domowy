@@ -504,6 +504,23 @@
     .sz-pola .zad-kiedy .zad-pora { font-size: 12px; padding: 0 9px; }
     .sz-pola .zad-kto.jest:not(.zad-prio-kafel) { min-width: 40px; }
     .sz-pola .zad-prio-kafel span { font-weight: 600; }
+    /* ── JEDEN RZĄD FILTRÓW ─────────────────────────────────────────────────
+       Zamiast dwóch rzędów pastylek („Kiedy" i „Stan", razem ~84 px na telefonie)
+       trzy kafelki z natywnymi listami w jednej linijce — plus filtr po osobie,
+       którego na liście wcześniej nie było. Nazwa filtra stoi w kafelku, bo
+       „Otwarte" i „Cały czas" bez podpisu wyglądają jak dwie pastylki tego
+       samego rodzaju. */
+    .filtry-rzad { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .fl-kafel { position: relative; display: inline-flex; align-items: center; gap: 6px;
+                min-height: 40px; padding: 0 12px; border: 1px solid var(--border);
+                border-radius: 10px; background: var(--surface); color: var(--text);
+                font-size: 13px; cursor: pointer; white-space: nowrap; }
+    .fl-kafel .fl-nazwa { color: var(--muted); font-size: 12px; }
+    .fl-kafel b { font-weight: 600; }
+    .fl-kafel select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0;
+                       border: none; padding: 0; cursor: pointer; }
+    .fl-kafel:focus-within { border-color: var(--accent); }
+
     /* ── GĘSTOŚĆ WIERSZA ────────────────────────────────────────────────────
        Trzy stopnie dla całej listy: Nazwy, Skrót, Ikonki. Powód: rząd ośmiu
        kafelków pod każdym zadaniem sprawiał, że na liście widać było same

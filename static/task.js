@@ -3700,29 +3700,54 @@ function podepnijBelki() {
   if (tor && dzisEl) tor.scrollLeft = Math.max(0, dzisEl.offsetLeft - 120);
 }
 
-// Dwa rzędy filtrów. Podpisy „Kiedy" i „Stan" nie są ozdobą: dwa rzędy
-// identycznych chipów bez nich czyta się jak jeden rozsypany filtr.
-// Znikają na czas wyszukiwania, bo wyszukiwanie idzie ponad nimi.
+// JEDEN RZĄD FILTRÓW, nie dwa rzędy chipów (2026-09-16). Siedem pastylek
+// w dwóch rzędach zjadało na telefonie ~84 px nad każdą listą, a filtr
+// przestawia się rzadko — wystarczy widzieć, co jest ustawione. Trzy kafelki
+// z listami mieszczą się w jednej linijce i dokładają filtr po osobie,
+// którego na liście wcześniej nie było wcale.
+//
+// Nazwa filtra STOI W KAFELKU („Kiedy: Cały czas"), bo sama wartość nie mówi,
+// czego dotyczy — „Otwarte" i „Cały czas" bez podpisu wyglądają jak dwa chipy
+// tego samego rodzaju. Znikają na czas wyszukiwania, bo ono idzie ponad nimi.
 function filtryHtml() {
-  return `<div class="filtry-para">
-      <div class="filtry" id="f-czas">
-        <span class="f-etykieta">Kiedy</span>
-        ${CZASY.map(([k, l]) => `<button class="chip" type="button" data-c="${k}"
-            aria-pressed="${k === czas}">${l}</button>`).join('')}
-      </div>
-      <div class="filtry" id="f-stan">
-        <span class="f-etykieta">Stan</span>
-        ${STANY.map(([k, l]) => `<button class="chip" type="button" data-s="${k}"
-            aria-pressed="${k === stan}">${l}</button>`).join('')}
-      </div>
+  const kafel = (etykieta, pole, opcje, teraz) => {
+    const wybrana = (opcje.find(([k]) => k === teraz) || opcje[0])[1];
+    return `<label class="fl-kafel" title="${etykieta}: ${esc(wybrana)}">
+      <span class="fl-nazwa">${etykieta}</span><b>${esc(wybrana)}</b>
+      <select ${pole} aria-label="${etykieta}">${opcje.map(([k, l]) =>
+        `<option value="${k}"${k === teraz ? ' selected' : ''}>${l}</option>`).join('')}</select>
+    </label>`;
+  };
+  return `<div class="filtry-rzad">
+      ${kafel('Kiedy', 'data-f-czas', CZASY, czas)}
+      ${kafel('Stan', 'data-f-stan', STANY, stan)}
+      ${kalOsobyHtml()}
     </div>`;
+}
+
+// Zadania po zawężeniu do osoby, RAZEM Z PRZODKAMI: krok Adama w projekcie
+// prowadzonym przez Olę musi mieć nad sobą swój projekt, inaczej wisi w drzewie
+// bez zaczepienia i bez kontekstu.
+function zadaniaWidoczne() {
+  if (!osobaFiltr) return zadania;
+  const wg = new Map(zadania.map((z) => [z.id, z]));
+  const zostaja = new Set();
+  for (const z of zadania) {
+    if (!pasujeOsoba(z)) continue;
+    let x = z;
+    while (x && !zostaja.has(x.id)) {
+      zostaja.add(x.id);
+      x = x.parent_id != null ? wg.get(x.parent_id) : null;
+    }
+  }
+  return zadania.filter((z) => zostaja.has(z.id));
 }
 
 function rysujLista() {
   // Zadanie mogło zniknąć (usunięte albo wypadło z bieżącego zakresu) —
   // wtedy wracamy na korzeń całego drzewa zamiast pokazać pustkę bez wyjścia.
   if (korzen != null && !zadania.some((z) => z.id === korzen)) korzen = null;
-  const drzewo = budujDrzewo(zadania);
+  const drzewo = budujDrzewo(zadaniaWidoczne());
   const aktualny = korzen != null ? drzewo.flatMap(splaszcz).find((x) => x.id === korzen) : null;
   if (korzen != null && !aktualny) korzen = null;
   const lista = aktualny ? aktualny.dzieci : drzewo;
@@ -3814,25 +3839,26 @@ function rysujLista() {
     rysuj();
   };
 
-  // Rzędy filtrów znikają na czas wyszukiwania — stąd sprawdzenie, a nie
-  // bezwarunkowe podpięcie.
-  const rzadCzas = document.getElementById('f-czas');
-  if (rzadCzas) rzadCzas.onclick = (ev) => {
-    const b = ev.target.closest('[data-c]');
-    if (!b) return;
-    czas = b.dataset.c;
-    localStorage.setItem('task_czas', czas);
-    nowyId = null;
-    wczytaj();
-  };
-  const rzadStan = document.getElementById('f-stan');
-  if (rzadStan) rzadStan.onclick = (ev) => {
-    const b = ev.target.closest('[data-s]');
-    if (!b) return;
-    stan = b.dataset.s;
-    localStorage.setItem('task_stan', stan);
-    nowyId = null;
-    wczytaj();
+  // Rząd filtrów znika na czas wyszukiwania — stąd sprawdzenie, a nie
+  // bezwarunkowe podpięcie. Osoba zawęża po stronie przeglądarki (dane już są),
+  // czas i stan pytają serwer, bo zmieniają to, co w ogóle przychodzi.
+  const rzadFiltrow = box().querySelector('.filtry-rzad');
+  if (rzadFiltrow) rzadFiltrow.onchange = (ev) => {
+    const el = ev.target;
+    if (el.matches('[data-f-czas]')) {
+      czas = el.value;
+      localStorage.setItem('task_czas', czas);
+      nowyId = null;
+      wczytaj();
+    } else if (el.matches('[data-f-stan]')) {
+      stan = el.value;
+      localStorage.setItem('task_stan', stan);
+      nowyId = null;
+      wczytaj();
+    } else if (el.matches('[data-kal-osoba]')) {
+      ustawOsobe(el.value);
+      rysuj();
+    }
   };
   const wroc = document.querySelector('[data-okr]');
   if (wroc) wroc.onclick = () => {
