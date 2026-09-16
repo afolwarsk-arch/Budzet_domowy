@@ -1355,6 +1355,9 @@ function kalZnacznikTrzymania(m) {
   if (m.top != null) {
     z.style.top = `${m.top}px`;
     z.style.height = `${KAL_H / 2 - 2}px`;
+    // Godzina w środku: w miesiącu podświetla się cała komórka i wiadomo, co się
+    // łapie, a pasek pół godziny sam z siebie tego nie mówi.
+    z.textContent = m.pora;
   } else if (m.kolumna != null) {
     z.style.left = `${(m.kolumna / 7) * 100}%`;
     z.style.width = `${100 / 7}%`;
@@ -1414,7 +1417,8 @@ function kalPodepnijDodawanie(ekran) {
 }
 
 const kalNowe = { rodzaj: null, termin: null, pora: null, pora_koniec: null,
-                  wyk: '', priorytet: 0, przypomnij: '60', tytul: '' };
+                  wyk: '', priorytet: 0, przypomnij: '60', tytul: '',
+                  powtarzaj: null, powtarzaj_co: 1 };
 
 function kalGodzinePozniej(pora) {
   const [h, m] = pora.split(':').map(Number);
@@ -1431,7 +1435,8 @@ function kalNoweOtworz(m, punkt) {
   kalZamknijPodglad();
   Object.assign(kalNowe, { rodzaj: null, termin: m.dzien, pora: m.pora || null,
                            pora_koniec: m.pora ? kalGodzinePozniej(m.pora) : null,
-                           wyk: '', priorytet: 0, przypomnij: '60', tytul: '' });
+                           wyk: '', priorytet: 0, przypomnij: '60', tytul: '',
+                           powtarzaj: null, powtarzaj_co: 1 });
   const telefon = kalWaski.matches;
   const p = document.createElement('div');
   p.id = 'kl-podglad';
@@ -1525,17 +1530,104 @@ function kalNoweRysuj(p, doPola = false) {
         <button type="button" class="kl-nowe-wroc" data-kn-wroc aria-label="Zmień: zadanie czy wydarzenie">‹</button>
         <span class="klp-plak ${wyd ? 'wyd' : ''}">${wyd ? 'wydarzenie' : 'zadanie'}</span>
       </div>
-      <input id="kn-tytul" autocomplete="off" value="${esc(kalNowe.tytul)}"
-             placeholder="${wyd ? 'Co się wydarzy?' : 'Co jest do zrobienia?'}">
+      <div class="kl-nowe-pole">
+        <input id="kn-tytul" autocomplete="off" value="${esc(kalNowe.tytul)}"
+               placeholder="${wyd ? 'Co się wydarzy?' : 'Co jest do zrobienia?'}">
+        ${window.Dyktowanie && Dyktowanie.dostepne() ? `<button type="button"
+            class="btn btn-outline btn-mikrofon" id="kn-mik"
+            title="Podyktuj" aria-label="Podyktuj">${ikonaSvg('mikrofon')}</button>` : ''}
+      </div>
+      <div class="kl-nowe-uslyszane" id="kn-uslyszane" hidden></div>
       <div class="klp-kafle">${kalNowePolaHtml()}</div>
       <div class="klp-akcje"><button type="submit" class="btn btn-primary">Dodaj</button></div>
     </form>`;
   const pole = tresc.querySelector('#kn-tytul');
   pole.oninput = () => { kalNowe.tytul = pole.value; };
   tresc.querySelector('form').onsubmit = (e) => { e.preventDefault(); kalNoweZapisz(); };
+  const mik = tresc.querySelector('#kn-mik');
+  if (mik) mik.onclick = () => kalNoweDyktuj(p, mik, pole);
   // Kursor w polu tylko przy wejściu w formularz: wybór rodzaju był już zamiarem
   // pisania, więc klawiatura nie jest tu niespodzianką.
   if (doPola) pole.focus();
+}
+
+// Dyktowanie w okienku dodawania. Mowę na tekst zamienia PRZEGLĄDARKA (nic nie
+// kosztuje), a z tekstu model wyciąga termin, godzinę, osobę i powtarzanie —
+// ta sama droga co przy łapaniu zadania, tylko bez pytania „gdzie zapisać",
+// bo miejsce w czasie wskazał już palec.
+//
+// USŁYSZANY TERMIN NIE NADPISUJE TEGO, CO WSKAZAŁEŚ. Przytrzymałeś konkretny
+// dzień i godzinę; zdanie „zadzwonić w poniedziałek" przy przytrzymanym czwartku
+// po cichu przeniosłoby wpis. Dlatego rozpoznane dodatki czekają pod polem
+// z przyciskiem „Użyj".
+async function kalNoweDyktuj(p, mik, pole) {
+  if (Dyktowanie.sluchaMy()) { Dyktowanie.stop(); return; }
+  Dyktowanie.start({
+    onStan: (slucha) => mik.classList.toggle('slucha', slucha),
+    onBlad: (t) => toast(t, 'blad'),
+    onTekst: async (tekst) => {
+      if (!tekst) return;
+      // Tekst ląduje w polu od razu — gdyby model nie odpowiedział, słowa nie przepadają.
+      pole.value = tekst;
+      kalNowe.tytul = tekst;
+      pole.disabled = true;
+      mik.disabled = true;
+      try {
+        const r = await authFetch('/api/task/rozumiem', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tekst }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { toast(d.detail || 'Nie udało się zrozumieć.', 'blad'); return; }
+        const z = d.zadanie || {};
+        if (z.tytul) { pole.value = z.tytul; kalNowe.tytul = z.tytul; }
+        kalNowePokazUslyszane(p, {
+          termin: z.termin || null, pora: z.pora || null,
+          powtarzaj: z.powtarzaj || null, powtarzaj_co: z.powtarzaj_co || 1,
+          wykonawca: z.wykonawca || '',
+          wykonawca_user_id: d.wykonawca_user_id || null,
+          wykonawca_virtual_id: d.wykonawca_virtual_id || null,
+        });
+      } catch {
+        toast('Brak połączenia — nie rozpoznałem zdania.', 'blad');
+      } finally {
+        pole.disabled = false;
+        mik.disabled = false;
+      }
+    },
+  });
+}
+
+function kalNowePokazUslyszane(p, u) {
+  const box = p.querySelector('#kn-uslyszane');
+  if (!box) return;
+  const ktos = u.wykonawca_user_id || u.wykonawca_virtual_id;
+  const czesci = [];
+  if (u.termin) czesci.push(dataKrotka(u.termin) + (u.pora ? ` ${u.pora}` : ''));
+  else if (u.pora) czesci.push(u.pora);
+  if (u.powtarzaj) czesci.push(opisPowtarzania(u));
+  if (ktos) czesci.push(u.wykonawca);
+  if (!czesci.length) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `<span>Usłyszałem też: ${esc(czesci.join(', '))}</span>
+    <button type="button" class="btn btn-outline" data-kn-uzyj>Użyj</button>`;
+  box.querySelector('[data-kn-uzyj]').onclick = () => {
+    if (u.termin) kalNowe.termin = u.termin;
+    if (u.pora) {
+      kalNowe.pora = String(u.pora).slice(0, 5);
+      if (kalNowe.rodzaj === 'wydarzenie'
+          && (!kalNowe.pora_koniec || kalNowe.pora_koniec <= kalNowe.pora)) {
+        kalNowe.pora_koniec = kalGodzinePozniej(kalNowe.pora);
+      }
+    }
+    if (u.wykonawca_user_id) kalNowe.wyk = `u:${u.wykonawca_user_id}`;
+    else if (u.wykonawca_virtual_id) kalNowe.wyk = `v:${u.wykonawca_virtual_id}`;
+    kalNowe.powtarzaj = u.powtarzaj || null;
+    kalNowe.powtarzaj_co = u.powtarzaj_co || 1;
+    box.hidden = true;
+    p.querySelector('.klp-kafle').innerHTML = kalNowePolaHtml();
+    p.querySelector('.klp-tytul').textContent = `Nowe na ${kalNoweKiedy()}`;
+  };
 }
 
 function kalNowePolaHtml() {
@@ -1558,13 +1650,15 @@ function kalNowePolaHtml() {
         n.pora_koniec ? esc(n.pora_koniec) : 'do'}
         <input type="time" data-kn="pora_koniec" value="${esc(n.pora_koniec || '')}"></label>` : '';
     const przyp = PRZYPOMNIENIA.find(([k]) => k === n.przypomnij) || PRZYPOMNIENIA[0];
-    return `<span class="zad-kiedy jest">${dzien}${od}${doG}</span>${kto}
+    return `<span class="zad-kiedy jest">${dzien}${od}${doG}</span>${kto}${
+      n.powtarzaj ? `<span class="zad-cykl" title="Powtarzanie z dyktowania">${esc(opisPowtarzania(n))}</span>` : ''}
       <label class="zad-kto${przyp[0] ? ' jest' : ''}" title="Przypomnienie">
         ${ikonaSvg('alerty')}<span>${przyp[2]}</span>
         <select data-kn="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(n.przypomnij || null)}</select></label>`;
   }
   const p = n.priorytet;
-  return `<span class="zad-kiedy jest">${dzien}${od}</span>${kto}
+  return `<span class="zad-kiedy jest">${dzien}${od}</span>${kto}${
+    n.powtarzaj ? `<span class="zad-cykl" title="Powtarzanie z dyktowania">${esc(opisPowtarzania(n))}</span>` : ''}
     <label class="zad-kto zad-prio-kafel${p > 0 ? ' jest wysoki' : (p < 0 ? ' jest niski' : '')}" title="Priorytet">
       ${p > 0 ? '!' : (p < 0 ? '↓' : ikonaSvg('flaga'))}
       <select data-kn="priorytet" aria-label="Priorytet">
@@ -1587,6 +1681,9 @@ async function kalNoweZapisz() {
     tytul, rodzaj: n.rodzaj, termin: n.termin, pora: n.pora, strefa_id: strefa,
     wykonawca_user_id: n.wyk.startsWith('u:') ? Number(n.wyk.slice(2)) : null,
     wykonawca_virtual_id: n.wyk.startsWith('v:') ? Number(n.wyk.slice(2)) : null,
+    // Powtarzanie trafia tu tylko z dyktowania („co tydzień") — kafelka na nie
+    // nie ma, bo cykl ustawia się rzadziej niż raz na wpis, w Szczegółach.
+    powtarzaj: n.powtarzaj, powtarzaj_co: n.powtarzaj_co,
   };
   if (wyd) {
     dane.pora_koniec = n.pora ? n.pora_koniec : null;
@@ -1636,6 +1733,8 @@ function kalAtrybuty(w) {
 }
 
 function kalZamknijPodglad() {
+  // Mikrofon w okienku dodawania nie może słuchać dalej po jego zamknięciu.
+  if (window.Dyktowanie) Dyktowanie.stop();
   document.getElementById('kl-podglad')?.remove();
   document.querySelectorAll('.kl-wybrany').forEach((e) => e.classList.remove('kl-wybrany'));
   kalPodglad = null;

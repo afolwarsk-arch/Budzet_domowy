@@ -1106,8 +1106,11 @@
     .kl-dzien { position: relative; }
     .kl-pas-tory { position: relative; min-height: 24px; }
     .kl-trzymanie { position: absolute; left: 2px; right: 2px; z-index: 4; pointer-events: none;
+                    display: flex; align-items: center; justify-content: center; min-height: 22px;
                     border-radius: 6px; box-shadow: inset 0 0 0 2px var(--accent);
                     background: color-mix(in srgb, var(--accent) 18%, transparent);
+                    font-size: 11px; font-weight: 600; color: var(--accent-strong);
+                    font-variant-numeric: tabular-nums;
                     animation: kl-trzymaj .5s ease-out both; }
     @keyframes kl-trzymaj { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
     @media (prefers-reduced-motion: reduce) { .kl-trzymanie { animation: none; } }
@@ -1137,7 +1140,16 @@
     .kl-nowe-wroc { flex: none; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border);
                     border-radius: 9px; background: var(--surface); color: var(--text);
                     font: inherit; font-size: 18px; cursor: pointer; }
-    .kl-nowe-forma #kn-tytul { width: 100%; min-height: 46px; box-sizing: border-box; }
+    .kl-nowe-pole { display: flex; gap: 8px; }
+    .kl-nowe-forma #kn-tytul { flex: 1; min-width: 0; min-height: 46px; box-sizing: border-box; }
+    /* Usłyszane dodatki czekają na potwierdzenie — nie nadpisują dnia i godziny,
+       które wskazał palec. */
+    .kl-nowe-uslyszane { display: flex; align-items: center; gap: 10px; margin-top: 8px;
+                         padding: 6px 6px 6px 12px; border-radius: 10px;
+                         background: var(--surface-2); font-size: 13px; color: var(--text); }
+    .kl-nowe-uslyszane[hidden] { display: none; }
+    .kl-nowe-uslyszane span { flex: 1; min-width: 0; }
+    .kl-nowe-uslyszane .btn { flex: none; min-height: 34px; padding: 0 12px; font-size: 13px; }
     .klp.karta.kl-nowe { width: 360px; }
     .kl-wpis.ciag-l::before, .kl-wpis.ciag-p::after {
       content: ''; position: absolute; top: 0; bottom: 0; width: 26px; z-index: -1;
