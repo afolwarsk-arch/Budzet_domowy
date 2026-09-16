@@ -15,6 +15,20 @@ from auth import get_current_user
 router = APIRouter(prefix="/api/task", tags=["task"])
 
 
+def _strefa(v: str | None):
+    """Wartość zawężenia do obszaru z zapytania: None (wszystkie), „brak"
+    (sprawy bez obszaru) albo liczba. Śmieć traktujemy jak brak zawężenia —
+    lepiej pokazać za dużo niż pustą listę bez wyjaśnienia."""
+    if v is None or v == "":
+        return None
+    if v == "brak":
+        return "brak"
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _hid(u: dict) -> int:
     hid = u.get("household_id")
     if not hid:
@@ -96,7 +110,7 @@ def _dane(d: dict, nowe: bool) -> dict:
 
 @router.get("/zadania")
 def lista_zadan(czas: str = "wszystko", status: str = "otwarte",
-                osoba: int | None = None, strefa: int | None = None,
+                osoba: int | None = None, strefa: str | None = None,
                 current_user: dict = Depends(get_current_user)):
     """Dwa niezależne filtry: czas i stan — patrz `task_db.lista`."""
     if czas not in ("wszystko", "dzis", "wkrotce"):
@@ -107,7 +121,7 @@ def lista_zadan(czas: str = "wszystko", status: str = "otwarte",
     # zadanie BEZ własnej godziny i tak zadzwoni. Osobne żądanie po jedną
     # wartość byłoby drugim okrążeniem po to samo.
     return {"zadania": task_db.lista(_hid(current_user), current_user["user_id"],
-                                     czas, status, osoba, strefa),
+                                     czas, status, osoba, _strefa(strefa)),
             "domyslna_pora": task_db.domyslna_pora()}
 
 
@@ -166,7 +180,7 @@ def skasuj_zaleznosc(zadanie_id: int, poprzednik_id: int,
 
 
 @router.get("/plan")
-def plan_zadan(zrobione: bool = False, strefa: int | None = None,
+def plan_zadan(zrobione: bool = False, strefa: str | None = None,
                wydarzenia: bool = False,
                current_user: dict = Depends(get_current_user)):
     """Zadania z datami — wejście dla wykresu Gantta i kalendarza.
@@ -176,14 +190,16 @@ def plan_zadan(zrobione: bool = False, strefa: int | None = None,
     przebiegło. `wydarzenia=true` (kalendarz) dokłada wydarzenia spoza projektów.
     """
     hid = _hid(current_user)
-    return {"zadania": task_db.plan(hid, current_user["user_id"], zrobione, strefa, wydarzenia),
+    return {"zadania": task_db.plan(hid, current_user["user_id"], zrobione,
+                                    _strefa(strefa), wydarzenia),
             "zaleznosci": task_db.zaleznosci(hid)}
 
 
 @router.get("/wydarzenia")
-def lista_wydarzen(strefa: int | None = None, current_user: dict = Depends(get_current_user)):
+def lista_wydarzen(strefa: str | None = None, current_user: dict = Depends(get_current_user)):
     """Zakładka „Wydarzenia": nadchodzące i minione z 30 dni."""
-    return {"zadania": task_db.wydarzenia(_hid(current_user), current_user["user_id"], strefa),
+    return {"zadania": task_db.wydarzenia(_hid(current_user), current_user["user_id"],
+                                          _strefa(strefa)),
             "domyslna_pora": task_db.domyslna_pora()}
 
 
@@ -204,7 +220,10 @@ def lista_stref(current_user: dict = Depends(get_current_user)):
     hid, uid = _hid(current_user), current_user["user_id"]
     zalozone = task_db.zaloz_strefy_startowe(hid, uid)
     return {"strefy": task_db.strefy(hid, uid), "zalozone_teraz": zalozone,
-            "ikony": list(task_db.IKONY_STREF)}
+            "ikony": list(task_db.IKONY_STREF),
+            # Licznik przy zakładce „Inne" — bez niego sprawy bez obszaru
+            # przepadają przy pracy na zakładkach.
+            "bez_obszaru": task_db.ile_bez_obszaru(hid, uid)}
 
 
 @router.post("/strefy", status_code=201)

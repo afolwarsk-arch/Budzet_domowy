@@ -1140,6 +1140,13 @@
     .kl-nowe-wroc { flex: none; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border);
                     border-radius: 9px; background: var(--surface); color: var(--text);
                     font: inherit; font-size: 18px; cursor: pointer; }
+    /* Znak obszaru przy nazwie — sama ikona, 14 px, bez pola dotyku: kafelek
+       obszaru (30 px) nie mieści się na telefonie, a wiedzieć, czy sprawa jest
+       z domu czy z pracy, trzeba właśnie w widoku „Wszystkie". */
+    .zad-znak-obszaru { display: inline-flex; vertical-align: -2px; margin-right: 5px;
+                        color: var(--muted); }
+    .zad-znak-obszaru .ikona svg { width: 14px; height: 14px; }
+
     .kl-nowe-pole { display: flex; gap: 8px; }
     .kl-nowe-forma #kn-tytul { flex: 1; min-width: 0; min-height: 46px; box-sizing: border-box; }
     /* Usłyszane dodatki czekają na potwierdzenie — nie nadpisują dnia i godziny,

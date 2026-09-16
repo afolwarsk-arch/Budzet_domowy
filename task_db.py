@@ -228,6 +228,21 @@ _WIDOCZNE = ("household_id = %s AND (prywatne_dla IS NULL OR prywatne_dla = %s) 
              "(SELECT strefa_id FROM task_strefy_osob WHERE user_id = %s))")
 
 
+# Zawężenie do obszaru dokładane do odczytów. `strefa`: None to wszystkie
+# dostępne, liczba to jeden obszar, a „brak" to sprawy BEZ obszaru.
+#
+# „Brak" musi być osobnym wyborem, nie stanem domyślnym: filtr obszaru pomija
+# zadania bez obszaru (należą do wszystkiego i do niczego), więc przy pracy na
+# zakładkach „Praca"/„Dom" nieprzypisane nie pokazują się nigdzie i znikają
+# z oczu. Zakładka „Inne" jest jedynym miejscem, w którym widać je osobno.
+def _warunek_strefy(strefa, warunki: list, p: list) -> None:
+    if strefa == "brak":
+        warunki.append("strefa_id IS NULL")
+    elif strefa:
+        warunki.append("strefa_id = %s")
+        p.append(strefa)
+
+
 def _p(household_id, user_id, *reszta):
     """Parametry pod `_WIDOCZNE`, w jego kolejności.
 
@@ -460,9 +475,7 @@ def lista(household_id, user_id, czas="wszystko", status="otwarte",
     # rzeczy do zrobienia.
     warunki = [_WIDOCZNE, "rodzaj = 'zadanie'"]
     p = list(_p(household_id, user_id))
-    if strefa:
-        warunki.append("strefa_id = %s")
-        p.append(strefa)
+    _warunek_strefy(strefa, warunki, p)
 
     if czas == "dzis":
         warunki.append("termin IS NOT NULL AND termin <= CURRENT_DATE")
@@ -553,9 +566,7 @@ def plan(household_id, user_id, pokaz_zrobione=False, strefa=None, wszystkie_wyd
     """
     warunki = [_WIDOCZNE, "(data_start IS NOT NULL OR termin IS NOT NULL)"]
     p = list(_p(household_id, user_id))
-    if strefa:
-        warunki.append("strefa_id = %s")
-        p.append(strefa)
+    _warunek_strefy(strefa, warunki, p)
     # Gantt: wydarzenia tylko w projektach, bo tam są etapem przedsięwzięcia
     # („odbiór mieszkania"). Luźne wizyty u dentysty to nie plan. Kalendarz
     # prosi o wszystkie.
@@ -610,6 +621,19 @@ def strefy(household_id, user_id) -> list[dict]:
             "WHERE s.household_id = %s ORDER BY s.kolejnosc, s.id",
             (user_id, household_id))
         return [dict(r) for r in cur.fetchall()]
+
+
+def ile_bez_obszaru(household_id, user_id) -> int:
+    """Ile otwartych zadań i nadchodzących wydarzeń nie ma obszaru — licznik
+    przy zakładce „Inne". Zero znaczy, że zakładka w ogóle się nie pokazuje."""
+    with get_db() as cur:
+        cur.execute(
+            f"SELECT COUNT(*) AS ile FROM task_zadania WHERE {_WIDOCZNE} "
+            "AND strefa_id IS NULL AND (("
+            "  rodzaj = 'zadanie' AND status = 'otwarte') OR ("
+            "  rodzaj = 'wydarzenie' AND termin >= CURRENT_DATE))",
+            _p(household_id, user_id))
+        return int(cur.fetchone()["ile"] or 0)
 
 
 def zaloz_strefy_startowe(household_id, user_id) -> bool:
@@ -1234,9 +1258,7 @@ def wydarzenia(household_id, user_id, strefa=None, minione_dni=30) -> list[dict]
     warunki = [_WIDOCZNE, "rodzaj = 'wydarzenie'", "termin IS NOT NULL",
                "termin >= CURRENT_DATE - make_interval(days => %s)"]
     p = list(_p(household_id, user_id, int(minione_dni)))
-    if strefa:
-        warunki.append("strefa_id = %s")
-        p.append(strefa)
+    _warunek_strefy(strefa, warunki, p)
     with get_db() as cur:
         cur.execute(f"SELECT {_POLA} FROM task_zadania WHERE " + " AND ".join(warunki)
                     + " ORDER BY COALESCE(data_start, termin), pora NULLS FIRST, id", p)

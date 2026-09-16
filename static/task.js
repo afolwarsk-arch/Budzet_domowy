@@ -1,4 +1,4 @@
-﻿// Ekran zadań — wiem.task.
+// Ekran zadań — wiem.task.
 //
 // DRZEWO SKŁADAMY TUTAJ, nie w SQL-u (patrz nagłówek task_db.py). Serwer daje
 // płaską listę, a `budujDrzewo` wiąże dzieci z rodzicami. Dzięki temu postęp
@@ -178,7 +178,15 @@ let STREFY = [];
 let IKONY_STREF = [];
 // Wybór trzymamy w przeglądarce, nie na koncie: telefon i laptop służbowy to
 // dwa różne konteksty i wymuszanie na nich jednej strefy byłoby uciążliwe.
-let strefa = Number(localStorage.getItem('task_strefa')) || null;
+// null = wszystkie dostępne, liczba = jeden obszar, 'brak' = sprawy bez obszaru
+// (zakładka „Inne"). Bez tej trzeciej wartości nieprzypisane widać wyłącznie
+// w „Wszystkie" — przy pracy na zakładkach znikają z oczu.
+let strefa = (() => {
+  const v = localStorage.getItem('task_strefa');
+  return v === 'brak' ? 'brak' : (Number(v) || null);
+})();
+// Ile spraw czeka bez obszaru — z tego bierze się obecność zakładki „Inne".
+let bezObszaru = 0;
 
 // „1 otwartych" kłuje w oczy. Polski ma trzy formy i wybiera je po ostatniej
 // cyfrze, z wyjątkiem nastek: 12, 13, 14 idą jak liczby duże.
@@ -215,6 +223,10 @@ function rysujObszary() {
       ${ikonaSvg(ikona)}<span>${esc(nazwa)}</span>${ile ? `<i>${ile}</i>` : ''}
     </button>`;
   box.innerHTML = zakladka(null, 'kompas', 'Wszystkie', 0)
+    // „Inne" tylko wtedy, gdy naprawdę coś bez obszaru czeka — pusta zakładka
+    // byłaby ozdobą, a jej zniknięcie po przypisaniu ostatniej sprawy jest
+    // najlepszym potwierdzeniem, że nic nie zostało.
+    + (bezObszaru ? zakladka('brak', 'kropki', 'Inne', bezObszaru) : '')
     + moje.map((s) => zakladka(s.id, s.ikona || 'lista', s.nazwa, s.otwartych)).join('')
     + `<button class="ob ob-ustaw" type="button" data-ob-ustaw="1"
                aria-label="Ustaw obszary życia" title="Ustaw obszary życia">${
@@ -237,7 +249,8 @@ function obszaryPodepnij() {
     }
     const b = ev.target.closest('[data-ob]');
     if (!b) return;
-    const id = b.dataset.ob ? Number(b.dataset.ob) : null;
+    const v = b.dataset.ob;
+    const id = !v ? null : (v === 'brak' ? 'brak' : Number(v));
     if (id === strefa) return;
     ustawStrefe(id);
     rysujObszary();
@@ -251,7 +264,7 @@ function obszaryPodepnij() {
 function przesunObszar(o) {
   const moje = STREFY.filter((s) => s.moja);
   if (!moje.length) return;
-  const kolejno = [null, ...moje.map((s) => s.id)];
+  const kolejno = [null, ...(bezObszaru ? ['brak'] : []), ...moje.map((s) => s.id)];
   const teraz = kolejno.indexOf(strefa);
   const docelowy = Math.min(kolejno.length - 1, Math.max(0, teraz + o));
   if (docelowy === teraz) return;
@@ -266,12 +279,23 @@ async function wczytajStrefy() {
     const d = await r.json();
     STREFY = d.strefy || [];
     IKONY_STREF = d.ikony || [];
-  } catch { STREFY = []; }
+    bezObszaru = d.bez_obszaru || 0;
+  } catch { STREFY = []; bezObszaru = 0; }
   // Strefa, której już nie ma (skasowana albo wyłączona), przestaje obowiązywać
-  // — inaczej lista byłaby pusta bez wyjaśnienia dlaczego.
-  if (strefa && !STREFY.some((s) => s.id === strefa && s.moja)) ustawStrefe(null);
+  // — inaczej lista byłaby pusta bez wyjaśnienia dlaczego. To samo z „Inne",
+  // gdy ostatnia sprawa bez obszaru dostała przydział.
+  if (strefa === 'brak') {
+    if (!bezObszaru) ustawStrefe(null);
+  } else if (strefa && !STREFY.some((s) => s.id === strefa && s.moja)) {
+    ustawStrefe(null);
+  }
   rysujObszary();
 }
+
+// Obszar do ZAPISU nowej sprawy. Zakładka „Inne" nie jest obszarem, tylko
+// widokiem spraw bez obszaru — nowe zadanie ma tam powstać bez przydziału,
+// a nie z obszarem o nazwie „brak".
+const strefaDoZapisu = () => (typeof strefa === 'number' ? strefa : null);
 
 function ustawStrefe(id) {
   strefa = id || null;
@@ -1077,7 +1101,8 @@ function kalPozycja(w, dzis, dzien) {
     stan === 'po-czasie' ? `termin minął ${kalDzienKrotko(w.koniec)}` : '',
   ].filter(Boolean).join(', ');
   return `<button type="button" class="kl-poz ${stan}" ${kalAtrybuty(w)}>
-    <span class="kl-tyt">${kalZnak(w.z)}${esc(w.z.tytul)}${dopisek ? `<small>${esc(dopisek)}</small>` : ''}</span>
+    <span class="kl-tyt">${kalZnak(w.z)}${znakObszaru(w.z, true)}${esc(w.z.tytul)}${
+      dopisek ? `<small>${esc(dopisek)}</small>` : ''}</span>
   </button>`;
 }
 
@@ -1678,7 +1703,7 @@ async function kalNoweZapisz() {
     return;
   }
   const dane = {
-    tytul, rodzaj: n.rodzaj, termin: n.termin, pora: n.pora, strefa_id: strefa,
+    tytul, rodzaj: n.rodzaj, termin: n.termin, pora: n.pora, strefa_id: strefaDoZapisu(),
     wykonawca_user_id: n.wyk.startsWith('u:') ? Number(n.wyk.slice(2)) : null,
     wykonawca_virtual_id: n.wyk.startsWith('v:') ? Number(n.wyk.slice(2)) : null,
     // Powtarzanie trafia tu tylko z dyktowania („co tydzień") — kafelka na nie
@@ -1803,6 +1828,12 @@ function kalPodgladHtml(w, dzis, zAkcjami) {
     // terminu, więc bez tego nie widać, kiedy faktycznie zostało zrobione.
     [z.status === 'zrobione' && z.zrobione_at ? 'Zrobione' : '', esc(kalChwila(z.zrobione_at, dzis))],
     [kto ? 'Kto' : '', esc(kto)],
+    // Obszar w podglądzie ZAWSZE, nie tylko przy „Wszystkie": podgląd otwiera
+    // się po to, żeby wiedzieć o sprawie wszystko.
+    ...(() => {
+      const s = STREFY.find((x) => x.id === z.strefa_id);
+      return [[s ? 'Obszar' : '', s ? esc(s.nazwa) : '']];
+    })(),
     [z.opis ? 'Opis' : '', `<span class="klp-opis">${esc(z.opis)}</span>`],
   ].filter(([etykieta]) => etykieta);
 
@@ -1868,6 +1899,7 @@ function kalKafle(z) {
         <option value="-1"${p < 0 ? ' selected' : ''}>Niski</option>
       </select>
     </label>
+    ${kafelObszaru(z)}
     <button class="zad-plus zad-komentarz${z.ile_komentarzy ? ' jest' : ''}" type="button"
             data-komentarze="${z.id}" title="Dziennik zadania" aria-label="Dziennik zadania">${
       z.ile_komentarzy ? z.ile_komentarzy : ikonaSvg('notatka')}</button>
@@ -1905,6 +1937,7 @@ function kalKafleWydarzenia(z) {
       ${ikonaSvg('alerty')}<span>${przyp ? przyp[2] : 'bez'}</span>
       <select data-klp-pole="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(z.przypomnij_min)}</select>
     </label>
+    ${kafelObszaru(z)}
     <button class="zad-plus zad-komentarz${z.ile_komentarzy ? ' jest' : ''}" type="button"
             data-komentarze="${z.id}" title="Dziennik" aria-label="Dziennik">${
       z.ile_komentarzy ? z.ile_komentarzy : ikonaSvg('notatka')}</button>
@@ -1980,6 +2013,10 @@ function kalOtworzPodglad({ id, el, od, do: doK, wirtualne, pozycja, bezAnimacji
     if (ev.target.closest('[data-klp-zrobione]')) await kalOdhacz(z);
   };
   p.onchange = (ev) => {
+    // Obszar idzie OSOBNĄ trasą, bo przenosi całe poddrzewo — nie da się go
+    // wcisnąć w zwykły zapis pól.
+    const obszar = ev.target.closest('[data-obszar]');
+    if (obszar) { kalZmienObszar(id, obszar.value ? Number(obszar.value) : null); return; }
     const pole = ev.target.closest('[data-klp-pole]');
     if (!pole) return;
     const v = pole.value;
@@ -2009,6 +2046,24 @@ function kalOtworzPodglad({ id, el, od, do: doK, wirtualne, pozycja, bezAnimacji
 async function kalZmienPole(id, zmiany) {
   const pozycja = kalPodglad && kalPodglad.pozycja;
   await zapiszSzybko(id, zmiany);
+  kalPodgladZnow(id, pozycja);
+}
+
+// Zmiana obszaru z podglądu. Odświeżamy też pasek zakładek: licznik „Inne"
+// właśnie się zmienił, a przy ostatniej przypisanej sprawie zakładka znika.
+async function kalZmienObszar(id, strefaId) {
+  const pozycja = kalPodglad && kalPodglad.pozycja;
+  const r = await authFetch(`/api/task/zadania/${id}/strefa`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ strefa_id: strefaId }),
+  });
+  if (!r.ok) { toast('Nie udało się zmienić obszaru.', 'blad'); return; }
+  await wczytajStrefy();
+  await wczytaj();
+  kalPodgladZnow(id, pozycja);
+}
+
+function kalPodgladZnow(id, pozycja) {
   const z = zadania.find((x) => x.id === id);
   if (!z) { kalZamknijPodglad(); return; }
   const zz = zakresZadania(z);
@@ -2228,7 +2283,7 @@ function rysujWydarzenia() {
     const r = await authFetch('/api/task/zadania', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        tytul, rodzaj: 'wydarzenie', termin, strefa_id: strefa,
+        tytul, rodzaj: 'wydarzenie', termin, strefa_id: strefaDoZapisu(),
         pora: wydNowe.pora, pora_koniec: wydNowe.pora ? wydNowe.pora_koniec : null,
         wykonawca_user_id: wydNowe.wyk.startsWith('u:') ? Number(wydNowe.wyk.slice(2)) : null,
         wykonawca_virtual_id: wydNowe.wyk.startsWith('v:') ? Number(wydNowe.wyk.slice(2)) : null,
@@ -2267,7 +2322,7 @@ function wydWiersz(w, dzis) {
   return `<button type="button" class="wyd-poz${w.koniec < dzis ? ' minione' : ''}" ${kalAtrybuty(w)}>
     <span class="wyd-kiedy"><strong>${esc(dzien)}</strong><span>${esc(godz)}</span></span>
     <span class="wyd-tresc">
-      <span class="wyd-tytul">${esc(z.tytul)}</span>
+      <span class="wyd-tytul">${znakObszaru(z, true)}${esc(z.tytul)}</span>
       ${meta ? `<small>${esc(meta)}</small>` : ''}
     </span>
     ${ktos ? `<span class="wyd-kto" title="Kto">${skrotWykonawcy(z)}</span>` : ''}
@@ -3318,7 +3373,7 @@ function rysujLista() {
       // Strefa bieżąca dla nowego korzenia. Przy `parent_id` serwer ją
       // zignoruje i weźmie strefę rodzica — krok należy tam, gdzie sprawa.
       body: JSON.stringify({
-        tytul: t.trim(), parent_id: korzen, strefa_id: strefa,
+        tytul: t.trim(), parent_id: korzen, strefa_id: strefaDoZapisu(),
         // Pora bez terminu nie ma czego przypominać — wysyłamy ją tylko z datą.
         termin: szNowe.termin, pora: szNowe.termin ? szNowe.pora : null,
         wykonawca_user_id: szNowe.wyk.startsWith('u:') ? Number(szNowe.wyk.slice(2)) : null,
@@ -3520,7 +3575,7 @@ function wiersz(w, poziom) {
                na liście dokładnie jak zwykłe zadanie, a to ono zbiera kroki
                i ma własny kafel w zakładce Projekty. -->
           <div class="zad-tytul">${w.kamien_milowy ? '<span class="kamien"></span>' : ''}${
-            znakPriorytetu(w)}${esc(w.tytul)}${
+            znakPriorytetu(w)}${znakObszaru(w)}${esc(w.tytul)}${
             w.projekt ? '<span class="zad-projekt" title="Przedsięwzięcie — zbiera kroki">projekt</span>' : ''}${
             w.status === 'wstrzymane'
               ? '<span class="zad-stop" title="Wstrzymane — nie przypomina i nie liczy się do „dziś"">wstrzymane</span>'
@@ -3647,6 +3702,21 @@ function wiersz(w, poziom) {
 // TYLKO PRZY ZADANIACH GŁÓWNYCH. Krok dziedziczy obszar po sprawie, której jest
 // częścią, a kafelek, który przy jednych wierszach coś robi, a przy innych nie,
 // jest gorszy niż jego brak. Zapis idzie osobną trasą, bo przenosi całą gałąź.
+// Znak obszaru przy nazwie — mała ikona, bez własnego pola dotyku, więc mieści
+// się też na telefonie (kafelek obszaru znika tam poniżej 430 px).
+//
+// TYLKO W WIDOKU „WSZYSTKIE": po zawężeniu do Domu wszystko na ekranie jest
+// z domu i ikona przy każdym wierszu byłaby szumem. `zawsze` dla wpisów
+// w kalendarzu i wydarzeniach, gdzie kroki też pokazują obszar sprawy.
+function znakObszaru(w, zawsze = false) {
+  if (strefa !== null || !STREFY.length) return '';
+  if (!zawsze && w.parent_id != null) return '';
+  const s = STREFY.find((x) => x.id === w.strefa_id);
+  if (!s) return '';
+  return `<span class="zad-znak-obszaru" title="Obszar: ${esc(s.nazwa)}">${
+    ikonaSvg(s.ikona || 'lista')}</span>`;
+}
+
 function kafelObszaru(w) {
   if (w.parent_id != null || !STREFY.length) return '';
   const moja = STREFY.find((s) => s.id === w.strefa_id);
@@ -3788,7 +3858,7 @@ async function zapiszZMowy(tekst) {
   try {
     const r = await authFetch('/api/task/z-mowy', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tekst, parent_id: korzen, strefa_id: strefa }),
+      body: JSON.stringify({ tekst, parent_id: korzen, strefa_id: strefaDoZapisu() }),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { toast(d.detail || 'Nie udało się zapisać zadania.', 'blad'); return; }
@@ -4166,7 +4236,7 @@ async function lapZapisz() {
         parent_id: teraz ? teraz.id : null,
         // Obszar ze zdania przed obszarem z ekranu. Przy zapisie w projekcie
         // serwer i tak weźmie obszar rodzica — krok należy tam, gdzie sprawa.
-        strefa_id: lap.obszar ? lap.obszar.id : strefa,
+        strefa_id: lap.obszar ? lap.obszar.id : strefaDoZapisu(),
       }),
     });
     const d = await r.json().catch(() => ({}));
@@ -4529,7 +4599,7 @@ async function przenZaloz() {
   try {
     const r = await authFetch('/api/task/zadania', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tytul: nazwa, projekt: true, strefa_id: strefa }),
+      body: JSON.stringify({ tytul: nazwa, projekt: true, strefa_id: strefaDoZapisu() }),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.id) { toast(d.detail || 'Nie udało się założyć projektu.', 'blad'); return; }
