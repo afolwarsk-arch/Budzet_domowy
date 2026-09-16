@@ -498,6 +498,10 @@
     .sz-pola .zad-kiedy .zad-pora { font-size: 12px; padding: 0 9px; }
     .sz-pola .zad-kto.jest:not(.zad-prio-kafel) { min-width: 40px; }
     .sz-pola .zad-prio-kafel span { font-weight: 600; }
+    /* Ten sam rząd kafelków przy dopisywaniu kroku pod wierszem zadania —
+       tylko odstępy inne, bo stoi w środku listy, a nie nad nią. */
+    .kr-pola { margin: 6px 0 2px; }
+
     .sz-wyczysc { margin-left: auto; border: none; background: none; padding: 6px 4px;
                   font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; }
     @media (hover: hover) { .sz-wyczysc:hover { color: var(--text); } }

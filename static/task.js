@@ -461,6 +461,11 @@ function pokazDopisywanie(id) {
   const box = document.getElementById('dopisz-' + id);
   if (!box) return;
   box.hidden = false;
+  // Kafelki startują puste przy każdym otwarciu: data poprzedniego kroku nie
+  // może po cichu wejść krokowi w innym zadaniu.
+  krWyczysc();
+  const pola = document.getElementById('kr-pola-' + id);
+  if (pola) { pola.innerHTML = krPolaHtml(); pola.hidden = false; }
   // BEZ `focus()`. Ustawienie kursora wyrzuca na telefonie klawiaturę, która
   // zasłania pół ekranu — a plusik naciska się też po to, żeby zobaczyć, co
   // zadanie ma w środku. Klawiatura ma wychodzić, gdy ktoś stuknie w pole.
@@ -554,6 +559,48 @@ function dataCzas(iso) {
 function schowajDopisywanie() {
   dopisywanieW = null;
   document.querySelectorAll('.zad-dopisz').forEach((b) => { b.hidden = true; });
+  document.querySelectorAll('.kr-pola').forEach((b) => { b.hidden = true; });
+}
+
+// Ustawienia nowego KROKU dopisywanego na liście. Osobny stan od pola na górze
+// (`szNowe`): tam dodaje się sprawę, tu krok istniejącej sprawy, a dwa otwarte
+// naraz formularze nie mogą sobie podbierać daty.
+const krNowe = { termin: null, pora: null, wyk: '', priorytet: 0 };
+
+const krWyczysc = () => Object.assign(krNowe, { termin: null, pora: null, wyk: '', priorytet: 0 });
+
+function krPolaHtml() {
+  const w = {
+    wykonawca_user_id: krNowe.wyk.startsWith('u:') ? Number(krNowe.wyk.slice(2)) : null,
+    wykonawca_virtual_id: krNowe.wyk.startsWith('v:') ? Number(krNowe.wyk.slice(2)) : null,
+  };
+  const p = krNowe.priorytet;
+  return `
+    <span class="zad-kiedy sz-kafel${krNowe.termin ? ' jest' : ''}">
+      <label class="zad-data" title="Termin kroku">
+        ${krNowe.termin ? esc(dataKrotka(krNowe.termin)) : `${ikonaSvg('kalendarz')}<span>Termin</span>`}
+        <input type="date" data-kr="termin" value="${esc(krNowe.termin || '')}">
+      </label>
+      ${krNowe.termin ? `<label class="zad-pora${krNowe.pora ? ' jest' : ''}"
+             title="${krNowe.pora ? 'Przypomni o ' + esc(krNowe.pora)
+               : 'Przypomni o ' + esc(domyslnaPora) + ' (godzina domyślna)'}">
+        ${esc((krNowe.pora || domyslnaPora).slice(0, 5))}
+        <input type="time" data-kr="pora" value="${esc(krNowe.pora || '')}">
+      </label>` : ''}
+    </span>
+    <label class="zad-kto sz-kafel${krNowe.wyk ? ' jest' : ''}" title="Kto zrobi ten krok">
+      ${krNowe.wyk ? skrotWykonawcy(w) : `${ikonaSvg('osoby')}<span>Kto</span>`}
+      <select data-kr="wyk" aria-label="Kto zrobi ten krok">${opcjeWykonawcyKrotkie(w)}</select>
+    </label>
+    <label class="zad-kto zad-prio-kafel sz-kafel${p > 0 ? ' jest wysoki' : (p < 0 ? ' jest niski' : '')}"
+           title="Priorytet kroku">
+      ${p > 0 ? '!<span>Wysoki</span>' : (p < 0 ? '↓<span>Niski</span>' : `${ikonaSvg('flaga')}<span>Priorytet</span>`)}
+      <select data-kr="priorytet" aria-label="Priorytet kroku">
+        <option value="1"${p > 0 ? ' selected' : ''}>Wysoki</option>
+        <option value="0"${!p ? ' selected' : ''}>Zwykły</option>
+        <option value="-1"${p < 0 ? ' selected' : ''}>Niski</option>
+      </select>
+    </label>`;
 }
 
 function podepnijPtaszki() {
@@ -563,6 +610,8 @@ function podepnijPtaszki() {
     const box = document.getElementById('dopisz-' + dopisywanieW);
     if (box) {
       box.hidden = false;
+      const pola = document.getElementById('kr-pola-' + dopisywanieW);
+      if (pola) { pola.innerHTML = krPolaHtml(); pola.hidden = false; }
       // Kursor wraca do pola TYLKO po faktycznym zapisaniu kroku, bo wtedy
       // ktoś pisze serię i klawiatura jest mu potrzebna. Przy każdym innym
       // przerysowaniu (odhaczenie, zmiana daty) ustawianie kursora wyrzucałoby
@@ -590,13 +639,24 @@ function podepnijPtaszki() {
     if (!tytul) { schowajDopisywanie(); return; }
     const parent = Number(pole.dataset.poleDodaj);
     pole.disabled = true;
+    const rk = krNowe;
     const r = await authFetch('/api/task/zadania', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tytul, parent_id: parent }),
+      body: JSON.stringify({
+        tytul, parent_id: parent,
+        // Pora bez terminu nie ma czego przypominać — idzie tylko z datą.
+        termin: rk.termin, pora: rk.termin ? rk.pora : null,
+        wykonawca_user_id: rk.wyk.startsWith('u:') ? Number(rk.wyk.slice(2)) : null,
+        wykonawca_virtual_id: rk.wyk.startsWith('v:') ? Number(rk.wyk.slice(2)) : null,
+        priorytet: rk.priorytet,
+      }),
     });
     pole.disabled = false;
     if (!r.ok) { toast('Nie udało się zapisać kroku.', 'blad'); return; }
     pole.value = '';
+    // Seria kroków: kafelki wracają do pustych, żeby drugi krok nie dostał
+    // po cichu daty pierwszego.
+    krWyczysc();
     dopisywanieW = parent;      // po przerysowaniu pole ma wrócić w to samo miejsce
     wracajKursorem = true;      // …i z kursorem, bo kroki dopisuje się seriami
     await wczytaj();
@@ -605,6 +665,21 @@ function podepnijPtaszki() {
 
   // Szybkie pola: termin i wykonawca zapisują się od razu po wyborze.
   lista.onchange = async (ev) => {
+    // Kafelki NOWEGO kroku: nic nie zapisują, tylko odkładają wybór do chwili,
+    // gdy krok dostanie nazwę.
+    const kr = ev.target.closest('[data-kr]');
+    if (kr) {
+      const v = kr.value;
+      if (kr.dataset.kr === 'termin') {
+        krNowe.termin = v || null;
+        if (!v) krNowe.pora = null;
+      } else if (kr.dataset.kr === 'pora') krNowe.pora = v || null;
+      else if (kr.dataset.kr === 'wyk') krNowe.wyk = v;
+      else if (kr.dataset.kr === 'priorytet') krNowe.priorytet = Number(v) || 0;
+      const pola = kr.closest('.kr-pola');
+      if (pola) pola.innerHTML = krPolaHtml();
+      return;
+    }
     const data = ev.target.closest('[data-termin]');
     if (data) {
       await zapiszSzybko(Number(data.dataset.termin), { termin: data.value || null });
@@ -3956,6 +4031,13 @@ function wiersz(w, poziom) {
           <button class="btn btn-primary btn-dopisz" type="button"
                   data-zatwierdz-dodaj="${w.id}">Dodaj</button>
         </div>
+        <!-- Kafelki kroku: termin, kto, priorytet — te same co przy dodawaniu
+             zadania na górze listy. Szybkie dopisywanie seriami zostaje (Enter
+             zapisuje i zostawia pole otwarte), a kafelki są dla kroków, które
+             od razu mają swój dzień albo swojego wykonawcę. Zerują się po
+             każdym zapisie, żeby drugi krok nie odziedziczył po cichu daty
+             pierwszego. -->
+        <div class="sz-pola kr-pola" id="kr-pola-${w.id}" hidden>${krPolaHtml()}</div>
         <!-- Dziennik: wpisy z datami, od najstarszego. Treść dociągana przy
              otwarciu, żeby lista nie wołała serwera o komentarze wszystkich
              zadań naraz. -->
