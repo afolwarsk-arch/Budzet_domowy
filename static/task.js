@@ -1310,6 +1310,18 @@ function kalBezDaty() {
   </section>`;
 }
 
+// Numer tygodnia wg ISO-8601 (tydzień z pierwszym czwartkiem roku dostaje 1) —
+// ta sama reguła co `isoWeek` w wiem.finance, żeby „ten sam tydzień" znaczył
+// w całej apce to samo. W pracy numer tygodnia bywa jedynym używanym adresem
+// w czasie („zrobimy to w CW38").
+function kalNrTygodnia(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3);   // czwartek tego tygodnia
+  const czw1 = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  czw1.setUTCDate(czw1.getUTCDate() - ((czw1.getUTCDay() + 6) % 7) + 3);
+  return 1 + Math.round((t - czw1) / (7 * 86400000));
+}
+
 function kalOkres() {
   const d = kalDzien;
   const biezacyRok = d.getFullYear() === new Date().getFullYear();
@@ -1362,6 +1374,8 @@ function rysujKalendarz() {
     <div class="kl-ekran">
       <div class="kl-gora">
         <h1 class="kl-okres" aria-live="polite">${esc(kalOkres())}</h1>
+        ${kalWidok === 'tydzien' ? `<span class="kl-cw" title="Tydzień kalendarzowy">CW${
+          kalNrTygodnia(poczatekTygodnia(kalDzien))}</span>` : ''}
         <div class="kl-strzalki">
           <button class="kl-strz" type="button" data-kal-krok="-1"
                   aria-label="Poprzedni ${nazwaKroku}" title="Poprzedni ${nazwaKroku}">‹</button>
