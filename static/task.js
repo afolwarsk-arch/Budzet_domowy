@@ -187,6 +187,8 @@ let strefa = (() => {
 })();
 // Ile spraw czeka bez obszaru — z tego bierze się obecność zakładki „Inne".
 let bezObszaru = 0;
+// Kiedy ostatnio liczyliśmy strefy — żeby nie pytać o to samo dwa razy pod rząd.
+let strefyWczytaneO = 0;
 
 // „1 otwartych" kłuje w oczy. Polski ma trzy formy i wybiera je po ostatniej
 // cyfrze, z wyjątkiem nastek: 12, 13, 14 idą jak liczby duże.
@@ -280,6 +282,7 @@ async function wczytajStrefy() {
     STREFY = d.strefy || [];
     IKONY_STREF = d.ikony || [];
     bezObszaru = d.bez_obszaru || 0;
+    strefyWczytaneO = Date.now();
   } catch { STREFY = []; bezObszaru = 0; }
   // Strefa, której już nie ma (skasowana albo wyłączona), przestaje obowiązywać
   // — inaczej lista byłaby pusta bez wyjaśnienia dlaczego. To samo z „Inne",
@@ -345,7 +348,22 @@ function nagKorzenia(w) {
   </div>`;
 }
 
+// Licznik przy zakładce „Inne" musi nadążać za tym, co się właśnie zmieniło:
+// przypisanie ostatniej sprawy do obszaru ma ją schować, a pierwsza nowa sprawa
+// bez obszaru — pokazać. Stąd odświeżenie pasków po KAŻDYM wczytaniu danych;
+// to jedno małe zapytanie, a bez niego zakładka kłamie aż do przeładowania.
 async function wczytaj() {
+  await wczytajDane();
+  // Świeżo po starcie strefy są już policzone — nie pytamy o to samo dwa razy.
+  if (Date.now() - strefyWczytaneO < 2000) return;
+  const przed = strefa;
+  await wczytajStrefy();
+  // Zakładka „Inne" właśnie zniknęła pod nami — pokazujemy wszystko zamiast
+  // pustej listy z filtrem, którego nie ma już w pasku.
+  if (przed === 'brak' && strefa !== przed) await wczytajDane();
+}
+
+async function wczytajDane() {
   // Plan ma własne wejście: bierze zadania z JAKĄKOLWIEK datą, niezależnie od
   // tego, czy termin już minął — oś czasu pokazuje rozpiętość, a nie „co dziś".
   if (zakres === 'plan') return wczytajPlan();
@@ -3732,16 +3750,24 @@ function wiersz(w, poziom) {
              godzina domyślna przygaszonym pismem — zadanie i tak o niej
              zadzwoni, a wcześniej nie było tego nigdzie widać (i przez to nie
              wysłało się ani jedno przypomnienie). -->
+        <!-- GODZINA TYLKO WPISANA RĘCZNIE (2026-09-16). Przygaszona godzina
+             domyślna stała przy KAŻDYM zadaniu z terminem: zajmowała ~34 px
+             w rzędzie, przez co inne kafelki musiały ustępować, a przy tym
+             myliła — wyglądała jak umówiona pora, choć mówiła tylko „tak wyjdzie
+             samo". Adam: „wprowadza w błąd i zajmuje miejsce". Godzina domyślna
+             jest dalej widoczna tam, gdzie jest miejsce, żeby ją wytłumaczyć:
+             w podglądzie i w Szczegółach; tutaj mówi ją dymek przy dacie. -->
         <span class="zad-kiedy${w.termin ? (spozniony ? ' po-czasie' : ' jest') : ''}">
-          <label class="zad-data" title="Termin">
+          <label class="zad-data" title="${w.termin
+            ? 'Termin' + (w.pora ? '' : ` — przypomni o ${esc(domyslnaPora)} (godzina domyślna)`)
+            : 'Termin'}">
             ${w.termin ? dataKrotka(w.termin) : ikonaSvg('kalendarz')}
             <input type="date" data-termin="${w.id}" value="${esc((w.termin || '').slice(0, 10))}">
           </label>
-          ${w.termin ? `<label class="zad-pora${w.pora ? ' jest' : ''}"
-                 title="${w.pora ? 'Przypomni o ' + esc(w.pora.slice(0, 5))
-                   : 'Przypomni o ' + esc(domyslnaPora) + ' (godzina domyślna)'}">
-            ${esc((w.pora || domyslnaPora).slice(0, 5))}
-            <input type="time" data-pora="${w.id}" value="${esc((w.pora || '').slice(0, 5))}">
+          ${w.termin && w.pora ? `<label class="zad-pora jest"
+                 title="Przypomni o ${esc(w.pora.slice(0, 5))}">
+            ${esc(w.pora.slice(0, 5))}
+            <input type="time" data-pora="${w.id}" value="${esc(w.pora.slice(0, 5))}">
           </label>` : ''}
         </span>
         <label class="zad-kto${w.wykonawca_user_id ? ' jest' : ''}" title="Wykonawca">

@@ -753,6 +753,12 @@
          bez zmian, więc cel dotyku się nie kurczy. */
       .zad-akcje { gap: 3px; }
       .zad-akcje > * { min-width: 28px; }
+      /* Zmierzone na 412 px po przywróceniu kafelka obszaru: najciaśniejszym
+         wierszom (zagnieżdżony krok z licznikiem kroków) brakowało 10 px.
+         Ciaśniejsze wnętrze kafelka terminu oddaje 8–10 px i wiersz zostaje
+         jednolinijkowy — bez chowania czegokolwiek. */
+      .zad-kiedy .zad-data { padding: 0 5px; }
+      .zad-kiedy .zad-pora { padding: 0 5px; }
       /* Kafelek terminu urósł o godzinę przypomnienia (39 → 79 px) i rząd
          przestał się mieścić: zmierzone 328 px przy 293 dostępnych. Ustępuje
          OBSZAR — jako jedyny z kafelków powtarza informację, która stoi już
