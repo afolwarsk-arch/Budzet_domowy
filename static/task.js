@@ -1563,7 +1563,11 @@ function kalPodepnijDodawanie(ekran) {
 
 const kalNowe = { rodzaj: null, termin: null, pora: null, pora_koniec: null,
                   wyk: '', priorytet: 0, przypomnij: '60', tytul: '',
-                  powtarzaj: null, powtarzaj_co: 1, etykieta: '', doDnia: null, strefa: null };
+                  powtarzaj: null, powtarzaj_co: 1, etykieta: '', doDnia: null, strefa: null,
+                  // Krok dopisywany do zadania: rodzic znany z góry, rodzaju się
+                  // nie wybiera (krok wydarzenia nie istnieje), a obszar i
+                  // prywatność dziedziczy po sprawie, której jest częścią.
+                  parent: null, parentTytul: '' };
 
 function kalGodzinePozniej(pora) {
   const [h, m] = pora.split(':').map(Number);
@@ -1571,14 +1575,17 @@ function kalGodzinePozniej(pora) {
   return `${String(Math.floor(razem / 60)).padStart(2, '0')}:${String(razem % 60).padStart(2, '0')}`;
 }
 
-const kalNoweKiedy = () => `${kalDzienKrotko(doDaty(kalNowe.termin))}${kalNowe.pora ? ', ' + kalNowe.pora : ''}`;
+const kalNoweKiedy = () => (kalNowe.termin
+  ? `${kalDzienKrotko(doDaty(kalNowe.termin))}${kalNowe.pora ? ', ' + kalNowe.pora : ''}`
+  : 'bez terminu');
 
 // Okienko korzysta z mechaniki podglądu (ten sam element i stan): zamyka się
 // tak samo — ✕, stuknięciem obok, Escape, pociągnięciem w dół — i tak samo
 // znika przy przerysowaniu kalendarza.
 function kalNoweOtworz(m, punkt) {
   kalZamknijPodglad();
-  Object.assign(kalNowe, { rodzaj: null, termin: m.dzien, pora: m.pora || null,
+  Object.assign(kalNowe, { rodzaj: m.parent ? 'zadanie' : null, termin: m.dzien, pora: m.pora || null,
+                           parent: m.parent || null, parentTytul: m.parentTytul || '',
                            pora_koniec: m.pora ? kalGodzinePozniej(m.pora) : null,
                            wyk: '', priorytet: 0, przypomnij: '60', tytul: '',
                            powtarzaj: null, powtarzaj_co: 1, etykieta: '', doDnia: null,
@@ -1633,8 +1640,13 @@ function kalNoweOtworz(m, punkt) {
     const v = el.value;
     switch (el.dataset.kn) {
       case 'termin':
-        if (!v) { el.value = kalNowe.termin; return; }   // bez dnia nie ma czego dodać do kalendarza
-        kalNowe.termin = v;
+        // Wydarzenie bez dnia nie istnieje; krok i zadanie mogą go nie mieć.
+        if (!v && (kalNowe.rodzaj === 'wydarzenie' || !kalNowe.parent)) {
+          el.value = kalNowe.termin;
+          return;
+        }
+        kalNowe.termin = v || null;
+        if (!kalNowe.termin) { kalNowe.pora = null; kalNowe.doDnia = null; }
         break;
       case 'pora':
         kalNowe.pora = v || null;
@@ -1665,7 +1677,9 @@ function kalNoweOtworz(m, punkt) {
 }
 
 function kalNoweRysuj(p, doPola = false) {
-  p.querySelector('.klp-tytul').textContent = `Nowe na ${kalNoweKiedy()}`;
+  p.querySelector('.klp-tytul').textContent = kalNowe.parent
+    ? `Nowy krok w „${kalNowe.parentTytul}"`
+    : `Nowe na ${kalNoweKiedy()}`;
   const tresc = p.querySelector('.kl-nowe-tresc');
   if (!kalNowe.rodzaj) {
     tresc.innerHTML = `
@@ -1683,9 +1697,13 @@ function kalNoweRysuj(p, doPola = false) {
   const wyd = kalNowe.rodzaj === 'wydarzenie';
   tresc.innerHTML = `
     <form class="kl-nowe-forma">
+      <!-- Przy kroku nie ma czego wybierać ani dokąd wracać: rodzic jest znany,
+           a krok wydarzenia nie istnieje. -->
       <div class="kl-nowe-rodzaj">
-        <button type="button" class="kl-nowe-wroc" data-kn-wroc aria-label="Zmień: zadanie czy wydarzenie">‹</button>
-        <span class="klp-plak ${wyd ? 'wyd' : ''}">${wyd ? 'wydarzenie' : 'zadanie'}</span>
+        ${kalNowe.parent ? '' : `<button type="button" class="kl-nowe-wroc" data-kn-wroc
+            aria-label="Zmień: zadanie czy wydarzenie">‹</button>`}
+        <span class="klp-plak ${wyd ? 'wyd' : ''}">${
+          kalNowe.parent ? 'krok' : (wyd ? 'wydarzenie' : 'zadanie')}</span>
       </div>
       <div class="kl-nowe-pole">
         <input id="kn-tytul" autocomplete="off" value="${esc(kalNowe.tytul)}"
@@ -1826,16 +1844,22 @@ function kalNowePolaHtml() {
     wykonawca_virtual_id: n.wyk.startsWith('v:') ? Number(n.wyk.slice(2)) : null,
   };
   const wyd = n.rodzaj === 'wydarzenie';
-  const dzien = `<label class="zad-data" title="${wyd ? 'Dzień' : 'Termin'}">${esc(dataKrotka(n.termin))}
-      <input type="date" data-kn="termin" value="${esc(n.termin)}"></label>`;
-  const od = `<label class="zad-pora${n.pora ? ' jest' : ''}" title="${wyd ? 'Od godziny' : 'Godzina przypomnienia'}">${
+  // Krok bywa bez terminu („kupić farbę" w remoncie) — wtedy kafelek pokazuje
+  // ikonę, tak jak w wierszu na liście, a godziny nie ma czego pilnować.
+  const dzien = `<label class="zad-data${n.termin ? '' : ' pusty'}" title="${wyd ? 'Dzień' : 'Termin'}">${
+      n.termin ? esc(dataKrotka(n.termin)) : `${ikonaSvg('kalendarz')}<span>Termin</span>`}
+      <input type="date" data-kn="termin" value="${esc(n.termin || '')}"></label>`;
+  const od = !n.termin ? '' : `<label class="zad-pora${n.pora ? ' jest' : ''}" title="${
+      wyd ? 'Od godziny' : 'Godzina przypomnienia'}">${
       n.pora ? esc(n.pora) : (wyd ? 'od' : esc(domyslnaPora))}
       <input type="time" data-kn="pora" value="${esc(n.pora || '')}"></label>`;
   const kto = `<label class="zad-kto${n.wyk ? ' jest' : ''}" title="Kto">
       ${n.wyk ? skrotWykonawcy(w) : `${ikonaSvg('osoby')}<span>Kto</span>`}
       <select data-kn="wyk" aria-label="Kto">${opcjeWykonawcyKrotkie(w)}</select></label>`;
   const cykl = kafelCyklu(n, 'data-kn="powtarzaj"');
-  const obszar = kafelObszaruWyboru(n.strefa, 'data-kn="strefa"');
+  // Krok dziedziczy obszar po sprawie, której jest częścią — pytanie o niego
+  // byłoby pytaniem, którego odpowiedź i tak zostanie nadpisana.
+  const obszar = n.parent ? '' : kafelObszaruWyboru(n.strefa, 'data-kn="strefa"');
   if (wyd) {
     const doG = n.pora ? `<label class="zad-pora${n.pora_koniec ? ' jest' : ''}" title="Do godziny">${
         n.pora_koniec ? esc(n.pora_koniec) : 'do'}
@@ -1876,7 +1900,10 @@ async function kalNoweZapisz() {
   // Kilkudniowe zapisujemy tak jak wszędzie w module: `data_start` to pierwszy
   // dzień, `termin` ostatni.
   const dane = {
-    tytul, rodzaj: n.rodzaj, pora: n.pora, strefa_id: n.strefa,
+    tytul, rodzaj: n.rodzaj, pora: n.pora,
+    // Krok: rodzic decyduje o obszarze i prywatności (serwer je narzuca).
+    strefa_id: n.parent ? null : n.strefa,
+    parent_id: n.parent,
     termin: n.doDnia || n.termin,
     data_start: n.doDnia ? n.termin : null,
     wykonawca_user_id: n.wyk.startsWith('u:') ? Number(n.wyk.slice(2)) : null,
@@ -1905,8 +1932,9 @@ async function kalNoweZapisz() {
   }
   try { localStorage.setItem('task_kal_przytrzymaj', '1'); } catch { /* podpowiedź wróci */ }
   const kiedy = kalNoweKiedy();
+  const gdzie = n.parent ? ` → ${n.parentTytul}` : '';
   kalZamknijPodglad();
-  toast(`Dodano ${wyd ? 'wydarzenie' : 'zadanie'}: ${tytul}, ${kiedy}.`, 'ok');
+  toast(`Dodano ${n.parent ? 'krok' : (wyd ? 'wydarzenie' : 'zadanie')}: ${tytul}, ${kiedy}${gdzie}.`, 'ok');
   await wczytaj();
 }
 
@@ -2188,9 +2216,11 @@ function kalOtworzPodglad({ id, el, od, do: doK, wirtualne, pozycja, bezAnimacji
       return;
     }
     if (ev.target.closest('[data-klp-krok]')) {
-      // Arkusz stoi nad wszystkim, więc podgląd pod nim byłby tylko zasłoną.
-      kalZamknijPodglad();
-      krokWArkuszu(id, z.tytul);
+      // To samo okienko co przy dodawaniu z kalendarza — krok też bywa na
+      // konkretny dzień, dla konkretnej osoby i ważniejszy od reszty.
+      const poz = kalPodglad && kalPodglad.pozycja;
+      kalNoweOtworz({ dzien: null, pora: null, parent: id, parentTytul: z.tytul },
+                    poz ? { x: poz.left - window.scrollX, y: poz.top - window.scrollY } : { x: 24, y: 80 });
       return;
     }
     if (ev.target.closest('[data-komentarze]')) { przelaczDziennik(id); return; }
