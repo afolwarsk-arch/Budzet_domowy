@@ -785,6 +785,47 @@ function rysujProjekty() {
 // Zadanie BEZ GODZINY stoi w pasie „cały dzień", mimo że przypomnienie przyjdzie
 // o porze domyślnej: postawienie go na 9:00 udawałoby umówioną godzinę.
 
+// Filtr po osobie — WYŁĄCZNIE po stronie przeglądarki: kalendarz i tak wczytuje
+// komplet wpisów, więc zawężenie nie dokłada ani jednego zapytania, a przełączanie
+// między domownikami jest natychmiastowe.
+//
+// `null` = wszyscy, 'u:<id>' / 'v:<id>' = konkretna osoba, 'nikt' = nieprzypisane.
+// „Nieprzypisane" musi być osobnym wyborem z tego samego powodu co zakładka
+// „Inne" przy obszarach: inaczej sprawy niczyje widać tylko w „Wszyscy"
+// i przepadają przy pracy na filtrze.
+let osobaFiltr = localStorage.getItem('task_osoba') || null;
+
+const kalOsobaZadania = (z) => (z.wykonawca_user_id ? `u:${z.wykonawca_user_id}`
+  : (z.wykonawca_virtual_id ? `v:${z.wykonawca_virtual_id}` : 'nikt'));
+
+function pasujeOsoba(z) {
+  if (!osobaFiltr) return true;
+  return kalOsobaZadania(z) === osobaFiltr;
+}
+
+function ustawOsobe(v) {
+  osobaFiltr = v || null;
+  if (osobaFiltr) localStorage.setItem('task_osoba', osobaFiltr);
+  else localStorage.removeItem('task_osoba');
+}
+
+// Pastylki osób. Pokazujemy je dopiero, gdy jest między kim wybierać —
+// w jednoosobowym gospodarstwie filtr po osobie nie odpowiada na żadne pytanie.
+function kalOsobyHtml() {
+  const czlonkowie = (household?.members || []).map((m) => [`u:${m.id}`, m.display_name || m.name || 'Domownik']);
+  const wirtualni = (household?.virtual_members || []).map((m) => [`v:${m.id}`, m.name || 'Osoba']);
+  const osoby = [...czlonkowie, ...wirtualni];
+  if (osoby.length < 2) return '';
+  const niczyje = zadania.filter((z) => kalOsobaZadania(z) === 'nikt').length;
+  const chip = (v, l, ile) => `<button class="chip" type="button" data-kal-osoba="${v || ''}"
+      aria-pressed="${(v || null) === osobaFiltr}">${esc(l)}${ile ? ` <i>${ile}</i>` : ''}</button>`;
+  return `<div class="filtry kl-osoby">
+    ${chip(null, 'Wszyscy', 0)}
+    ${osoby.map(([v, l]) => chip(v, l.split(' ')[0], 0)).join('')}
+    ${niczyje ? chip('nikt', 'Nieprzypisane', niczyje) : ''}
+  </div>`;
+}
+
 const KAL_WIDOKI = [['dzien', 'Dzień'], ['tydzien', 'Tydzień'], ['miesiac', 'Miesiąc']];
 const KAL_DNI = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
 const KAL_H = 48;   // px na godzinę osi; wpis godzinowy zajmuje pół godziny
@@ -858,6 +899,7 @@ function kalWpisy(od, doK) {
   const dzis = dzisData();
   const wynik = [];
   for (const z of zadania) {
+    if (!pasujeOsoba(z)) continue;
     const zz = zakresZadania(z);
     if (!zz) continue;
     const pora = z.pora ? String(z.pora).slice(0, 5) : null;
@@ -1046,7 +1088,8 @@ const kalDzienKrotko = (d) => `${KAL_DNI[(d.getDay() + 6) % 7].toLowerCase()} ${
 function kalZalegle(przed) {
   return zadania
     .map((z) => ({ z, zz: zakresZadania(z) }))
-    .filter(({ z, zz }) => zz && z.rodzaj !== 'wydarzenie' && z.status === 'otwarte' && zz.koniec < przed)
+    .filter(({ z, zz }) => zz && z.rodzaj !== 'wydarzenie' && z.status === 'otwarte'
+      && zz.koniec < przed && pasujeOsoba(z))
     .sort((a, b) => a.zz.koniec - b.zz.koniec || kalPorzadek(
       { z: a.z, start: a.zz.start, koniec: a.zz.koniec }, { z: b.z, start: b.zz.start, koniec: b.zz.koniec }))
     .map(({ z, zz }) => ({ z, start: zz.start, koniec: zz.koniec,
@@ -1195,7 +1238,7 @@ function kalBezDaty() {
   const zDziecmi = new Set(zadania
     .filter((z) => z.status === 'otwarte' && z.parent_id != null).map((z) => z.parent_id));
   const lista = zadania.filter((z) => z.status === 'otwarte' && !z.termin && !z.data_start
-    && z.rodzaj !== 'wydarzenie' && !zDziecmi.has(z.id));
+    && z.rodzaj !== 'wydarzenie' && !zDziecmi.has(z.id) && pasujeOsoba(z));
   if (!lista.length) return '';
   return `<section class="kl-karta kl-bez">
     <div class="kl-karta-nag"><strong>Bez terminu</strong><em class="kl-plak">${lista.length}</em></div>
@@ -1275,6 +1318,7 @@ function rysujKalendarz() {
                   ${kalWidacDzis() ? 'disabled' : ''}>Dziś</button>
         </div>
       </div>
+      ${kalOsobyHtml()}
       ${kalPodpowiedz()}
       ${tresc}
       ${kalBezDaty()}
@@ -1288,6 +1332,8 @@ function rysujKalendarz() {
       rysuj();
       return;
     }
+    const os = ev.target.closest('[data-kal-osoba]');
+    if (os) { ustawOsobe(os.dataset.kalOsoba); rysuj(); return; }
     const nowy = ev.target.closest('[data-kal-nowy]');
     if (nowy) { kalNoweOtworz({ dzien: nowy.dataset.kalNowy, pora: null }, { x: ev.clientX, y: ev.clientY }); return; }
     const w = ev.target.closest('[data-kal-widok]');
@@ -1524,6 +1570,10 @@ function kalNoweOtworz(m, punkt) {
       case 'wyk': kalNowe.wyk = v; break;
       case 'priorytet': kalNowe.priorytet = Number(v) || 0; break;
       case 'przypomnij': kalNowe.przypomnij = v; break;
+      case 'powtarzaj':
+        kalNowe.powtarzaj = v || null;
+        kalNowe.powtarzaj_co = 1;
+        break;
       default: return;
     }
     // Tylko kafelki i nagłówek — pole nazwy zostaje, razem z wpisanym tekstem i kursorem.
@@ -1655,6 +1705,20 @@ function kalNowePokazUslyszane(p, u) {
   };
 }
 
+// Kafelek powtarzania — wspólny dla okienka dodawania i dla podglądu. „Co ile"
+// (np. co dwa tygodnie) zostaje w Szczegółach: w kafelku byłby drugim pytaniem
+// w jednym miejscu, a ustawia się je rzadko.
+function kafelCyklu(z, atrybut) {
+  const teraz = z.powtarzaj || '';
+  return `<label class="zad-kto${teraz ? ' jest' : ''}" title="Powtarzanie">
+    ${ikonaSvg('wymiana')}<span>${teraz ? esc(opisPowtarzania(z)) : 'raz'}</span>
+    <select ${atrybut} aria-label="Powtarzanie">
+      <option value=""${teraz ? '' : ' selected'}>nie powtarza się</option>
+      ${OKRESY.map(([k, l]) => `<option value="${k}"${
+        teraz === k ? ' selected' : ''}>${l}</option>`).join('')}
+    </select></label>`;
+}
+
 function kalNowePolaHtml() {
   const n = kalNowe;
   const w = {
@@ -1670,20 +1734,19 @@ function kalNowePolaHtml() {
   const kto = `<label class="zad-kto${n.wyk ? ' jest' : ''}" title="Kto">
       ${n.wyk ? skrotWykonawcy(w) : `${ikonaSvg('osoby')}<span>Kto</span>`}
       <select data-kn="wyk" aria-label="Kto">${opcjeWykonawcyKrotkie(w)}</select></label>`;
+  const cykl = kafelCyklu(n, 'data-kn="powtarzaj"');
   if (wyd) {
     const doG = n.pora ? `<label class="zad-pora${n.pora_koniec ? ' jest' : ''}" title="Do godziny">${
         n.pora_koniec ? esc(n.pora_koniec) : 'do'}
         <input type="time" data-kn="pora_koniec" value="${esc(n.pora_koniec || '')}"></label>` : '';
     const przyp = PRZYPOMNIENIA.find(([k]) => k === n.przypomnij) || PRZYPOMNIENIA[0];
-    return `<span class="zad-kiedy jest">${dzien}${od}${doG}</span>${kto}${
-      n.powtarzaj ? `<span class="zad-cykl" title="Powtarzanie z dyktowania">${esc(opisPowtarzania(n))}</span>` : ''}
+    return `<span class="zad-kiedy jest">${dzien}${od}${doG}</span>${kto}${cykl}
       <label class="zad-kto${przyp[0] ? ' jest' : ''}" title="Przypomnienie">
         ${ikonaSvg('alerty')}<span>${przyp[2]}</span>
         <select data-kn="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(n.przypomnij || null)}</select></label>`;
   }
   const p = n.priorytet;
-  return `<span class="zad-kiedy jest">${dzien}${od}</span>${kto}${
-    n.powtarzaj ? `<span class="zad-cykl" title="Powtarzanie z dyktowania">${esc(opisPowtarzania(n))}</span>` : ''}
+  return `<span class="zad-kiedy jest">${dzien}${od}</span>${kto}${cykl}
     <label class="zad-kto zad-prio-kafel${p > 0 ? ' jest wysoki' : (p < 0 ? ' jest niski' : '')}" title="Priorytet">
       ${p > 0 ? '!' : (p < 0 ? '↓' : ikonaSvg('flaga'))}
       <select data-kn="priorytet" aria-label="Priorytet">
@@ -1899,6 +1962,7 @@ function kalKafle(z) {
         <option value="-1"${p < 0 ? ' selected' : ''}>Niski</option>
       </select>
     </label>
+    ${kafelCyklu(z, 'data-klp-pole="powtarzaj"')}
     ${kafelObszaru(z)}
     <button class="zad-plus zad-komentarz${z.ile_komentarzy ? ' jest' : ''}" type="button"
             data-komentarze="${z.id}" title="Dziennik zadania" aria-label="Dziennik zadania">${
@@ -1937,6 +2001,7 @@ function kalKafleWydarzenia(z) {
       ${ikonaSvg('alerty')}<span>${przyp ? przyp[2] : 'bez'}</span>
       <select data-klp-pole="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(z.przypomnij_min)}</select>
     </label>
+    ${kafelCyklu(z, 'data-klp-pole="powtarzaj"')}
     ${kafelObszaru(z)}
     <button class="zad-plus zad-komentarz${z.ile_komentarzy ? ' jest' : ''}" type="button"
             data-komentarze="${z.id}" title="Dziennik" aria-label="Dziennik">${
@@ -2032,6 +2097,9 @@ function kalOtworzPodglad({ id, el, od, do: doK, wirtualne, pozycja, bezAnimacji
       pora: v || z.rodzaj !== 'wydarzenie' ? { pora: v || null } : { pora: null, pora_koniec: null },
       pora_koniec: { pora_koniec: v || null },
       przypomnij: { przypomnij_min: v ? Number(v) : null },
+      // „Co ile" wraca do jedynki: kafelek zna tylko okres, a mieszanie starej
+      // wielokrotności z nowym okresem dałoby „co 2 lata" z „co miesiąc".
+      powtarzaj: { powtarzaj: v || null, powtarzaj_co: 1 },
       priorytet: { priorytet: Number(v) || 0 },
       wyk: { wykonawca_user_id: v.startsWith('u:') ? Number(v.slice(2)) : null,
              wykonawca_virtual_id: v.startsWith('v:') ? Number(v.slice(2)) : null },
@@ -2207,7 +2275,7 @@ function rysujWydarzenia() {
   const jutro = dodajDni(dzis, 1);
   const koniecTyg = dodajDni(poczatekTygodnia(dzis), 7);
   const wszystkie = zadania
-    .filter((z) => z.rodzaj === 'wydarzenie')
+    .filter((z) => z.rodzaj === 'wydarzenie' && pasujeOsoba(z))
     .map((z) => {
       const zz = zakresZadania(z);
       return zz && { z, start: zz.start, koniec: zz.koniec,
@@ -2238,6 +2306,7 @@ function rysujWydarzenia() {
       <input id="wyd-tytul" autocomplete="off" placeholder="Co się wydarzy?">
       <button class="btn btn-primary" type="submit">Dodaj</button>
     </form>
+    ${kalOsobyHtml()}
     <div class="sz-pola" id="wyd-pola"${wydWybrano() ? '' : ' hidden'}>${wydPolaHtml()}</div>
     <div class="wyd-lista">
       ${sekcja('Dziś', grupy.dzis)}
@@ -2299,6 +2368,11 @@ function rysujWydarzenia() {
     Object.assign(wydNowe, { termin: null, pora: null, pora_koniec: null, wyk: '', przypomnij: '60' });
     toast(`Dodano: ${tytul}, ${kiedy}.`, 'ok');
     await wczytaj();
+  };
+  const osoby = box().querySelector('.kl-osoby');
+  if (osoby) osoby.onclick = (ev) => {
+    const os = ev.target.closest('[data-kal-osoba]');
+    if (os) { ustawOsobe(os.dataset.kalOsoba); rysuj(); }
   };
   box().querySelector('.wyd-lista').onclick = (ev) => {
     if (ev.target.closest('[data-wyd-minione]')) {

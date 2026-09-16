@@ -1147,6 +1147,17 @@
                         color: var(--muted); }
     .zad-znak-obszaru .ikona svg { width: 14px; height: 14px; }
 
+    /* Pastylki osób nad kalendarzem. „Nieprzypisane" z licznikiem — tą samą
+       zasadą co zakładka „Inne": sprawy niczyje nie mogą przepaść przy filtrze. */
+    .kl-osoby { margin: -2px 0 12px; }
+    .kl-osoby i { font-style: normal; font-size: 10.5px; color: var(--muted); }
+    .kl-osoby .chip[aria-pressed="true"] i { color: var(--accent-strong); }
+    @media (max-width: 430px) {
+      .kl-osoby { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+      .kl-osoby::-webkit-scrollbar { display: none; }
+      .kl-osoby .chip { flex: none; }
+    }
+
     .kl-nowe-pole { display: flex; gap: 8px; }
     .kl-nowe-forma #kn-tytul { flex: 1; min-width: 0; min-height: 46px; box-sizing: border-box; }
     /* Usłyszane dodatki czekają na potwierdzenie — nie nadpisują dnia i godziny,
