@@ -1169,16 +1169,19 @@
     .wyd-flaga .ikona svg { width: 14px; height: 14px; }
     .kl-wpis .wyd-flaga .ikona svg { width: 12px; height: 12px; }
 
-    /* Pastylki osób nad kalendarzem. „Nieprzypisane" z licznikiem — tą samą
-       zasadą co zakładka „Inne": sprawy niczyje nie mogą przepaść przy filtrze. */
-    .kl-osoby { margin: -2px 0 12px; }
-    .kl-osoby i { font-style: normal; font-size: 10.5px; color: var(--muted); }
-    .kl-osoby .chip[aria-pressed="true"] i { color: var(--accent-strong); }
-    @media (max-width: 430px) {
-      .kl-osoby { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-      .kl-osoby::-webkit-scrollbar { display: none; }
-      .kl-osoby .chip { flex: none; }
-    }
+    /* Filtr osoby: jeden kafelek z listą rozwijaną. Rząd pastylek zjadał całą
+       linijkę nad kalendarzem, a osobę przestawia się rzadko — więc kafelek
+       wchodzi w rząd, który i tak tam jest. „Nieprzypisane" ma w liście licznik,
+       tą samą zasadą co zakładka „Inne": sprawy niczyje nie mogą przepaść. */
+    .kl-osoba { position: relative; display: inline-flex; align-items: center; gap: 6px;
+                min-height: 40px; padding: 0 12px; border: 1px solid var(--border);
+                border-radius: 10px; background: var(--surface); color: var(--text);
+                font-size: 13px; cursor: pointer; white-space: nowrap; }
+    .kl-osoba.jest { border-color: var(--marka); color: var(--marka); }
+    .kl-osoba .ikona svg { width: 16px; height: 16px; }
+    .kl-osoba select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0;
+                       border: none; padding: 0; cursor: pointer; }
+    .gora .kl-osoba { margin-left: auto; }
 
     .kl-nowe-pole { display: flex; gap: 8px; }
     .kl-nowe-forma #kn-tytul { flex: 1; min-width: 0; min-height: 46px; box-sizing: border-box; }

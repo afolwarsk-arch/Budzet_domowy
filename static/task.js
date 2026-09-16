@@ -827,21 +827,25 @@ function ustawOsobe(v) {
   else localStorage.removeItem('task_osoba');
 }
 
-// Pastylki osób. Pokazujemy je dopiero, gdy jest między kim wybierać —
-// w jednoosobowym gospodarstwie filtr po osobie nie odpowiada na żadne pytanie.
+// Filtr osoby jako JEDEN KAFELEK z listą rozwijaną, nie rząd pastylek: rząd
+// zjadał całą linijkę nad kalendarzem, a filtr przestawia się rzadko. Kafelek
+// wchodzi w rząd, który i tak tam stoi, więc nic nie rośnie w pionie.
+// Pokazujemy go dopiero, gdy jest między kim wybierać.
 function kalOsobyHtml() {
   const czlonkowie = (household?.members || []).map((m) => [`u:${m.id}`, m.display_name || m.name || 'Domownik']);
   const wirtualni = (household?.virtual_members || []).map((m) => [`v:${m.id}`, m.name || 'Osoba']);
   const osoby = [...czlonkowie, ...wirtualni];
   if (osoby.length < 2) return '';
   const niczyje = zadania.filter((z) => kalOsobaZadania(z) === 'nikt').length;
-  const chip = (v, l, ile) => `<button class="chip" type="button" data-kal-osoba="${v || ''}"
-      aria-pressed="${(v || null) === osobaFiltr}">${esc(l)}${ile ? ` <i>${ile}</i>` : ''}</button>`;
-  return `<div class="filtry kl-osoby">
-    ${chip(null, 'Wszyscy', 0)}
-    ${osoby.map(([v, l]) => chip(v, l.split(' ')[0], 0)).join('')}
-    ${niczyje ? chip('nikt', 'Nieprzypisane', niczyje) : ''}
-  </div>`;
+  const opcje = [['', 'Wszyscy'], ...osoby.map(([v, l]) => [v, l.split(' ')[0]]),
+                 ...(niczyje ? [['nikt', `Nieprzypisane (${niczyje})`]] : [])];
+  const teraz = osobaFiltr || '';
+  const wybrana = (opcje.find(([v]) => v === teraz) || opcje[0])[1];
+  return `<label class="kl-osoba${osobaFiltr ? ' jest' : ''}" title="Pokaż sprawy: ${esc(wybrana)}">
+    ${ikonaSvg('osoby')}<span>${esc(wybrana.replace(/ \(\d+\)$/, ''))}</span>
+    <select data-kal-osoba aria-label="Pokaż sprawy osoby">${opcje.map(([v, l]) =>
+      `<option value="${v}"${v === teraz ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>
+  </label>`;
 }
 
 const KAL_WIDOKI = [['dzien', 'Dzień'], ['tydzien', 'Tydzień'], ['miesiac', 'Miesiąc']];
@@ -1365,6 +1369,7 @@ function rysujKalendarz() {
                   aria-label="Następny ${nazwaKroku}" title="Następny ${nazwaKroku}">›</button>
         </div>
         <div class="kl-prawo">
+          ${kalOsobyHtml()}
           <div class="kl-widoki" role="group" aria-label="Widok kalendarza">${
             KAL_WIDOKI.map(([k, l]) => `<button type="button" data-kal-widok="${k}"
               aria-pressed="${k === kalWidok}">${l}</button>`).join('')}</div>
@@ -1372,7 +1377,6 @@ function rysujKalendarz() {
                   ${kalWidacDzis() ? 'disabled' : ''}>Dziś</button>
         </div>
       </div>
-      ${kalOsobyHtml()}
       ${kalPodpowiedz()}
       ${tresc}
       ${kalBezDaty()}
@@ -1380,14 +1384,16 @@ function rysujKalendarz() {
 
   const ekran = box().querySelector('.kl-ekran');
   kalPodepnijDodawanie(ekran);
+  ekran.onchange = (ev) => {
+    const os = ev.target.closest('[data-kal-osoba]');
+    if (os) { ustawOsobe(os.value); rysuj(); }
+  };
   ekran.onclick = (ev) => {
     if (ev.target.closest('[data-kal-podpowiedz]')) {
       try { localStorage.setItem('task_kal_przytrzymaj', '1'); } catch { /* bez pamięci wróci */ }
       rysuj();
       return;
     }
-    const os = ev.target.closest('[data-kal-osoba]');
-    if (os) { ustawOsobe(os.dataset.kalOsoba); rysuj(); return; }
     const nowy = ev.target.closest('[data-kal-nowy]');
     if (nowy) { kalNoweOtworz({ dzien: nowy.dataset.kalNowy, pora: null }, { x: ev.clientX, y: ev.clientY }); return; }
     const w = ev.target.closest('[data-kal-widok]');
@@ -2361,12 +2367,11 @@ function rysujWydarzenia() {
   const nadchodzacych = grupy.dzis.length + grupy.jutro.length + grupy.tydzien.length + grupy.pozniej.length;
 
   box().innerHTML = `
-    <div class="gora"><h1>Wydarzenia</h1></div>
+    <div class="gora"><h1>Wydarzenia</h1>${kalOsobyHtml()}</div>
     <form class="szybkie" id="wyd-dodaj">
       <input id="wyd-tytul" autocomplete="off" placeholder="Co się wydarzy?">
       <button class="btn btn-primary" type="submit">Dodaj</button>
     </form>
-    ${kalOsobyHtml()}
     <div class="sz-pola" id="wyd-pola"${wydWybrano() ? '' : ' hidden'}>${wydPolaHtml()}</div>
     <div class="wyd-lista">
       ${sekcja('Dziś', grupy.dzis)}
@@ -2431,10 +2436,10 @@ function rysujWydarzenia() {
     toast(`Dodano: ${tytul}, ${kiedy}.`, 'ok');
     await wczytaj();
   };
-  const osoby = box().querySelector('.kl-osoby');
-  if (osoby) osoby.onclick = (ev) => {
+  const osoby = box().querySelector('.kl-osoba');
+  if (osoby) osoby.onchange = (ev) => {
     const os = ev.target.closest('[data-kal-osoba]');
-    if (os) { ustawOsobe(os.dataset.kalOsoba); rysuj(); }
+    if (os) { ustawOsobe(os.value); rysuj(); }
   };
   box().querySelector('.wyd-lista').onclick = (ev) => {
     if (ev.target.closest('[data-wyd-minione]')) {
