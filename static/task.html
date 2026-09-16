@@ -37,8 +37,14 @@
     @keyframes mik-puls { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
     @media (prefers-reduced-motion: reduce) { .btn-mikrofon.slucha { animation: none; } }
 
+    /* BEZ KORALU (2026-09-16). Kolor modułu znikł z plakietki cyklu, kafelka
+       obszaru i dziennika: barwa ma zostać nośnikiem ZNACZENIA (spóźnienie,
+       wysoki priorytet), a nie ozdobą przy każdym wierszu. Przy kilkudziesięciu
+       zadaniach kolorowe drobiazgi zlewały się w migotanie i to nazwy zadań
+       przegrywały z nimi o uwagę. */
     .zad-cykl { margin-left: 7px; padding: 1px 7px; border-radius: 999px;
-                background: var(--accent-soft); color: var(--accent-strong);
+                background: var(--surface-2); color: var(--muted);
+                border: 1px solid var(--border-soft);
                 font-size: 11px; font-weight: 600; white-space: nowrap; }
     /* Plakietka przedsięwzięcia. OBRYSOWANA, a nie wypełniona jak plakietka
        cyklu: dwie jednakowe pigułki przy tytule byłyby nie do rozróżnienia
@@ -432,7 +438,7 @@
     .zad-data .ikona svg, .zad-kto .ikona svg { width: 16px; height: 16px; }
     /* Obszar wyróżniony kolorem modułu, gdy ustawiony — inaczej sześć jednakowo
        szarych kafelków w rzędzie nic nie mówi na pierwszy rzut oka. */
-    .zad-obszar.jest { color: var(--marka); border-color: var(--marka); }
+    .zad-obszar.jest { color: var(--text); border-color: var(--border); }
     /* Pusty kafelek obszaru w „Innych" jest WEZWANIEM DO DZIAŁANIA, nie szarą
        ikoną wśród innych — to jedyna rzecz, którą się tam robi. */
     .zadania.w-innych .zad-obszar:not(.jest) { color: var(--marka); border-color: var(--marka);
@@ -461,7 +467,7 @@
     .zad-komentarz { display: flex; align-items: center; justify-content: center;
                      font-size: 12px; font-weight: 600; }
     .zad-komentarz .ikona svg { width: 15px; height: 15px; }
-    .zad-komentarz.jest { border-color: var(--marka); color: var(--marka); }
+    .zad-komentarz.jest { border-color: var(--border); color: var(--text); }
 
     /* DZIENNIK — wpisy z datami, pionowa oś po lewej jak na osi czasu. */
     .zad-dziennik { padding: 4px 0 10px; }
@@ -498,6 +504,32 @@
     .sz-pola .zad-kiedy .zad-pora { font-size: 12px; padding: 0 9px; }
     .sz-pola .zad-kto.jest:not(.zad-prio-kafel) { min-width: 40px; }
     .sz-pola .zad-prio-kafel span { font-weight: 600; }
+    /* ── GĘSTOŚĆ WIERSZA ────────────────────────────────────────────────────
+       Trzy stopnie dla całej listy: Nazwy, Skrót, Ikonki. Powód: rząd ośmiu
+       kafelków pod każdym zadaniem sprawiał, że na liście widać było same
+       znaczki, a treść schodziła na drugi plan. Stuknięcie w wiersz wysuwa
+       jego kafelki w KAŻDYM stopniu — inaczej najcichszy tryb byłby zarazem
+       tym, w którym nic nie da się zmienić. */
+    .lista-gora { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .gestosc { margin-left: auto; display: flex; gap: 2px; padding: 3px;
+               border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+    .gestosc button { min-height: 30px; padding: 0 10px; border: none; border-radius: 7px;
+                      background: none; font: inherit; font-size: 12.5px; color: var(--muted);
+                      cursor: pointer; }
+    .gestosc button[aria-pressed="true"] { background: var(--surface); color: var(--text);
+                      font-weight: 600; box-shadow: 0 0 0 1px var(--border); }
+    .gestosc button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+    .zad-skrot { display: none; margin-top: 3px; flex-wrap: wrap; gap: 3px 8px;
+                 font-size: 12.5px; line-height: 1.45; color: var(--muted);
+                 font-variant-numeric: tabular-nums; }
+    .zad-skrot i { font-style: normal; opacity: .55; }
+    .zad-skrot .zle { color: var(--danger); font-weight: 600; }
+    .gest-skrot .zad-skrot { display: flex; }
+    .gest-nazwy .zad-akcje, .gest-skrot .zad-akcje { display: none; }
+    .zadania .zad.rozwiniety > .zad-akcje { display: flex; }
+    .gest-nazwy .zad-glowna, .gest-skrot .zad-glowna { cursor: pointer; }
+
     /* Ten sam rząd kafelków przy dopisywaniu kroku pod wierszem zadania —
        tylko odstępy inne, bo stoi w środku listy, a nie nad nią. */
     .kr-pola { margin: 6px 0 2px; }
@@ -577,9 +609,9 @@
     .szukaj-info { font-size: 12px; color: var(--muted); margin-bottom: 10px;
                    line-height: 1.45; }
 
-    /* Zwijanie hurtem. Zwykły tekst-przycisk po prawej, bo to czynność
-       porządkowa, a nie filtr — nie ma konkurować z rzędami chipów. */
-    .lista-gora { display: flex; justify-content: flex-end; margin-bottom: 2px; }
+    /* Zwijanie hurtem. Zwykły tekst-przycisk po lewej, bo to czynność
+       porządkowa, a nie filtr — nie ma konkurować z rzędami chipów.
+       (Układ rzędu ustawia reguła `.lista-gora` przy pokrętle gęstości wyżej.) */
     .zwin-wszystko { background: none; border: none; color: var(--accent);
                      font: inherit; font-size: 12px; cursor: pointer;
                      min-height: 34px; padding: 0 4px; }
@@ -1408,6 +1440,18 @@
     .wyd-poz.minione { box-shadow: inset 3px 0 0 var(--border); }
     .wyd-poz.minione .wyd-tresc, .wyd-poz.minione .wyd-kiedy { opacity: .65; }
     .wyd-poz.kl-wybrany { outline: 2px solid var(--wyd); outline-offset: -2px; }
+    /* Gęstość w Wydarzeniach: „Nazwy" zostawia samą nazwę z flagą, „Skrót" to
+       dzień, godziny i dopiski, „Ikonki" dokłada rząd kafelków pod wierszem. */
+    .wyd-kafelki { display: none; flex-wrap: wrap; align-items: center; gap: 5px;
+                   padding: 0 12px 10px 12px; }
+    .wyd-lista.gest-ikonki .wyd-kafelki { display: flex; }
+    .wyd-lista.gest-nazwy .wyd-kiedy,
+    .wyd-lista.gest-nazwy .wyd-tresc small,
+    .wyd-lista.gest-nazwy .wyd-kto { display: none; }
+    .wyd-lista.gest-nazwy .wyd-poz { min-height: 44px; }
+    .wyd-kafelki .zad-data, .wyd-kafelki .zad-kto { height: 32px; gap: 5px; padding: 0 9px;
+                                                    font-size: 12px; }
+    .wyd-kafelki .zad-kiedy { height: 32px; }
     .wyd-poz:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
     @media (hover: hover) { .wyd-poz:hover { background: var(--surface-2); } }
     /* Szary, nie czerwony jak „Zaległe": minione wydarzenie to nie zaniedbanie. */

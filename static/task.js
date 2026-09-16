@@ -443,6 +443,73 @@ let dopisywanieW = null;
 // Czy po przerysowaniu ustawić kursor w polu dopisywania. Patrz `podepnijPtaszki`.
 let wracajKursorem = false;
 
+// ── gęstość wiersza ─────────────────────────────────────────────────────────
+//
+// Rząd ośmiu kafelków pod każdym zadaniem sprawiał, że na liście widać było
+// same znaczki, a treść schodziła na drugi plan (Adam: „jeden wielki oczopląs").
+// Zamiast chować kafelki na stałe — JEDNO POKRĘTŁO NA WIDOK, trzy stopnie:
+//
+//   nazwy  — same tytuły, znacznik tylko przy pilnych,
+//   skrot  — pod tytułem jedna linijka z tym, co USTAWIONE („20.09, 9:00 ·
+//            Adam · ważne"); czego nie ma, nie zostawia śladu,
+//   ikonki — pełny rząd kafelków, jak wcześniej.
+//
+// STUKNIĘCIE W ZADANIE ZAWSZE WYSUWA JEGO KAFELKI, w każdym stopniu — inaczej
+// najcichszy tryb byłby zarazem tym, w którym nic nie da się zmienić.
+const GESTOSCI = [['nazwy', 'Nazwy'], ['skrot', 'Skrót'], ['ikonki', 'Ikonki']];
+let gestosc = (() => {
+  const v = localStorage.getItem('task_gestosc');
+  return GESTOSCI.some(([k]) => k === v) ? v : 'skrot';
+})();
+// Które wiersze użytkownik rozwinął stuknięciem. Poza rysowaniem, bo lista
+// przerysowuje się po każdej zmianie.
+const rozwiniete = new Set();
+
+function gestoscHtml() {
+  return `<div class="gestosc" role="group" aria-label="Ile pokazywać przy zadaniu">
+    ${GESTOSCI.map(([k, l]) => `<button type="button" data-gest="${k}"
+      aria-pressed="${k === gestosc}">${l}</button>`).join('')}
+  </div>`;
+}
+
+function ustawGestosc(v) {
+  if (!GESTOSCI.some(([k]) => k === v) || v === gestosc) return;
+  gestosc = v;
+  localStorage.setItem('task_gestosc', v);
+  rozwiniete.clear();
+  rysuj();
+}
+
+// Skrót pod nazwą: tylko to, co ustawione. Zadanie bez daty, bez osoby
+// i bez priorytetu zostaje samym tytułem — i o to chodzi.
+function skrotZadania(w, spozniony) {
+  const czesci = [];
+  if (w.termin) {
+    czesci.push(`<span class="${spozniony ? 'zle' : ''}">${spozniony ? 'po terminie ' : ''}${
+      esc(dataKrotka(w.termin))}${w.pora ? ', ' + esc(String(w.pora).slice(0, 5)) : ''}</span>`);
+  }
+  const p = postep(w);
+  if (p.razem) czesci.push(`${p.gotowe} z ${p.razem}`);
+  const kto = skrotWykonawcyNazwa(w);
+  if (kto) czesci.push(esc(kto));
+  if (Number(w.priorytet) > 0) czesci.push('<span class="zle">ważne</span>');
+  if (w.powtarzaj) czesci.push(esc(opisPowtarzania(w)));
+  if (w.ile_komentarzy) {
+    czesci.push(`${w.ile_komentarzy} ${odmien(Number(w.ile_komentarzy), 'wpis', 'wpisy', 'wpisów')}`);
+  }
+  if (!czesci.length) return '';
+  return `<div class="zad-skrot">${czesci.join('<i aria-hidden="true">·</i>')}</div>`;
+}
+
+// Pełne imię wykonawcy — w skrócie jest miejsce na słowo, inaczej niż
+// w kafelku, gdzie mieszczą się dwie litery.
+function skrotWykonawcyNazwa(w) {
+  const m = (household?.members || []).find((x) => x.id === w.wykonawca_user_id);
+  if (m) return (m.display_name || m.name || '').split(' ')[0];
+  const v = (household?.virtual_members || []).find((x) => x.id === w.wykonawca_virtual_id);
+  return v ? (v.name || '').split(' ')[0] : '';
+}
+
 // Które zadania mają zwinięte kroki. Trzymane poza rysowaniem, bo lista
 // przerysowuje się po każdej zmianie — inaczej wszystko rozwijałoby się z
 // powrotem po odhaczeniu jednego ptaszka.
@@ -755,7 +822,16 @@ function podepnijPtaszki() {
       return;
     }
     const b = ev.target.closest('[data-ptaszek]');
-    if (!b) return;
+    if (!b) {
+      // Stuknięcie w sam wiersz (nie w kafelek, ptaszek czy kropki) wysuwa
+      // kafelki tego zadania — w każdym stopniu gęstości, także przy „Nazwach".
+      const wiersz = ev.target.closest('.zad');
+      if (!wiersz || ev.target.closest('button, label, select, input, a')) return;
+      const zid = Number(wiersz.dataset.zad);
+      if (rozwiniete.has(zid)) rozwiniete.delete(zid); else rozwiniete.add(zid);
+      wiersz.classList.toggle('rozwiniety', rozwiniete.has(zid));
+      return;
+    }
     const id = Number(b.dataset.ptaszek);
     const w = budujDrzewo(zadania).flatMap(splaszcz).find((x) => x.id === id);
     if (!w) return;
@@ -2552,13 +2628,13 @@ function rysujWydarzenia() {
   const nadchodzacych = grupy.dzis.length + grupy.jutro.length + grupy.tydzien.length + grupy.pozniej.length;
 
   box().innerHTML = `
-    <div class="gora"><h1>Wydarzenia</h1>${kalOsobyHtml()}</div>
+    <div class="gora"><h1>Wydarzenia</h1>${kalOsobyHtml()}${gestoscHtml()}</div>
     <form class="szybkie" id="wyd-dodaj">
       <input id="wyd-tytul" autocomplete="off" placeholder="Co się wydarzy?">
       <button class="btn btn-primary" type="submit">Dodaj</button>
     </form>
     <div class="sz-pola" id="wyd-pola"${wydWybrano() ? '' : ' hidden'}>${wydPolaHtml()}</div>
-    <div class="wyd-lista">
+    <div class="wyd-lista gest-${gestosc}">
       ${sekcja('Dziś', grupy.dzis)}
       ${sekcja('Jutro', grupy.jutro)}
       ${sekcja('W tym tygodniu', grupy.tydzien)}
@@ -2637,6 +2713,31 @@ function rysujWydarzenia() {
     const os = ev.target.closest('[data-kal-osoba]');
     if (os) { ustawOsobe(os.value); rysuj(); }
   };
+  const gest = box().querySelector('.gora .gestosc');
+  if (gest) gest.onclick = (ev) => {
+    const b = ev.target.closest('[data-gest]');
+    if (b) ustawGestosc(b.dataset.gest);
+  };
+  // Kafelki w wierszu zapisują od razu, tak samo jak na liście zadań.
+  box().querySelector('.wyd-lista').onchange = async (ev) => {
+    const el = ev.target.closest('[data-wl]');
+    if (!el) return;
+    const id = Number(el.dataset.wlId);
+    const v = el.value;
+    const zmiany = {
+      termin: v ? { termin: v } : null,
+      pora: v ? { pora: v } : { pora: null, pora_koniec: null },
+      pora_koniec: { pora_koniec: v || null },
+      przypomnij: { przypomnij_min: v ? Number(v) : null },
+      etykieta: { etykieta: v || null },
+      powtarzaj: { powtarzaj: v || null, powtarzaj_co: 1 },
+      wyk: { wykonawca_user_id: v.startsWith('u:') ? Number(v.slice(2)) : null,
+             wykonawca_virtual_id: v.startsWith('v:') ? Number(v.slice(2)) : null },
+    }[el.dataset.wl];
+    // Wydarzenie bez dnia nie istnieje — puste pole daty zostawiamy bez zmian.
+    if (!zmiany) { el.value = (zadania.find((z) => z.id === id)?.termin || '').slice(0, 10); return; }
+    await zapiszSzybko(id, zmiany);
+  };
   box().querySelector('.wyd-lista').onclick = (ev) => {
     if (ev.target.closest('[data-wyd-minione]')) {
       wydMinionePokaz = !wydMinionePokaz;
@@ -2648,6 +2749,38 @@ function rysujWydarzenia() {
   };
 }
 
+// Kafelki wydarzenia w LIŚCIE (stopień „Ikonki"). Te same pola co w podglądzie,
+// tylko z identyfikatorem przy każdym: podgląd wie, czyje pola pokazuje,
+// a lista musi to nieść w atrybucie.
+function wydKafelkiHtml(z) {
+  const ktos = z.wykonawca_user_id || z.wykonawca_virtual_id;
+  const od = z.pora ? String(z.pora).slice(0, 5) : '';
+  const doG = z.pora_koniec ? String(z.pora_koniec).slice(0, 5) : '';
+  const przyp = PRZYPOMNIENIA.find(([k]) => k === (z.przypomnij_min == null ? '' : String(z.przypomnij_min)));
+  const e = etykietaWyd(z);
+  const at = (pole) => `data-wl="${pole}" data-wl-id="${z.id}"`;
+  return `<div class="wyd-kafelki">
+    <span class="zad-kiedy jest">
+      <label class="zad-data" title="Dzień">${esc(dataKrotka(z.termin))}
+        <input type="date" ${at('termin')} value="${esc((z.termin || '').slice(0, 10))}"></label>
+      <label class="zad-pora${od ? ' jest' : ''}" title="Od godziny">${od || 'od'}
+        <input type="time" ${at('pora')} value="${esc(od)}"></label>
+      ${od ? `<label class="zad-pora${doG ? ' jest' : ''}" title="Do godziny">${doG || 'do'}
+        <input type="time" ${at('pora_koniec')} value="${esc(doG)}"></label>` : ''}
+    </span>
+    <label class="zad-kto${ktos ? ' jest' : ''}" title="Kto">
+      ${skrotWykonawcy(z)}${ktos ? '' : '<span>Kto</span>'}
+      <select ${at('wyk')} aria-label="Kto">${opcjeWykonawcyKrotkie(z)}</select></label>
+    <label class="zad-kto${przyp && przyp[0] ? ' jest' : ''}" title="Przypomnienie">
+      ${ikonaSvg('alerty')}<span>${przyp ? przyp[2] : 'bez'}</span>
+      <select ${at('przypomnij')} aria-label="Przypomnienie">${opcjePrzypomnienia(z.przypomnij_min)}</select></label>
+    <label class="zad-kto${e ? ' jest' : ''}" title="Flaga wydarzenia">
+      ${ikonaSvg(e ? e[2] : 'flaga')}<span>${e ? e[1] : 'Flaga'}</span>
+      <select ${at('etykieta')} aria-label="Flaga wydarzenia">${opcjeEtykiety(z.etykieta || '')}</select></label>
+    ${kafelCyklu(z, at('powtarzaj'))}
+  </div>`;
+}
+
 function wydWiersz(w, dzis) {
   const z = w.z;
   const wielo = w.start < w.koniec;
@@ -2656,14 +2789,19 @@ function wydWiersz(w, dzis) {
   const droga = sciezkaDo(z.id).slice(0, -1).map((x) => x.tytul).join(' › ');
   const meta = [droga, z.powtarzaj ? opisPowtarzania(z) : ''].filter(Boolean).join(', ');
   const ktos = z.wykonawca_user_id || z.wykonawca_virtual_id;
-  return `<button type="button" class="wyd-poz${w.koniec < dzis ? ' minione' : ''}" ${kalAtrybuty(w)}>
-    <span class="wyd-kiedy"><strong>${esc(dzien)}</strong><span>${esc(godz)}</span></span>
-    <span class="wyd-tresc">
-      <span class="wyd-tytul">${znakEtykiety(z)}${znakObszaru(z, true)}${esc(z.tytul)}</span>
-      ${meta ? `<small>${esc(meta)}</small>` : ''}
-    </span>
-    ${ktos ? `<span class="wyd-kto" title="Kto">${skrotWykonawcy(z)}</span>` : ''}
-  </button>`;
+  // Przycisk i kafelki jako RODZEŃSTWO, nie zagnieżdżone: lista wyboru w środku
+  // przycisku to nieprawidłowy dokument i pułapka na stuknięcia.
+  return `<div class="wyd-wiersz">
+    <button type="button" class="wyd-poz${w.koniec < dzis ? ' minione' : ''}" ${kalAtrybuty(w)}>
+      <span class="wyd-kiedy"><strong>${esc(dzien)}</strong><span>${esc(godz)}</span></span>
+      <span class="wyd-tresc">
+        <span class="wyd-tytul">${znakEtykiety(z)}${znakObszaru(z, true)}${esc(z.tytul)}</span>
+        ${meta ? `<small>${esc(meta)}</small>` : ''}
+      </span>
+      ${ktos ? `<span class="wyd-kto" title="Kto">${skrotWykonawcy(z)}</span>` : ''}
+    </button>
+    ${wydKafelkiHtml(z)}
+  </div>`;
 }
 
 // ── wykres Gantta ───────────────────────────────────────────────────────────
@@ -3625,14 +3763,15 @@ function rysujLista() {
          się raz, a kroki dopisuje przez cały czas jego trwania. -->
     ${aktualny ? `<button type="button" class="lap-inne" id="dodaj-istniejace"
         style="margin-top:0">+ Dodaj istniejące zadania</button>` : ''}
-    ${maRodzicow ? `<div class="lista-gora">
-      <button type="button" class="zwin-wszystko" id="t-zwin-wszystko">${
-        wszystkoZwiniete ? 'Rozwiń wszystkie' : 'Zwiń wszystkie'}</button>
-    </div>` : ''}
+    <div class="lista-gora">
+      ${maRodzicow ? `<button type="button" class="zwin-wszystko" id="t-zwin-wszystko">${
+        wszystkoZwiniete ? 'Rozwiń wszystkie' : 'Zwiń wszystkie'}</button>` : '<span></span>'}
+      ${gestoscHtml()}
+    </div>
     <!-- W zakładce „Inne" kafelek obszaru WRACA także na telefonie: przypisanie
          obszaru jest tam jedyną rzeczą, po którą się przychodzi, a schowanie go
          kazałoby wchodzić w Szczegóły po jedno pole. -->
-    <div class="zadania${strefa === 'brak' ? ' w-innych' : ''}">${lista.map((w) => wiersz(w, 0)).join('') ||
+    <div class="zadania gest-${gestosc}${strefa === 'brak' ? ' w-innych' : ''}">${lista.map((w) => wiersz(w, 0)).join('') ||
       (szukamy() ? '<p class="pusto">Nic nie pasuje do tej frazy.</p>'
         : '<p class="pusto">Nic tu nie ma. Wpisz pierwsze zadanie powyżej.</p>')}</div>`;
 
@@ -3656,6 +3795,12 @@ function rysujLista() {
   // Zwijanie hurtem. Osobny przycisk, a nie gest na liście: „zwiń wszystko" to
   // czynność jednorazowa przy porządkowaniu, a nie coś, co ma się dziać
   // przypadkiem przy przewijaniu.
+  const rzadGest = box().querySelector('.lista-gora .gestosc');
+  if (rzadGest) rzadGest.onclick = (ev) => {
+    const b = ev.target.closest('[data-gest]');
+    if (b) ustawGestosc(b.dataset.gest);
+  };
+
   const zwinBtn = document.getElementById('t-zwin-wszystko');
   if (zwinBtn) zwinBtn.onclick = () => {
     const zRodzicami = zadania.filter((z) => zadania.some((x) => x.parent_id === z.id));
@@ -3903,7 +4048,8 @@ function wiersz(w, poziom) {
   return `
     <div class="zad-galaz">
       <div class="zad${w.status === 'zrobione' ? ' zrobione' : ''}${
-          w.status === 'wstrzymane' ? ' wstrzymane' : ''}" data-zad="${w.id}">
+          w.status === 'wstrzymane' ? ' wstrzymane' : ''}${
+          rozwiniete.has(w.id) ? ' rozwiniety' : ''}" data-zad="${w.id}">
         <!-- Nazwa dostaje CAŁĄ szerokość, kafelki idą pod nią. Ustawione obok
              siebie walczyły o miejsce: tytuł łamał się na trzy linijki, więc
              wiersz i tak był wysoki — tylko brzydziej. -->
@@ -3923,6 +4069,7 @@ function wiersz(w, poziom) {
             w.powtarzaj ? `<span class="zad-cykl" title="Po odhaczeniu wróci ${esc(opisPowtarzania(w))}">${
               esc(opisPowtarzania(w))}</span>` : ''}</div>
           ${nast.tytul ? `<div class="zad-nast">następne: ${esc(nast.tytul)}</div>` : ''}
+          ${skrotZadania(w, spozniony)}
         </div>
         </div>
         <!-- SZYBKIE POLA bez wchodzenia w formularz. Termin i wykonawca to
