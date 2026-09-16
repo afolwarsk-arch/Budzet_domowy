@@ -1549,7 +1549,7 @@ function kalPodepnijDodawanie(ekran) {
 
 const kalNowe = { rodzaj: null, termin: null, pora: null, pora_koniec: null,
                   wyk: '', priorytet: 0, przypomnij: '60', tytul: '',
-                  powtarzaj: null, powtarzaj_co: 1, etykieta: '' };
+                  powtarzaj: null, powtarzaj_co: 1, etykieta: '', doDnia: null, strefa: null };
 
 function kalGodzinePozniej(pora) {
   const [h, m] = pora.split(':').map(Number);
@@ -1567,7 +1567,8 @@ function kalNoweOtworz(m, punkt) {
   Object.assign(kalNowe, { rodzaj: null, termin: m.dzien, pora: m.pora || null,
                            pora_koniec: m.pora ? kalGodzinePozniej(m.pora) : null,
                            wyk: '', priorytet: 0, przypomnij: '60', tytul: '',
-                           powtarzaj: null, powtarzaj_co: 1, etykieta: '' });
+                           powtarzaj: null, powtarzaj_co: 1, etykieta: '', doDnia: null,
+                           strefa: strefaDoZapisu() });
   const telefon = kalWaski.matches;
   const p = document.createElement('div');
   p.id = 'kl-podglad';
@@ -1635,6 +1636,12 @@ function kalNoweOtworz(m, punkt) {
         kalNowe.powtarzaj_co = 1;
         break;
       case 'etykieta': kalNowe.etykieta = v; break;
+      case 'strefa': kalNowe.strefa = v ? Number(v) : null; break;
+      case 'do_dnia':
+        // Wydarzenie kilkudniowe: festiwal, audyt, wyjazd. Data wcześniejsza niż
+        // pierwszy dzień znaczy pomyłkę w polach — wtedy ją zdejmujemy.
+        kalNowe.doDnia = v && v > kalNowe.termin ? v : null;
+        break;
       default: return;
     }
     // Tylko kafelki i nagłówek — pole nazwy zostaje, razem z wpisanym tekstem i kursorem.
@@ -1766,6 +1773,24 @@ function kalNowePokazUslyszane(p, u) {
   };
 }
 
+// Kafelek obszaru przy DODAWANIU (przy istniejącym zadaniu jest `kafelObszaru`,
+// który zapisuje od razu i kaskaduje na kroki). Domyślnie obszar, w którym
+// stoisz — ale widoczny i do zmiany, bo wydarzenie z pracy dodaje się czasem
+// z widoku domu.
+function kafelObszaruWyboru(idStrefy, atrybut) {
+  const moje = STREFY.filter((s) => s.moja);
+  if (!moje.length) return '';
+  const s = moje.find((x) => x.id === idStrefy);
+  return `<label class="zad-kto${s ? ' jest' : ''}" title="${s ? 'Obszar: ' + esc(s.nazwa) : 'Bez obszaru'}">
+    ${ikonaSvg(s ? (s.ikona || 'lista') : 'kompas')}<span>${s ? esc(s.nazwa) : 'Obszar'}</span>
+    <select ${atrybut} aria-label="Obszar życia">
+      <option value="">— bez obszaru —</option>
+      ${moje.map((x) => `<option value="${x.id}"${
+        x.id === idStrefy ? ' selected' : ''}>${esc(x.nazwa)}</option>`).join('')}
+    </select>
+  </label>`;
+}
+
 // Kafelek powtarzania — wspólny dla okienka dodawania i dla podglądu. „Co ile"
 // (np. co dwa tygodnie) zostaje w Szczegółach: w kafelku byłby drugim pytaniem
 // w jednym miejscu, a ustawia się je rzadko.
@@ -1796,19 +1821,26 @@ function kalNowePolaHtml() {
       ${n.wyk ? skrotWykonawcy(w) : `${ikonaSvg('osoby')}<span>Kto</span>`}
       <select data-kn="wyk" aria-label="Kto">${opcjeWykonawcyKrotkie(w)}</select></label>`;
   const cykl = kafelCyklu(n, 'data-kn="powtarzaj"');
+  const obszar = kafelObszaruWyboru(n.strefa, 'data-kn="strefa"');
   if (wyd) {
     const doG = n.pora ? `<label class="zad-pora${n.pora_koniec ? ' jest' : ''}" title="Do godziny">${
         n.pora_koniec ? esc(n.pora_koniec) : 'do'}
         <input type="time" data-kn="pora_koniec" value="${esc(n.pora_koniec || '')}"></label>` : '';
+    // Drugi dzień w tym samym kafelku co pierwszy: festiwal albo audyt trwa
+    // kilka dni, a to jest ta sama odpowiedź na pytanie „kiedy", nie osobne.
+    const doD = `<label class="zad-pora${n.doDnia ? ' jest' : ''}" title="Do dnia (kilkudniowe)">${
+        n.doDnia ? esc(dataKrotka(n.doDnia)) : 'do dnia'}
+        <input type="date" data-kn="do_dnia" value="${esc(n.doDnia || '')}"></label>`;
     const przyp = PRZYPOMNIENIA.find(([k]) => k === n.przypomnij) || PRZYPOMNIENIA[0];
-    return `<span class="zad-kiedy jest">${dzien}${od}${doG}</span>${kto}${cykl}
+    return `<span class="zad-kiedy jest">${dzien}${doD}</span>
+      <span class="zad-kiedy jest">${od}${doG}</span>${kto}${cykl}${obszar}
       ${kafelEtykiety(n, 'data-kn="etykieta"')}
       <label class="zad-kto${przyp[0] ? ' jest' : ''}" title="Przypomnienie">
         ${ikonaSvg('alerty')}<span>${przyp[2]}</span>
         <select data-kn="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(n.przypomnij || null)}</select></label>`;
   }
   const p = n.priorytet;
-  return `<span class="zad-kiedy jest">${dzien}${od}</span>${kto}${cykl}
+  return `<span class="zad-kiedy jest">${dzien}${od}</span>${kto}${cykl}${obszar}
     <label class="zad-kto zad-prio-kafel${p > 0 ? ' jest wysoki' : (p < 0 ? ' jest niski' : '')}" title="Priorytet">
       ${p > 0 ? '!' : (p < 0 ? '↓' : ikonaSvg('flaga'))}
       <select data-kn="priorytet" aria-label="Priorytet">
@@ -1827,8 +1859,12 @@ async function kalNoweZapisz() {
     toast('Koniec musi być po początku.', 'blad');
     return;
   }
+  // Kilkudniowe zapisujemy tak jak wszędzie w module: `data_start` to pierwszy
+  // dzień, `termin` ostatni.
   const dane = {
-    tytul, rodzaj: n.rodzaj, termin: n.termin, pora: n.pora, strefa_id: strefaDoZapisu(),
+    tytul, rodzaj: n.rodzaj, pora: n.pora, strefa_id: n.strefa,
+    termin: n.doDnia || n.termin,
+    data_start: n.doDnia ? n.termin : null,
     wykonawca_user_id: n.wyk.startsWith('u:') ? Number(n.wyk.slice(2)) : null,
     wykonawca_virtual_id: n.wyk.startsWith('v:') ? Number(n.wyk.slice(2)) : null,
     // Powtarzanie trafia tu tylko z dyktowania („co tydzień") — kafelka na nie
@@ -2283,7 +2319,8 @@ window.addEventListener('resize', () => { if (kalPodglad && !kalWaski.matches) k
 // Stuknięcie w wiersz otwiera TEN SAM podgląd co w kalendarzu (kafelki, trzy
 // kropki) — atrybuty `data-kal-*` są wspólne.
 
-const wydNowe = { termin: null, pora: null, pora_koniec: null, wyk: '', przypomnij: '60', etykieta: '' };
+const wydNowe = { termin: null, pora: null, pora_koniec: null, wyk: '', przypomnij: '60',
+                  etykieta: '', doDnia: null, powtarzaj: null, powtarzaj_co: 1, strefa: null };
 let wydMinionePokaz = false;
 
 async function wczytajWydarzenia() {
@@ -2296,7 +2333,8 @@ async function wczytajWydarzenia() {
   rysuj();
 }
 
-const wydWybrano = () => !!(wydNowe.termin || wydNowe.pora || wydNowe.wyk || wydNowe.przypomnij !== '60');
+const wydWybrano = () => !!(wydNowe.termin || wydNowe.pora || wydNowe.wyk || wydNowe.doDnia
+  || wydNowe.powtarzaj || wydNowe.etykieta || wydNowe.przypomnij !== '60');
 
 function wydPolaHtml() {
   const w = {
@@ -2321,6 +2359,16 @@ function wydPolaHtml() {
         <input type="time" data-wyd="pora_koniec" value="${esc(wydNowe.pora_koniec || '')}">
       </label>` : ''}
     </span>
+    <!-- Drugi dzień: festiwal, audyt, wyjazd. Ta sama odpowiedź na „kiedy", więc
+         we wspólnym kafelku z dniem pierwszym. -->
+    <span class="zad-kiedy jest sz-kafel">
+      <label class="zad-data" title="Do dnia (kilkudniowe)">
+        ${wydNowe.doDnia ? esc(dataKrotka(wydNowe.doDnia)) : 'do dnia'}
+        <input type="date" data-wyd="do_dnia" value="${esc(wydNowe.doDnia || '')}">
+      </label>
+    </span>
+    ${kafelCyklu(wydNowe, 'data-wyd="powtarzaj"').replace('class="zad-kto', 'class="zad-kto sz-kafel')}
+    ${kafelObszaruWyboru(wydNowe.strefa, 'data-wyd="strefa"').replace('class="zad-kto', 'class="zad-kto sz-kafel')}
     <label class="zad-kto sz-kafel${wydNowe.wyk ? ' jest' : ''}" title="Kto">
       ${wydNowe.wyk ? skrotWykonawcy(w) : `${ikonaSvg('osoby')}<span>Kto</span>`}
       <select data-wyd="wyk" aria-label="Kto">${opcjeWykonawcyKrotkie(w)}</select>
@@ -2336,6 +2384,10 @@ function rysujWydarzenia() {
   // Pływający guzik łapie ZADANIA — na zakładce wydarzeń wprowadzałby w błąd.
   const fab = document.getElementById('fab-lap');
   if (fab) fab.style.display = 'none';
+
+  // Obszar podpowiadamy z bieżącej zakładki, dopóki nic nie zaczęto ustawiać —
+  // żeby wydarzenie dodane w „Domu" tam wylądowało bez dodatkowego stuknięcia.
+  if (!wydWybrano()) wydNowe.strefa = strefaDoZapisu();
 
   const dzis = dzisData();
   const jutro = dodajDni(dzis, 1);
@@ -2404,6 +2456,12 @@ function rysujWydarzenia() {
     else if (k === 'wyk') wydNowe.wyk = el.value;
     else if (k === 'przypomnij') wydNowe.przypomnij = el.value;
     else if (k === 'etykieta') wydNowe.etykieta = el.value;
+    else if (k === 'strefa') wydNowe.strefa = el.value ? Number(el.value) : null;
+    else if (k === 'powtarzaj') { wydNowe.powtarzaj = el.value || null; wydNowe.powtarzaj_co = 1; }
+    else if (k === 'do_dnia') {
+      const dzien = wydNowe.termin || dzisIso();
+      wydNowe.doDnia = el.value && el.value > dzien ? el.value : null;
+    }
     rzad.innerHTML = wydPolaHtml();
   };
   document.getElementById('wyd-dodaj').onsubmit = async (ev) => {
@@ -2418,7 +2476,10 @@ function rysujWydarzenia() {
     const r = await authFetch('/api/task/zadania', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        tytul, rodzaj: 'wydarzenie', termin, strefa_id: strefaDoZapisu(),
+        tytul, rodzaj: 'wydarzenie', strefa_id: wydNowe.strefa,
+        termin: wydNowe.doDnia || termin,
+        data_start: wydNowe.doDnia ? termin : null,
+        powtarzaj: wydNowe.powtarzaj, powtarzaj_co: wydNowe.powtarzaj_co,
         pora: wydNowe.pora, pora_koniec: wydNowe.pora ? wydNowe.pora_koniec : null,
         wykonawca_user_id: wydNowe.wyk.startsWith('u:') ? Number(wydNowe.wyk.slice(2)) : null,
         wykonawca_virtual_id: wydNowe.wyk.startsWith('v:') ? Number(wydNowe.wyk.slice(2)) : null,
@@ -2432,7 +2493,9 @@ function rysujWydarzenia() {
       return;
     }
     const kiedy = `${dataKrotka(termin)}${wydNowe.pora ? ' ' + wydNowe.pora : ''}`;
-    Object.assign(wydNowe, { termin: null, pora: null, pora_koniec: null, wyk: '', przypomnij: '60', etykieta: '' });
+    Object.assign(wydNowe, { termin: null, pora: null, pora_koniec: null, wyk: '',
+                             przypomnij: '60', etykieta: '', doDnia: null,
+                             powtarzaj: null, powtarzaj_co: 1, strefa: strefaDoZapisu() });
     toast(`Dodano: ${tytul}, ${kiedy}.`, 'ok');
     await wczytaj();
   };
