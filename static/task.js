@@ -2271,6 +2271,10 @@ function kalPodgladPrzeciaganie(p) {
   chwyt.addEventListener('pointercancel', pusc);
 }
 
+// Odhaczenie spoza listy: z podglądu w kalendarzu i z menu pod trzema kropkami.
+// Ta sama droga co ptaszek na liście, z tym samym pytaniem o kroki w środku.
+const odhaczZadanie = (z) => kalOdhacz(z);
+
 async function kalOdhacz(z) {
   const zrobione = z.status !== 'zrobione';
   // Podgląd zamykamy PRZED pytaniem: stuknięcie w okno potwierdzenia jest
@@ -4501,9 +4505,17 @@ function menuZadania(id) {
   if (!tlo) { otworzSzczegoly(id); return; }   // widok bez arkusza — wprost
   tlo.hidden = false;
   const box = document.getElementById('strefy-krok');
+  const wydarzenie = w.rodzaj === 'wydarzenie';
   box.innerHTML = `
     <p class="lap-pyt">${esc(w.tytul)}</p>
     <div class="lap-lista">
+      <!-- Odhaczenie PIERWSZE: z kalendarza to najczęstsza rzecz, jaką robi się
+           z zadaniem, a ptaszka z listy tam nie ma. Wydarzenia się nie odhacza —
+           ono mija. -->
+      ${wydarzenie ? '' : `<button type="button" class="lap-poz" id="menu-zrobione">
+        ${ikonaSvg('ptaszek')}<span class="nazwa">${
+          w.status === 'zrobione' ? 'Przywróć' : 'Zrobione'}</span>
+        <span class="ile">${w.status === 'zrobione' ? 'wróci na listę' : 'zamknij sprawę'}</span></button>`}
       <button type="button" class="lap-poz" id="menu-szczegoly">
         ${ikonaSvg('olowek')}<span class="nazwa">Szczegóły</span></button>
       <button type="button" class="lap-poz" id="menu-przenies">
@@ -4523,6 +4535,8 @@ function menuZadania(id) {
   // Uchwyty wieszamy na konkretnych przyciskach, a NIE przez `onclick` na
   // `#strefy-krok`: tamten należy do obsługi stref i nadpisanie go zabrałoby
   // działanie ekranowi obszarów aż do przeładowania strony.
+  const zrobBtn = box.querySelector('#menu-zrobione');
+  if (zrobBtn) zrobBtn.onclick = () => { strefyZamknij(); odhaczZadanie(w); };
   box.querySelector('#menu-szczegoly').onclick = () => { strefyZamknij(); otworzSzczegoly(id); };
   box.querySelector('#menu-przenies').onclick = () => { strefyZamknij(); przenOtworz(id); };
   box.querySelector('#menu-wstrzymaj').onclick = () => {
