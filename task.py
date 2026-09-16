@@ -93,6 +93,9 @@ def _dane(d: dict, nowe: bool) -> dict:
         dane["pora_koniec"] = d.get("pora_koniec") or None
     if "przypomnij_min" in d:
         dane["przypomnij_min"] = d.get("przypomnij_min")
+    if "etykieta" in d:
+        e = d.get("etykieta")
+        dane["etykieta"] = e if e in task_db.ETYKIETY else None
     # Koniec przed początkiem tego samego dnia to pomylone pola, nie wydarzenie.
     if (dane.get("pora_koniec") and dane["pora"] and dane["pora_koniec"] <= dane["pora"]
             and (not dane["data_start"] or dane["data_start"] == dane["termin"])):

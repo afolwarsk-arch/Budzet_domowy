@@ -216,6 +216,11 @@ def init_task_db() -> None:
         # Ile minut PRZED początkiem przypomnieć. NULL = bez przypomnienia.
         # Tylko dla wydarzeń — zadanie przypomina o swojej porze.
         cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS przypomnij_min INTEGER")
+        # Flaga wydarzenia: co to za rodzaj sprawy (urodziny, wyjazd, wizyta…).
+        # STAŁA LISTA, nie dowolny tekst — wolne pole zamienia się w dziesięć
+        # wariantów tego samego („urodziny", „Urodziny", „ur.") i przestaje
+        # nadawać się do wyszukiwania i liczenia.
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS etykieta TEXT")
 
 
 # Warunek widoczności dokładany do KAŻDEGO odczytu. Zadanie prywatne nie
@@ -258,11 +263,14 @@ _POLA = """id, parent_id, tytul, opis, termin, pora, data_start, projekt,
            powtarzaj, powtarzaj_co, strefa_id, priorytet,
            wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
            status, zrobione_at, kolejnosc, utworzyl,
-           rodzaj, pora_koniec, przypomnij_min"""
+           rodzaj, pora_koniec, przypomnij_min, etykieta"""
 
 OKRESY = ("dzien", "tydzien", "miesiac", "rok")
 
 RODZAJE = ("zadanie", "wydarzenie")
+# Flagi wydarzeń. Kolejność jest kolejnością wyboru w interfejsie, od najczęstszych.
+ETYKIETY = ("urodziny", "rocznica", "swieto", "wyjazd", "wizyta", "spotkanie",
+            "impreza", "sport", "inne")
 # Wyprzedzenie przypomnienia o wydarzeniu, w minutach. Krótka lista zamiast
 # dowolnej liczby — tyle wystarcza, a pole z liczbą minut to formularz.
 PRZYPOMNIENIA_MIN = (15, 60, 1440)
@@ -822,8 +830,8 @@ def dodaj(household_id, user_id, d) -> int:
             (household_id, parent_id, tytul, opis, termin, pora, data_start, projekt,
              powtarzaj, powtarzaj_co, strefa_id, priorytet,
              wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
-             utworzyl, rodzaj, pora_koniec, przypomnij_min, kolejnosc)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+             utworzyl, rodzaj, pora_koniec, przypomnij_min, etykieta, kolejnosc)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     COALESCE((SELECT MAX(kolejnosc) + 1 FROM task_zadania
                               WHERE household_id = %s AND parent_id IS NOT DISTINCT FROM %s), 0))
             RETURNING id""",
@@ -839,6 +847,7 @@ def dodaj(household_id, user_id, d) -> int:
              rodzaj,
              d.get("pora_koniec") if rodzaj == "wydarzenie" else None,
              _przypomnij(d.get("przypomnij_min", PRZYPOMNIENIE_DOMYSLNE)) if rodzaj == "wydarzenie" else None,
+             d.get("etykieta") if rodzaj == "wydarzenie" and d.get("etykieta") in ETYKIETY else None,
              household_id, parent_id))
         return cur.fetchone()["id"]
 
@@ -863,6 +872,9 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
     pora_koniec = d.get("pora_koniec") if "pora_koniec" in d else stare.get("pora_koniec")
     przypomnij = (_przypomnij(d.get("przypomnij_min")) if "przypomnij_min" in d
                   else stare.get("przypomnij_min"))
+    etykieta = (d.get("etykieta") if "etykieta" in d else stare.get("etykieta"))
+    if etykieta not in ETYKIETY:
+        etykieta = None
     if wydarzenie and not d.get("termin"):
         raise ValueError("Wydarzenie musi mieć datę.")
 
@@ -892,7 +904,7 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
               powtarzaj = %s, powtarzaj_co = %s, priorytet = %s,
               wykonawca_user_id = %s, wykonawca_virtual_id = %s,
               kamien_milowy = %s, prywatne_dla = %s,
-              rodzaj = %s, pora_koniec = %s, przypomnij_min = %s,
+              rodzaj = %s, pora_koniec = %s, przypomnij_min = %s, etykieta = %s,
               przypomniano_at = CASE WHEN termin IS DISTINCT FROM %s
                                        OR pora IS DISTINCT FROM %s
                                        -- Wydarzenie przypomina od POCZĄTKU i z
@@ -918,6 +930,7 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
              d.get("wykonawca_user_id"), d.get("wykonawca_virtual_id"),
              bool(d.get("kamien_milowy")) and not wydarzenie, prywatne,
              rodzaj, pora_koniec if wydarzenie else None, przypomnij if wydarzenie else None,
+             etykieta if wydarzenie else None,
              d.get("termin"), d.get("pora"), wydarzenie, d.get("data_start"),
              przypomnij if wydarzenie else None,
              household_id, zadanie_id))

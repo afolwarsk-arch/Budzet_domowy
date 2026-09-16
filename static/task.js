@@ -853,8 +853,10 @@ const roznicaDni = (a, b) => Math.round((b - a) / DZIEN_MS);
 const dzisData = () => new Date(new Date().toDateString());
 const kalWielka = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const kalGodzinowy = (w) => !!w.pora && w.start.getTime() === w.koniec.getTime();
-const kalZnak = (z) => (z.kamien_milowy ? '<i class="kl-romb"></i>'
-  : (z.projekt ? '<i class="kl-kwadrat"></i>' : ''));
+const kalZnak = (z) => {
+  if (z.rodzaj === 'wydarzenie') return znakEtykiety(z);
+  return z.kamien_milowy ? '<i class="kl-romb"></i>' : (z.projekt ? '<i class="kl-kwadrat"></i>' : '');
+};
 
 async function wczytajKalendarz() {
   try {
@@ -949,6 +951,40 @@ const kalPrzedzial = (z) => (z.pora
 
 const PRZYPOMNIENIA = [['', 'bez przypomnienia', 'bez'], ['15', '15 min przed', '15 min'],
                        ['60', '1 godz. przed', '1 godz.'], ['1440', '1 dzień przed', '1 dzień']];
+
+// Flagi wydarzeń — co to za rodzaj sprawy. Ikona idzie przed nazwą w kalendarzu
+// i w Wydarzeniach: urodziny wśród wizyt u lekarza rozpoznaje się wtedy z jednego
+// spojrzenia, bez czytania. Kolejność od najczęstszych; „Inne" na końcu.
+const ETYKIETY_WYD = [
+  ['urodziny', 'Urodziny', 'tort'], ['rocznica', 'Rocznica', 'serce'],
+  ['swieto', 'Święto', 'gwiazdka'], ['wyjazd', 'Wyjazd', 'walizka'],
+  ['wizyta', 'Wizyta', 'zdrowie'], ['spotkanie', 'Spotkanie', 'osoby'],
+  ['impreza', 'Impreza', 'nuta'], ['sport', 'Sport', 'pilka'],
+  ['inne', 'Inne', 'kalendarz'],
+];
+
+const etykietaWyd = (z) => ETYKIETY_WYD.find(([k]) => k === z.etykieta) || null;
+
+// Znak flagi przy nazwie wydarzenia.
+function znakEtykiety(z) {
+  const e = etykietaWyd(z);
+  return e ? `<span class="wyd-flaga" title="${e[1]}">${ikonaSvg(e[2])}</span>` : '';
+}
+
+function opcjeEtykiety(teraz) {
+  return `<option value=""${teraz ? '' : ' selected'}>— bez flagi —</option>`
+    + ETYKIETY_WYD.map(([k, l]) => `<option value="${k}"${
+      k === teraz ? ' selected' : ''}>${l}</option>`).join('');
+}
+
+// Kafelek flagi — wspólny dla okienka dodawania, podglądu i listy wydarzeń.
+function kafelEtykiety(z, atrybut) {
+  const e = etykietaWyd(z);
+  return `<label class="zad-kto${e ? ' jest' : ''}" title="Flaga wydarzenia">
+    ${ikonaSvg(e ? e[2] : 'flaga')}<span>${e ? e[1] : 'Flaga'}</span>
+    <select ${atrybut} aria-label="Flaga wydarzenia">${opcjeEtykiety(z.etykieta || '')}</select>
+  </label>`;
+}
 
 function opcjePrzypomnienia(v) {
   const teraz = v == null ? '' : String(v);
@@ -1489,7 +1525,7 @@ function kalPodepnijDodawanie(ekran) {
 
 const kalNowe = { rodzaj: null, termin: null, pora: null, pora_koniec: null,
                   wyk: '', priorytet: 0, przypomnij: '60', tytul: '',
-                  powtarzaj: null, powtarzaj_co: 1 };
+                  powtarzaj: null, powtarzaj_co: 1, etykieta: '' };
 
 function kalGodzinePozniej(pora) {
   const [h, m] = pora.split(':').map(Number);
@@ -1507,7 +1543,7 @@ function kalNoweOtworz(m, punkt) {
   Object.assign(kalNowe, { rodzaj: null, termin: m.dzien, pora: m.pora || null,
                            pora_koniec: m.pora ? kalGodzinePozniej(m.pora) : null,
                            wyk: '', priorytet: 0, przypomnij: '60', tytul: '',
-                           powtarzaj: null, powtarzaj_co: 1 });
+                           powtarzaj: null, powtarzaj_co: 1, etykieta: '' });
   const telefon = kalWaski.matches;
   const p = document.createElement('div');
   p.id = 'kl-podglad';
@@ -1574,6 +1610,7 @@ function kalNoweOtworz(m, punkt) {
         kalNowe.powtarzaj = v || null;
         kalNowe.powtarzaj_co = 1;
         break;
+      case 'etykieta': kalNowe.etykieta = v; break;
       default: return;
     }
     // Tylko kafelki i nagłówek — pole nazwy zostaje, razem z wpisanym tekstem i kursorem.
@@ -1741,6 +1778,7 @@ function kalNowePolaHtml() {
         <input type="time" data-kn="pora_koniec" value="${esc(n.pora_koniec || '')}"></label>` : '';
     const przyp = PRZYPOMNIENIA.find(([k]) => k === n.przypomnij) || PRZYPOMNIENIA[0];
     return `<span class="zad-kiedy jest">${dzien}${od}${doG}</span>${kto}${cykl}
+      ${kafelEtykiety(n, 'data-kn="etykieta"')}
       <label class="zad-kto${przyp[0] ? ' jest' : ''}" title="Przypomnienie">
         ${ikonaSvg('alerty')}<span>${przyp[2]}</span>
         <select data-kn="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(n.przypomnij || null)}</select></label>`;
@@ -1776,6 +1814,7 @@ async function kalNoweZapisz() {
   if (wyd) {
     dane.pora_koniec = n.pora ? n.pora_koniec : null;
     dane.przypomnij_min = n.przypomnij ? Number(n.przypomnij) : null;
+    dane.etykieta = n.etykieta || null;
   } else {
     dane.priorytet = n.priorytet;
   }
@@ -2001,6 +2040,7 @@ function kalKafleWydarzenia(z) {
       ${ikonaSvg('alerty')}<span>${przyp ? przyp[2] : 'bez'}</span>
       <select data-klp-pole="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(z.przypomnij_min)}</select>
     </label>
+    ${kafelEtykiety(z, 'data-klp-pole="etykieta"')}
     ${kafelCyklu(z, 'data-klp-pole="powtarzaj"')}
     ${kafelObszaru(z)}
     <button class="zad-plus zad-komentarz${z.ile_komentarzy ? ' jest' : ''}" type="button"
@@ -2100,6 +2140,7 @@ function kalOtworzPodglad({ id, el, od, do: doK, wirtualne, pozycja, bezAnimacji
       // „Co ile" wraca do jedynki: kafelek zna tylko okres, a mieszanie starej
       // wielokrotności z nowym okresem dałoby „co 2 lata" z „co miesiąc".
       powtarzaj: { powtarzaj: v || null, powtarzaj_co: 1 },
+      etykieta: { etykieta: v || null },
       priorytet: { priorytet: Number(v) || 0 },
       wyk: { wykonawca_user_id: v.startsWith('u:') ? Number(v.slice(2)) : null,
              wykonawca_virtual_id: v.startsWith('v:') ? Number(v.slice(2)) : null },
@@ -2218,7 +2259,7 @@ window.addEventListener('resize', () => { if (kalPodglad && !kalWaski.matches) k
 // Stuknięcie w wiersz otwiera TEN SAM podgląd co w kalendarzu (kafelki, trzy
 // kropki) — atrybuty `data-kal-*` są wspólne.
 
-const wydNowe = { termin: null, pora: null, pora_koniec: null, wyk: '', przypomnij: '60' };
+const wydNowe = { termin: null, pora: null, pora_koniec: null, wyk: '', przypomnij: '60', etykieta: '' };
 let wydMinionePokaz = false;
 
 async function wczytajWydarzenia() {
@@ -2263,7 +2304,8 @@ function wydPolaHtml() {
     <label class="zad-kto sz-kafel${przyp[0] ? ' jest' : ''}" title="Przypomnienie">
       ${ikonaSvg('alerty')}<span>${przyp[2]}</span>
       <select data-wyd="przypomnij" aria-label="Przypomnienie">${opcjePrzypomnienia(wydNowe.przypomnij || null)}</select>
-    </label>`;
+    </label>
+    ${kafelEtykiety(wydNowe, 'data-wyd="etykieta"').replace('class="zad-kto', 'class="zad-kto sz-kafel')}`;
 }
 
 function rysujWydarzenia() {
@@ -2338,6 +2380,7 @@ function rysujWydarzenia() {
     else if (k === 'pora_koniec') wydNowe.pora_koniec = el.value || null;
     else if (k === 'wyk') wydNowe.wyk = el.value;
     else if (k === 'przypomnij') wydNowe.przypomnij = el.value;
+    else if (k === 'etykieta') wydNowe.etykieta = el.value;
     rzad.innerHTML = wydPolaHtml();
   };
   document.getElementById('wyd-dodaj').onsubmit = async (ev) => {
@@ -2357,6 +2400,7 @@ function rysujWydarzenia() {
         wykonawca_user_id: wydNowe.wyk.startsWith('u:') ? Number(wydNowe.wyk.slice(2)) : null,
         wykonawca_virtual_id: wydNowe.wyk.startsWith('v:') ? Number(wydNowe.wyk.slice(2)) : null,
         przypomnij_min: wydNowe.przypomnij ? Number(wydNowe.przypomnij) : null,
+        etykieta: wydNowe.etykieta || null,
       }),
     });
     if (!r.ok) {
@@ -2365,7 +2409,7 @@ function rysujWydarzenia() {
       return;
     }
     const kiedy = `${dataKrotka(termin)}${wydNowe.pora ? ' ' + wydNowe.pora : ''}`;
-    Object.assign(wydNowe, { termin: null, pora: null, pora_koniec: null, wyk: '', przypomnij: '60' });
+    Object.assign(wydNowe, { termin: null, pora: null, pora_koniec: null, wyk: '', przypomnij: '60', etykieta: '' });
     toast(`Dodano: ${tytul}, ${kiedy}.`, 'ok');
     await wczytaj();
   };
@@ -2396,7 +2440,7 @@ function wydWiersz(w, dzis) {
   return `<button type="button" class="wyd-poz${w.koniec < dzis ? ' minione' : ''}" ${kalAtrybuty(w)}>
     <span class="wyd-kiedy"><strong>${esc(dzien)}</strong><span>${esc(godz)}</span></span>
     <span class="wyd-tresc">
-      <span class="wyd-tytul">${znakObszaru(z, true)}${esc(z.tytul)}</span>
+      <span class="wyd-tytul">${znakEtykiety(z)}${znakObszaru(z, true)}${esc(z.tytul)}</span>
       ${meta ? `<small>${esc(meta)}</small>` : ''}
     </span>
     ${ktos ? `<span class="wyd-kto" title="Kto">${skrotWykonawcy(z)}</span>` : ''}
@@ -5238,9 +5282,15 @@ function rysujSzczegoly() {
       </div>
     </div>
     <div class="uwaga" style="margin:-6px 0 12px">Bez godzin — wydarzenie na cały dzień.</div>
-    <div class="pole">
-      <label for="s-przypomnij">Przypomnienie</label>
-      <select id="s-przypomnij">${opcjePrzypomnienia(w.przypomnij_min)}</select>
+    <div class="pola-2">
+      <div class="pole">
+        <label for="s-przypomnij">Przypomnienie</label>
+        <select id="s-przypomnij">${opcjePrzypomnienia(w.przypomnij_min)}</select>
+      </div>
+      <div class="pole">
+        <label for="s-etykieta">Flaga</label>
+        <select id="s-etykieta">${opcjeEtykiety(w.etykieta || '')}</select>
+      </div>
     </div>` : `
     <div class="pole">
       <label for="s-pora">Godzina przypomnienia</label>
@@ -5421,6 +5471,7 @@ function rysujSzczegoly() {
       dane.pora_koniec = document.getElementById('s-pora-koniec').value || null;
       dane.przypomnij_min = document.getElementById('s-przypomnij').value
         ? Number(document.getElementById('s-przypomnij').value) : null;
+      dane.etykieta = document.getElementById('s-etykieta').value || null;
     } else {
       dane.priorytet = Number(document.getElementById('s-priorytet').value) || 0;
       dane.kamien_milowy = document.getElementById('s-kamien').checked;

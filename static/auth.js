@@ -1025,6 +1025,11 @@ const IKONY_SVG = {
   ptaszek: '<path d="M4.8 12.4l4.6 4.6 9.8-10.4"/>',
   mikrofon: '<rect x="9.2" y="2.8" width="5.6" height="11.2" rx="2.8"/><path d="M5.8 11.4a6.2 6.2 0 0012.4 0"/><path d="M12 17.6v3.6"/>',
   kalendarz: '<rect x="3.4" y="5.4" width="17.2" height="15.2" rx="2.2"/><path d="M3.4 10h17.2"/><path d="M8 3.4v3.4M16 3.4v3.4"/>',
+  // Flagi wydarzeń: tort (urodziny), walizka (wyjazd), nuta (impreza), piłka (sport).
+  tort: '<path d="M4.2 20.6h15.6v-6.2c0-1.5-1.2-2.6-2.6-2.6H6.8c-1.4 0-2.6 1.1-2.6 2.6z"/><path d="M4.2 16.2c1.3 1.2 2.6 1.2 3.9 0s2.6-1.2 3.9 0 2.6 1.2 3.9 0 2.6-1.2 3.9 0"/><path class="kropka" d="M12 4.2c.9.9 1.4 1.7 1.4 2.3a1.4 1.4 0 01-2.8 0c0-.6.5-1.4 1.4-2.3z"/><path d="M12 8.8v3"/>',
+  walizka: '<rect x="3" y="7.4" width="18" height="12.6" rx="2.4"/><path d="M8.8 7.4V5.6c0-.9.7-1.6 1.6-1.6h3.2c.9 0 1.6.7 1.6 1.6v1.8"/><path class="akc" d="M12 11v5.4"/>',
+  nuta: '<circle cx="7.4" cy="17.6" r="2.8"/><circle cx="17.6" cy="15.4" r="2.6"/><path d="M10.2 17.6V6.6l10-2v10.8"/>',
+  pilka: '<circle cx="12" cy="12" r="8.8"/><path class="akc" d="M12 6.4l3.4 2.5-1.3 4h-4.2l-1.3-4z"/><path d="M12 3.2v3.2M5 9.6l3.6 1.3M19 9.6l-3.6 1.3M8.2 20.1l1.7-3.2M15.8 20.1l-1.7-3.2"/>',
   krzyzyk: '<path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/>',
   pauza: '<path d="M9.4 5.4v13.2M14.6 5.4v13.2"/>',
   uchwyt: '<circle cx="9" cy="6.4" r="1.5"/><circle cx="15" cy="6.4" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="17.6" r="1.5"/><circle cx="15" cy="17.6" r="1.5"/>',
