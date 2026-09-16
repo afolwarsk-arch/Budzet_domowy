@@ -334,7 +334,8 @@ def wyslij_przypomnienia_zadan() -> None:
         return
     # Klucz z wyprzedzeniem, nie sam identyfikator: wydarzenie ma kilka
     # przypomnień i zablokowanie całego wiersza po jednym zabrałoby pozostałe.
-    zadania = [z for z in zadania if (z["id"], z.get("minuty")) not in _JUZ_WYSLANE]
+    zadania = [z for z in zadania
+               if (z["id"], z.get("termin_id"), z.get("minuty")) not in _JUZ_WYSLANE]
     if not zadania:
         return
     print(f"[push] tik zadań: {len(zadania)} do wysyłki")
@@ -380,7 +381,7 @@ def wyslij_przypomnienia_zadan() -> None:
         # niedostępność bazy), nie o odczekanie.
         def oznacz():
             if z.get("rodzaj") == "wydarzenie":
-                task_db.oznacz_przypomnienie_wydarzenia(z["id"], z["minuty"])
+                task_db.oznacz_przypomnienie_wydarzenia(z["id"], z["minuty"], z.get("termin_id"))
             else:
                 task_db.oznacz_przypomniane([z["id"]])
 
@@ -390,7 +391,7 @@ def wyslij_przypomnienia_zadan() -> None:
             try:
                 oznacz()
             except Exception as e2:
-                _JUZ_WYSLANE.add((z["id"], z.get("minuty")))
+                _JUZ_WYSLANE.add((z["id"], z.get("termin_id"), z.get("minuty")))
                 print(f"[push] zadanie {z['id']} ({adresat_info}) — powiadomienie WYSŁANE, "
                       f"ale zapis stanu nie poszedł dwukrotnie ({e1!r}, {e2!r}) — "
                       f"pomijam dalej w tym procesie")

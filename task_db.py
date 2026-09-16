@@ -233,6 +233,39 @@ def init_task_db() -> None:
         cur.execute("""UPDATE task_zadania SET przypomnienia = ARRAY[przypomnij_min]
             WHERE rodzaj = 'wydarzenie' AND przypomnij_min IS NOT NULL
               AND cardinality(przypomnienia) = 0""")
+
+        # ── kiedy się dzieje: trzy tryby ───────────────────────────────────
+        # Pytanie „kiedy" ma trzy różne odpowiedzi i nie da się ich wcisnąć
+        # w jedno pole (patrz makieta modelu z 2026-09-16):
+        #
+        #   RAZ            — jeden dzień albo zakres dni (tak było do tej pory),
+        #   REGUŁA         — „co tydzień w poniedziałki, środy i niedziele";
+        #                    nieskończona i WYLICZALNA, więc wystarczy ją zapisać,
+        #   WYBRANE DNI    — skończona lista konkretnych terminów, każdy z własnymi
+        #                    godzinami (zjazdy na studiach: jeden w drugi weekend,
+        #                    drugi w ostatni, jeden w środku tygodnia).
+        #
+        # Wciśnięcie zjazdów w regułę wymagałoby opisywania ich wyjątkami,
+        # a reguły w listę — wpisania stu dat siłowni ręcznie.
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS "
+                    "dni_tygodnia INTEGER[] NOT NULL DEFAULT '{}'::int[]")
+        cur.execute("ALTER TABLE task_zadania ADD COLUMN IF NOT EXISTS powtarzaj_do DATE")
+        # Lista terminów serii. Własne `przypomniane`, bo przypomnienia liczą się
+        # PRZED KAŻDYM wystąpieniem osobno — inaczej „dzień przed" zadziałałoby
+        # tylko przed pierwszym zjazdem.
+        cur.execute("""CREATE TABLE IF NOT EXISTS task_terminy (
+            id           SERIAL PRIMARY KEY,
+            household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            zadanie_id   INTEGER NOT NULL REFERENCES task_zadania(id) ON DELETE CASCADE,
+            data         DATE NOT NULL,
+            pora         TIME,
+            pora_koniec  TIME,
+            przypomniane INTEGER[] NOT NULL DEFAULT '{}'::int[],
+            created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cur.execute("CREATE INDEX IF NOT EXISTS task_terminy_zadanie "
+                    "ON task_terminy (zadanie_id, data)")
+        cur.execute("CREATE INDEX IF NOT EXISTS task_terminy_data ON task_terminy (data)")
         # Flaga wydarzenia: co to za rodzaj sprawy (urodziny, wyjazd, wizyta…).
         # STAŁA LISTA, nie dowolny tekst — wolne pole zamienia się w dziesięć
         # wariantów tego samego („urodziny", „Urodziny", „ur.") i przestaje
@@ -280,7 +313,8 @@ _POLA = """id, parent_id, tytul, opis, termin, pora, data_start, projekt,
            powtarzaj, powtarzaj_co, strefa_id, priorytet,
            wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
            status, zrobione_at, kolejnosc, utworzyl,
-           rodzaj, pora_koniec, przypomnij_min, etykieta, przypomnienia"""
+           rodzaj, pora_koniec, przypomnij_min, etykieta, przypomnienia,
+           dni_tygodnia, powtarzaj_do"""
 
 OKRESY = ("dzien", "tydzien", "miesiac", "rok")
 
@@ -304,6 +338,22 @@ def _przypomnij(v) -> int | None:
     except (TypeError, ValueError):
         return None
     return n if n in PRZYPOMNIENIA_MIN else None
+
+
+def _dni_tygodnia(v) -> list:
+    """Dni tygodnia reguły → posortowany zestaw 1–7 (poniedziałek = 1, jak ISO).
+    Poza regułą tygodniową nie znaczą nic i zapisujemy pustą listę."""
+    if not isinstance(v, (list, tuple, set)):
+        return []
+    wynik = set()
+    for x in v:
+        try:
+            n = int(x)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= n <= 7:
+            wynik.add(n)
+    return sorted(wynik)
 
 
 def _przypomnienia(v) -> list:
@@ -857,8 +907,9 @@ def dodaj(household_id, user_id, d) -> int:
             (household_id, parent_id, tytul, opis, termin, pora, data_start, projekt,
              powtarzaj, powtarzaj_co, strefa_id, priorytet,
              wykonawca_user_id, wykonawca_virtual_id, prywatne_dla, kamien_milowy,
-             utworzyl, rodzaj, pora_koniec, przypomnij_min, etykieta, przypomnienia, kolejnosc)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+             utworzyl, rodzaj, pora_koniec, przypomnij_min, etykieta, przypomnienia,
+             dni_tygodnia, powtarzaj_do, kolejnosc)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     COALESCE((SELECT MAX(kolejnosc) + 1 FROM task_zadania
                               WHERE household_id = %s AND parent_id IS NOT DISTINCT FROM %s), 0))
             RETURNING id""",
@@ -878,6 +929,9 @@ def dodaj(household_id, user_id, d) -> int:
              (_przypomnienia(d.get("przypomnienia"))[:1] or [None])[0] if rodzaj == "wydarzenie" else None,
              d.get("etykieta") if rodzaj == "wydarzenie" and d.get("etykieta") in ETYKIETY else None,
              _przypomnienia(d.get("przypomnienia")) if rodzaj == "wydarzenie" else [],
+             # Dni tygodnia mają sens tylko przy regule tygodniowej.
+             _dni_tygodnia(d.get("dni_tygodnia")) if d.get("powtarzaj") == "tydzien" else [],
+             d.get("powtarzaj_do") or None,
              household_id, parent_id))
         return cur.fetchone()["id"]
 
@@ -906,6 +960,14 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
     etykieta = (d.get("etykieta") if "etykieta" in d else stare.get("etykieta"))
     if etykieta not in ETYKIETY:
         etykieta = None
+    # Reguła: dni tygodnia i koniec serii — też „brak klucza = nie ruszaj".
+    dni_tygodnia = (_dni_tygodnia(d.get("dni_tygodnia")) if "dni_tygodnia" in d
+                    else list(stare.get("dni_tygodnia") or []))
+    if d.get("powtarzaj") != "tydzien":
+        dni_tygodnia = []
+    powtarzaj_do = (d.get("powtarzaj_do") or None) if "powtarzaj_do" in d else stare.get("powtarzaj_do")
+    if not d.get("powtarzaj"):
+        powtarzaj_do = None
     if wydarzenie and not d.get("termin"):
         raise ValueError("Wydarzenie musi mieć datę.")
 
@@ -936,7 +998,7 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
               wykonawca_user_id = %s, wykonawca_virtual_id = %s,
               kamien_milowy = %s, prywatne_dla = %s,
               rodzaj = %s, pora_koniec = %s, przypomnij_min = %s, etykieta = %s,
-              przypomnienia = %s,
+              przypomnienia = %s, dni_tygodnia = %s, powtarzaj_do = %s,
               -- Przesunięte wydarzenie ma przypomnieć o sobie na nowo, więc
               -- lista wysłanych wyprzedzeń zeruje się razem z terminem.
               przypomniane = CASE WHEN %s AND (termin IS DISTINCT FROM %s
@@ -971,6 +1033,7 @@ def edytuj(household_id, user_id, zadanie_id, d) -> bool:
              rodzaj, pora_koniec if wydarzenie else None, przypomnij if wydarzenie else None,
              etykieta if wydarzenie else None,
              przypomnienia if wydarzenie else [],
+             dni_tygodnia, powtarzaj_do,
              # zerowanie listy wysłanych
              wydarzenie, d.get("termin"), d.get("pora"), d.get("data_start"),
              przypomnienia if wydarzenie else [],
@@ -1059,6 +1122,72 @@ def przenies(household_id, user_id, zadania_ids, parent_id) -> int:
     return len(do_zrobienia)
 
 
+def terminy(household_id: int, zadania_ids) -> dict:
+    """Listy terminów dla wskazanych wydarzeń: {zadanie_id: [{...}, ...]}.
+
+    Jedno zapytanie na cały widok, nie jedno na wydarzenie — kalendarz rysuje
+    kilkadziesiąt wpisów naraz i pytanie per wiersz byłoby lawiną zapytań.
+    """
+    ids = [int(x) for x in (zadania_ids or [])]
+    if not ids:
+        return {}
+    with get_db() as cur:
+        cur.execute("SELECT id, zadanie_id, data, pora, pora_koniec FROM task_terminy "
+                    "WHERE household_id = %s AND zadanie_id = ANY(%s) "
+                    "ORDER BY data, pora NULLS FIRST, id", (household_id, ids))
+        wynik: dict = {}
+        for r in cur.fetchall():
+            wynik.setdefault(r["zadanie_id"], []).append(dict(r))
+        return wynik
+
+
+def ustaw_terminy(household_id: int, user_id: int, zadanie_id: int, lista) -> bool:
+    """Zapisuje CAŁĄ listę terminów serii (kasuje i wstawia od nowa).
+
+    Prościej niż dokładanie i usuwanie po jednym: lista jest krótka (kilkanaście
+    zjazdów), a front i tak przysyła jej pełny kształt. `przypomniane` przy okazji
+    się zeruje — po przestawieniu terminów przypomnienia mają zadzwonić od nowa.
+
+    Po zapisie `termin` wydarzenia wskazuje NAJBLIŻSZY nadchodzący termin
+    (albo ostatni, gdy wszystkie minęły), żeby reszta apki — sortowanie, „Dziś",
+    zakładka Wydarzenia — dalej miała jedną datę, po której pracuje.
+    """
+    z = pobierz(household_id, user_id, zadanie_id)
+    if not z or z.get("rodzaj") != "wydarzenie":
+        return False
+    czyste = []
+    for t in (lista or []):
+        d = (t or {}).get("data")
+        if not d:
+            continue
+        czyste.append({"data": d, "pora": t.get("pora") or None,
+                       "pora_koniec": t.get("pora_koniec") or None})
+    czyste.sort(key=lambda t: (str(t["data"]), str(t["pora"] or "")))
+    with get_db() as cur:
+        cur.execute("DELETE FROM task_terminy WHERE household_id = %s AND zadanie_id = %s",
+                    (household_id, zadanie_id))
+        for t in czyste:
+            cur.execute("""INSERT INTO task_terminy (household_id, zadanie_id, data, pora, pora_koniec)
+                           VALUES (%s,%s,%s,%s,%s)""",
+                        (household_id, zadanie_id, t["data"], t["pora"], t["pora_koniec"]))
+        if czyste:
+            cur.execute("""UPDATE task_zadania SET
+                    termin = COALESCE(
+                        (SELECT MIN(data) FROM task_terminy
+                          WHERE zadanie_id = %s AND data >= CURRENT_DATE),
+                        (SELECT MAX(data) FROM task_terminy WHERE zadanie_id = %s)),
+                    data_start = NULL,
+                    pora = (SELECT pora FROM task_terminy WHERE zadanie_id = %s
+                             ORDER BY (data < CURRENT_DATE), data, id LIMIT 1),
+                    pora_koniec = (SELECT pora_koniec FROM task_terminy WHERE zadanie_id = %s
+                             ORDER BY (data < CURRENT_DATE), data, id LIMIT 1),
+                    -- Seria ma własne terminy, więc reguła powtarzania milczy.
+                    powtarzaj = NULL, dni_tygodnia = '{}'::int[]
+                WHERE id = %s AND household_id = %s""",
+                (zadanie_id, zadanie_id, zadanie_id, zadanie_id, zadanie_id, household_id))
+    return True
+
+
 def nastepna_data(data, okres: str, co: int):
     """Przesuwa datę o `co` jednostek `okres`. Zwraca `date` albo None.
 
@@ -1083,6 +1212,34 @@ def nastepna_data(data, okres: str, co: int):
     return date(rok, miesiac, min(d.day, ostatni))
 
 
+def nastepne_wystapienie(data, okres: str, co: int, dni=None):
+    """Następna data reguły — z uwzględnieniem DNI TYGODNIA.
+
+    „Co tydzień w poniedziałki, środy i niedziele" to jedna reguła, nie trzy
+    osobne zadania: kolejne wystąpienie to po prostu najbliższy dzień z listy.
+    Przy „co dwa tygodnie" liczy się jeszcze, czy tydzień kandydata jest
+    parzysty względem tygodnia, od którego liczymy — inaczej wybrane dni
+    rozjechałyby się po wszystkich tygodniach.
+    """
+    if okres != "tydzien" or not dni:
+        return nastepna_data(data, okres, co)
+    if not data:
+        return None
+    d = data if isinstance(data, date) else date.fromisoformat(str(data)[:10])
+    co = max(1, int(co or 1))
+    dozwolone = set(dni)
+    baza = d - timedelta(days=d.weekday())
+    kandydat = d
+    for _ in range(400):   # najdalszy sensowny skok to „co 52 tygodnie"
+        kandydat += timedelta(days=1)
+        if kandydat.isoweekday() not in dozwolone:
+            continue
+        tygodni = ((kandydat - timedelta(days=kandydat.weekday())) - baza).days // 7
+        if tygodni % co == 0:
+            return kandydat
+    return None
+
+
 def _powtorz(cur, household_id: int, z: dict) -> int | None:
     """Tworzy kolejne wystąpienie zadania cyklicznego. Zwraca jego id.
 
@@ -1095,8 +1252,14 @@ def _powtorz(cur, household_id: int, z: dict) -> int | None:
     śmieci"); kopiowanie całych drzew przy każdym odhaczeniu mnożyłoby dane
     i wymagało decyzji, co zrobić z krokami już zrobionymi.
     """
-    nowy_termin = nastepna_data(z.get("termin"), z.get("powtarzaj"), z.get("powtarzaj_co"))
+    nowy_termin = nastepne_wystapienie(z.get("termin"), z.get("powtarzaj"),
+                                       z.get("powtarzaj_co"), z.get("dni_tygodnia"))
     if not nowy_termin:
+        return None
+    # Koniec serii: po tej dacie zadanie już nie wraca.
+    koniec = z.get("powtarzaj_do")
+    if koniec and nowy_termin > (koniec if isinstance(koniec, date)
+                                 else date.fromisoformat(str(koniec)[:10])):
         return None
     # Początek przesuwamy o tyle samo dni, ile przesunął się termin, żeby
     # zachować długość zadania (np. „sprzątanie: piątek–niedziela").
@@ -1108,14 +1271,18 @@ def _powtorz(cur, household_id: int, z: dict) -> int | None:
     cur.execute("""INSERT INTO task_zadania
         (household_id, parent_id, tytul, opis, termin, pora, data_start, projekt,
          powtarzaj, powtarzaj_co, wykonawca_user_id, wykonawca_virtual_id,
-         prywatne_dla, kamien_milowy, utworzyl, kolejnosc)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+         prywatne_dla, kamien_milowy, utworzyl, dni_tygodnia, powtarzaj_do, kolejnosc)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
         (household_id, z.get("parent_id"), z["tytul"], z.get("opis"), nowy_termin,
          z.get("pora"), nowy_start, bool(z.get("projekt")),
          z.get("powtarzaj"), z.get("powtarzaj_co") or 1,
          z.get("wykonawca_user_id"), z.get("wykonawca_virtual_id"),
          z.get("prywatne_dla"), bool(z.get("kamien_milowy")),
-         z.get("utworzyl"), z.get("kolejnosc") or 0))
+         # Kolejne wystąpienie dziedziczy CAŁĄ regułę, także dni tygodnia
+         # i koniec serii — inaczej „co tydzień w pn i śr" po pierwszym
+         # odhaczeniu zamieniłoby się w zwykłe „co tydzień".
+         z.get("utworzyl"), list(z.get("dni_tygodnia") or []), z.get("powtarzaj_do"),
+         z.get("kolejnosc") or 0))
     return cur.fetchone()["id"]
 
 
@@ -1269,10 +1436,45 @@ def do_przypomnienia():
             LIMIT 500""")
         wydarzenia_db = [dict(r) for r in cur.fetchall()]
 
+    # Terminy serii („zjazdy"): każdy z nich przypomina o sobie osobno i osobno
+    # odhacza wysłane — inaczej „dzień przed" zadzwoniłoby raz, przed pierwszym.
+    with get_db() as cur:
+        cur.execute("""SELECT t.id AS termin_id, t.zadanie_id, t.data, t.pora, t.przypomniane,
+                              z.household_id, z.tytul, z.wykonawca_user_id, z.prywatne_dla,
+                              z.przypomnienia, z.rodzaj
+            FROM task_terminy t JOIN task_zadania z ON z.id = t.zadanie_id
+            WHERE z.status = 'otwarte' AND cardinality(z.przypomnienia) > 0
+              AND t.data >= CURRENT_DATE - INTERVAL '1 day'
+            LIMIT 500""")
+        terminy_db = [dict(r) for r in cur.fetchall()]
+
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
     teraz = datetime.now(ZoneInfo("Europe/Warsaw")).replace(tzinfo=None)
     g, m = (int(x) for x in domyslna.split(":")[:2])
+
+    def dojrzale(poczatek, przypomnienia, wyslane):
+        """Wyprzedzenia, którym właśnie minął czas, a jeszcze nie poszły."""
+        if poczatek <= teraz:
+            return []          # po rozpoczęciu nie przypominamy
+        gotowe = []
+        for minuty in sorted(set(przypomnienia or []), reverse=True):
+            if minuty in set(wyslane or []):
+                continue
+            if poczatek - timedelta(minutes=minuty) <= teraz:
+                gotowe.append(minuty)
+        return gotowe
+
+    for t in terminy_db:
+        poczatek = (datetime.combine(t["data"], t["pora"]) if t["pora"]
+                    else datetime.combine(t["data"], time(g, m)))
+        for minuty in dojrzale(poczatek, t["przypomnienia"], t["przypomniane"]):
+            wynik.append({**t, "id": t["zadanie_id"], "minuty": minuty,
+                          "termin": t["data"], "termin_id": t["termin_id"]})
+
+    # Wydarzenia bez listy terminów — liczymy od ich własnej daty.
+    zSeria = {t["zadanie_id"] for t in terminy_db}
+    wydarzenia_db = [w for w in wydarzenia_db if w["id"] not in zSeria]
     for w in wydarzenia_db:
         dzien = w.get("data_start") or w["termin"]
         pora = w.get("pora")
@@ -1300,10 +1502,12 @@ def przesun_minione_wydarzenia() -> int:
     (nic się w nim nie „zrobiło"), a mnożenie wierszy zaśmiecałoby zakładkę.
     """
     with get_db() as cur:
-        cur.execute("""SELECT id, termin, data_start, powtarzaj, powtarzaj_co
+        cur.execute("""SELECT id, termin, data_start, powtarzaj, powtarzaj_co,
+                              dni_tygodnia, powtarzaj_do
             FROM task_zadania
             WHERE rodzaj = 'wydarzenie' AND powtarzaj IS NOT NULL
               AND termin IS NOT NULL AND termin < CURRENT_DATE
+              AND (powtarzaj_do IS NULL OR powtarzaj_do >= CURRENT_DATE)
             LIMIT 500""")
         wiersze = [dict(r) for r in cur.fetchall()]
     if not wiersze:
@@ -1313,9 +1517,11 @@ def przesun_minione_wydarzenia() -> int:
         for w in wiersze:
             termin = w["termin"]
             dlugosc = (termin - w["data_start"]) if w["data_start"] else None
+            koniec = w.get("powtarzaj_do")
             for _ in range(5000):   # „co dzień" sprzed lat to kilka tysięcy kroków, nie nieskończoność
-                nastepny = nastepna_data(termin, w["powtarzaj"], w["powtarzaj_co"])
-                if not nastepny:
+                nastepny = nastepne_wystapienie(termin, w["powtarzaj"], w["powtarzaj_co"],
+                                                w.get("dni_tygodnia"))
+                if not nastepny or (koniec and nastepny > koniec):
                     break
                 termin = nastepny
                 if termin >= dzis:
@@ -1373,14 +1579,24 @@ def przeglad(household_id, user_id) -> dict:
         return {k: int(v or 0) for k, v in dict(cur.fetchone()).items()}
 
 
-def oznacz_przypomnienie_wydarzenia(zadanie_id: int, minuty: int) -> None:
+def oznacz_przypomnienie_wydarzenia(zadanie_id: int, minuty: int, termin_id=None) -> None:
     """Dopisuje wysłane wyprzedzenie do listy. Osobno od `oznacz_przypomniane`,
-    bo wydarzenie ma ich kilka i odhaczamy JEDNO — reszta ma jeszcze zadzwonić."""
+    bo wydarzenie ma ich kilka i odhaczamy JEDNO — reszta ma jeszcze zadzwonić.
+
+    Przy serii („zjazdy") odhaczamy przy KONKRETNYM terminie: to samo „dzień
+    przed" ma jeszcze zadzwonić przed kolejnym zjazdem.
+    """
     with get_db() as cur:
-        cur.execute("UPDATE task_zadania "
-                    "SET przypomniane = array_append(przypomniane, %s) "
-                    "WHERE id = %s AND NOT (%s = ANY(przypomniane))",
-                    (minuty, zadanie_id, minuty))
+        if termin_id:
+            cur.execute("UPDATE task_terminy "
+                        "SET przypomniane = array_append(przypomniane, %s) "
+                        "WHERE id = %s AND NOT (%s = ANY(przypomniane))",
+                        (minuty, termin_id, minuty))
+        else:
+            cur.execute("UPDATE task_zadania "
+                        "SET przypomniane = array_append(przypomniane, %s) "
+                        "WHERE id = %s AND NOT (%s = ANY(przypomniane))",
+                        (minuty, zadanie_id, minuty))
 
 
 def oznacz_przypomniane(ids) -> None:

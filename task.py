@@ -101,6 +101,13 @@ def _dane(d: dict, nowe: bool) -> dict:
     if "etykieta" in d:
         e = d.get("etykieta")
         dane["etykieta"] = e if e in task_db.ETYKIETY else None
+    # Reguła powtarzania: dni tygodnia („pn, śr, nd") i koniec serii.
+    if "dni_tygodnia" in d:
+        dane["dni_tygodnia"] = d.get("dni_tygodnia") or []
+    if "powtarzaj_do" in d:
+        dane["powtarzaj_do"] = d.get("powtarzaj_do") or None
+    if dane.get("powtarzaj_do") and dane["termin"] and dane["powtarzaj_do"] < dane["termin"]:
+        raise HTTPException(400, "Koniec serii nie może być przed pierwszym terminem.")
     # Koniec przed początkiem tego samego dnia to pomylone pola, nie wydarzenie.
     if (dane.get("pora_koniec") and dane["pora"] and dane["pora_koniec"] <= dane["pora"]
             and (not dane["data_start"] or dane["data_start"] == dane["termin"])):
@@ -198,17 +205,35 @@ def plan_zadan(zrobione: bool = False, strefa: str | None = None,
     przebiegło. `wydarzenia=true` (kalendarz) dokłada wydarzenia spoza projektów.
     """
     hid = _hid(current_user)
-    return {"zadania": task_db.plan(hid, current_user["user_id"], zrobione,
-                                    _strefa(strefa), wydarzenia),
-            "zaleznosci": task_db.zaleznosci(hid)}
+    lista = task_db.plan(hid, current_user["user_id"], zrobione, _strefa(strefa), wydarzenia)
+    return {"zadania": lista,
+            "zaleznosci": task_db.zaleznosci(hid),
+            # Kalendarz rysuje każdy termin serii osobno, więc musi je dostać
+            # razem z wydarzeniami.
+            "terminy": task_db.terminy(hid, [z["id"] for z in lista
+                                             if z.get("rodzaj") == "wydarzenie"])}
 
 
 @router.get("/wydarzenia")
 def lista_wydarzen(strefa: str | None = None, current_user: dict = Depends(get_current_user)):
     """Zakładka „Wydarzenia": nadchodzące i minione z 30 dni."""
-    return {"zadania": task_db.wydarzenia(_hid(current_user), current_user["user_id"],
-                                          _strefa(strefa)),
+    hid = _hid(current_user)
+    zadania = task_db.wydarzenia(hid, current_user["user_id"], _strefa(strefa))
+    return {"zadania": zadania,
+            # Serie („zjazdy") jako osobna mapa: jedno wydarzenie ma wiele
+            # terminów, a płaska lista zadań nie ma na nie miejsca.
+            "terminy": task_db.terminy(hid, [z["id"] for z in zadania]),
             "domyslna_pora": task_db.domyslna_pora()}
+
+
+@router.put("/zadania/{zadanie_id}/terminy")
+def zapisz_terminy(zadanie_id: int, dane: dict,
+                   current_user: dict = Depends(get_current_user)):
+    """Cała lista terminów serii naraz — patrz `task_db.ustaw_terminy`."""
+    if not task_db.ustaw_terminy(_hid(current_user), current_user["user_id"],
+                                 zadanie_id, dane.get("terminy") or []):
+        raise HTTPException(404, "Nie ma takiego wydarzenia")
+    return {"ok": True}
 
 
 @router.get("/drzewo")
