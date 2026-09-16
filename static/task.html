@@ -433,6 +433,10 @@
     /* Obszar wyróżniony kolorem modułu, gdy ustawiony — inaczej sześć jednakowo
        szarych kafelków w rzędzie nic nie mówi na pierwszy rzut oka. */
     .zad-obszar.jest { color: var(--marka); border-color: var(--marka); }
+    /* Pusty kafelek obszaru w „Innych" jest WEZWANIEM DO DZIAŁANIA, nie szarą
+       ikoną wśród innych — to jedyna rzecz, którą się tam robi. */
+    .zadania.w-innych .zad-obszar:not(.jest) { color: var(--marka); border-color: var(--marka);
+                                               border-style: dashed; }
 
     /* Kafelek priorytetu. Pusty stan to CHORĄGIEWKA — ikona mówi „tu ustawia
        się ważność", a znak („!" albo strzałka) pojawia się dopiero wtedy, gdy
@@ -755,6 +759,12 @@
          w zakładkach na górze ekranu (Wszystkie / Praca / Dom), a ustawia się
          go też w Szczegółach. Po tym cięciu rząd wraca do jednej linijki. */
       .zad-akcje .zad-obszar { display: none; }
+      /* …ale nie w zakładce „Inne": tam właśnie po to się wchodzi. Rząd ma na
+         390 px miejsce na jeden kafelek, więc w zamian ustępuje priorytet —
+         w „Innych" pytanie brzmi „czyje to", a nie „jak ważne". Priorytet
+         zostaje w podglądzie i w Szczegółach. */
+      .zadania.w-innych .zad-akcje .zad-obszar { display: inline-flex; }
+      .zadania.w-innych .zad-akcje .zad-prio-kafel { display: none; }
     }
 
     /* Na planie i w projektach nazwa widoku schodzi do roli podpisu —

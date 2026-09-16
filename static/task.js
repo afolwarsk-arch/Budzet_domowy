@@ -3410,7 +3410,10 @@ function rysujLista() {
       <button type="button" class="zwin-wszystko" id="t-zwin-wszystko">${
         wszystkoZwiniete ? 'Rozwiń wszystkie' : 'Zwiń wszystkie'}</button>
     </div>` : ''}
-    <div class="zadania">${lista.map((w) => wiersz(w, 0)).join('') ||
+    <!-- W zakładce „Inne" kafelek obszaru WRACA także na telefonie: przypisanie
+         obszaru jest tam jedyną rzeczą, po którą się przychodzi, a schowanie go
+         kazałoby wchodzić w Szczegóły po jedno pole. -->
+    <div class="zadania${strefa === 'brak' ? ' w-innych' : ''}">${lista.map((w) => wiersz(w, 0)).join('') ||
       (szukamy() ? '<p class="pusto">Nic nie pasuje do tej frazy.</p>'
         : '<p class="pusto">Nic tu nie ma. Wpisz pierwsze zadanie powyżej.</p>')}</div>`;
 
