@@ -79,7 +79,7 @@ let szczegolyId = null;     // id zadania otwartego w formularzu szczegółów
 let szczegolyPrzypomnienia = [];   // wybrane wyprzedzenia w otwartym formularzu
 // Tryb pola „kiedy" w otwartym formularzu wydarzenia: raz | regula | terminy.
 // Trzy tryby, bo to trzy różne pytania: jeden dzień, reguła bez końca albo
-// skończona lista konkretnych terminów (zjazdy).
+// skończona lista konkretnych terminów, wpisanych ręcznie.
 let szczegolyTryb = 'raz';
 let szczegolyDni = new Set();      // dni tygodnia reguły (1 = poniedziałek)
 let szczegolyTerminy = [];         // lista terminów serii w otwartym formularzu
@@ -5866,8 +5866,9 @@ function kiedyPodepnij(w) {
       };
       return;
     }
-    // Lista terminów — zjazdy. Każdy wiersz ma własne godziny, bo jeden zjazd
-    // bywa całodniowy, a drugi popołudniowy.
+    // Lista konkretnych dat: zjazdy, ale równie dobrze turnusy, dyżury czy
+    // mecze. Każdy wiersz ma własne godziny, bo jeden termin bywa całodniowy,
+    // a drugi popołudniowy.
     box.innerHTML = `
       <div class="terminy-lista">
         ${szczegolyTerminy.length ? szczegolyTerminy.map((t, i) => `
@@ -5878,7 +5879,7 @@ function kiedyPodepnij(w) {
             <button type="button" class="termin-usun" data-t-usun="${i}"
                     aria-label="Usuń termin">✕</button>
           </div>`).join('')
-          : '<div class="uwaga">Brak terminów. Dodaj pierwszy — np. weekend zjazdu.</div>'}
+          : '<div class="uwaga">Brak terminów. Dodaj pierwszy dzień tej serii.</div>'}
       </div>
       <button type="button" class="termin-dodaj" id="s-dodaj-termin">+ Dodaj termin</button>
       <div class="uwaga">Przypomnienia zadziałają przed każdym terminem osobno.</div>`;
@@ -5972,8 +5973,9 @@ function rysujSzczegoly() {
     <div class="uwaga" style="margin:-6px 0 12px">Bez godzin — wydarzenie na cały dzień.</div>
     <!-- Trzy tryby zamiast jednego pola „Powtarzaj": jednorazowe, reguła
          (liczy się sama, może nie mieć końca) i ręczna lista dat ze swoimi
-         godzinami — zjazdy. Reguła i lista wykluczają się nawzajem, więc
-         wybór jest jeden, a nie trzy niezależne ustawienia. -->
+         godzinami — cokolwiek, co ma nieregularne terminy. Reguła i lista
+         wykluczają się nawzajem, więc wybór jest jeden, a nie trzy niezależne
+         ustawienia. -->
     <div class="pole">
       <label>Kiedy się dzieje</label>
       <div class="tryby-kiedy" role="group" aria-label="Rodzaj powtarzania">
