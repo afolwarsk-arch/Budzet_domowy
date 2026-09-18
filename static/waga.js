@@ -17,6 +17,26 @@ let punkty = [];
 let cel = null;
 let wygladz = false;
 
+// Zakres osi czasu na wykresie. Zapamiętany w przeglądarce — to wygoda
+// oglądającego, nie ustawienie gospodarstwa.
+const ZAKRESY = [
+  ['7', '7 dni'], ['30', '30 dni'], ['90', '3 mies.'], ['365', 'Rok'],
+  ['wszystko', 'Wszystko'], ['cel', 'Do celu'], ['wlasny', 'Własny…'],
+];
+let zakres = 'wszystko', wlasnyOd = '', wlasnyDo = '';
+try {
+  const z = JSON.parse(localStorage.getItem('waga-zakres') || 'null');
+  if (z && ZAKRESY.some(([k]) => k === z.zakres)) {
+    zakres = z.zakres; wlasnyOd = z.od || ''; wlasnyDo = z.do || '';
+  }
+} catch { /* prywatne okno albo zablokowane dane — zostaje „Wszystko" */ }
+
+function zapamietajZakres() {
+  try {
+    localStorage.setItem('waga-zakres', JSON.stringify({ zakres, od: wlasnyOd, do: wlasnyDo }));
+  } catch { /* j.w. */ }
+}
+
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 // Liczba po polsku. Bez obcinania zer wyrażeniem na całym napisie — tamten
@@ -26,6 +46,7 @@ const kg1 = (v) => (Math.round(Number(v) * 10) / 10).toFixed(1).replace('.', ','
 const dzisISO = () => new Date().toLocaleDateString('sv-SE');
 const naDate = (iso) => new Date(iso + 'T12:00:00');
 const dni = (a, b) => Math.round((naDate(a) - naDate(b)) / 86400000);
+const isoZ = (ms) => new Date(ms).toLocaleDateString('sv-SE');
 
 function dataPl(iso) {
   if (!iso) return '';
@@ -125,32 +146,57 @@ function stanCelu() {
 
 const OS_L = 38, OS_P = 12, OS_G = 16, OS_D = 26;
 
+// „Do celu" ma sens tylko przy celu z terminem; bez niego wracamy do całości.
+const zakresAktywny = () => (zakres === 'cel' && !(cel && cel.termin)) ? 'wszystko' : zakres;
+
+// Okno czasu [t0, t1] w milisekundach. `zCelem` = oś kilogramów obejmuje też
+// cel i start — tylko w widoku „Do celu", bo tam chodzi właśnie o linię tempa.
+// W pozostałych skala ciasno obejmuje pomiary, żeby było widać wahania.
+function zakresCzasu() {
+  const pierwszy = naDate(punkty[0].data_badania).getTime();
+  const ostatni = naDate(punkty[punkty.length - 1].data_badania).getTime();
+  const z = zakresAktywny();
+  if (z === 'cel') {
+    // Oś sięga do TERMINU, gdy ten jest w przyszłości — inaczej linia tempa
+    // nie miałaby dokąd biec.
+    return { t0: Math.min(pierwszy, naDate(cel.start_data).getTime()),
+             t1: Math.max(ostatni, naDate(cel.termin).getTime()), zCelem: true };
+  }
+  if (z === 'wlasny' && wlasnyOd && wlasnyDo) {
+    const a = naDate(wlasnyOd).getTime(), b = naDate(wlasnyDo).getTime();
+    return { t0: Math.min(a, b), t1: Math.max(a, b) };
+  }
+  const n = Number(z);
+  if (n) {
+    const t1 = Math.max(naDate(dzisISO()).getTime(), ostatni);
+    return { t0: t1 - n * 86400000, t1 };
+  }
+  return { t0: pierwszy, t1: ostatni };
+}
+
 function rysujWykres(szer) {
   if (!punkty.length) return '';
   const wys = 240;
+  const dolPola = wys - OS_D;
 
-  // Oś czasu sięga do TERMINU celu, gdy ten jest w przyszłości — inaczej linia
-  // tempa nie miałaby dokąd biec i cel byłby niewidoczny na wykresie.
-  const t0 = Math.min(naDate(punkty[0].data_badania).getTime(),
-                      cel ? naDate(cel.start_data).getTime() : Infinity);
-  const tKoniec = Math.max(naDate(punkty[punkty.length - 1].data_badania).getTime(),
-                           (cel && cel.termin) ? naDate(cel.termin).getTime() : 0);
-  const rozpietosc = (tKoniec - t0) || 1;
-  const X = (iso) => OS_L + ((naDate(iso).getTime() - t0) / rozpietosc) * (szer - OS_L - OS_P);
+  let { t0, t1, zCelem } = zakresCzasu();
+  const odIso = isoZ(t0), doIso = isoZ(t1);
+  // Okno krótsze niż doba (np. własny zakres od dnia do tego samego dnia)
+  // rozciągamy o pół dnia w obie strony, żeby punkt nie wypadł na krawędź.
+  if (t1 - t0 < 86400000) { t0 -= 43200000; t1 += 43200000; }
+  const X = (iso) => OS_L + ((naDate(iso).getTime() - t0) / (t1 - t0)) * (szer - OS_L - OS_P);
 
-  const wart = punkty.map((p) => Number(p.wartosc_liczba));
-  if (cel) wart.push(Number(cel.cel), Number(cel.start_wartosc));
-  let min = Math.min(...wart), max = Math.max(...wart);
-  if (min === max) { min -= 1; max += 1; }
-  const luz = (max - min) * 0.14;
-  min -= luz; max += luz;
-  const Y = (v) => OS_G + (1 - (Number(v) - min) / (max - min)) * (wys - OS_G - OS_D);
-
-  const xs = punkty.map((p) => X(p.data_badania));
-  const linia = punkty.map((p, i) => `${xs[i].toFixed(1)},${Y(p.wartosc_liczba).toFixed(1)}`).join(' ');
+  const widoczne = punkty.map((p, i) => i).filter((i) => {
+    const t = naDate(punkty[i].data_badania).getTime();
+    return t >= t0 && t <= t1;
+  });
+  if (!widoczne.length) {
+    return '<div class="pusto" style="padding:40px 0;text-align:center">Brak pomiarów w tym okresie.</div>';
+  }
 
   // Wygładzanie: okno SIEDMIU DNI, nie siedmiu ostatnich punktów. Przy
   // nieregularnym ważeniu tamto mieszałoby dane sprzed miesiąca z dzisiejszymi.
+  // Liczone ze WSZYSTKICH pomiarów — pierwszy dzień zakresu też ma swój tydzień.
   const srednia = wygladz ? punkty.map((p) => {
     const t = naDate(p.data_badania).getTime();
     const okno = punkty.filter((q) => {
@@ -160,17 +206,41 @@ function rysujWykres(szer) {
     return okno.reduce((s, q) => s + Number(q.wartosc_liczba), 0) / okno.length;
   }) : null;
 
-  const liniaCelu = cel
-    ? `<line class="cel-linia" x1="${OS_L}" y1="${Y(cel.cel).toFixed(1)}"
-              x2="${(szer - OS_P).toFixed(1)}" y2="${Y(cel.cel).toFixed(1)}"/>
-       <text class="opis" x="${(szer - OS_P).toFixed(1)}" y="${(Y(cel.cel) - 5).toFixed(1)}"
-             text-anchor="end">cel ${esc(kg1(cel.cel))}</text>` : '';
+  const wart = widoczne.map((i) => Number(punkty[i].wartosc_liczba));
+  if (srednia) widoczne.forEach((i) => wart.push(srednia[i]));
+  if (cel && zCelem) wart.push(Number(cel.cel), Number(cel.start_wartosc));
+  let min = Math.min(...wart), max = Math.max(...wart);
+  if (min === max) { min -= 1; max += 1; }
+  const luz = (max - min) * 0.14;
+  min -= luz; max += luz;
+  const Y = (v) => OS_G + (1 - (Number(v) - min) / (max - min)) * (wys - OS_G - OS_D);
+
+  // Rysujemy WSZYSTKIE punkty i przycinamy do pola wykresu: linia do pomiaru
+  // sprzed zakresu wychodzi wtedy za krawędź, zamiast urywać się w powietrzu.
+  const xs = punkty.map((p) => X(p.data_badania));
+  const linia = punkty.map((p, i) => `${xs[i].toFixed(1)},${Y(p.wartosc_liczba).toFixed(1)}`).join(' ');
+
+  // Cel poza skalą nie znika bez śladu — zostaje strzałka przy krawędzi.
+  let liniaCelu = '';
+  if (cel) {
+    const c = Number(cel.cel);
+    const xP = (szer - OS_P).toFixed(1);
+    if (c >= min && c <= max) {
+      const y = Y(c).toFixed(1);
+      liniaCelu = `<line class="cel-linia" x1="${OS_L}" y1="${y}" x2="${xP}" y2="${y}"/>
+        <text class="opis" x="${xP}" y="${(Y(c) - 5).toFixed(1)}" text-anchor="end">cel ${esc(kg1(c))}</text>`;
+    } else {
+      liniaCelu = `<text class="opis" x="${xP}" y="${c > max ? OS_G - 4 : dolPola - 5}"
+        text-anchor="end">cel ${esc(kg1(c))} ${c > max ? '↑' : '↓'}</text>`;
+    }
+  }
 
   const liniaTempa = (cel && cel.termin)
     ? `<line class="tempo" x1="${X(cel.start_data).toFixed(1)}" y1="${Y(cel.start_wartosc).toFixed(1)}"
               x2="${X(cel.termin).toFixed(1)}" y2="${Y(cel.cel).toFixed(1)}"/>` : '';
 
-  const marki = punkty.map((p, i) => {
+  const marki = widoczne.map((i) => {
+    const p = punkty[i];
     const x = xs[i], y = Y(p.wartosc_liczba);
     // Pomiar z dokumentu (ważenie w przychodni) rysujemy pierścieniem: waga
     // w ubraniu po południu to nie to samo co waga rano na czczo.
@@ -180,21 +250,24 @@ function rysujWykres(szer) {
             width="30" height="30"></rect>`;
   }).join('');
 
-  const dolPola = wys - OS_D;
   return `<svg class="wykres" viewBox="0 0 ${szer} ${wys}" width="${szer}" height="${wys}"
             role="img" aria-label="Masa ciała w czasie">
+      <defs><clipPath id="wyk-pole">
+        <rect x="${OS_L - 6}" y="0" width="${szer - OS_L - OS_P + 12}" height="${dolPola}"/>
+      </clipPath></defs>
       <line class="siatka" x1="${OS_L}" y1="${dolPola}" x2="${szer - OS_P}" y2="${dolPola}"/>
       <text class="opis" x="${OS_L - 6}" y="${OS_G + 4}" text-anchor="end">${kg1(max)}</text>
       <text class="opis" x="${OS_L - 6}" y="${dolPola}" text-anchor="end">${kg1(min)}</text>
-      <text class="opis" x="${OS_L}" y="${wys - 8}">${esc(dataPl(punkty[0].data_badania))}</text>
-      <text class="opis" x="${szer - OS_P}" y="${wys - 8}" text-anchor="end">${
-        esc(dataPl((cel && cel.termin && cel.termin > punkty[punkty.length - 1].data_badania)
-          ? cel.termin : punkty[punkty.length - 1].data_badania))}</text>
-      ${liniaTempa}${liniaCelu}
-      <polyline class="linia${wygladz ? ' przygaszona' : ''}" points="${linia}"/>
-      ${srednia ? `<polyline class="srednia" points="${srednia.map((v, i) =>
-        `${xs[i].toFixed(1)},${Y(v).toFixed(1)}`).join(' ')}"/>` : ''}
-      ${marki}
+      <text class="opis" x="${OS_L}" y="${wys - 8}">${esc(dataPl(odIso))}</text>
+      <text class="opis" x="${szer - OS_P}" y="${wys - 8}" text-anchor="end">${esc(dataPl(doIso))}</text>
+      ${liniaCelu}
+      <g clip-path="url(#wyk-pole)">
+        ${liniaTempa}
+        <polyline class="linia${wygladz ? ' przygaszona' : ''}" points="${linia}"/>
+        ${srednia ? `<polyline class="srednia" points="${srednia.map((v, i) =>
+          `${xs[i].toFixed(1)},${Y(v).toFixed(1)}`).join(' ')}"/>` : ''}
+        ${marki}
+      </g>
     </svg>`;
 }
 
@@ -299,6 +372,16 @@ function rysuj() {
 
     ${punkty.length > 1 ? `<div class="karta">
       <h2>Przebieg</h2>
+      <div class="filtry" id="zakresy">
+        ${ZAKRESY.filter(([k]) => k !== 'cel' || (cel && cel.termin)).map(([k, t]) =>
+          `<button class="chip" type="button" data-z="${k}"
+              aria-pressed="${k === zakresAktywny()}">${t}</button>`).join('')}
+      </div>
+      <div class="wlasny" id="wlasny" ${zakresAktywny() === 'wlasny' ? '' : 'hidden'}>
+        <input type="date" id="z-od" value="${esc(wlasnyOd)}" aria-label="Od dnia">
+        <span>–</span>
+        <input type="date" id="z-do" value="${esc(wlasnyDo)}" aria-label="Do dnia">
+      </div>
       <div id="plotno"></div>
       <div class="wyk-podpis" id="podpis">Stuknij punkt, żeby zobaczyć szczegóły.</div>
       <div class="filtry" style="margin:10px 0 0">
@@ -357,6 +440,35 @@ function rysuj() {
     przel.setAttribute('aria-pressed', String(wygladz));
     przerysujPlotno();   // samo płótno: zmienia się jedna linia, nie cały ekran
   };
+
+  const zakresy = document.getElementById('zakresy');
+  if (zakresy) zakresy.onclick = (ev) => {
+    const b = ev.target.closest('[data-z]');
+    if (!b) return;
+    zakres = b.dataset.z;
+    // Własny zakres bez dat startuje od ostatnich 30 dni — puste pola
+    // dawałyby wykres identyczny z „Wszystko" i wyglądałoby, że nie działa.
+    if (zakres === 'wlasny' && !(wlasnyOd && wlasnyDo)) {
+      wlasnyDo = dzisISO();
+      wlasnyOd = isoZ(naDate(wlasnyDo).getTime() - 30 * 86400000);
+      document.getElementById('z-od').value = wlasnyOd;
+      document.getElementById('z-do').value = wlasnyDo;
+    }
+    zapamietajZakres();
+    zakresy.querySelectorAll('[data-z]').forEach((c) =>
+      c.setAttribute('aria-pressed', String(c.dataset.z === zakres)));
+    document.getElementById('wlasny').hidden = zakres !== 'wlasny';
+    przerysujPlotno();
+  };
+  ['z-od', 'z-do'].forEach((id) => {
+    const pole = document.getElementById(id);
+    if (!pole) return;
+    pole.onchange = () => {
+      if (id === 'z-od') wlasnyOd = pole.value; else wlasnyDo = pole.value;
+      zapamietajZakres();
+      przerysujPlotno();
+    };
+  });
 
   document.querySelectorAll('[data-usun]').forEach((b) => {
     b.onclick = async () => {

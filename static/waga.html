@@ -93,6 +93,11 @@
     .wykres .opis { fill: var(--muted); font-size: 11px; }
     .wykres .wartosc { fill: var(--heading); font-size: 11.5px; font-weight: 600; }
     .wykres .dotyk { fill: transparent; cursor: pointer; }
+    .wlasny { display: flex; gap: 8px; align-items: center; margin: -6px 0 12px; }
+    /* Bez tego display:flex wygrywa z atrybutem hidden. */
+    .wlasny[hidden] { display: none; }
+    .wlasny input { flex: 1; min-width: 0; font: inherit; font-size: 14px; }
+    .wlasny span { color: var(--muted); }
     .wyk-podpis { font-size: 12.5px; color: var(--muted); min-height: 18px; margin-top: 8px; }
     .legenda { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px;
                color: var(--muted); margin-top: 8px; }
