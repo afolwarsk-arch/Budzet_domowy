@@ -133,6 +133,28 @@ def _hier_helpers(hier: dict) -> tuple[list[str], dict[str, str], str]:
     return wszystkie, sub_do_glownej, lista
 
 
+# Pozycje, które pasują do dwóch szuflad naraz. Bez tych reguł model wybiera
+# etykietę „technicznie poprawną" (lody SĄ mrożone), a nie tę, którą człowiek
+# rozpoznaje w swoim budżecie. Jedna treść dla obu promptów — od odczytu paragonu
+# i od ponownej kategoryzacji — żeby reguły nie rozjechały się między drogami.
+#
+# Reguły są opisane znaczeniem, nie samą nazwą podkategorii, bo gospodarstwo
+# może mieć własną hierarchię z innymi nazwami (`household_kategorie`).
+_ROZSTRZYGANIA = """POZYCJE PASUJĄCE DO DWÓCH KATEGORII (te reguły mają pierwszeństwo):
+Stosuj je tylko wtedy, gdy hierarchia powyżej zawiera wymienione podkategorie;
+jeśli którejś nie ma, wybierz najbliższą sensowną.
+- LODY kupione w sklepie (na patyku, rożki, ekierki, wiaderka familijne, sorbety,
+  desery lodowe) → "Słodycze i przekąski", NIE "Mrożonki". Są mrożone, ale w budżecie
+  domowym liczą się jako słodycze.
+- "Mrożonki" zostaw dla tego, co dopiero trzeba przygotować: mrożone warzywa i owoce,
+  pizza, frytki, ryby mrożone, pierogi i inna garmażerka.
+- MROŻONE OWOCE I WARZYWA (truskawki mrożone, mieszanka warzywna, szpinak mrożony)
+  → "Mrożonki", NIE "Owoce" ani "Warzywa" — te dwie są dla świeżych.
+- SŁODKIE WYPIEKI z piekarni i cukierni (drożdżówka, pączek, jagodzianka, rogalik,
+  ciasto na wagę) → "Pieczywo i wypieki". Paczkowane słodycze (batony, czekolady,
+  ciastka, wafelki) → "Słodycze i przekąski"."""
+
+
 def _build_system_prompt(lista_prompt: str) -> str:
     return f"""Jesteś ekspertem od odczytywania polskich paragonów sklepowych. Zwracasz WYŁĄCZNIE poprawny JSON — zero dodatkowego tekstu, zero markdown.
 
@@ -162,6 +184,8 @@ Format — zawsze tablica:
     ]
   }}
 ]
+
+{_ROZSTRZYGANIA}
 
 JAK ROZPOZNAĆ SKLEP:
 - Szukaj logo lub nagłówka (Biedronka, Lidl, Rossmann, Żabka, Orlen, Netto, Carrefour, itp.)
@@ -249,6 +273,15 @@ DATY:
 - Jeśli podano dzień i miesiąc BEZ roku (np. "07.07", "18.06") → zawsze użyj bieżącego roku: {date.today().year}
 - Jeśli data jest nieczytelna lub jej brak: {date.today().isoformat()}
 
+FAKTURY I E-PARAGONY (pliki PDF):
+- PDF to zwykle faktura albo e-paragon ze sklepowej aplikacji — czytaj go tak samo jak paragon
+- Na fakturze bierz kwoty BRUTTO (tyle faktycznie zapłacono), nigdy netto
+- "suma" = kwota z pola „Do zapłaty" albo „Razem brutto"
+- Jedna faktura = JEDEN obiekt, nawet gdy pozycje rozkładają się na kilka stron
+- "sklep" = nazwa sprzedawcy (wystawcy faktury), nie nabywcy
+- "data" = data sprzedaży; gdy jest i data sprzedaży, i wystawienia, bierz datę sprzedaży
+- Pomiń dane formalne: NIP, numer faktury, adresy, sposób i termin płatności, podsumowania VAT
+
 NOTATKI TEKSTOWE:
 - Każdy wpis z inną datą = osobny obiekt na liście
 
@@ -261,6 +294,8 @@ OGÓLNE:
 def _build_rekat_prompt(lista_prompt: str) -> str:
     return f"""Przypisz każdej pozycji właściwą kategorię główną i podkategorię z tej hierarchii:
 {lista_prompt}
+
+{_ROZSTRZYGANIA}
 
 Wejście: lista obiektów JSON z polami id, nazwa, sklep (może być null).
 Wyjście: WYŁĄCZNIE JSON — tablica obiektów {{id, kategoria_glowna, kategoria}}.
@@ -309,6 +344,52 @@ def prepare_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> tuple[by
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=90)
     return _compress_image(buf.getvalue(), "image/jpeg")
+
+
+# PDF idzie do Claude jako DOKUMENT: API samo renderuje strony i czyta warstwę
+# tekstową, więc nie trzeba tu żadnej biblioteki do PDF-ów ani konwersji na
+# obrazki. Limit żądania API to 32 MB, a base64 powiększa plik o jedną trzecią.
+MAX_PDF_BYTES = 20 * 1024 * 1024
+
+
+def jest_pdf(dane: bytes, mime_type: str = "") -> bool:
+    """Czy to PDF? Rozstrzyga nagłówek pliku, nie typ podany przez przeglądarkę.
+
+    Typ z telefonu bywa pusty albo ogólny („application/octet-stream"), więc
+    sam MIME to zbyt słaba przesłanka, żeby wybrać drogę wysyłki.
+    """
+    return dane[:5] == b"%PDF-" or (mime_type or "").lower().startswith("application/pdf")
+
+
+def prepare_pdf(dane: bytes) -> bytes:
+    """Waliduje PDF przed wysłaniem. Zgłasza ObrazError z czytelnym komunikatem."""
+    if not dane:
+        raise ObrazError("Przesłany plik jest pusty. Wybierz plik i spróbuj ponownie.")
+    if dane[:5] != b"%PDF-":
+        raise ObrazError(
+            "Plik wygląda na PDF z nazwy, ale jego treść nie jest PDF-em. "
+            "Otwórz go i zapisz ponownie albo prześlij zdjęcie dokumentu."
+        )
+    if len(dane) > MAX_PDF_BYTES:
+        raise ObrazError(
+            f"PDF waży {len(dane) / 1024 / 1024:.1f} MB, a maksimum to "
+            f"{MAX_PDF_BYTES // 1024 // 1024} MB. Prześlij sam paragon lub fakturę "
+            "(bez załączników) albo zdjęcie dokumentu."
+        )
+    return dane
+
+
+def _blok_pliku(dane: bytes, mime_type: str) -> dict:
+    """Blok treści dla Claude: zdjęcie albo dokument PDF."""
+    if jest_pdf(dane, mime_type):
+        pdf = prepare_pdf(dane)
+        return {"type": "document", "source": {
+            "type": "base64", "media_type": "application/pdf",
+            "data": base64.standard_b64encode(pdf).decode("utf-8")}}
+    obraz, mime = prepare_image(dane, mime_type)
+    return {"type": "image", "source": {
+        "type": "base64", "media_type": mime,
+        "data": base64.standard_b64encode(obraz).decode("utf-8")}}
 
 
 def get_exchange_rate(currency: str, receipt_date: str) -> float:
@@ -383,10 +464,31 @@ def rekategoryzuj_batch(pozycje: list[dict], hierarchia: dict | None = None) -> 
     return wynik, _usage(msg)
 
 
-def _kontekst_txt(kontekst: str | None) -> str:
+def _kontekst_txt(kontekst: str | None, konta: list[str] | None = None) -> str:
+    """Wskazówka użytkownika doklejana do treści zapytania.
+
+    Oprócz kategorii pozycji wskazówka może ustawić trzy rzeczy dotyczące CAŁEGO
+    paragonu: konto, okazję i kategorię kontekstową. Model wypełnia je WYŁĄCZNIE
+    wtedy, gdy użytkownik sam o nich napisze — zgadywanie z treści paragonu
+    wstawiałoby ciche błędne etykiety, a okazja dodatkowo wyjmuje wydatek ze
+    statystyk nawyków (patrz `wydatki_okazjonalne` w database.py).
+    """
     if not kontekst:
         return ""
-    return f"\n\nDODATKOWY KONTEKST OD UŻYTKOWNIKA: {kontekst}\nUżyj tego kontekstu do poprawnego przypisania kategorii."
+    lista_kont = (f", dokładnie jedna z listy: {', '.join(konta)}" if konta else "")
+    return (
+        f"\n\nDODATKOWY KONTEKST OD UŻYTKOWNIKA: {kontekst}"
+        "\nUżyj tego kontekstu do poprawnego przypisania kategorii."
+        "\n\nNa podstawie TEGO kontekstu możesz dodatkowo ustawić w paragonie pola:"
+        f'\n- "konto" — nazwa konta, z którego zapłacono{lista_kont}'
+        '\n- "okazja" — krótka nazwa jednorazowego zdarzenia (np. "Urodziny Zosi", "Wakacje 2026")'
+        '\n- "kontekst_kategoria" i "kontekst_podkategoria" — kategoria dla CAŁEGO paragonu'
+        " z tej samej hierarchii co pozycje, gdy użytkownik mówi, że całe zakupy idą na jeden cel"
+        ' (np. "meble na Gałczyńskiego" → "Lokal Gałczyńskiego"/"Meble i wyposażenie")'
+        "\nTe trzy pola wypełniaj TYLKO wtedy, gdy wynikają wprost z kontekstu powyżej."
+        " Jeśli kontekst o nich nie mówi — pomiń je albo wpisz null."
+        " Nie zgaduj ich z treści paragonu i nie wymyślaj nazwy konta, której nie ma na liście."
+    )
 
 
 def _usage(message) -> dict:
@@ -394,12 +496,12 @@ def _usage(message) -> dict:
 
 
 def process_image(image_bytes: bytes, mime_type: str = "image/jpeg",
-                  kontekst: str | None = None, hierarchia: dict | None = None) -> tuple[list[dict], dict]:
+                  kontekst: str | None = None, hierarchia: dict | None = None,
+                  konta: list[str] | None = None) -> tuple[list[dict], dict]:
+    """Zdjęcie paragonu ALBO plik PDF (faktura, e-paragon) → lista wydatków."""
     hier = hierarchia or KATEGORIE_HIERARCHIA
     system = _system_prompt_for(hierarchia)
     client = anthropic.Anthropic()
-    image_bytes, mime_type = prepare_image(image_bytes, mime_type)
-    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=16000,
@@ -407,8 +509,8 @@ def process_image(image_bytes: bytes, mime_type: str = "image/jpeg",
         messages=[{
             "role": "user",
             "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": image_b64}},
-                {"type": "text", "text": "Przeanalizuj i zwróć JSON." + _kontekst_txt(kontekst)},
+                _blok_pliku(image_bytes, mime_type),
+                {"type": "text", "text": "Przeanalizuj i zwróć JSON." + _kontekst_txt(kontekst, konta)},
             ],
         }],
     )
@@ -927,7 +1029,8 @@ def _uzgodnij_pozycje(item: dict) -> None:
         )
 
 
-def process_text(text: str, kontekst: str | None = None, hierarchia: dict | None = None) -> tuple[list[dict], dict]:
+def process_text(text: str, kontekst: str | None = None, hierarchia: dict | None = None,
+                 konta: list[str] | None = None) -> tuple[list[dict], dict]:
     hier = hierarchia or KATEGORIE_HIERARCHIA
     system = _system_prompt_for(hierarchia)
     client = anthropic.Anthropic()
@@ -935,7 +1038,8 @@ def process_text(text: str, kontekst: str | None = None, hierarchia: dict | None
         model="claude-sonnet-4-6",
         max_tokens=2048,
         system=system,
-        messages=[{"role": "user", "content": f"Przeanalizuj tę notatkę wydatków:\n\n{text}" + _kontekst_txt(kontekst)}],
+        messages=[{"role": "user",
+                   "content": f"Przeanalizuj tę notatkę wydatków:\n\n{text}" + _kontekst_txt(kontekst, konta)}],
     )
     return _parse_response(message.content[0].text, hier), _usage(message)
 

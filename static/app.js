@@ -1454,14 +1454,29 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
     renderFilePreviews();
   }
 
+  // PDF nie ma miniatury, którą umie pokazać <img> — zamiast zepsutego obrazka
+  // rysujemy kafelek z nazwą pliku.
+  const jestPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+
   function renderFilePreviews() {
     previewThumbs.innerHTML = '';
     selectedFiles.forEach((file, i) => {
       const wrap = document.createElement('div');
       wrap.style.cssText = 'position:relative;display:inline-block';
-      const img = document.createElement('img');
-      img.src = URL.createObjectURL(file);
-      img.style.cssText = 'height:80px;width:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border)';
+      let img;
+      if (jestPdf(file)) {
+        img = document.createElement('div');
+        img.style.cssText = 'height:80px;width:60px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2,#f3f3f3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:10px;color:var(--muted);text-align:center;padding:4px;overflow:hidden';
+        img.innerHTML = '<strong style="font-size:12px;color:var(--text)">PDF</strong>';
+        const nazwa = document.createElement('span');
+        nazwa.textContent = file.name || '';
+        nazwa.style.cssText = 'word-break:break-all;line-height:1.2;max-height:36px;overflow:hidden';
+        img.appendChild(nazwa);
+      } else {
+        img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.style.cssText = 'height:80px;width:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border)';
+      }
       const del = document.createElement('button');
       del.textContent = '×';
       del.title = 'Usuń';
@@ -1472,7 +1487,9 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
       previewThumbs.appendChild(wrap);
     });
     const n = selectedFiles.length;
-    dropZone.querySelector('p').textContent = n === 0 ? 'Przeciągnij zdjęcie lub kliknij, by wybrać plik' : n === 1 ? selectedFiles[0].name : `${n} zdjęć wybranych`;
+    dropZone.querySelector('p').textContent = n === 0
+      ? 'Przeciągnij zdjęcie lub PDF, albo kliknij, by wybrać plik'
+      : n === 1 ? selectedFiles[0].name : `${n} plików wybranych`;
     analyzeBtn.disabled = n === 0;
   }
 
@@ -1480,7 +1497,7 @@ if (document.getElementById('drop-zone')) { authRequireHousehold().then(async (m
     setAlert('');
     analyzeBtn.disabled = true;
     const fileCount = selectedFiles.length;
-    analyzeBtn.innerHTML = `<span class="orbita"><i></i><i></i></span> Analizuję${fileCount > 1 ? ` ${fileCount} zdjęć...` : '...'}`;
+    analyzeBtn.innerHTML = `<span class="orbita"><i></i><i></i></span> Analizuję${fileCount > 1 ? ` ${fileCount} plików...` : '...'}`;
     // lista osób mogła jeszcze nie dojść — wtedy bierzemy pseudonim z logowania
     const osoba = document.getElementById('osoba').value || (me && me.display_name) || '';
     const kontekst = document.getElementById('kontekst-input').value.trim();

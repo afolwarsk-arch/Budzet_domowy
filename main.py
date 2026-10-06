@@ -990,8 +990,9 @@ def _ai_http_error(e: Exception) -> HTTPException:
             "Odczekaj około minuty i spróbuj ponownie."))
     if isinstance(e, _anthropic.BadRequestError):
         return HTTPException(status_code=400, detail=(
-            "Claude AI odrzucił żądanie — najczęściej oznacza to uszkodzone lub "
-            "nieobsługiwane zdjęcie. Zapisz je jako JPG i wyślij ponownie."))
+            "Claude AI odrzucił żądanie — najczęściej oznacza to uszkodzony lub "
+            "nieobsługiwany plik. Zdjęcie zapisz jako JPG, a PDF o wielu stronach "
+            "podziel albo prześlij jako zdjęcie i spróbuj ponownie."))
     if isinstance(e, _anthropic.APIConnectionError):
         return HTTPException(status_code=503, detail=(
             "Brak połączenia z serwerami Claude AI. "
@@ -1010,6 +1011,43 @@ def _blokada_ai(user: dict):
             "Możesz dodawać wydatki ręcznie (zakładka „Ręcznie” przy dodawaniu)."))
 
 
+def _konta_dla_wskazowki(hid: int | None, kontekst: str) -> list[dict]:
+    """Konta gospodarstwa — tylko gdy jest wskazówka, bo tylko wtedy AI ich użyje.
+
+    Bez wskazówki nie ma po co dokładać nazw kont do promptu ani pytać o nie bazy.
+    """
+    if not (hid and kontekst.strip()):
+        return []
+    return database.get_konta(hid)
+
+
+def _ze_wskazowki(results: list[dict], konta: list[dict], hier: dict) -> None:
+    """Przekłada pola podpowiedziane przez AI na dane, które przyjmie baza.
+
+    Model dostaje NAZWY kont, a do zapisu idzie `konto_id` — i tylko wtedy, gdy
+    nazwa pasuje do istniejącego konta. Nietrafiona nazwa jest po cichu pomijana:
+    lepiej konto domyślne niż obce. Kategorię kontekstową sprawdzamy w hierarchii
+    gospodarstwa, żeby do bazy nie wszedł wymyślony dział.
+    """
+    po_nazwie = {(k["nazwa"] or "").strip().lower(): k["id"] for k in konta}
+    for r in results:
+        konto = r.pop("konto", None)
+        if isinstance(konto, str) and konto.strip().lower() in po_nazwie:
+            r["konto_id"] = po_nazwie[konto.strip().lower()]
+
+        okazja = r.get("okazja")
+        r["okazja"] = okazja.strip()[:100] if isinstance(okazja, str) and okazja.strip() else None
+
+        glowna = r.get("kontekst_kategoria")
+        pod = r.get("kontekst_podkategoria")
+        if isinstance(glowna, str) and glowna in hier:
+            r["kontekst_kategoria"] = glowna
+            r["kontekst_podkategoria"] = pod if isinstance(pod, str) and pod in (hier.get(glowna) or []) else None
+        else:
+            r["kontekst_kategoria"] = None
+            r["kontekst_podkategoria"] = None
+
+
 @app.post("/api/process-image")
 async def process_image(
     file: UploadFile = File(...),
@@ -1021,13 +1059,19 @@ async def process_image(
     hid = current_user["household_id"]
     hier = database.get_household_hierarchia(hid) if hid else None
     content = await file.read()
+    # Zdjęcie czy PDF rozstrzyga ai_processor po nagłówku pliku — typ z telefonu
+    # bywa pusty, więc domyślna wartość jest tylko podpowiedzią.
     mime = file.content_type or "image/jpeg"
+    konta = _konta_dla_wskazowki(hid, kontekst)
     try:
-        results, usage = await asyncio.to_thread(ai_processor.process_image, content, mime, kontekst or None, hier)
+        results, usage = await asyncio.to_thread(
+            ai_processor.process_image, content, mime, kontekst or None, hier,
+            [k["nazwa"] for k in konta])
     except Exception as e:
         raise _ai_http_error(e)
     database.log_api_usage(hid, "process-image", usage["input_tokens"], usage["output_tokens"],
                            current_user["user_id"])
+    _ze_wskazowki(results, konta, hier or ai_processor.KATEGORIE_HIERARCHIA)
     for r in results:
         r["osoba"] = osoba
     return results
@@ -1042,12 +1086,15 @@ async def process_text(payload: dict, current_user: dict = Depends(get_current_u
     kontekst = payload.get("kontekst", "").strip() or None
     hid = current_user["household_id"]
     hier = database.get_household_hierarchia(hid) if hid else None
+    konta = _konta_dla_wskazowki(hid, kontekst or "")
     try:
-        results, usage = await asyncio.to_thread(ai_processor.process_text, text, kontekst, hier)
+        results, usage = await asyncio.to_thread(ai_processor.process_text, text, kontekst, hier,
+                                                 [k["nazwa"] for k in konta])
     except Exception as e:
         raise _ai_http_error(e)
     database.log_api_usage(current_user["household_id"], "process-text",
                            usage["input_tokens"], usage["output_tokens"], current_user["user_id"])
+    _ze_wskazowki(results, konta, hier or ai_processor.KATEGORIE_HIERARCHIA)
     osoba = payload.get("osoba", "Adam")
     for r in results:
         r["osoba"] = osoba
