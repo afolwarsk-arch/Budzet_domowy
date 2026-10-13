@@ -1199,7 +1199,7 @@ function rysujPodglad() {
   const osoba = osoby.find((o) => o.id === osobaId);
 
   const wiersze = w.length ? w.map((x, i) => `
-    <tr>
+    <tr${x.flaga ? ' class="poza"' : ''}>
       <td>${esc(x.nazwa)}${x.minuta != null ? ` <span class="w-norma">${x.minuta}′</span>` : ''}
           ${x.metoda ? `<div class="w-norma">${esc(x.metoda)}</div>` : ''}</td>
       <td class="w-wart">${wartosc(x)}${x.flaga ? `<span class="flaga">${esc(x.flaga)}</span>` : ''}</td>
@@ -1540,7 +1540,7 @@ function rysujWykres(punkty, szer) {
 function tabelaPrzebiegu(punkty) {
   return `<div class="przewin"><table class="wyniki">
       <thead><tr><th>Data</th><th>Wynik</th><th>Norma</th><th>Placówka</th></tr></thead>
-      <tbody>${punkty.slice().reverse().map((p) => `<tr>
+      <tbody>${punkty.slice().reverse().map((p) => `<tr${p.flaga ? ' class="poza"' : ''}>
         <td>${dataPl(p.data_badania)}${p.metoda ? `<div class="w-norma">${esc(p.metoda)}</div>` : ''}</td>
         <td class="w-wart">${esc((p.operator || '') + liczba(p.wartosc_liczba))}${
           p.jednostka ? ' ' + esc(p.jednostka) : ''}${
@@ -1908,7 +1908,7 @@ function rysujSzczegoly() {
     }
     const podpis = [x.metoda, x.strona, x.lokalizacja, x.moment].filter(Boolean).map(esc).join(' · ');
     return przed + `
-      <tr>
+      <tr${x.flaga ? ' class="poza"' : ''}>
         <td>${esc(x.nazwa)}${x.minuta != null ? ` <span class="w-norma">${x.minuta}′</span>` : ''}
             ${podpis ? `<div class="w-norma">${podpis}</div>` : ''}</td>
         <td class="w-wart">${wartosc(x)}${x.flaga ? `<span class="flaga">${esc(x.flaga)}</span>` : ''}</td>
@@ -1993,5 +1993,14 @@ function rysujSzczegoly() {
     rysuj();
   };
 }
+
+// Na telefonie długa norma i metoda są ucięte do jednej linii (patrz „wyniki na
+// telefonie" w health.html); stuknięcie w wiersz pokazuje je w całości. Jeden
+// nasłuch na całą stronę, bo ta sama tabela stoi w podglądzie, w szczegółach
+// i pod wykresem przebiegu. Na komputerze klasa niczego nie zmienia.
+document.addEventListener('click', (ev) => {
+  const wiersz = ev.target.closest('.wyniki tbody tr:not(.w-grupa)');
+  if (wiersz) wiersz.classList.toggle('rozw');
+});
 
 authRequireHousehold().then(() => { rysuj(); });

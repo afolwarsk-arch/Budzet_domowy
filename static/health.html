@@ -352,6 +352,43 @@
     .wyk-podpis { font-size: 12.5px; color: var(--muted); min-height: 18px; margin-top: 8px; }
 
     @media (max-width: 560px) { .pola-2 { grid-template-columns: 1fr; } }
+
+    /* ── wyniki na telefonie: lista zamiast tabeli ──
+       Tabela z trzema kolumnami nie mieści się na 311 px: norma i metoda nie
+       mogą się zawijać, więc siedem opisowych norm rozpychało ją do 2195 px
+       i na ekranie zostawały same nazwy badań — wynik był 500 px w bok.
+       Samo zawijanie nie pomaga (wiersz LDL robi się wysoki na 397 px), stąd
+       inny układ: nazwa i wynik w jednej linii, norma pod spodem ucięta do
+       jednej linii, a stuknięcie w wiersz (klasa .rozw) pokazuje ją w całości. */
+    @media (max-width: 700px) {
+      /* Przewijanie w bok jest już zbędne, a kontener z overflow odbierałby
+         nagłówkom grup przyklejanie — trzymałyby się jego, nie strony. */
+      .karta .przewin { overflow: visible; }
+      .wyniki, .wyniki tbody { display: block; }
+      .wyniki thead { display: none; }
+      .wyniki tr { display: grid; grid-template-columns: minmax(0, 1fr) auto;
+                   column-gap: 12px; row-gap: 1px; align-items: baseline;
+                   line-height: 1.3; padding: 8px; border-bottom: 1px solid var(--border-soft); }
+      .wyniki tr:last-child { border-bottom: none; }
+      .wyniki td { display: block; padding: 0; border: 0; min-width: 0; }
+      .wyniki td:first-child { font-size: 14px; }
+      .wyniki td.w-wart { font-size: 15px; text-align: right; }
+      .wyniki td.w-norma, .wyniki td div.w-norma {
+        font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; }
+      .wyniki td.w-norma { grid-column: 1 / -1; }
+      .wyniki td.w-norma:empty { display: none; }
+      /* Trzecia komórka to norma we wszystkich trzech tabelach; czwarta
+         (placówka w przebiegu) podpisu nie dostaje. */
+      .wyniki td.w-norma:nth-child(3):not(:empty)::before { content: 'norma '; opacity: .75; }
+      .wyniki tr.rozw td.w-norma, .wyniki tr.rozw td div.w-norma { white-space: normal; }
+      /* 56 px to wysokość górnego paska, który sam jest przyklejony. */
+      .wyniki tr.w-grupa { display: block; position: sticky; top: 56px; z-index: 1;
+                           background: var(--surface-2); padding: 7px 8px; }
+      .wyniki tr.w-grupa td { background: none; }
+      /* Wyróżnienie idzie za oznaczeniem PRZEPISANYM z dokumentu — apka nie
+         ocenia sama, co jest poza normą. */
+      .wyniki tr.poza { background: var(--danger-bg); box-shadow: inset 3px 0 0 var(--danger); }
+    }
   </style>
 </head>
 <body>
