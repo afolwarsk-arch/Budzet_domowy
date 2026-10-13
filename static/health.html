@@ -133,6 +133,16 @@
              border: 1px solid var(--danger-border); margin-left: 6px; }
     .w-grupa td { background: var(--surface-2); font-size: 11px; text-transform: uppercase;
                   letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+    /* Przełącznik „Poza normą / Wszystkie" nad wynikami. Chowa wiersze bez
+       oznaczenia PRZEPISANEGO z dokumentu; nagłówek grupy zostaje tylko wtedy,
+       gdy ma pod sobą choć jeden oznaczony wynik (.ma-poza). */
+    .filtr-wynikow { margin-bottom: 10px; }
+    .wyniki.tylko-poza tbody tr:not(.poza):not(.ma-poza) { display: none; }
+    /* Na szerokim ekranie opisowa norma (LDL: kilka zdań) nie mogła się zawijać
+       i rozpychała tabelę do 2195 px — kolumna normy uciekała w bok. */
+    @media (min-width: 701px) {
+      .wyniki td.w-norma, .wyniki td div.w-norma { white-space: normal; }
+    }
 
     .karta { border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
              padding: 14px 15px; margin-bottom: 14px; }

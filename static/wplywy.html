@@ -51,10 +51,36 @@
     .btn-primary { background: var(--primary); color: var(--on-primary); font-weight:600; }
     .btn-primary:hover { background: var(--primary);color:var(--on-primary); }
 
+    /* Dopisek „· konto · osoba" przy dacie — tylko na telefonie, gdzie osobne
+       kolumny konta i osoby są schowane. */
+    .wpl-meta { display:none; }
+
+    /* Na telefonie lista zamiast tabeli: siedem kolumn miało 602 px w ramce
+       347 px i kwota z przyciskami uciekały w bok. Wiersz = źródło i kwota
+       w jednej linii, pod spodem data z kontem i osobą, niżej opis; przyciski
+       po prawej, każdy 44 px. Selektory z „>" — bez tego złapałyby tabelę
+       zagnieżdżoną, gdyby kiedyś się tu pojawiła. */
     @media (max-width: 700px) {
       .wpl-charts { grid-template-columns:1fr; }
-      .tbl-card { overflow-x:auto; }
       .btn-add { margin-left:0; width:100%; }
+      .tbl-card { padding:2px 14px 6px; }
+      .wpl-table, .wpl-table > tbody { display:block; }
+      .wpl-table > thead { display:none; }
+      .wpl-table > tbody > tr { display:grid; grid-template-columns:minmax(0,1fr) auto;
+        column-gap:10px; row-gap:2px; align-items:center; padding:10px 0;
+        border-bottom:1px solid var(--border); }
+      .wpl-table > tbody > tr:last-child { border-bottom:none; }
+      .wpl-table > tbody > tr > td { display:block; padding:0; border:0; min-width:0; }
+      .wpl-table td.c-zr { grid-column:1; grid-row:1; }
+      .wpl-table td.c-kwota { grid-column:2; grid-row:1; text-align:right; font-size:16px; }
+      .wpl-table td.c-data { grid-column:1; grid-row:2; font-size:12.5px; white-space:normal !important; }
+      .wpl-table td.c-opis { grid-column:1; grid-row:3; font-size:12.5px; overflow-wrap:anywhere; }
+      .wpl-table td.c-akcje { grid-column:2; grid-row:2 / span 2; }
+      .wpl-table td.c-konto, .wpl-table td.c-osoba, .wpl-table td.brak { display:none; }
+      .wpl-meta { display:inline; }
+      .wpl-act { gap:0; margin-right:-10px; }
+      .wpl-act button { width:44px; height:44px; padding:0; display:inline-flex;
+        align-items:center; justify-content:center; }
     }
   </style>
 </head>
@@ -230,14 +256,17 @@ function renderTabela(list) {
   empty.style.display = 'none';
   tb.innerHTML = sorted.map(w => {
     const zr = w.kategoria || 'Inne';
+    // Na telefonie konto i osoba stoją przy dacie (kolumny są schowane),
+    // a puste pola nie zajmują miejsca kreską.
+    const meta = [w.konto_nazwa, w.osoba].filter(Boolean).map(x => ' · ' + escHtml(x)).join('');
     return `<tr>
-      <td style="white-space:nowrap;color: var(--muted)">${fmtDate(w.data)}</td>
-      <td class="kwota">+${fmt(w.kwota)}</td>
-      <td><span class="zr-badge" style="background:${zrColor(zr)}">${escHtml(zr)}</span></td>
-      <td style="color: var(--muted)">${escHtml(w.konto_nazwa || '—')}</td>
-      <td style="color: var(--muted)">${escHtml(w.osoba || '—')}</td>
-      <td style="color: var(--muted)">${escHtml(w.opis || '—')}</td>
-      <td><div class="wpl-act">
+      <td class="c-data" style="white-space:nowrap;color: var(--muted)">${fmtDate(w.data)}<span class="wpl-meta">${meta}</span></td>
+      <td class="kwota c-kwota">+${fmt(w.kwota)}</td>
+      <td class="c-zr"><span class="zr-badge" style="background:${zrColor(zr)}">${escHtml(zr)}</span></td>
+      <td class="c-konto" style="color: var(--muted)">${escHtml(w.konto_nazwa || '—')}</td>
+      <td class="c-osoba" style="color: var(--muted)">${escHtml(w.osoba || '—')}</td>
+      <td class="c-opis${w.opis ? '' : ' brak'}" style="color: var(--muted)">${escHtml(w.opis || '—')}</td>
+      <td class="c-akcje"><div class="wpl-act">
         <button class="saldo" onclick="wplywDoSalda(${w.id})" title="To saldo początkowe konta — przenieś (nie liczy się do bilansu)"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="akc" d="M12 4v10.4M8.4 11l3.6 3.6L15.6 11"/><path d="M5 19.2h14"/></svg></span></button>
         <button onclick="editWplyw(${w.id})" title="Edytuj"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.2-4.2L15.6 5.4a2.2 2.2 0 013.1 3.1L8.2 18.8z"/><path d="M14 7l3 3"/></svg></span></button>
         <button class="del" onclick="delWplyw(${w.id})" title="Usuń"><span class="ikona mini"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/></svg></span></button>

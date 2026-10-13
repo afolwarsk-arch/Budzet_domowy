@@ -1248,6 +1248,7 @@ function rysujPodglad() {
 
     ${w.length ? `<div class="karta">
       <h2>Odczytane wyniki — ${w.length}</h2>
+      ${filtrWynikow(w)}
       <div class="przewin"><table class="wyniki">
         <thead><tr><th>Badanie</th><th>Wynik</th><th>Norma</th></tr></thead>
         <tbody>${wiersze}</tbody>
@@ -1900,11 +1901,12 @@ function rysujSzczegoly() {
   // Wyniki bywają pogrupowane (szczep w antybiogramie, panel alergenów) —
   // nagłówek grupy wstawiamy tylko wtedy, gdy się zmienia.
   let grupa = null;
+  const grupyZFlaga = new Set(w.filter((x) => x.flaga).map((x) => x.grupa));
   const wiersze = w.map((x) => {
     let przed = '';
     if (x.grupa && x.grupa !== grupa) {
       grupa = x.grupa;
-      przed = `<tr class="w-grupa"><td colspan="3">${esc(x.grupa)}</td></tr>`;
+      przed = `<tr class="w-grupa${grupyZFlaga.has(x.grupa) ? ' ma-poza' : ''}"><td colspan="3">${esc(x.grupa)}</td></tr>`;
     }
     const podpis = [x.metoda, x.strona, x.lokalizacja, x.moment].filter(Boolean).map(esc).join(' · ');
     return przed + `
@@ -1939,6 +1941,7 @@ function rysujSzczegoly() {
 
     ${w.length ? `<div class="karta">
       <h2>Wyniki</h2>
+      ${filtrWynikow(w)}
       <div class="przewin"><table class="wyniki">
         <thead><tr><th>Badanie</th><th>Wynik</th><th>Norma</th></tr></thead>
         <tbody>${wiersze}</tbody>
@@ -1999,8 +2002,28 @@ function rysujSzczegoly() {
 // nasłuch na całą stronę, bo ta sama tabela stoi w podglądzie, w szczegółach
 // i pod wykresem przebiegu. Na komputerze klasa niczego nie zmienia.
 document.addEventListener('click', (ev) => {
+  const filtr = ev.target.closest('.filtr-wynikow [data-pokaz]');
+  if (filtr) {
+    const karta = filtr.closest('.karta');
+    karta.querySelector('.wyniki').classList.toggle('tylko-poza', filtr.dataset.pokaz === 'poza');
+    karta.querySelectorAll('.filtr-wynikow [data-pokaz]').forEach((b) =>
+      b.setAttribute('aria-pressed', String(b === filtr)));
+    return;
+  }
   const wiersz = ev.target.closest('.wyniki tbody tr:not(.w-grupa)');
   if (wiersz) wiersz.classList.toggle('rozw');
 });
+
+// Przełącznik nad listą wyników. „Poza normą" znaczy: wynik ma oznaczenie
+// PRZEPISANE z dokumentu (strzałka, H, L) — apka sama niczego nie ocenia.
+// Nie pokazujemy go, gdy nie ma czego odfiltrować.
+function filtrWynikow(w) {
+  const poza = w.filter((x) => x.flaga).length;
+  if (!poza || poza === w.length) return '';
+  return `<div class="filtry filtr-wynikow">
+    <button class="chip" type="button" data-pokaz="poza" aria-pressed="false">Poza normą (${poza})</button>
+    <button class="chip" type="button" data-pokaz="wszystkie" aria-pressed="true">Wszystkie (${w.length})</button>
+  </div>`;
+}
 
 authRequireHousehold().then(() => { rysuj(); });
