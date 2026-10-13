@@ -38,6 +38,22 @@ MAX_STRON = 12
 
 OBRAZY = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
+# Model pomija puste pola (patrz „PUSTYCH PÓL NIE WYPISUJ" w prompcie), a my
+# dopisujemy je z powrotem jako None zaraz po odczycie. Dzięki temu reszta apki
+# dostaje dokładnie ten sam kształt co wcześniej, a za puste pola nie płacimy
+# ani czasem, ani tokenami. Listy muszą zgadzać się ze wzorem w prompcie.
+_POLA_DOKUMENTU = (
+    "rodzaj", "nazwa", "data_badania", "data_do", "data_pobrania", "placowka",
+    "kod_eskierowania", "wazne_do", "tryb", "specjalizacja", "lekarz", "forma",
+    "numer_badania", "opis", "wywiad", "badanie", "pouczenia", "rozpoznanie",
+    "kod_icd10", "zalecenia", "data_nastepnego", "kontekst", "norma_wg",
+)
+_POLA_WYNIKU = (
+    "nazwa", "wartosc_liczba", "wartosc_tekst", "jednostka", "operator",
+    "norma_min", "norma_max", "norma_tekst", "flaga", "minuta", "moment",
+    "strona", "lokalizacja", "grupa", "metoda", "wartosc_odniesienia", "komentarz",
+)
+
 
 class OdczytError(ValueError):
     """Nie da się odczytać pliku albo model nie zwrócił poprawnej struktury."""
@@ -72,6 +88,15 @@ zawiera cytat albo wyrażenie w cudzysłowie, zapisz go polskimi cudzysłowami
 drukarskimi: „tak”. Prosty cudzysłów kończy łańcuch w JSON-ie i rozbija całą
 odpowiedź w połowie zdania — zdarzyło się to na zdaniu „częste »strzały bólowe«
 języka". Nie wstawiaj też surowych znaków nowej linii — użyj \\n.
+
+PUSTYCH PÓL NIE WYPISUJ WCALE. Wzór niżej pokazuje WSZYSTKIE pola, jakie mogą
+wystąpić — w odpowiedzi wpisuj TYLKO te, które mają wartość. Żadnego null,
+żadnego "" i żadnej pustej listy: pola, którego nie ma na dokumencie, po prostu
+nie ma w JSON-ie. Wynik z nazwą, wartością, jednostką i normą ma mieć pięć pól,
+nie siedemnaście. Pisz też zwięźle: bez wcięć, każdy wynik w jednej linii.
+Powód: sprawozdanie z laboratorium ma po kilkadziesiąt wyników, a kilkanaście
+pustych pól przy każdym z nich wydłuża odczyt z minuty do trzech i potrafi
+urwać odpowiedź przed końcem.
 
 JSON ma mieć tę postać:
 
@@ -377,7 +402,7 @@ def czytaj_dokument(strony: list[tuple[bytes, str]],
     polecenie += _podpowiedz_znane(znane)
     tresc.append({"type": "text", "text": polecenie})
 
-    client = anthropic.Anthropic(timeout=_limit_czasu(len(gotowe)), max_retries=1)
+    client = anthropic.Anthropic(timeout=_limit_czasu(_ile_stron(gotowe)), max_retries=1)
     try:
         msg = _zapytaj(client, tresc)
     except anthropic.APITimeoutError as e:
@@ -433,6 +458,24 @@ def _komunikat_wiele(rozpoznane: list) -> str:
             "i lekarz musiałyby się rozjechać. Wgraj każdy dokument osobno — "
             "a jeśli fotografujesz, zrób zdjęcie tak, żeby w kadrze nie było "
             "widać sąsiedniej kartki.")
+
+
+def _ile_stron(gotowe: list) -> int:
+    """Liczba stron do przepisania — PDF liczony po stronach, nie jako jeden plik.
+
+    Czterostronicowe sprawozdanie z laboratorium w PDF-ie dostawało limit jak
+    jedno zdjęcie (70 s) i przepadało, choć model potrzebował trzy razy tyle.
+    Strony liczymy po znacznikach w pliku. Nowsze PDF-y trzymają je w
+    skompresowanych strumieniach i wtedy nie widać żadnego — przyjmujemy cztery,
+    bo zawyżony limit nic nie kosztuje, a zaniżony gubi odczyt.
+    """
+    razem = 0
+    for dane, mime in gotowe:
+        if mime == "application/pdf":
+            razem += len(re.findall(rb"/Type\s*/Page(?![A-Za-z])", dane)) or 4
+        else:
+            razem += 1
+    return razem
 
 
 def _limit_czasu(ile_stron: int) -> float:
@@ -540,6 +583,12 @@ def _napraw_cudzyslowy(txt: str) -> str:
     znak to `,` `}` `]` albo `:`, to był koniec łańcucha; cokolwiek innego znaczy,
     że cudzysłów należy do tekstu i trzeba go zabezpieczyć. Poprawny JSON
     przechodzi przez tę funkcję bez zmian.
+
+    Sam przecinek nie wystarcza za dowód końca. Nazwa placówki „Bolesławiec –
+    Zgorzelec", Zakład Diagnostyki… ma przecinek zaraz po cytacie i rozbiła
+    odczyt. Po przecinku kończącym wartość musi stać początek następnej
+    (cudzysłów, nawias, liczba, true/false/null) — zwykłe słowo znaczy, że
+    zdanie biegnie dalej.
     """
     wynik = []
     w_lancuchu = False
@@ -560,7 +609,10 @@ def _napraw_cudzyslowy(txt: str) -> str:
             continue
         if z == '"':
             dalej = txt[i + 1:i + 40].lstrip()
-            if dalej[:1] in (",", "}", "]", ":", ""):
+            koniec = dalej[:1] in ("}", "]", ":", "") or (
+                dalej[:1] == "," and re.match(
+                    r'(?:["{\[\-\d]|(?:true|false|null)\b|$)', dalej[1:].lstrip()))
+            if koniec:
                 w_lancuchu = False
                 wynik.append(z)
             else:
@@ -613,6 +665,8 @@ def _parsuj(surowy: str) -> dict:
         dane["nazwa"] = "Badanie"
     if dane.get("rodzaj") not in ("lab", "obrazowe", "wizyta", "skierowanie", "recepta", "inne"):
         dane["rodzaj"] = "lab"
+    for pole in _POLA_DOKUMENTU:
+        dane.setdefault(pole, None)
     return dane
 
 
@@ -622,7 +676,8 @@ def _czysc_wynik(w: dict) -> dict:
     Model bywa uczynny i wpisuje '<0,005' do pola liczbowego mimo instrukcji —
     wtedy ratujemy znak zamiast tracić cały wynik.
     """
-    out = dict(w)
+    out = {pole: None for pole in _POLA_WYNIKU}
+    out.update(w)
     surowa = out.get("wartosc_liczba")
     if isinstance(surowa, str):
         tekst = surowa.strip().replace(",", ".")
