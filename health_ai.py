@@ -20,6 +20,7 @@ różnica między wynikiem a fikcją.
 import base64
 import json
 import re
+import time
 
 import anthropic
 
@@ -402,9 +403,10 @@ def czytaj_dokument(strony: list[tuple[bytes, str]],
     polecenie += _podpowiedz_znane(znane)
     tresc.append({"type": "text", "text": polecenie})
 
-    client = anthropic.Anthropic(timeout=_limit_czasu(_ile_stron(gotowe)), max_retries=1)
+    # Ponawianie robimy sami (`_zapytaj_z_ponowieniem`), stąd max_retries=0.
+    client = anthropic.Anthropic(timeout=_limit_czasu(_ile_stron(gotowe)), max_retries=0)
     try:
-        msg = _zapytaj(client, tresc)
+        msg = _zapytaj_z_ponowieniem(client, tresc)
     except anthropic.APITimeoutError as e:
         raise OdczytError(
             "Odczyt trwał zbyt długo i został przerwany. Dokument nie został "
@@ -489,8 +491,7 @@ def _limit_czasu(ile_stron: int) -> float:
 
     Zmierzone na jednostronicowym zdjęciu 2,92 MB: 18 s. Zapas jest spory,
     bo czas rośnie z liczbą stron — model przepisuje je w jednym przebiegu.
-    `max_retries=1` zamiast domyślnych dwóch: przy trzech podejściach nawet
-    krótki limit sumuje się do minut.
+    Po przekroczeniu limitu nie ma drugiej próby — patrz `_zapytaj_z_ponowieniem`.
     """
     return min(45 + 25 * ile_stron, 240)
 
@@ -513,6 +514,31 @@ def _komunikat_api(e) -> str:
         return ("Usługa odczytu chwilowo nie odpowiada. Spróbuj za kilka minut — "
                 "plik nie został nigdzie zapisany.")
     return "Nie udało się odczytać dokumentu. Spróbuj ponownie."
+
+
+def _zapytaj_z_ponowieniem(client, tresc):
+    """Jedno ponowienie — ale tylko po awarii, która przyszła OD RAZU.
+
+    PRZEKROCZONEGO LIMITU CZASU NIE PONAWIAMY. Dokument, który nie zmieścił się
+    w limicie, nie zmieści się też za drugim razem, bo o czasie decyduje długość
+    odpowiedzi, a ta się nie zmieni. Biblioteka ponawiała go mimo to: użytkownik
+    czekał dwa razy dłużej na ten sam błąd, a model pisał dwa razy.
+
+    Przeciążone API (429, 5xx) i zerwane połączenie to co innego — odmowa
+    przychodzi w sekundę, zanim model cokolwiek napisze, więc druga próba nic
+    nie kosztuje i zwykle przechodzi.
+    """
+    try:
+        return _zapytaj(client, tresc)
+    except anthropic.APITimeoutError:
+        raise                       # dziedziczy po APIConnectionError — musi stać pierwszy
+    except anthropic.APIConnectionError:
+        pass
+    except anthropic.APIStatusError as e:
+        if e.status_code != 429 and e.status_code < 500:
+            raise
+    time.sleep(2)
+    return _zapytaj(client, tresc)
 
 
 def _zapytaj(client, tresc):
