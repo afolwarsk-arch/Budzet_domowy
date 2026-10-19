@@ -30,7 +30,9 @@ class ZlaPropozycja(ValueError):
 
 
 MAX_ZNAKOW_NAZWY = 40
-_SLOWO = re.compile(r"[^\W_]+")
+# Ciągi liter i ciągi cyfr to OSOBNE tokeny („mleko2" = mleko + 2), żeby cyfry
+# doklejone do słowa nie przechodziły przez regułę rdzenia.
+_SLOWO = re.compile(r"[^\W\d_]+|\d+")
 # Poza słowami w nazwie wolno tylko białe znaki i te znaki; reszta (`!#@*>:;=+?&`,
 # podkreślenie) to nie nazwa produktu, tylko doklejony ogon.
 _DOZWOLONE_POZA_SLOWAMI = re.compile(r"[\s%,.\-/'\"()]*")
@@ -44,7 +46,7 @@ def _zloz(tekst: str) -> str:
 
 
 def _tokeny(tekst: str) -> list[str]:
-    # `[^\W_]` — litery i cyfry bez podkreślenia, więc „_" i „." dzielą słowa.
+    # litery i cyfry osobno, bez podkreślenia — „_" i „." dzielą słowa.
     return _SLOWO.findall(_zloz(tekst))
 
 
@@ -57,8 +59,10 @@ def _to_samo_slowo(a: str, b: str) -> bool:
     identyczne. Dłuższe: rdzenie (bez jednej końcowej samogłoski) w relacji
     przedrostka, długości różne o najwyżej 2, krótszy rdzeń ≥ 2 znaki — to
     końcówka fleksyjna, nie doklejony ogon („piwo" ≠ „piwonie", „papier" ≠
-    „papierosy"). Znany, zaakceptowany fałszywy alarm: „cukier" ~ „cukierki"."""
-    if a.isdigit() or b.isdigit() or len(a) < 3 or len(b) < 3:
+    „papierosy"). Znane, zaakceptowane fałszywe alarmy: „cukier" ~ „cukierki", „ser" ~
+    „serum"/„seria", „sok" ~ „sokół" oraz kolizje po zdjęciu znaków
+    diakrytycznych: „mak" ~ „mąka", „paczek" ~ „pączek"."""
+    if a.isdecimal() or b.isdecimal() or len(a) < 3 or len(b) < 3:
         return a == b
     if abs(len(a) - len(b)) > 2:
         return False
@@ -82,6 +86,10 @@ def nazwa_w_tekscie(nazwa: str, tekst: str, wszystkie: bool = False) -> bool:
     zlozona = _zloz(nazwa)
     n = _SLOWO.findall(zlozona)
     if not n:
+        return False
+    # token z „cyfrą" spoza dziesiętnych (np. ²) albo innym znakiem niebędącym
+    # literą — to nie nazwa produktu
+    if not all(x.isdecimal() or x.isalpha() for x in n):
         return False
     reszta = _SLOWO.sub("", zlozona)
     if not _DOZWOLONE_POZA_SLOWAMI.fullmatch(reszta):

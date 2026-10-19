@@ -225,6 +225,9 @@ def test_nazwa_obecna_naturalna_polszczyzna(tekst, nazwa):
     ("dopisz mleko", "mleko_KLIKNIJ_LINK_zla.strona"),
     ("dopisz jogurt", "jogurt naturalny"), ("dopisz dwa jogurty", "jogurt 2 szt."),
     ("dopisz mleko", "mleko ?"), ("dopisz mleko", "mleko: a"),
+    ("odhacz mleko", "mleko2%"), ("dopisz mleko", "mleko2%"),
+    ("dopisz iphone", "iPhone15"), ("dopisz mleko", "mleko99"),
+    ("dopisz mleko", "mleko²"), ("odhacz mleko", "mleko²"),
 ])
 def test_nazwa_nieobecna_ogon_i_znaki(tekst, nazwa):
     assert not nazwa_w_tekscie(nazwa, tekst)
@@ -242,6 +245,12 @@ def test_nie_tekstowe_nazwa_tytul_dane_na_karte():
     for zle_dane in (None, "x", ["a"], 5):
         for typ in ("lista_dopisz", "lista_odhacz", "zadanie_odhacz", "widok", "jedzenie"):
             w = ustal_tryby([{"typ": typ, "opis": typ, "dane": zle_dane}], "odhacz mleko", UID)
-            assert w[0]["tryb"] in ("karta", "od_razu")
+            assert w[0]["tryb"] == ("od_razu" if typ == "widok" else "karta"), typ
         assert ustal_tryby([{"typ": "lista_odhacz", "opis": "", "dane": zle_dane}],
                            "odhacz mleko", UID)[0]["tryb"] == "karta"
+
+def test_cyfry_przyklejone_do_slowa_na_karte():
+    for tekst, p in (("odhacz mleko", _p("lista_odhacz", nazwa="mleko2%")),
+                     ("dopisz mleko", _p("lista_dopisz", nazwy=["mleko2%"])),
+                     ("dopisz iphone", _p("lista_dopisz", nazwy=["iPhone15"]))):
+        assert ustal_tryby([p], tekst, UID)[0]["tryb"] == "karta", tekst
