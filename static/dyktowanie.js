@@ -34,13 +34,13 @@
   //   onStan(sluchaMy)  — true przy starcie, false przy końcu; do podświetlenia guzika
   function start(opcje) {
     const { onTekst, onStan, onBlad, jezyk } = opcje || {};
-    const blad = (t) => { if (onBlad) onBlad(t); };
+    const blad = (t, kod) => { if (onBlad) onBlad(t, kod || ''); };
     if (sluchacz) return;              // drugie stuknięcie nie tworzy drugiego nasłuchu
 
     const Rozpoznawanie = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Rozpoznawanie) {
       blad('Ta przeglądarka nie obsługuje dyktowania. Na iPhonie działa tylko klawiaturowy '
-        + 'mikrofon iOS — stuknij pole i użyj go. Na Androidzie użyj Chrome.');
+        + 'mikrofon iOS — stuknij pole i użyj go. Na Androidzie użyj Chrome.', 'brak');
       return;
     }
 
@@ -57,7 +57,7 @@
     r.onerror = (ev) => {
       const kod = (ev && ev.error) || '';
       if (kod === 'aborted') return;   // sami przerwaliśmy, to nie błąd
-      blad(POWODY[kod] || ('Dyktowanie nie zadziałało (' + (kod || 'nieznany błąd') + ').'));
+      blad(POWODY[kod] || ('Dyktowanie nie zadziałało (' + (kod || 'nieznany błąd') + ').'), kod);
     };
     r.onend = () => { sluchacz = null; if (onStan) onStan(false); };
 
@@ -66,7 +66,7 @@
     } catch (err) {
       sluchacz = null;
       if (onStan) onStan(false);
-      blad('Nie udało się uruchomić dyktowania: ' + ((err && err.message) || err));
+      blad('Nie udało się uruchomić dyktowania: ' + ((err && err.message) || err), 'start');
     }
   }
 
