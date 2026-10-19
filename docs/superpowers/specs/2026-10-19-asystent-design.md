@@ -22,6 +22,14 @@ Prowadzenie po ekranie (podświetlanie pól na stronie) — **odłożone**, poza
 | Kto zapisuje | **model tylko proponuje, zapisuje przeglądarka** istniejącymi endpointami |
 | Skan kodu kreskowego | w etapie 1, dla jedzenia |
 
+## Zmiany po recenzji UX (2026-10-19)
+
+Decyzje Adama po recenzji UX całego asystenta (`.superpowers/sdd/ux-review-calosc.md`). **Mają pierwszeństwo przed wcześniejszymi zapisami tej spec**, które zostają w tekście bez zmian:
+
+- **D1 — zamknięcie okna tylko je chowa.** Ponowne otwarcie w ciągu 10 minut pokazuje to samo: karty, żywe wiersze „Cofnij", historię rozmowy. Czyści je akcja „Nowa rozmowa" (albo otwarcie po ponad 10 minutach). Gest „wstecz" na Androidzie zamyka okno, nie stronę (wpis w historii przeglądarki, jak arkusz w `eat.js`). Stuknięcie w tło nic nie robi, gdy żyje „Cofnij" albo stoi niezapisana karta; przeciągnięcie uchwytu/nagłówka w dół zamyka. *Zastępuje:* „zamknięcie okna = nowa rozmowa" (sekcja „Historia rozmowy").
+- **D2 — jedzenie z innego dnia jest obsługiwane.** Model rozpoznaje „wczoraj", „przedwczoraj", „w niedzielę" itp.; taki wpis ZAWSZE idzie na kartę z datą pokazaną wyraźnie i edytowalną; najwyżej 7 dni wstecz, nigdy w przyszłość — sprawdza serwer, licząc od lokalnego „teraz" klienta. *Zastępuje:* „Każdy zapis karty ustawia `data` z lokalnej daty przeglądarki" (data z lokalnego dnia jest tylko domyślna).
+- **D3 — polecenie poza zakresem dostaje krótką odpowiedź i kartę przejścia** do pasującego widoku z białej listy (np. „ile mam na koncie?" → „Salda kont jeszcze nie sprawdzę. Mogę otworzyć Konta." + [Przejdź do Kont]). Tylko widoki z białej listy, zawsze jako karta (nigdy przejście od razu), nic się nie zapisuje. *Zastępuje:* „Polecenie poza zakresem … nic nie proponuje" (sekcja „Obsługa błędów") i „nic nie proponuj" w zachowaniu poza zakresem.
+
 ## Zakres etapu 1
 
 | Polecenie | Zachowanie | Endpoint (istniejący) |
