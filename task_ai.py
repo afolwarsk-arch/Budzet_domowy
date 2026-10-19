@@ -93,10 +93,24 @@ Gdy zdanie nie zawiera żadnej czynności do zrobienia (samo „yyy", cisza,
 przypadkowe słowo), zwróć {"tytul": null}."""
 
 
-def _dzis_kontekst() -> str:
-    d = date.today()
+def _dzis_kontekst(dzis: date | None = None) -> str:
+    d = dzis or date.today()
     return (f"\n\nDZISIAJ JEST: {d.isoformat()} ({DNI_TYGODNIA[d.weekday()]}).\n"
             "Wszystkie wyrażenia względne licz od tej daty.")
+
+
+def dzis_z_klienta(wartosc: str | None) -> date | None:
+    """Data „dziś" z telefonu użytkownika.
+
+    Serwer liczy w UTC, więc między północą a drugą w nocy czasu polskiego jego
+    „dziś" to jeszcze wczoraj — „jutro" wpadało wtedy o dzień za wcześnie.
+    Datę klienta przyjmujemy tylko w promieniu jednego dnia od serwerowej:
+    dalej to zepsuty zegar w telefonie, nie strefa czasowa."""
+    try:
+        d = date.fromisoformat((wartosc or "").strip())
+    except ValueError:
+        return None
+    return d if abs((d - date.today()).days) <= 1 else None
 
 
 def _wytnij_json(txt: str):
@@ -169,8 +183,10 @@ def _czysc(dane: dict) -> dict:
     }
 
 
-def zrozum(tekst: str) -> tuple[dict, dict]:
-    """Wypowiedziane zdanie → (dane zadania, zużycie tokenów)."""
+def zrozum(tekst: str, dzis: date | None = None) -> tuple[dict, dict]:
+    """Wypowiedziane zdanie → (dane zadania, zużycie tokenów).
+
+    `dzis` — data z telefonu (patrz `dzis_z_klienta`); bez niej data serwera."""
     tekst = (tekst or "").strip()
     if not tekst:
         raise MowaError("Nie usłyszałem nic do zapisania.")
@@ -185,7 +201,7 @@ def zrozum(tekst: str) -> tuple[dict, dict]:
         msg = client.messages.create(
             model=MODEL,
             max_tokens=400,
-            system=_PROMPT + _dzis_kontekst(),
+            system=_PROMPT + _dzis_kontekst(dzis),
             messages=[{"role": "user", "content": tekst}],
         )
     except anthropic.APITimeoutError as e:

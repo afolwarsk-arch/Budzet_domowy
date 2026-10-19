@@ -2030,7 +2030,7 @@ async function kalNoweDyktuj(p, mik, pole) {
       try {
         const r = await authFetch('/api/task/rozumiem', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tekst }),
+          body: JSON.stringify({ tekst, dzis: dzisIso() }),
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) { toast(d.detail || 'Nie udało się zrozumieć.', 'blad'); return; }
@@ -4542,7 +4542,7 @@ async function zapiszZMowy(tekst) {
   try {
     const r = await authFetch('/api/task/z-mowy', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tekst, parent_id: korzen, strefa_id: strefaDoZapisu() }),
+      body: JSON.stringify({ tekst, parent_id: korzen, strefa_id: strefaDoZapisu(), dzis: dzisIso() }),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { toast(d.detail || 'Nie udało się zapisać zadania.', 'blad'); return; }
@@ -4866,7 +4866,7 @@ async function lapRozumiem(tekst) {
   try {
     const r = await authFetch('/api/task/rozumiem', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tekst }),
+      body: JSON.stringify({ tekst, dzis: dzisIso() }),
     });
     d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || 'Nie udało się zrozumieć polecenia.');

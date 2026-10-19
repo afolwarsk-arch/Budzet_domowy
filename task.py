@@ -322,7 +322,8 @@ async def rozumiem(dane: dict, current_user: dict = Depends(get_current_user)):
     hid = _hid(current_user)
     tekst = (dane.get("tekst") or "").strip()
     try:
-        zrozumiane, usage = await run_in_threadpool(task_ai.zrozum, tekst)
+        zrozumiane, usage = await run_in_threadpool(
+            task_ai.zrozum, tekst, task_ai.dzis_z_klienta(dane.get("dzis")))
     except task_ai.MowaError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
@@ -367,7 +368,8 @@ async def zadanie_z_mowy(dane: dict, current_user: dict = Depends(get_current_us
     tekst = (dane.get("tekst") or "").strip()
     parent_id = dane.get("parent_id") or None
     try:
-        zrozumiane, usage = await run_in_threadpool(task_ai.zrozum, tekst)
+        zrozumiane, usage = await run_in_threadpool(
+            task_ai.zrozum, tekst, task_ai.dzis_z_klienta(dane.get("dzis")))
     except task_ai.MowaError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
