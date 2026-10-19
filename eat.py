@@ -787,6 +787,19 @@ def _sprawdz_ilosc(wartosc) -> float:
     return round(ilosc, 1)
 
 
+def _wartosci_z_produktu(produkt: dict, ilosc: float) -> dict:
+    """Wartości odżywcze porcji liczone z produktu (baza trzyma je na 100 g).
+    Wspólne dla pojedynczego wpisu i posiłku z kilku pozycji — inaczej jedna
+    droga mogłaby kiedyś liczyć inaczej niż druga."""
+    m = ilosc / 100.0
+    return {
+        "kcal": round(float(produkt["kcal"]) * m, 1),
+        "bialko": round(float(produkt["bialko"] or 0) * m, 1),
+        "tluszcz": round(float(produkt["tluszcz"] or 0) * m, 1),
+        "wegle": round(float(produkt["wegle"] or 0) * m, 1),
+    }
+
+
 @router.post("/wpis", status_code=201)
 def dodaj_wpis(body: dict, current_user: dict = Depends(get_current_user)):
     """Wartości odżywcze przelicza SERWER, nie przeglądarka — inaczej wpis
@@ -811,7 +824,6 @@ def dodaj_wpis(body: dict, current_user: dict = Depends(get_current_user)):
             raise HTTPException(404, "Nie znam takiego produktu")
 
     if produkt:
-        mnoznik = ilosc / 100.0
         wpis = {
             "data": _dzien(body.get("data")),
             "posilek": posilek,
@@ -821,10 +833,7 @@ def dodaj_wpis(body: dict, current_user: dict = Depends(get_current_user)):
             "nazwa": (body.get("nazwa") or "").strip()[:120] or produkt["nazwa"],
             "opis_porcji": (body.get("opis_porcji") or "").strip()[:40] or None,
             "ilosc_g": round(ilosc, 1),
-            "kcal": round(float(produkt["kcal"]) * mnoznik, 1),
-            "bialko": round(float(produkt["bialko"] or 0) * mnoznik, 1),
-            "tluszcz": round(float(produkt["tluszcz"] or 0) * mnoznik, 1),
-            "wegle": round(float(produkt["wegle"] or 0) * mnoznik, 1),
+            **_wartosci_z_produktu(produkt, ilosc),
         }
     else:
         # Wpis bez produktu — np. powtórka z „ostatnio jadłeś" albo pozycja
@@ -937,6 +946,36 @@ def zmien_wpis(wpis_id: int, body: dict, current_user: dict = Depends(get_curren
     return wynik
 
 
+def _pozycja_grupy(hid: int, p: dict, dzien: str, posilek: str,
+                   grupa_id: str | None, nazwa_grupy: str | None) -> dict:
+    nazwa = (p.get("nazwa") or "").strip()
+    if not nazwa:
+        raise HTTPException(400, "Pozycja bez nazwy")
+    ilosc = _sprawdz_ilosc(p.get("ilosc_g"))
+    wspolne = {
+        "data": dzien,
+        "posilek": posilek,
+        "nazwa": nazwa[:120],
+        "opis_porcji": (p.get("opis_porcji") or "").strip()[:40] or None,
+        "ilosc_g": ilosc,
+        "grupa_id": grupa_id,
+        "grupa_nazwa": nazwa_grupy if grupa_id else None,
+    }
+    # Produkt z bazy: kalorie liczy SERWER, jak w pojedynczym wpisie — klient
+    # (w tym asystent) nie może podać własnych.
+    produkt_id = p.get("produkt_id")
+    if produkt_id not in (None, ""):
+        try:
+            produkt_id = int(produkt_id)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Nieprawidłowy produkt")
+        produkt = eat_db.produkt_po_id(produkt_id, hid)
+        if not produkt:
+            raise HTTPException(404, "Nie znam takiego produktu")
+        return {**wspolne, "produkt_id": produkt["id"], **_wartosci_z_produktu(produkt, ilosc)}
+    return {**wspolne, "produkt_id": None, **_sprawdz_wartosci(p)}
+
+
 @router.post("/wpisy/grupa", status_code=201)
 def dodaj_grupe(body: dict, current_user: dict = Depends(get_current_user)):
     """Kilka składników zapisanych JAKO JEDNO danie.
@@ -944,9 +983,9 @@ def dodaj_grupe(body: dict, current_user: dict = Depends(get_current_user)):
     „Kanapka z serem" to pieczywo i ser — osobne wpisy, każdy z własną
     gramaturą do poprawienia, ale w dzienniku pokazane pod wspólną nazwą.
 
-    Jedno wywołanie zamiast pętli po stronie przeglądarki: wcześniej każda
-    pozycja szła osobnym żądaniem i przerwanie w połowie zostawiało pół
-    posiłku, bez żadnego śladu, że reszta nie doszła."""
+    Najpierw sprawdzamy WSZYSTKIE pozycje, potem zapisujemy je w jednej
+    transakcji. Wcześniej błąd w trzeciej pozycji zostawiał w dzienniku dwie
+    pierwsze."""
     hid = _hid(current_user)
     posilek = body.get("posilek")
     if posilek not in eat_db.POSILKI:
@@ -963,23 +1002,18 @@ def dodaj_grupe(body: dict, current_user: dict = Depends(get_current_user)):
     # klient, dwie osoby mogłyby trafić w ten sam i zlepić swoje posiłki.
     grupa_id = uuid.uuid4().hex if nazwa_grupy and len(pozycje) > 1 else None
 
-    zapisane = []
-    for p in pozycje:
-        nazwa = (p.get("nazwa") or "").strip()
-        if not nazwa:
-            raise HTTPException(400, "Pozycja bez nazwy")
-        zapisane.append(eat_db.dodaj_wpis(hid, current_user["user_id"], {
-            "data": dzien,
-            "posilek": posilek,
-            "produkt_id": None,
-            "nazwa": nazwa[:120],
-            "opis_porcji": (p.get("opis_porcji") or "").strip()[:40] or None,
-            "ilosc_g": _sprawdz_ilosc(p.get("ilosc_g")),
-            "grupa_id": grupa_id,
-            "grupa_nazwa": nazwa_grupy if grupa_id else None,
-            **_sprawdz_wartosci(p),
-        }))
-    return {"grupa_id": grupa_id, "wpisy": zapisane}
+    wiersze = []
+    for i, p in enumerate(pozycje):
+        try:
+            wiersze.append(_pozycja_grupy(hid, p, dzien, posilek, grupa_id, nazwa_grupy))
+        except HTTPException as e:
+            # Numer pozycji w treści dla człowieka, indeks w nagłówku dla kodu —
+            # karta asystenta podświetla wtedy właściwy wiersz. `detail` zostaje
+            # napisem, bo eat.js pokazuje go wprost.
+            raise HTTPException(e.status_code, f"Pozycja {i + 1}: {e.detail}",
+                                headers={"X-Pozycja": str(i)})
+    return {"grupa_id": grupa_id,
+            "wpisy": eat_db.dodaj_wpisy(hid, current_user["user_id"], wiersze)}
 
 
 @router.post("/wpisy/scal", status_code=201)

@@ -608,23 +608,41 @@ _POLA_WPISU = ("data", "posilek", "produkt_id", "nazwa", "opis_porcji", "ilosc_g
                "skladniki_json")
 
 
+_SQL_WPISU = """
+    INSERT INTO eat_wpisy (household_id, user_id, data, posilek, produkt_id,
+                           nazwa, opis_porcji, ilosc_g, kcal, bialko, tluszcz, wegle,
+                           grupa_id, grupa_nazwa, przepis_id, porcje_zjedzone,
+                           skladniki_json)
+    VALUES (%(h)s,%(u)s,%(data)s,%(posilek)s,%(produkt_id)s,
+            %(nazwa)s,%(opis_porcji)s,%(ilosc_g)s,%(kcal)s,%(bialko)s,%(tluszcz)s,%(wegle)s,
+            %(grupa_id)s,%(grupa_nazwa)s,%(przepis_id)s,%(porcje_zjedzone)s,
+            %(skladniki_json)s)
+    RETURNING *
+"""
+
+
 def dodaj_wpis(household_id: int, user_id: int, dane: dict) -> dict:
     # Pola nieobowiązkowe (grupa, przepis) uzupełniamy None-ami, żeby wywołania
     # sprzed grupowania działały bez zmian.
     d = {k: dane.get(k) for k in _POLA_WPISU}
     with get_db() as cur:
-        cur.execute("""
-            INSERT INTO eat_wpisy (household_id, user_id, data, posilek, produkt_id,
-                                   nazwa, opis_porcji, ilosc_g, kcal, bialko, tluszcz, wegle,
-                                   grupa_id, grupa_nazwa, przepis_id, porcje_zjedzone,
-                                   skladniki_json)
-            VALUES (%(h)s,%(u)s,%(data)s,%(posilek)s,%(produkt_id)s,
-                    %(nazwa)s,%(opis_porcji)s,%(ilosc_g)s,%(kcal)s,%(bialko)s,%(tluszcz)s,%(wegle)s,
-                    %(grupa_id)s,%(grupa_nazwa)s,%(przepis_id)s,%(porcje_zjedzone)s,
-                    %(skladniki_json)s)
-            RETURNING *
-        """, {"h": household_id, "u": user_id, **d})
+        cur.execute(_SQL_WPISU, {"h": household_id, "u": user_id, **d})
         return dict(cur.fetchone())
+
+
+def dodaj_wpisy(household_id: int, user_id: int, lista: list[dict]) -> list[dict]:
+    """Kilka wpisów w JEDNEJ transakcji — wszystkie albo żaden.
+
+    `dodaj_wpis` w pętli robił osobną transakcję na każdą pozycję, więc błąd
+    w trzeciej zostawiał w dzienniku dwie pierwsze, bez śladu, że reszta nie
+    doszła."""
+    wynik = []
+    with get_db() as cur:
+        for dane in lista:
+            d = {k: dane.get(k) for k in _POLA_WPISU}
+            cur.execute(_SQL_WPISU, {"h": household_id, "u": user_id, **d})
+            wynik.append(dict(cur.fetchone()))
+    return wynik
 
 
 def usun_grupe(grupa_id: str, household_id: int, user_id: int) -> int:
