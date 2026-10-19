@@ -9,7 +9,7 @@ co użytkownik sam powiedział w BIEŻĄCYM poleceniu."""
 import json
 import re
 import unicodedata
-from datetime import datetime
+from datetime import date, datetime
 
 MAX_POZYCJI_LISTY = 10
 MAX_ELEMENTOW_WYNIKU = 50
@@ -23,6 +23,17 @@ WIDOKI = {
     "przepisy": "/przepisy", "statystyki": "/statystyki", "task": "/task",
     "health": "/health", "waga": "/waga",
 }
+
+# Polskie nazwy widoków do kart i wiadomości („Przejdź: Konta"). Te same klucze
+# co WIDOKI — test pilnuje, żeby nowy widok nie został bez nazwy.
+ETYKIETY_WIDOKOW = {
+    "pulpit": "Pulpit", "lista": "Lista zakupów", "analiza": "Analiza", "konta": "Konta",
+    "cele": "Cele", "wplywy": "Wpływy", "eat": "Dziennik jedzenia", "produkty": "Produkty",
+    "przepisy": "Przepisy", "statystyki": "Statystyki jedzenia", "task": "Zadania",
+    "health": "Zdrowie", "waga": "Masa ciała",
+}
+
+MAX_DNI_WSTECZ = 7
 
 
 class ZlaPropozycja(ValueError):
@@ -108,6 +119,26 @@ def pora_posilku(teraz: datetime) -> str:
     return "przekaska"
 
 
+def sprawdz_dzien(wartosc, dzis: date) -> str:
+    """Dzień wpisu jedzenia (D2). Puste = dziś (lokalny dzień telefonu).
+    Najwyżej MAX_DNI_WSTECZ dni wstecz, nigdy w przyszłość — „wczoraj" model
+    przelicza sam z TERAZ w prompcie, a tu sprawdzamy, czy nie przestrzelił.
+    Tylko pełny zapis RRRR-MM-DD: `date.fromisoformat` przyjąłby też „20261018"."""
+    if wartosc is None or wartosc == "":
+        return dzis.isoformat()
+    if not isinstance(wartosc, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", wartosc):
+        raise ZlaPropozycja("Nieprawidłowa data — podaj ją jako RRRR-MM-DD.")
+    try:
+        d = date.fromisoformat(wartosc)
+    except ValueError:
+        raise ZlaPropozycja("Nieprawidłowa data — podaj ją jako RRRR-MM-DD.")
+    if d > dzis:
+        raise ZlaPropozycja("Nie wpisuję jedzenia z przyszłości.")
+    if (dzis - d).days > MAX_DNI_WSTECZ:
+        raise ZlaPropozycja(f"Najwyżej {MAX_DNI_WSTECZ} dni wstecz — starszy dzień wpisz w wiem.eat.")
+    return d.isoformat()
+
+
 def obetnij(elementy: list) -> str:
     """Wynik narzędzia odczytowego dla modelu. Bez limitu „pokaż listy" przy
     dużym gospodarstwie potrafiłoby wysłać całą bazę w każdej iteracji pętli."""
@@ -140,13 +171,23 @@ def ustal_tryby(propozycje: list[dict], tekst: str, user_id: int,
 
     `z_opcji` — „bieżąca wiadomość" to stuknięta opcja pytania, której treść
     napisał MODEL. Nie może więc niczego dopisać od razu: opcję „Dopisz wódkę"
-    mógł podsunąć wstrzyknięty tekst z listy czy z bazy produktów."""
+    mógł podsunąć wstrzyknięty tekst z listy czy z bazy produktów.
+
+    Kilka odhaczeń TEGO SAMEGO rodzaju w jednym poleceniu znaczy, że pasuje
+    kilka pozycji („odhacz pranie" przy dwóch „Praniach") — wtedy wszystkie
+    idą na karty i to karty są wyborem. Od razu odhaczyłaby się pierwsza
+    z brzegu, czyli losowa."""
     sa_zapisy = any(p["typ"] != "widok" for p in propozycje)
+    ile = {}
+    for p in propozycje:
+        ile[p["typ"]] = ile.get(p["typ"], 0) + 1
+    wiele = {t for t in ("zadanie_odhacz", "lista_odhacz") if ile.get(t, 0) > 1}
     uzyte = False
     wynik = []
     for p in propozycje:
         tryb = "karta"
-        if not uzyte and _moze_od_razu(p, tekst, user_id, sa_zapisy, z_opcji):
+        if (not uzyte and p["typ"] not in wiele
+                and _moze_od_razu(p, tekst, user_id, sa_zapisy, z_opcji)):
             tryb, uzyte = "od_razu", True
         wynik.append({**p, "tryb": tryb})
     return wynik
@@ -157,7 +198,9 @@ def _moze_od_razu(p: dict, tekst: str, user_id: int, sa_zapisy: bool, z_opcji: b
     if not isinstance(d, dict):
         d = {}
     if typ == "widok":
-        return not sa_zapisy
+        # Przejście z odpowiedzi „tego nie umiem" (D3) to podpowiedź, nie
+        # polecenie — użytkownik o otwarcie strony nie prosił.
+        return not sa_zapisy and d.get("poza_zakresem") is not True
     if z_opcji:
         return False  # treść opcji napisał model — żaden zapis bez stuknięcia karty
     if typ == "lista_dopisz":

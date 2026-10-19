@@ -879,6 +879,17 @@ def pobierz(household_id, user_id, zadanie_id):
         return dict(r) if r else None
 
 
+def ma_otwarte_dzieci(household_id: int, zadanie_id: int) -> bool:
+    """Czy zadanie ma niezrobione podzadania — WSZYSTKIE, także wstrzymane
+    i cudze prywatne. Służy tylko ostrzeżeniu „podzadania zostaną otwarte"
+    przy odhaczaniu bez kaskady; treść tych podzadań nigdzie nie wychodzi."""
+    with get_db() as cur:
+        cur.execute("SELECT EXISTS (SELECT 1 FROM task_zadania WHERE parent_id = %s "
+                    "AND household_id = %s AND status <> 'zrobione') AS jest",
+                    (zadanie_id, household_id))
+        return bool(cur.fetchone()["jest"])
+
+
 def dodaj(household_id, user_id, d) -> int:
     """`d` to słownik z `task.py`; walidacja rodzica i prywatności JEST TUTAJ,
     bo to reguła danych, a nie reguła interfejsu."""

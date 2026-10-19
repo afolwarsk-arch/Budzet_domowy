@@ -706,13 +706,18 @@ ZASADY:
 """
 
 
-def szacuj_posilek(opis: str) -> tuple[list[dict], dict]:
+def szacuj_posilek(opis: str, timeout: float = 40.0, max_retries: int = 1) -> tuple[list[dict], dict]:
     """Opis słowami („dwa jajka i kromka chleba") → lista pozycji z wartościami.
 
-    Potrzebne przy domowych posiłkach, które nie mają żadnego kodu kreskowego."""
+    Potrzebne przy domowych posiłkach, które nie mają żadnego kodu kreskowego.
+
+    Limit czasu: domyślny klient czekał do 600 s z dwoma ponowieniami, a proxy
+    Railway zrywa żądanie dużo wcześniej („Failed to fetch"). Eat woła z
+    wartościami domyślnymi; asystent podaje resztę swojego budżetu 60 s
+    i `max_retries=0` — ponowienie i tak by się nie zmieściło."""
     import json as _json
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(timeout=timeout, max_retries=max_retries)
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=2000,

@@ -183,10 +183,13 @@ def _czysc(dane: dict) -> dict:
     }
 
 
-def zrozum(tekst: str, dzis: date | None = None) -> tuple[dict, dict]:
+def zrozum(tekst: str, dzis: date | None = None, timeout: float = 30.0,
+           max_retries: int = 1) -> tuple[dict, dict]:
     """Wypowiedziane zdanie → (dane zadania, zużycie tokenów).
 
-    `dzis` — data z telefonu (patrz `dzis_z_klienta`); bez niej data serwera."""
+    `dzis` — data z telefonu (patrz `dzis_z_klienta`); bez niej data serwera.
+    `timeout`/`max_retries` — domyślnie jak dotąd (ekran zadań); asystent
+    podaje resztę swojego budżetu 60 s i 0 ponowień."""
     tekst = (tekst or "").strip()
     if not tekst:
         raise MowaError("Nie usłyszałem nic do zapisania.")
@@ -196,7 +199,7 @@ def zrozum(tekst: str, dzis: date | None = None) -> tuple[dict, dict]:
         # z absurdalnie długim tytułem.
         raise MowaError("To za długie jak na jedno zadanie. Powiedz krócej.")
 
-    client = anthropic.Anthropic(timeout=30.0, max_retries=1)
+    client = anthropic.Anthropic(timeout=timeout, max_retries=max_retries)
     try:
         msg = client.messages.create(
             model=MODEL,

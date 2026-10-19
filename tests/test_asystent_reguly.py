@@ -254,3 +254,68 @@ def test_cyfry_przyklejone_do_slowa_na_karte():
                      ("dopisz mleko", _p("lista_dopisz", nazwy=["mleko2%"])),
                      ("dopisz iphone", _p("lista_dopisz", nazwy=["iPhone15"]))):
         assert ustal_tryby([p], tekst, UID)[0]["tryb"] == "karta", tekst
+
+
+# --- Task 7: kilka odhaczeń, widok poza zakresem, dzień jedzenia ------------
+
+from datetime import date
+
+from asystent_reguly import ETYKIETY_WIDOKOW, WIDOKI, sprawdz_dzien
+
+
+def _zad(tytul, uid=UID):
+    return _p("zadanie_odhacz", tytul=tytul, uwaga=None,
+              wykonawca_user_id=uid, wykonawca_virtual_id=None)
+
+
+def test_kilka_odhaczen_zadan_wszystkie_na_karty():
+    # dwa „Pranie" w różnych projektach: od razu odhaczyłoby się losowe
+    w = ustal_tryby([_zad("Pranie"), _zad("Pranie")], "odhacz pranie", UID)
+    assert [x["tryb"] for x in w] == ["karta", "karta"]
+
+
+def test_kilka_odhaczen_listy_wszystkie_na_karty():
+    w = ustal_tryby([_p("lista_odhacz", nazwa="mleko"), _p("lista_odhacz", nazwa="mleko")],
+                    "odhacz mleko", UID)
+    assert [x["tryb"] for x in w] == ["karta", "karta"]
+
+
+def test_jedno_odhaczenie_listy_i_jedno_zadania_bez_zmian():
+    # reguła liczy typy osobno: po jednym z każdego to nie „kilka pasujących"
+    w = ustal_tryby([_p("lista_odhacz", nazwa="mleko"), _zad("Pranie")],
+                    "odhacz mleko i pranie", UID)
+    assert [x["tryb"] for x in w] == ["od_razu", "karta"]
+
+
+def test_kilka_odhaczen_nie_blokuje_dopisania():
+    w = ustal_tryby([_zad("Pranie"), _zad("Pranie"), _p("lista_dopisz", nazwy=["chleb"])],
+                    "odhacz pranie i dopisz chleb", UID)
+    assert [x["tryb"] for x in w] == ["karta", "karta", "od_razu"]
+
+
+def test_widok_poza_zakresem_zawsze_karta():
+    w = ustal_tryby([_p("widok", widok="konta", sciezka="/konta", filtry={}, poza_zakresem=True)],
+                    "ile mam na koncie", UID)
+    assert w[0]["tryb"] == "karta"
+    w = ustal_tryby([_p("widok", widok="konta", sciezka="/konta", filtry={}, poza_zakresem=False)],
+                    "otwórz konta", UID)
+    assert w[0]["tryb"] == "od_razu"
+
+
+@pytest.mark.parametrize("wartosc,oczekiwana", [
+    (None, "2026-10-19"), ("", "2026-10-19"), ("2026-10-19", "2026-10-19"),
+    ("2026-10-18", "2026-10-18"), ("2026-10-12", "2026-10-12"),
+])
+def test_dzien_jedzenia_do_7_dni_wstecz(wartosc, oczekiwana):
+    assert sprawdz_dzien(wartosc, date(2026, 10, 19)) == oczekiwana
+
+
+@pytest.mark.parametrize("wartosc", ["2026-10-20", "2026-10-11", "wczoraj", "2026-13-01",
+                                     "20261018", 20261018, ["2026-10-18"]])
+def test_dzien_jedzenia_poza_zakresem(wartosc):
+    with pytest.raises(ZlaPropozycja):
+        sprawdz_dzien(wartosc, date(2026, 10, 19))
+
+
+def test_etykiety_widokow_dla_kazdego_widoku():
+    assert set(ETYKIETY_WIDOKOW) == set(WIDOKI)
