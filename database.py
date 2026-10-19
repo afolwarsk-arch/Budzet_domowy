@@ -1696,9 +1696,10 @@ def get_usage_stats() -> list[dict]:
 # nie przekazują parametrów, więc psycopg2 nie interpretuje tu `%` w żaden
 # sposób. Gdyby kiedyś doszedł parametr, znaki trzeba będzie podwoić.
 _MODUL_SQL = """CASE
-                    WHEN {t}.endpoint LIKE 'eat-%'    THEN 'eat'
-                    WHEN {t}.endpoint LIKE 'health-%' THEN 'health'
-                    WHEN {t}.endpoint LIKE 'task-%'   THEN 'task'
+                    WHEN {t}.endpoint LIKE 'eat-%'      THEN 'eat'
+                    WHEN {t}.endpoint LIKE 'health-%'   THEN 'health'
+                    WHEN {t}.endpoint LIKE 'task-%'     THEN 'task'
+                    WHEN {t}.endpoint LIKE 'asystent-%' THEN 'asystent'
                     ELSE 'finance'
                 END"""
 
