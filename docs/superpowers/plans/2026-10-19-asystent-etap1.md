@@ -1,8 +1,6 @@
 # Asystent wiem (etap 1) — plan wdrożenia
 
-> **F
-
-> **Uwaga (2026-10-19):** kod poniżej jest nieaktualny — po recenzjach obowiązuje implementacja w asystent_reguly.py (wszystkie słowa, rdzeń zamiast 4 liter, bez polskich znaków, z_opcji → każdy zapis na kartę). Nie odtwarzać z tego planu.or agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Asystent (tekst + głos) dla konta Adama, który na polecenie przygotowuje propozycje (lista zakupów, jedzenie, zadania, przejście do widoku, paragon, skan kodu), a przeglądarka zapisuje je istniejącymi endpointami.
 
@@ -867,6 +865,8 @@ Expected: 4 PASS.
 ---
 
 ### Task 6: Reguły asystenta (`asystent_reguly.py`)
+
+> **Uwaga (2026-10-19):** kod poniżej jest nieaktualny — po recenzjach obowiązuje implementacja w asystent_reguly.py (wszystkie słowa, rdzeń zamiast 4 liter, bez polskich znaków, z_opcji → każdy zapis na kartę). Nie odtwarzać z tego planu.
 
 **Files:**
 - Create: `asystent_reguly.py`
