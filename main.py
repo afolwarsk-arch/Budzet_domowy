@@ -45,6 +45,18 @@ except Exception as _e:
 
 task_db.init_task_db()
 
+# Asystent (pilotaż): ani błąd importu, ani migracji nie może przewrócić apki —
+# dlatego import jest TUTAJ, w try, a nie na górze pliku. Po init_db, bo
+# asystent_log ma klucze obce do users i households.
+try:
+    import asystent
+    import asystent_db
+    asystent_db.init_asystent_db()
+    _ASYSTENT_OK = True
+except Exception as _e:
+    print(f"[asystent] NIE uruchomiono asystenta: {_e!r}")
+    _ASYSTENT_OK = False
+
 app = FastAPI(title="Budżet domowy")
 
 # Sekcja wiem.eat mieszka we własnym routerze — nowe dziedziny NIE dokładają
@@ -56,6 +68,9 @@ if _HEALTH_OK:
     app.include_router(health.router)
 
 app.include_router(task.router)
+
+if _ASYSTENT_OK:
+    app.include_router(asystent.router)
 
 try:
     _BUILD = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
@@ -120,6 +135,12 @@ def _start_scheduler():
                         timezone=ZoneInfo("Europe/Warsaw")),
             id="task_przeglad", replace_existing=True, misfire_grace_time=21600,
         )
+        if _ASYSTENT_OK:
+            _scheduler.add_job(
+                lambda: print(f"[scheduler] sprzatanie dziennika asystenta: usunieto {asystent_db.sprzataj(90)}"),
+                CronTrigger(hour=3, minute=50, timezone=ZoneInfo("Europe/Warsaw")),
+                id="asystent_sprzatanie", replace_existing=True, misfire_grace_time=3600,
+            )
         _scheduler.start()
         print("[scheduler] przeglad tygodnia: niedziela 18:00 Europe/Warsaw")
         print("[scheduler] auto-raport zaplanowany: ostatni dzień miesiąca 18:00 Europe/Warsaw")
@@ -633,7 +654,8 @@ def get_me(current_user: dict = Depends(get_current_user)):
         if h:
             household = {"id": h["id"], "name": h["name"], "role": current_user["role"]}
     return {**current_user, "household": household,
-            "samouczek": database.get_samouczek(current_user["user_id"])}
+            "samouczek": database.get_samouczek(current_user["user_id"]),
+            "asystent": _ASYSTENT_OK and asystent.ma_dostep(current_user)}
 
 
 @app.post("/api/me/samouczek")
