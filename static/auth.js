@@ -1436,19 +1436,32 @@ function zaladujSkrypt(nazwa) {
       const glob = _GLOBALNE_SKRYPTOW[nazwa];
       if (glob && window[glob]) { ok(); return; }
       const nieudane = () => { delete _skryptyZaladowane[nazwa]; blad(new Error('Nie wczytano ' + nazwa)); };
+      const wczytaj = () => {
+        const s = document.createElement('script');
+        s.src = '/static/' + nazwa + '?v=' + _wersjaStatykow();
+        s.onload = () => ok();
+        s.onerror = nieudane;
+        document.head.appendChild(s);
+      };
       // Plik wpisany w stronę (<script defer>), który jeszcze się nie wykonał —
-      // czekamy na niego zamiast wczytywać drugi raz.
+      // czekamy na niego zamiast wczytywać drugi raz. Skrypty defer wykonują
+      // się także w stanie 'interactive', więc czekamy do 'complete': na load
+      // samego skryptu albo — gdyby ten już minął — na load okna, po którym
+      // sprawdzamy globalną i dopiero wtedy ewentualnie wczytujemy sami.
       const wpisany = document.querySelector('script[src*="/static/' + nazwa + '"]');
-      if (wpisany && document.readyState === 'loading') {
-        wpisany.addEventListener('load', () => ok());
-        wpisany.addEventListener('error', nieudane);
+      if (wpisany && document.readyState !== 'complete') {
+        let rozstrzygniete = false;
+        const gotowe = () => {
+          if (rozstrzygniete) return;
+          rozstrzygniete = true;
+          if (!glob || window[glob]) ok(); else wczytaj();
+        };
+        wpisany.addEventListener('load', gotowe);
+        wpisany.addEventListener('error', () => { if (!rozstrzygniete) { rozstrzygniete = true; nieudane(); } });
+        window.addEventListener('load', gotowe, { once: true });
         return;
       }
-      const s = document.createElement('script');
-      s.src = '/static/' + nazwa + '?v=' + _wersjaStatykow();
-      s.onload = () => ok();
-      s.onerror = nieudane;
-      document.head.appendChild(s);
+      wczytaj();
     });
   }
   return _skryptyZaladowane[nazwa];

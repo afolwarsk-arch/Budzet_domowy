@@ -36,8 +36,14 @@ MAX_WIADOMOSCI_HISTORII = 12     # 6 wymian
 MAX_DLUGOSC_HISTORII = 500
 STREFA = ZoneInfo("Europe/Warsaw")
 DNI = ["poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota", "niedziela"]
-# (rodzaj męskoosobowy/nijaki, żeński) — „dwa zadania", „dwie pozycje"
-LICZEBNIKI = {2: ("dwa", "dwie"), 3: ("trzy", "trzy"), 4: ("cztery", "cztery")}
+# Kilka kart odhaczenia z jednego polecenia bywa wyborem („odhacz pranie" →
+# dwa pasujące zadania) albo różnymi rzeczami („kupiłem mleko i chleb").
+# Przeglądarka tego nie odróżni, więc każda karta zostaje czynna, a tekst
+# pasuje do obu przypadków.
+KILKA_PASUJE = {
+    "zadanie_odhacz": "Stuknij „Odhacz” przy zadaniach, które pasują.",
+    "lista_odhacz": "Stuknij „Odhacz” przy pozycjach, które pasują.",
+}
 KOMUNIKAT_LIMIT = (f"Na dziś to już {asystent_db.LIMIT_DZIENNY} poleceń. Asystent wróci po północy "
                    "— do tego czasu wszystko zrobisz zwykłymi ekranami.")
 KOMUNIKAT_502 = "Nie zdążyłem odpowiedzieć. Nic nie zostało zapisane — spróbuj jeszcze raz."
@@ -206,19 +212,6 @@ def _przytnij(tekst: str, limit: int = 300) -> str:
     return ciecie[:spacja].rstrip(" ,;:—-") if spacja > 0 else ciecie
 
 
-def _kilka_pasuje(n: int, typ: str) -> str:
-    """Polska liczba: 2–4, 22–24, 32–34… (bez 12–14) → „Pasują … zadania/pozycje",
-    reszta → „Pasuje N zadań/pozycji"."""
-    mala = n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14)
-    zadanie = typ == "zadanie_odhacz"
-    if mala:
-        liczba = LICZEBNIKI[n][0 if zadanie else 1] if n in LICZEBNIKI else str(n)
-        return (f"Pasują {liczba} zadania — wybierz, które odhaczyć." if zadanie
-                else f"Pasują {liczba} pozycje — wybierz, którą odhaczyć.")
-    return (f"Pasuje {n} zadań — wybierz, które odhaczyć." if zadanie
-            else f"Pasuje {n} pozycji — wybierz, którą odhaczyć.")
-
-
 def _wiadomosc(k: Kontekst, tekst: str, na_propozycjach: bool, propozycje: list) -> str:
     """Treść dymka asystenta. Gdy pętla stanęła na propozycjach, mówią karty
     i wiersze „Cofnij" (czas przeszły dopisuje przeglądarka PO zapisie) —
@@ -239,10 +232,9 @@ def _wiadomosc(k: Kontekst, tekst: str, na_propozycjach: bool, propozycje: list)
     elif na_propozycjach:
         if poza:
             czesci.append(_przytnij(tekst) or zastepcze)
-        for typ in ("zadanie_odhacz", "lista_odhacz"):
-            n = sum(1 for p in propozycje if p["typ"] == typ)
-            if n > 1:
-                czesci.append(_kilka_pasuje(n, typ))
+        for typ, zdanie in KILKA_PASUJE.items():
+            if sum(1 for p in propozycje if p["typ"] == typ) > 1:
+                czesci.append(zdanie)
     elif tekst:
         czesci.append(tekst)
     elif zastepcze:

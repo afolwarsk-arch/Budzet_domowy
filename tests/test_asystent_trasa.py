@@ -134,7 +134,7 @@ def test_dwa_pasujace_zadania_to_dwie_karty(monkeypatch):
                           ("zaproponuj_odhaczenie_zadania", {"zadanie_id": 6})]])
     odp = _wywolaj({"tekst": "odhacz pranie"})
     assert [p["tryb"] for p in odp["propozycje"]] == ["karta", "karta"]
-    assert odp["wiadomosc"] == "Pasują dwa zadania — wybierz, które odhaczyć."
+    assert odp["wiadomosc"] == "Stuknij „Odhacz” przy zadaniach, które pasują."
     assert FakeKlient.wywolania == 1
 
 
@@ -217,7 +217,7 @@ def test_prompt_zna_domownikow_i_ostatnie_dni():
 def test_wiadomosc_kilka_pozycji_listy():
     k = Kontekst(household_id=1, user_id=2, tekst="x", teraz=datetime(2026, 10, 19, 13, 0))
     prop = [{"typ": "lista_odhacz", "dane": {}}, {"typ": "lista_odhacz", "dane": {}}]
-    assert asystent._wiadomosc(k, "Odhaczam.", True, prop) == "Pasują dwie pozycje — wybierz, którą odhaczyć."
+    assert asystent._wiadomosc(k, "Odhaczam.", True, prop) == "Stuknij „Odhacz” przy pozycjach, które pasują."
     assert asystent._wiadomosc(k, "Odhaczam.", False, prop) == "Odhaczam."
 
 
@@ -439,18 +439,17 @@ def test_u4_ucinanie_na_granicy_slowa():
     assert w == pierwsze
 
 
-@pytest.mark.parametrize("n,zad,poz", [
-    (2, "Pasują dwa zadania — wybierz, które odhaczyć.", "Pasują dwie pozycje — wybierz, którą odhaczyć."),
-    (4, "Pasują cztery zadania — wybierz, które odhaczyć.", "Pasują cztery pozycje — wybierz, którą odhaczyć."),
-    (5, "Pasuje 5 zadań — wybierz, które odhaczyć.", "Pasuje 5 pozycji — wybierz, którą odhaczyć."),
-    (12, "Pasuje 12 zadań — wybierz, które odhaczyć.", "Pasuje 12 pozycji — wybierz, którą odhaczyć."),
-    (22, "Pasują 22 zadania — wybierz, które odhaczyć.", "Pasują 22 pozycje — wybierz, którą odhaczyć."),
-    (25, "Pasuje 25 zadań — wybierz, które odhaczyć.", "Pasuje 25 pozycji — wybierz, którą odhaczyć."),
-])
-def test_u9_odmiana(n, zad, poz):
-    assert asystent._kilka_pasuje(n, "zadanie_odhacz") == zad
-    assert asystent._kilka_pasuje(n, "lista_odhacz") == poz
-
+def test_kilka_pasuje_ten_sam_tekst_dla_kazdej_liczby():
+    """Karty zostają czynne (to może być wybór albo różne rzeczy) — tekst nie
+    mówi „wybierz jedno" i nie zależy od liczby kart."""
+    k = Kontekst(household_id=1, user_id=2, tekst="x", teraz=datetime(2026, 10, 19, 13, 0))
+    for n in (2, 5, 12):
+        zad = [{"typ": "zadanie_odhacz", "dane": {}}] * n
+        poz = [{"typ": "lista_odhacz", "dane": {}}] * n
+        assert asystent._wiadomosc(k, "", True, zad) == "Stuknij „Odhacz” przy zadaniach, które pasują."
+        assert asystent._wiadomosc(k, "", True, poz) == "Stuknij „Odhacz” przy pozycjach, które pasują."
+    jedno = [{"typ": "zadanie_odhacz", "dane": {}}]
+    assert asystent._wiadomosc(k, "", True, jedno) == ""
 
 def test_k1_koszty_best_effort_nie_psuja_200(monkeypatch):
     podmien_baze(monkeypatch)
@@ -586,7 +585,7 @@ def test_k4_przerwana_petla_nie_pokazuje_zalegajacego_tekstu(monkeypatch):
     _model(monkeypatch, [pierwszy, krok, krok, krok])
     odp = _wywolaj({"tekst": "odhacz pranie"})
     assert FakeKlient.wywolania == asystent.MAX_ITERACJI
-    assert odp["wiadomosc"] == "Pasują dwa zadania — wybierz, które odhaczyć."
+    assert odp["wiadomosc"] == "Stuknij „Odhacz” przy zadaniach, które pasują."
 
 
 def test_k4_przerwana_petla_bez_niczego_to_502_z_sladem(monkeypatch):

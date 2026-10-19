@@ -31,13 +31,25 @@
     lista_dopisz: 'Dopisz', lista_odhacz: 'Odhacz', zadanie_odhacz: 'Odhacz',
     zadanie: 'Dodaj zadanie', jedzenie: 'Zapisz w dzienniku',
   };
-  // Typy, przy których kilka kart z jednego polecenia to WYBÓR („Pasują dwa
-  // zadania — wybierz…", asystent_reguly.ustal_tryby): zapis jednej zamyka resztę.
-  const WYBOR_JEDNEJ = ['zadanie_odhacz', 'lista_odhacz'];
+  // Kilka kart odhaczenia z jednego polecenia bywa WYBOREM („odhacz pranie" →
+  // dwa pasujące zadania) albo RÓŻNYMI rzeczami („kupiłem mleko i chleb").
+  // Przeglądarka tego nie odróżni, więc każda karta zostaje czynna; po zapisie
+  // jednej pozostałe tylko przestają się liczyć jako niezałatwione (D1).
+  const ODHACZENIA = ['zadanie_odhacz', 'lista_odhacz'];
   const BEZ_COFANIA = 'Tego nie cofnę z asystenta.';
   const DNI_KR = ['nd', 'pn', 'wt', 'śr', 'cz', 'pt', 'sb'];
   const MIES_KR = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
   const BRAK_SIECI = 'Brak połączenia — nic nie zapisałem. Spróbuj jeszcze raz.';
+  const ZAPIS_MS = 20000;              // dłużej nie czekamy na zapis (U6)
+  const MAX_GRAM = 5000;
+  // Powody zablokowanego „Zapisz" — zawsze widoczne pod kartą (U9), w tej kolejności.
+  const POWODY = [
+    ['nazwa', 'Wpisz nazwę, żeby zapisać.'],
+    ['kcal', 'Wpisz kcal na 100 g, żeby zapisać.'],
+    ['gramy', 'Popraw gramy (1–5000 g), żeby zapisać.'],
+    ['tytul', 'Wpisz nazwę zadania, żeby zapisać.'],
+  ];
+  const BEZ_DETEKTORA = 'Ta przeglądarka nie umie czytać kodów. Zrób zdjęcie etykiety albo wpisz cyfry spod kreskówki.';
 
   function el(tag, klasa, tekst) {
     const e = document.createElement(tag);
@@ -52,24 +64,53 @@
     return b;
   }
 
+  // Błąd sieci (`siec`) i przekroczony czas (`czas`) są oznaczone osobno:
+  // po pierwszym na pewno nic się nie zapisało, po drugim — nie wiadomo.
   async function api(url, metoda, cialo) {
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    const zegar = ctrl ? setTimeout(() => ctrl.abort(), ZAPIS_MS) : null;
     let r;
+    let d;
     try {
       r = await authFetch(url, {
         method: metoda,
         headers: cialo ? { 'Content-Type': 'application/json' } : undefined,
         body: cialo ? JSON.stringify(cialo) : undefined,
+        signal: ctrl ? ctrl.signal : undefined,
       });
+      d = await r.json().catch(() => ({}));
     } catch {
-      throw new Error(BRAK_SIECI);      // fetch rzuca TypeError („Failed to fetch")
+      if (ctrl && ctrl.signal.aborted) {
+        const lista = url.startsWith('/api/listy/') || url.startsWith('/api/pozycje/');
+        const e = new Error('Nie zdążyłem zapisać — '
+          + (lista ? 'sprawdź listę, zanim spróbujesz ponownie.' : 'sprawdź, zanim spróbujesz ponownie.'));
+        e.czas = true;
+        throw e;
+      }
+      const e = new Error(BRAK_SIECI);  // fetch rzuca TypeError („Failed to fetch")
+      e.siec = true;
+      throw e;
+    } finally {
+      if (zegar) clearTimeout(zegar);
     }
-    const d = await r.json().catch(() => ({}));
     if (!r.ok) {
       const blad = new Error(typeof d.detail === 'string' ? d.detail : 'Nie udało się zapisać.');
+      blad.status = r.status;
       blad.pozycja = r.headers.get('X-Pozycja');
       throw blad;
     }
     return d;
+  }
+
+  // Cofnięcie kilku utworzonych rzeczy (pozycje listy, wpisy dziennika).
+  // Każdy udany DELETE od razu skreśla id — ponowne „Cofnij" po częściowej
+  // porażce nie usuwa drugi raz tego samego; 404 = już tego nie ma, czyli sukces.
+  async function usunWszystkie(ids, adres) {
+    for (const id of [...ids]) {
+      try { await api(adres(id), 'DELETE'); }
+      catch (e) { if (e.status !== 404) throw e; }
+      ids.splice(ids.indexOf(id), 1);
+    }
   }
 
   function zapiszWynik(logId, wynik) {
@@ -128,10 +169,39 @@
     return d.sciezka + (s ? '?' + s : '');
   }
 
+  // Wstawia element karty NAD rzędem przycisków (U4) — pod nimi ginąłby
+  // za krawędzią okna.
+  function nadPrzyciskami(karta, e) {
+    const pr = karta.querySelector(':scope > .ast-karta-przyciski');
+    if (pr) karta.insertBefore(e, pr); else karta.append(e);
+  }
+
   function komunikatKarty(karta, tekst) {
     let k = karta.querySelector('.ast-karta-blad');
-    if (!k) { k = el('div', 'ast-karta-blad'); k.setAttribute('role', 'alert'); karta.append(k); }
+    if (!k) { k = el('div', 'ast-karta-blad'); k.setAttribute('role', 'alert'); nadPrzyciskami(karta, k); }
     k.textContent = tekst;
+    if (k.scrollIntoView) k.scrollIntoView({ block: 'nearest' });
+  }
+
+  // Wyłączone „Zapisz" zawsze mówi, czego brakuje (U9).
+  function pokazPowod(karta) {
+    const s = karta._blokady || new Set();
+    const z = karta.querySelector('.ast-karta-przyciski .ast-zapisz');
+    const przycisk = z && z.tagName === 'BUTTON' ? z : null;
+    let w = karta.querySelector(':scope > .ast-powod');
+    const tekst = (POWODY.find(([k]) => s.has(k)) || [])[1];
+    if (!tekst || !przycisk) {
+      if (w) w.remove();
+      if (przycisk) przycisk.removeAttribute('aria-describedby');
+      return;
+    }
+    if (!w) {
+      w = el('div', 'ast-powod');
+      w.id = 'ast-powod-' + Math.random().toString(36).slice(2);
+      nadPrzyciskami(karta, w);
+    }
+    w.textContent = tekst;
+    przycisk.setAttribute('aria-describedby', w.id);
   }
 
   // Zapis zablokowany, dopóki karta nie ma kompletu danych (pusty tytuł,
@@ -144,6 +214,7 @@
     karta.dataset.blokada = s.size ? '1' : '';
     const z = karta.querySelector('.ast-karta-przyciski .ast-zapisz');
     if (z && z.tagName === 'BUTTON') z.disabled = !!s.size;
+    pokazPowod(karta);
   }
 
   // Każdy wykonawca zwraca funkcję cofającą albo null (gdy cofnąć się nie da).
@@ -151,17 +222,21 @@
   const WYKONAJ = {
     async lista_dopisz(d) {
       const utworzone = [];
-      const nieudane = [];
       d._dopisane = [];
+      d._nieudane = [];
       for (const nazwa of d.nazwy) {
         try {
           utworzone.push((await api(`/api/listy/${d.lista_id}/pozycje`, 'POST', { nazwa })).id);
           d._dopisane.push(nazwa);
-        } catch { nieudane.push(nazwa); }
+        } catch (e) {
+          // Brak sieci / czas na samym początku: nic nie weszło — ten błąd
+          // (z flagą) idzie do wiersza, który zaproponuje ponowienie.
+          if (!utworzone.length && (e.siec || e.czas)) throw e;
+          d._nieudane.push(nazwa);
+        }
       }
       if (!utworzone.length) throw new Error('Nic nie trafiło na listę.');
-      if (nieudane.length) toast('Nie weszło na listę: ' + nieudane.join(', '), 'blad');
-      return async () => { for (const id of utworzone) await api(`/api/pozycje/${id}`, 'DELETE'); };
+      return () => usunWszystkie(utworzone, (id) => `/api/pozycje/${id}`);
     },
     async lista_odhacz(d) {
       await api(`/api/pozycje/${d.pozycja_id}`, 'PATCH', { kupione: d.kupione_po });
@@ -185,13 +260,18 @@
         nazwa: p.nazwa, produkt_id: p.produkt_id || null, ilosc_g: p.ilosc_g,
         opis_porcji: p.opis_porcji, kcal: p.kcal, bialko: p.bialko, tluszcz: p.tluszcz, wegle: p.wegle,
       }));
+      // Oba endpointy oddają utworzone wpisy z id (RETURNING *) — „Cofnij"
+      // usuwa je tym samym DELETE co kosz w dzienniku (U3).
+      let ids;
       if (czyste.length === 1) {
-        await api('/api/eat/wpis', 'POST', { data: d.data, posilek: d.posilek, ...czyste[0] });
+        ids = [(await api('/api/eat/wpis', 'POST', { data: d.data, posilek: d.posilek, ...czyste[0] })).id];
       } else {
-        await api('/api/eat/wpisy/grupa', 'POST',
+        const odp = await api('/api/eat/wpisy/grupa', 'POST',
           { data: d.data, posilek: d.posilek, nazwa_grupy: d.nazwa_grupy, pozycje: czyste });
+        ids = (odp.wpisy || []).map((w) => w.id);
       }
-      return null;
+      ids = ids.filter((id) => id != null);
+      return ids.length ? () => usunWszystkie(ids, (id) => `/api/eat/wpis/${id}`) : null;
     },
     async widok(d) {
       location.href = adresWidoku(d);
@@ -203,11 +283,13 @@
   // propozycji — serwer nie wie, czy zapis się udał, więc nie może pisać
   // w czasie przeszłym. Stan jest w tekście, nie tylko w kolorze.
   const PO_ZAPISIE = {
-    lista_dopisz: (d) => `Dopisane do „${d.lista_nazwa}”: ${wylicz(d._dopisane && d._dopisane.length ? d._dopisane : d.nazwy)}`,
+    lista_dopisz: (d) => `Dopisane do „${d.lista_nazwa}”: ${wylicz(d._dopisane && d._dopisane.length ? d._dopisane : d.nazwy)}`
+      + (d._nieudane && d._nieudane.length ? ' · nie weszło: ' + wylicz(d._nieudane) : ''),
     lista_odhacz: (d) => `Odhaczone: ${d.nazwa}`,
     zadanie_odhacz: (d) => `Odhaczone: ${d.tytul}`,
-    zadanie: (d) => `Dodane zadanie: ${d.tytul}`,
-    jedzenie: (d) => `Zapisane w dzienniku: ${POSILKI[d.posilek] || d.posilek}, ${dzienSlownie(d.data)}`,
+    zadanie: (d) => `Zadanie dodane: ${d.tytul}`,
+    jedzenie: (d) => `Zapisane w dzienniku: ${POSILKI[d.posilek] || d.posilek}, ${dzienSlownie(d.data)}`
+      + ` · ≈ ${Math.round(d.pozycje.reduce((s, p) => s + (Number(p.kcal) || 0), 0))} kcal`,
     widok: (d) => 'Otwieram: ' + ((WIDOKI[d.widok] || [])[1] || d.widok),
   };
   const PO_COFNIECIU = {
@@ -217,11 +299,12 @@
     },
     lista_odhacz: (d) => `Cofnięte — „${d.nazwa}” znów do kupienia.`,
     zadanie_odhacz: (d) => `Cofnięte — „${d.tytul}” znów otwarte.`,
+    jedzenie: () => 'Cofnięte — wpis usunięty z dziennika.',
   };
   // Po 8 s „Cofnij" znika — wiersz mówi, gdzie zmienić to ręcznie.
   const PO_CZASIE = {
     lista_dopisz: ' · zmienisz na liście', lista_odhacz: ' · zmienisz na liście',
-    zadanie_odhacz: ' · w zadaniach',
+    zadanie_odhacz: ' · cofniesz w Zadaniach', jedzenie: ' · usuniesz w dzienniku',
   };
 
   // „Cofnij" przy wierszu wyniku: 8 s, cienki pasek odliczania, cel ≥ 44 × 72 px.
@@ -242,7 +325,9 @@
         await cofnij();
       } catch (e) {
         btn.disabled = false;
-        toast('Nie udało się cofnąć: ' + e.message, 'blad');
+        toast(e.siec ? 'Nie udało się cofnąć — brak połączenia.'
+          : e.czas ? 'Nie zdążyłem cofnąć — sprawdź, zanim spróbujesz ponownie.'
+            : 'Nie udało się cofnąć: ' + e.message, 'blad');
         zegar = setTimeout(wygas, COFNIJ_MS);   // druga szansa, potem znika
         return;
       }
@@ -256,19 +341,37 @@
   }
 
   // ── tryb „od razu" ─────────────────────────────────────────────────────
-  async function odRazu(p, kontener, logId) {
-    const wiersz = el('div', 'ast-wynik');
-    wiersz.setAttribute('role', 'status');
-    const opis = el('span', 'ast-wynik-opis', p.opis);
-    wiersz.append(opis);
-    kontener.append(wiersz);
+  // `wiersz` podany = ponowienie po braku sieci w tym samym wierszu (U5).
+  async function odRazu(p, kontener, logId, wiersz) {
+    let opis;
+    if (wiersz) {
+      wiersz.className = 'ast-wynik';
+      opis = wiersz.querySelector('.ast-wynik-opis');
+      opis.textContent = p.opis;
+    } else {
+      wiersz = el('div', 'ast-wynik');
+      wiersz.setAttribute('role', 'status');
+      opis = el('span', 'ast-wynik-opis', p.opis);
+      wiersz.append(opis);
+      kontener.append(wiersz);
+    }
     let cofnij;
     try {
       cofnij = await WYKONAJ[p.typ](p.dane);
     } catch (e) {
       wiersz.classList.add('blad');
-      opis.textContent = 'Nie zapisane — ' + e.message;
       zapiszWynik(logId, 'blad');
+      if (e.siec) {
+        // Na pewno nic się nie zapisało — ponowienie jest bezpieczne.
+        opis.textContent = 'Nie zapisane — brak połączenia. Spróbuj jeszcze raz.';
+        const ponow = guzik('ast-ponow', 'Spróbuj ponownie');
+        ponow.addEventListener('click', () => { ponow.remove(); odRazu(p, kontener, logId, wiersz); });
+        wiersz.append(ponow);
+      } else if (e.czas) {
+        opis.textContent = e.message;       // mogło się zapisać — bez „Nie zapisane"
+      } else {
+        opis.textContent = 'Nie zapisane — ' + e.message;
+      }
       return;
     }
     wiersz.classList.add('ok');
@@ -279,8 +382,7 @@
   }
 
   // ── karta do potwierdzenia ─────────────────────────────────────────────
-  // Karta, która przestała czekać bez zapisu (odrzucona, wybrano inną):
-  // pola nie udają, że coś jeszcze zmienią.
+  // Karta odrzucona: pola nie udają, że coś jeszcze zmienią.
   function zamknijKarte(karta, stan) {
     karta.classList.remove('czeka');
     karta.classList.add('zamknieta');
@@ -293,22 +395,22 @@
   function odrzucenie(karta, przyciski, logId) {
     const odrzuc = guzik('ast-odrzuc', 'Odrzuć');
     odrzuc.addEventListener('click', () => {
-      zatrzymajSkan();
+      // Kamera jest jedna: gasimy ją tylko, gdy to TA karta skanuje (K6).
+      if (skan && skan.karta === karta) zatrzymajSkan();
       zamknijKarte(karta, 'Odrzucone.');
       zapiszWynik(logId, 'odrzucono');
     });
     return odrzuc;
   }
 
-  // M7: kilka pasujących kart jednego polecenia to wybór — po zapisie jednej
-  // pozostałe przestają czekać (inaczej okno nie zamknęłoby się stuknięciem
-  // w tło i wisiałyby jak niezałatwione).
-  function zamknijRodzenstwo(karta, typ) {
-    if (!WYBOR_JEDNEJ.includes(typ) || !karta.parentNode) return;
+  // Po zapisie jednej karty odhaczenia pozostałe karty tego samego typu z TEJ
+  // SAMEJ odpowiedzi zostają czynne (mogą to być różne rzeczy), ale przestają
+  // się liczyć jako niezałatwione — tło znów zamyka okno. Karty bez logId
+  // mogą pochodzić z różnych odpowiedzi, więc ich nie łączymy (K3).
+  function zwolnijRodzenstwo(karta, typ, logId) {
+    if (!ODHACZENIA.includes(typ) || logId == null || !karta.parentNode) return;
     karta.parentNode.querySelectorAll('.ast-karta.czeka').forEach((k) => {
-      if (k !== karta && k.dataset.typ === typ && k.dataset.log === karta.dataset.log) {
-        zamknijKarte(k, 'Wybrano inne.');
-      }
+      if (k !== karta && k.dataset.typ === typ && k.dataset.log === String(logId)) k.classList.remove('czeka');
     });
   }
 
@@ -322,6 +424,7 @@
     przyciski.replaceChildren(zapisz, odrzuc);
     karta.classList.add('czeka');
     zapisz.disabled = !!karta.dataset.blokada;
+    pokazPowod(karta);
     zapisz.addEventListener('click', async () => {
       if (karta.dataset.blokada) return;
       zapisz.disabled = odrzuc.disabled = true;
@@ -333,19 +436,26 @@
         zapisz.disabled = !!karta.dataset.blokada;
         odrzuc.disabled = false;
         const wiersze = karta.querySelectorAll('.ast-poz');
-        if (e.pozycja != null && wiersze[+e.pozycja]) wiersze[+e.pozycja].classList.add('blad');
-        komunikatKarty(karta, e.message);
+        let tekst = e.message;
+        if (e.pozycja != null) {
+          if (wiersze[+e.pozycja]) wiersze[+e.pozycja].classList.add('blad');
+          // U4: błąd pozycji z nazwą pozycji zamiast numeru („Pozycja 2: …").
+          const poz = dane.pozycje && dane.pozycje[+e.pozycja];
+          if (poz && poz.nazwa && e.status >= 400 && e.status < 500) {
+            tekst = poz.nazwa + ': ' + tekst.replace(/^Pozycja \d+:\s*/, '');
+          }
+        }
+        komunikatKarty(karta, tekst);
         zapiszWynik(logId, 'blad');
         return;
       }
       zapiszWynik(logId, 'zapisano');
       zapisano(typ);
       przyciski.remove();
-      const blad = karta.querySelector('.ast-karta-blad');
-      if (blad) blad.remove();
+      for (const s of karta.querySelectorAll(':scope > .ast-karta-blad, :scope > .ast-powod')) s.remove();
       karta.classList.remove('czeka');
       karta.classList.add('zapisana');
-      zamknijRodzenstwo(karta, typ);
+      zwolnijRodzenstwo(karta, typ, logId);
       // Karta jest już faktem — pola nie udają, że coś jeszcze zmienią.
       karta.querySelectorAll('input, select, button, label').forEach((x) => { x.disabled = true; });
       const wiersz = el('div', 'ast-wynik ok');
@@ -361,8 +471,13 @@
     return zapisz;
   }
 
-  const bezCofania = (p) => p.typ === 'zadanie' || p.typ === 'jedzenie'
-    || (p.typ === 'zadanie_odhacz' && !!p.dane.uwaga);
+  // Notka pod kartą, której zapisu nie cofnie „Cofnij" — mówi, gdzie to zrobić.
+  // Jedzenie ma „Cofnij" (U3), więc notki nie dostaje.
+  function notkaBezCofania(p) {
+    if (p.typ === 'zadanie') return 'Usuniesz je w Zadaniach.';
+    if (p.typ === 'zadanie_odhacz' && p.dane.uwaga) return BEZ_COFANIA;
+    return null;
+  }
 
   // Dzień wpisu (D2): zawsze widoczny i edytowalny, 0–7 dni wstecz; inny niż
   // dziś — wyróżniony, żeby wczorajsza kolacja nie wpadła po cichu w dziś.
@@ -380,8 +495,18 @@
     const slownie = el('span', 'ast-dzien-slownie', dzienSlownie(d.data));
     const oznacz = () => pole.classList.toggle('inny',
       d.data !== dzisISO() || (!!d.inny_dzien && d.data === d._dataSerwera));
+    // U15: data spoza zakresu wraca do poprzedniej, ale nie po cichu.
+    let uwaga = null;
+    const powiedz = (tekst) => {
+      if (!tekst) { if (uwaga) { uwaga.remove(); uwaga = null; } return; }
+      if (!uwaga) { uwaga = el('span', 'ast-pole-blad'); uwaga.setAttribute('role', 'alert'); pole.append(uwaga); }
+      uwaga.textContent = tekst;
+    };
     data.addEventListener('change', () => {
-      if (!data.value || data.value < data.min || data.value > data.max) { data.value = d.data; return; }
+      if (!data.value) { data.value = d.data; powiedz(null); return; }
+      if (data.value < data.min) { data.value = d.data; powiedz('Najwyżej 7 dni wstecz.'); return; }
+      if (data.value > data.max) { data.value = d.data; powiedz('Najpóźniej dziś.'); return; }
+      powiedz(null);
       d.data = data.value;
       slownie.textContent = dzienSlownie(d.data);
       oznacz();
@@ -403,7 +528,7 @@
       o.selected = k === d.posilek;
       wybor.append(o);
     }
-    const podpowiedz = d.posilek_zgadniety ? el('span', 'ast-dzien-slownie', 'zgadnięty po godzinie — sprawdź') : null;
+    const podpowiedz = d.posilek_zgadniety ? el('span', 'ast-dzien-slownie', 'dobrany po godzinie — sprawdź') : null;
     wybor.addEventListener('change', () => {
       d.posilek = wybor.value;
       d.posilek_zgadniety = false;
@@ -449,21 +574,31 @@
       if (p.produkt_nazwa && p.produkt_nazwa !== p.nazwa) nazwa.append(el('span', 'ast-poz-baza', 'z bazy: ' + p.produkt_nazwa));
       w.append(nazwa);
       const ile = el('input');
-      ile.type = 'number'; ile.min = '1'; ile.max = '5000'; ile.inputMode = 'decimal';
+      ile.type = 'number'; ile.min = '1'; ile.max = String(MAX_GRAM); ile.inputMode = 'decimal';
       ile.value = p.ilosc_g;
       ile.setAttribute('aria-label', 'Gramy: ' + p.nazwa);
       const kcal = el('span', 'ast-poz-kcal');
+      const zakres = el('span', 'ast-poz-zakres', '1–5000 g');   // U10: widoczne tylko przy złej wartości
+      p._zleGramy = false;
       const odswiez = () => {
         kcal.textContent = p._brakKcal && !(p._naGram.kcal > 0)
           ? '— kcal' : (p.szacunek ? '≈ ' : '') + Math.round(p.kcal) + ' kcal';
         odswiezRazem();
       };
       ile.addEventListener('input', () => {
-        const g = parseFloat(ile.value);
-        if (!(g > 0)) return;
-        p.ilosc_g = g;
-        przelicz(p);
-        odswiez();
+        const g = parseFloat(String(ile.value).replace(',', '.'));
+        const dobre = g > 0 && g <= MAX_GRAM;
+        p._zleGramy = !dobre;
+        ile.setAttribute('aria-invalid', dobre ? 'false' : 'true');
+        if (dobre) {
+          zakres.remove();
+          p.ilosc_g = g;
+          przelicz(p);
+          odswiez();
+        } else if (!zakres.parentNode) {
+          w.insertBefore(zakres, kcal);
+        }
+        if (karta) blokada(karta, 'gramy', d.pozycje.some((q) => q._zleGramy));
       });
       w.append(ile, el('span', 'ast-poz-g', 'g'), kcal);
       if (p.szacunek) w.append(el('span', 'ast-znaczek', 'szacunek'));
@@ -513,7 +648,10 @@
     });
     box.append(razem);
     odswiezRazem();
-    if (karta) blokada(karta, 'kcal', brakujeKcal(d));
+    if (karta) {
+      blokada(karta, 'kcal', brakujeKcal(d));
+      blokada(karta, 'gramy', false);       // przerysowane pola pokazują ostatnie dobre gramy
+    }
   }
 
   async function wczytajProjekty() {
@@ -542,9 +680,14 @@
     pTermin.append(el('span', 'ast-pole-etyk', 'Termin'));
     const termin = el('input');
     termin.type = 'date'; termin.value = d.termin || '';
-    termin.addEventListener('change', () => { d.termin = termin.value || null; });
+    const godz = d.pora ? el('span', 'ast-dzien-slownie', 'godz. ' + d.pora) : null;
+    termin.addEventListener('change', () => {
+      d.termin = termin.value || null;
+      // U11: godzina bez dnia nic nie znaczy — wyczyszczony termin zabiera ją ze sobą.
+      if (!d.termin) { d.pora = null; if (godz) godz.remove(); }
+    });
     pTermin.append(termin);
-    if (d.pora) pTermin.append(el('span', 'ast-dzien-slownie', 'godz. ' + d.pora));
+    if (godz) pTermin.append(godz);
 
     sz.append(pTytul, pTermin);
     const OKRES = { dzien: 'dzień', tydzien: 'tydzień', miesiac: 'miesiąc', rok: 'rok' };
@@ -627,6 +770,8 @@
       etykieta.classList.add('czeka');
       try {
         await zapiszZdjecieDoPrzekazania(pole.files[0]);
+        // K7: wynik przed przejściem (keepalive) — paragon dokończy /upload.
+        zapiszWynik(logId, 'zapisano');
         location.href = '/upload?zdjecie=1';
       } catch {
         etykieta.classList.remove('czeka');
@@ -661,20 +806,26 @@
   // produkt zapisze się pod tym kodem i następny skan znajdzie go od razu.
   // I4: tabela z tyłu nie zawiera nazwy, więc nazwę (znaną albo wpisaną)
   // wysyłamy polem `nazwa` — bez niej produkt lądowałby jako „Produkt bez nazwy".
-  // Zwraca pojemnik z metodą `ustaw(wlacz)`: bez nazwy przycisk jest wyłączony
-  // (wyłączone pole pliku nie otwiera aparatu także przez <label for>).
-  function przyciskEtykiety(kod, karta, poOdczycie, nazwaFn) {
+  // U8: przycisk zostaje czynny; bez nazwy stuknięcie nie otwiera aparatu,
+  // tylko mówi, czego brakuje, i przenosi do pola nazwy.
+  // `kodFn` — kod bywa jeszcze nieznany (cyfry wpisywane ręcznie, K4); pusty
+  // kod endpoint przyjmuje (produkt zapisze się bez kodu).
+  function przyciskEtykiety(kodFn, karta, poOdczycie, nazwaFn) {
     const id = 'ast-ety-' + Math.random().toString(36).slice(2);
     const pole = el('input', 'ast-schowane');
     pole.type = 'file'; pole.accept = 'image/*'; pole.id = id;
     pole.setAttribute('capture', 'environment');
     const etykieta = el('label', 'ast-zapisz ast-etykieta', 'Zdjęcie etykiety');
     etykieta.htmlFor = id;
-    const ustaw = (wlacz) => {
-      pole.disabled = !wlacz;
-      etykieta.classList.toggle('wylaczona', !wlacz);
-      etykieta.setAttribute('aria-disabled', wlacz ? 'false' : 'true');
+    const brakNazwy = (ev) => {
+      if (String(nazwaFn() || '').trim()) return;
+      ev.preventDefault();
+      komunikatKarty(karta, 'Wpisz nazwę produktu.');
+      const we = karta.querySelector('.ast-pole-nazwy input');
+      if (we && we.focus) we.focus();
     };
+    etykieta.addEventListener('click', brakNazwy);
+    pole.addEventListener('click', brakNazwy);
     pole.addEventListener('change', async () => {
       const plik = pole.files && pole.files[0];
       if (!plik) return;
@@ -688,7 +839,7 @@
       try {
         let r;
         try {
-          r = await authFetch('/api/eat/etykieta?kod=' + encodeURIComponent(kod), { method: 'POST', body: fd });
+          r = await authFetch('/api/eat/etykieta?kod=' + encodeURIComponent(kodFn() || ''), { method: 'POST', body: fd });
         } catch { throw new Error('Brak połączenia — spróbuj jeszcze raz.'); }
         const odp = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(typeof odp.detail === 'string' ? odp.detail : 'Nie udało się odczytać etykiety.');
@@ -701,8 +852,6 @@
     });
     const box = el('span', 'ast-etykieta-box');
     box.append(pole, etykieta);
-    box.ustaw = ustaw;
-    ustaw(!!String(nazwaFn() || '').trim());
     return box;
   }
 
@@ -719,66 +868,139 @@
     return pole;
   }
 
-  function rysujSkan(d, sz, przyciski, karta, logId) {
-    if (d.data !== dzisISO()) sz.append(poleDnia(d));
-    if (d.gramy || d.sztuk) sz.append(el('div', 'ast-linia', 'Powiedziałeś: ' + (d.gramy ? d.gramy + ' g' : d.sztuk + ' szt.')));
-    const start = guzik('ast-zapisz', 'Skanuj kod');
-    const odrzuc = odrzucenie(karta, przyciski, logId);
-    const przyciskiStartu = () => { start.disabled = false; przyciski.replaceChildren(start, odrzuc); };
-    przyciskiStartu();
-    karta.classList.add('czeka');
-    start.addEventListener('click', async () => {
-      zatrzymajSkan();
-      start.disabled = true;
-      // Sesja istnieje od stuknięcia, nie od zapalenia kamery: schowanie okna
-      // albo Odrzuć w czasie wczytywania skanera też musi ją przerwać.
-      const sesja = { koniec: false, sprzataj: () => {} };
-      const skoncz = () => {
-        sesja.koniec = true;
-        sesja.sprzataj();
-        if (skan === sesja) skan = null;
-      };
-      sesja.zakoncz = () => { if (sesja.koniec) return; skoncz(); przyciskiStartu(); };
-      skan = sesja;
-      try { await zaladujSkrypt('eat-skaner.js'); }
-      catch (e) {
-        if (sesja.koniec) return;
-        skoncz(); przyciskiStartu(); komunikatKarty(karta, e.message); return;
-      }
-      await startTrwa;                     // poprzednia kamera na pewno zgaszona
-      if (sesja.koniec) return;
-      const blad = karta.querySelector('.ast-karta-blad');
-      if (blad) blad.remove();
-      const wrap = el('div', 'ast-kamera');
-      const video = el('video');
-      video.setAttribute('playsinline', ''); video.muted = true;
-      wrap.append(video);
-      const info = el('div', 'ast-linia', 'Skieruj aparat na kod kreskowy.');
-      sz.append(wrap, info);
-      const przerwij = guzik('ast-odrzuc', 'Przerwij');
-      przyciski.replaceChildren(przerwij);
-      sesja.sprzataj = () => { window.Skaner.stop(); wrap.remove(); info.remove(); };
-      przerwij.addEventListener('click', () => sesja.zakoncz());
-      startTrwa = (async () => {
-        try {
-          await window.Skaner.start({
-            video, wrap,
-            onKod: (kod) => {
-              if (sesja.koniec) return;      // przerwane — kod z ostatniej klatki nie liczy się
-              skoncz();
-              poKodzie(kod, d, sz, przyciski, karta, logId, przyciskiStartu);
-            },
-            onBlad: (t) => { if (sesja.koniec) return; sesja.zakoncz(); komunikatKarty(karta, t); },
-            onCisza: () => { if (!sesja.koniec) info.textContent = 'Nie widzę kodu — przybliż telefon albo popraw światło.'; },
-          });
-        } catch { /* błędy startu zgłasza onBlad */ }
-        // Przerwane w trakcie startu: strumień powstał dopiero teraz — gasimy.
-        if (sesja.koniec) window.Skaner.stop();
-      })();
-    });
+  function usunBlad(karta) {
+    const b = karta.querySelector('.ast-karta-blad');
+    if (b) b.remove();
   }
 
-  async function poKodzie(kod, d, sz, przyciski, karta, logId, przyciskiStartu) {
+  // Karta skanu ma trzy drogi do produktu: kamera, cyfry wpisane ręcznie
+  // (gdy przeglądarka nie czyta kodów albo kamera zawiodła — K4) i zdjęcie
+  // etykiety. Stan wspólny tych dróg trzyma `c`.
+  function rysujSkan(d, sz, przyciski, karta, logId) {
+    if (d.data !== dzisISO()) sz.append(poleDnia(d));
+    if (d.gramy || d.sztuk) sz.append(el('div', 'ast-linia', 'W poleceniu: ' + (d.gramy ? d.gramy + ' g' : d.sztuk + ' szt.')));
+    const c = {
+      d, sz, przyciski, karta, logId,
+      start: guzik('ast-zapisz', 'Skanuj kod'),
+      odrzuc: odrzucenie(karta, przyciski, logId),
+      // Bez czytnika kodów „Skanuj kod" byłby ślepym przyciskiem — nie ma go wcale.
+      bezDetektora: !('BarcodeDetector' in window),
+      reczny: false,
+    };
+    c.przyciskiStartu = () => {
+      c.start.disabled = false;
+      if (c.bezDetektora) przyciski.replaceChildren(c.odrzuc);
+      else przyciski.replaceChildren(c.start, c.odrzuc);
+    };
+    // Powrót po nieudanym wyszukaniu: do przycisków startu i — jeśli człowiek
+    // był już na ręcznej drodze — z powrotem do pola cyfr.
+    c.wroc = () => { c.przyciskiStartu(); if (c.reczny) rysujReczny(c, null); };
+    c.ponow = () => { usunBlad(karta); if (c.reczny) c.wroc(); else uruchomSkan(c); };
+    c.start.addEventListener('click', () => uruchomSkan(c));
+    c.przyciskiStartu();
+    karta.classList.add('czeka');
+    if (c.bezDetektora) rysujReczny(c, BEZ_DETEKTORA);
+  }
+
+  // K4: cyfry spod kodu wpisane ręcznie idą tą samą drogą co zeskanowany kod
+  // (/api/eat/produkt?kod=), a obok jest zdjęcie etykiety — bez ślepego zaułka.
+  function rysujReczny(c, komunikat) {
+    c.reczny = true;
+    const stary = c.sz.querySelector(':scope > .ast-reczny');
+    if (stary) stary.remove();
+    const box = el('div', 'ast-reczny');
+    if (komunikat) box.append(el('p', 'ast-uwaga', komunikat));
+    const pCyfry = el('label', 'ast-pole-pelne ast-pole-cyfr');
+    pCyfry.append(el('span', 'ast-pole-etyk', 'Cyfry spod kodu'));
+    const cyfry = el('input');
+    cyfry.type = 'text'; cyfry.inputMode = 'numeric'; cyfry.autocomplete = 'off'; cyfry.maxLength = 14;
+    pCyfry.append(cyfry);
+    const kodFn = () => {
+      const v = String(cyfry.value || '').replace(/\s+/g, '');
+      return /^\d{6,14}$/.test(v) ? v : '';
+    };
+    const szukaj = guzik('ast-szukaj', 'Szukaj');
+    szukaj.addEventListener('click', () => {
+      const kod = kodFn();
+      if (!kod) {
+        komunikatKarty(c.karta, 'Wpisz od 6 do 14 cyfr spod kodu.');
+        if (cyfry.focus) cyfry.focus();
+        return;
+      }
+      usunBlad(c.karta);
+      box.remove();
+      poKodzie(kod, c);
+    });
+    let nazwa = '';
+    const poOdczycie = (produkt) => kartaProduktu(produkt, kodFn(), c, poOdczycie);
+    box.append(pCyfry, szukaj, poleNazwy('', (n) => { nazwa = n; }),
+      przyciskEtykiety(kodFn, c.karta, poOdczycie, () => nazwa));
+    c.sz.append(box);
+  }
+
+  async function uruchomSkan(c) {
+    const { sz, przyciski, karta } = c;
+    zatrzymajSkan();
+    c.start.disabled = true;
+    // Sesja istnieje od stuknięcia, nie od zapalenia kamery: schowanie okna
+    // albo Odrzuć w czasie wczytywania skanera też musi ją przerwać.
+    const sesja = { koniec: false, karta, sprzataj: () => {} };
+    const skoncz = () => {
+      sesja.koniec = true;
+      sesja.sprzataj();
+      if (skan === sesja) skan = null;
+    };
+    sesja.zakoncz = () => { if (sesja.koniec) return; skoncz(); c.przyciskiStartu(); };
+    skan = sesja;
+    try { await zaladujSkrypt('eat-skaner.js'); }
+    catch (e) {
+      if (sesja.koniec) return;
+      skoncz(); c.przyciskiStartu(); komunikatKarty(karta, e.message); return;
+    }
+    await startTrwa;                     // poprzednia kamera na pewno zgaszona
+    if (sesja.koniec) return;
+    // K5: kamerę trzyma inny skaner tej strony (np. arkusz w eat) — mówimy to
+    // wprost, zamiast po cichu nic nie zrobić (Skaner.start odmawia drugiego startu).
+    if (window.Skaner.dziala && window.Skaner.dziala()) {
+      skoncz(); c.przyciskiStartu();
+      komunikatKarty(karta, 'Aparat jest już używany na tej stronie — zamknij tamten skaner.');
+      return;
+    }
+    usunBlad(karta);
+    const reczny = sz.querySelector(':scope > .ast-reczny');
+    if (reczny) reczny.remove();
+    const wrap = el('div', 'ast-kamera');
+    const video = el('video');
+    video.setAttribute('playsinline', ''); video.muted = true;
+    wrap.append(video);
+    const info = el('div', 'ast-linia', 'Skieruj aparat na kod kreskowy.');
+    sz.append(wrap, info);
+    const przerwij = guzik('ast-odrzuc', 'Przerwij');
+    przyciski.replaceChildren(przerwij);
+    sesja.sprzataj = () => { window.Skaner.stop(); wrap.remove(); info.remove(); };
+    przerwij.addEventListener('click', () => sesja.zakoncz());
+    startTrwa = (async () => {
+      try {
+        await window.Skaner.start({
+          video, wrap,
+          onKod: (kod) => {
+            if (sesja.koniec) return;      // przerwane — kod z ostatniej klatki nie liczy się
+            skoncz();
+            poKodzie(kod, c);
+          },
+          // Kamera albo czytnik zawiodły — komunikat skanera i od razu droga
+          // ręczna (cyfry, zdjęcie etykiety); „Skanuj kod" zostaje do ponowienia.
+          onBlad: (t) => { if (sesja.koniec) return; sesja.zakoncz(); rysujReczny(c, t); },
+          onCisza: () => { if (!sesja.koniec) info.textContent = 'Nie widzę kodu — przybliż telefon albo popraw światło.'; },
+        });
+      } catch { /* błędy startu zgłasza onBlad */ }
+      // Przerwane w trakcie startu: strumień powstał dopiero teraz — gasimy.
+      if (sesja.koniec) window.Skaner.stop();
+    })();
+  }
+
+  async function poKodzie(kod, c) {
+    const { sz, przyciski, karta } = c;
     const info = el('div', 'ast-linia', 'Szukam produktu…');
     sz.append(info);
     let r;
@@ -788,31 +1010,37 @@
       odp = await r.json().catch(() => ({}));
     } catch {
       info.remove();
-      przyciskiStartu();
+      c.wroc();
       komunikatKarty(karta, 'Brak połączenia — spróbuj jeszcze raz.');
       return;
     }
     info.remove();
-    const poOdczycie = (produkt) => kartaProduktu(produkt, kod, d, sz, przyciski, karta, logId, poOdczycie);
+    const poOdczycie = (produkt) => kartaProduktu(produkt, kod, c, poOdczycie);
     if (r.status === 404) {
       // Ślepego zaułka nie ma: od razu droga naprzód, w tym samym oknie.
       // Nazwy na tabeli z tyłu nie ma — człowiek ją wpisuje, zanim zrobi zdjęcie.
-      sz.append(el('p', 'ast-uwaga', 'Nie znam tego kodu. Zrób zdjęcie etykiety — zapamiętam produkt na następny raz.'));
+      const box = el('div', 'ast-nieznany');
+      box.append(el('p', 'ast-uwaga',
+        'Nie znam tego kodu. Wpisz nazwę produktu i zrób zdjęcie etykiety — zapamiętam go na następny raz.'));
       let nazwa = '';
-      const ety = przyciskEtykiety(kod, karta, poOdczycie, () => nazwa);
-      sz.append(poleNazwy('', (n) => { nazwa = n; ety.ustaw(!!n); }));
-      przyciski.replaceChildren(ety, odrzucenie(karta, przyciski, logId));
+      box.append(poleNazwy('', (n) => { nazwa = n; }));
+      sz.append(box);
+      // U9: po nieznanym kodzie także droga wstecz — inny kod.
+      const ponow = guzik('ast-ponow', c.reczny ? 'Wpisz inny kod' : 'Skanuj ponownie');
+      ponow.addEventListener('click', () => { box.remove(); c.ponow(); });
+      przyciski.replaceChildren(przyciskEtykiety(() => kod, karta, poOdczycie, () => nazwa), ponow, c.odrzuc);
       return;
     }
     if (!r.ok) {
-      przyciskiStartu();
+      c.wroc();
       komunikatKarty(karta, typeof odp.detail === 'string' ? odp.detail : 'Nie udało się sprawdzić kodu.');
       return;
     }
-    kartaProduktu(odp.produkt, kod, d, sz, przyciski, karta, logId, poOdczycie);
+    kartaProduktu(odp.produkt, kod, c, poOdczycie);
   }
 
-  function kartaProduktu(produkt, kod, d, sz, przyciski, karta, logId, poOdczycie) {
+  function kartaProduktu(produkt, kod, c, poOdczycie) {
+    const { d, sz, przyciski, karta, logId } = c;
     const brak = produkt.kcal == null;
     const porcje = porcjeProduktu(produkt);
     const sztukaG = (porcje.find((o) => o.opis === '1 szt.') || porcje.find((o) => o.opis !== '100 g') || {}).g;
@@ -842,28 +1070,23 @@
     d._dane = dane;
     const tytul = karta.querySelector('.ast-karta-tytul');
     tytul.textContent = poz.nazwa || 'Produkt';
-    const blad = karta.querySelector('.ast-karta-blad');
-    if (blad) blad.remove();
+    usunBlad(karta);
     karta._blokady = new Set();
     sz.replaceChildren();
     // I4: nazwa produktu do poprawienia (wpis bierze nazwę z ekranu przed nazwą
-    // z bazy); pusta blokuje zapis i zdjęcie etykiety.
-    let ety = null;
+    // z bazy); pusta blokuje zapis (zdjęcie etykiety mówi wtedy, czego brakuje).
     sz.append(poleNazwy(poz.nazwa, (n) => {
       poz.nazwa = n;
       tytul.textContent = n || 'Produkt';
       const t = sz.querySelector('.ast-poz-tekst');
       if (t) t.textContent = n;
       blokada(karta, 'nazwa', !n);
-      if (ety) ety.ustaw(!!n);
     }));
     rysujJedzenie(dane, sz, przyciski, karta);
     if (brak) {
       sz.append(el('p', 'ast-uwaga', 'Baza nie ma kalorii tego produktu. Wpisz kcal na 100 g albo zrób zdjęcie etykiety.'));
-      ety = przyciskEtykiety(kod, karta, poOdczycie, () => poz.nazwa);
-      sz.append(ety);
+      sz.append(przyciskEtykiety(() => kod, karta, poOdczycie, () => poz.nazwa));
     }
-    sz.append(el('p', 'ast-notka', BEZ_COFANIA));
     przyciskiZapisu({ typ: 'jedzenie', dane }, karta, przyciski, logId);
     blokada(karta, 'nazwa', !poz.nazwa);
   }
@@ -881,7 +1104,10 @@
     // Odhaczenie: tytuł zadania / nazwa pozycji duża, bez „Odhacz…" — karta to
     // jedno stuknięcie, a przy kilku pasujących tytuł jest tym, co się wybiera.
     const duzy = p.typ === 'zadanie_odhacz' || p.typ === 'lista_odhacz';
-    const tytul = p.typ === 'zadanie_odhacz' ? p.dane.tytul : p.typ === 'lista_odhacz' ? p.dane.nazwa : p.opis;
+    // U11: nagłówek nowego zadania stały — tytuł poprawia się w polu niżej,
+    // a nagłówek z „opisem" serwera rozjeżdżałby się z polem.
+    const tytul = p.typ === 'zadanie_odhacz' ? p.dane.tytul : p.typ === 'lista_odhacz' ? p.dane.nazwa
+      : p.typ === 'zadanie' ? 'Nowe zadanie' : p.opis;
     k.append(el('div', 'ast-karta-modul', MODUL[p.typ] || ''),
       el('div', 'ast-karta-tytul' + (duzy ? ' duzy' : ''), tytul || p.opis));
     const sz = el('div', 'ast-karta-szczeg');
@@ -890,7 +1116,8 @@
     kontener.append(k);
     if (RYSUJ[p.typ]) RYSUJ[p.typ](p.dane, sz, przyciski, k, logId);
     if (p.typ === 'aparat' || p.typ === 'skan') return;   // mają własne przyciski
-    if (bezCofania(p)) sz.append(el('p', 'ast-notka', BEZ_COFANIA));
+    const notka = notkaBezCofania(p);
+    if (notka) sz.append(el('p', 'ast-notka', notka));
     przyciskiZapisu(p, k, przyciski, logId);
   }
 
