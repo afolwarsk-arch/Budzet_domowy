@@ -49,6 +49,7 @@ class Kontekst:
     koszty: list = field(default_factory=list)     # [(etykieta, usage)]
     uwagi: list = field(default_factory=list)      # zdania dla użytkownika złożone przez narzędzia
     domownicy: list = field(default_factory=list)  # etykiety osób do promptu
+    uzytkownik: str | None = None                  # etykieta piszącego („dla mnie", „moje")
     koniec: float | None = None                    # time.monotonic() końca budżetu polecenia
 
 

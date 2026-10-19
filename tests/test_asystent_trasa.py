@@ -153,7 +153,7 @@ def test_poza_zakresem_bez_tekstu_modelu(monkeypatch):
     podmien_baze(monkeypatch)
     _model(monkeypatch, [[("otworz_widok", {"widok": "health", "poza_zakresem": True})]])
     odp = _wywolaj({"tekst": "jakie mam wyniki krwi?"})
-    assert odp["wiadomosc"] == "Tego jeszcze nie umiem. Mogę otworzyć Zdrowie."
+    assert odp["wiadomosc"] == "Tego jeszcze nie umiem. Mogę przejść do strony „Zdrowie”."
     assert odp["propozycje"][0]["tryb"] == "karta"
 
 
@@ -272,9 +272,9 @@ def test_teraz_z_zepsutym_zegarem_to_czas_serwera():
 
 def test_prompt_kaze_wolac_narzedzia_razem():
     k = Kontekst(household_id=1, user_id=2, tekst="x", teraz=datetime(2026, 10, 19, 13, 0))
-    assert ("W pierwszej odpowiedzi wywołaj RAZEM wszystkie potrzebne narzędzia (odczyty i "
-            "propozycje niewymagające odczytu); po turze z samymi propozycjami rozmowa się "
-            "kończy.") in asystent._system(k)
+    s = asystent._system(k)
+    assert "Wywołaj od razu wszystkie potrzebne narzędzia w jednej odpowiedzi." in s
+    assert "rozmowa się kończy" not in s
 
 
 def test_propozycja_z_odczytem_w_jednej_turze_to_druga_runda(monkeypatch):
@@ -290,7 +290,7 @@ def test_propozycja_z_odczytem_w_jednej_turze_to_druga_runda(monkeypatch):
 
 
 def test_pusta_odpowiedz_to_komunikat_bledu(monkeypatch):
-    # I2: model nic nie powiedział i niczego nie zaproponował.
+    # I2/U1: model nic nie powiedział i niczego nie zaproponował.
     kursor = podmien_baze(monkeypatch)
 
     class Milczacy(FakeKlient):
@@ -302,10 +302,10 @@ def test_pusta_odpowiedz_to_komunikat_bledu(monkeypatch):
     Milczacy.ustaw([])
     monkeypatch.setattr(asystent.anthropic, "Anthropic", Milczacy)
     odp = _wywolaj({"tekst": "hmm"})
-    assert odp["wiadomosc"] == asystent.KOMUNIKAT_502
+    assert odp["wiadomosc"] == asystent.KOMUNIKAT_NIEJASNE
+    assert asystent.KOMUNIKAT_NIEJASNE == "Nie zrozumiałem — powiedz albo napisz np.: „dopisz mleko i chleb”."
     assert odp["propozycje"] == [] and odp["pytanie"] is None
-    assert any(z.startswith("UPDATE asystent_log SET wynik") and p[0] == "blad"
-               for z, p in kursor.zapytania)
+    assert not any(z.startswith("UPDATE asystent_log SET wynik") for z, p in kursor.zapytania)
 
 
 def test_termin_liczony_od_poczatku_polecenia(monkeypatch):
@@ -323,7 +323,7 @@ def test_termin_liczony_od_poczatku_polecenia(monkeypatch):
     _model(monkeypatch, [])
     odp = _wywolaj({"tekst": "dopisz mleko"})
     assert FakeKlient.wywolania == 0          # zostały 3 s — model nie startuje
-    assert odp["wiadomosc"] == asystent.KOMUNIKAT_502
+    assert odp["wiadomosc"] == asystent.KOMUNIKAT_502          # brak czasu to NIE „niezrozumiałem"
 
 
 def _blad_sieci(rodzaj):
@@ -378,5 +378,261 @@ def test_poza_zakresem_bez_tekstu_po_dalszej_rundzie():
     # zdanie o braku umiejętności składa serwer.
     k = Kontekst(household_id=1, user_id=2, tekst="x", teraz=datetime(2026, 10, 19, 13, 0))
     prop = [{"typ": "widok", "dane": {"widok": "konta", "poza_zakresem": True}}]
-    assert asystent._wiadomosc(k, "", False, prop) == "Tego jeszcze nie umiem. Mogę otworzyć Konta."
+    assert asystent._wiadomosc(k, "", False, prop) == "Tego jeszcze nie umiem. Mogę przejść do strony „Konta”."
     assert asystent._wiadomosc(k, "Salda nie sprawdzę.", False, prop) == "Salda nie sprawdzę."
+
+
+# ── poprawki po recenzji zadania 8 (U1–U9, K1–K5) ───────────────────────────
+
+def _prompt():
+    return asystent._system(Kontekst(household_id=1, user_id=2, tekst="x",
+                                     teraz=datetime(2026, 10, 19, 13, 0)))
+
+
+def test_prompt_u1_u2_u6_u7():
+    s = _prompt()
+    assert ("Gdy polecenie jest niezrozumiałe albo nie ma w nim nic do zrobienia: odpowiedz jednym "
+            "zdaniem „Nie zrozumiałem. Powiedz np.: „dopisz mleko”, „zjadłem jogurt”, "
+            "„zadanie: zadzwonić do mechanika”.” — bez narzędzi.") in s
+    assert "Nie łącz tych dwóch odpowiedzi." in s
+    assert "ogólne" not in s and "WYŁĄCZNIE, gdy żadna" in s
+    assert "Dzień starszy niż 7 dni wstecz: powiedz jednym zdaniem, że taki wpis trzeba zrobić w wiem.eat." in s
+    assert "„kupiłem X” = odhaczenie pozycji z listy zakupów." in s
+    assert "Gdy X nie ma na liście: „Nie ma „X” na liście zakupów.” — nie dopisuj." in s
+
+
+def test_prompt_u8_uzytkownik():
+    k = Kontekst(household_id=1, user_id=2, tekst="x", teraz=datetime(2026, 10, 19, 13, 0),
+                 uzytkownik="Adam")
+    assert "UŻYTKOWNIK: Adam" in asystent._system(k)
+    assert "UŻYTKOWNIK:" not in _prompt()
+
+
+def test_uzytkownik_z_domownikow_trafia_do_promptu(monkeypatch):
+    podmien_baze(monkeypatch)
+    monkeypatch.setattr(database, "get_household_members",
+                        lambda h: [{"id": 2, "display_name": "Adam"}, {"id": 3, "name": "Ola K"}])
+    monkeypatch.setattr(database, "get_virtual_members", lambda h: [])
+    widziane = []
+
+    class Podglad(FakeKlient):
+        def create(self, **kw):
+            widziane.append(kw["system"])
+            return super().create(**kw)
+
+    Podglad.ustaw([])
+    monkeypatch.setattr(asystent.anthropic, "Anthropic", Podglad)
+    _wywolaj({"tekst": "co mam dziś zrobić dla mnie"})
+    assert "UŻYTKOWNIK: Adam" in widziane[0] and "DOMOWNICY: Adam, Ola" in widziane[0]
+
+
+def test_u4_ucinanie_na_granicy_slowa():
+    dlugi = "Salda kont jeszcze nie sprawdzę " * 20
+    k = Kontekst(household_id=1, user_id=2, tekst="x", teraz=datetime(2026, 10, 19, 13, 0))
+    prop = [{"typ": "widok", "dane": {"widok": "konta", "poza_zakresem": True}}]
+    w = asystent._wiadomosc(k, dlugi, True, prop)
+    assert len(w) <= 300 and not w.endswith(" ")
+    assert w.split()[-1] in {"Salda", "kont", "jeszcze", "nie", "sprawdzę"}     # nie w środku słowa
+    pierwsze = ("Długie pierwsze zdanie " * 6).strip() + "."
+    zdania = pierwsze + " " + "Drugie zdanie jest bardzo długie i się ciągnie " * 10
+    w = asystent._wiadomosc(k, zdania, True, prop)
+    assert w == pierwsze
+
+
+@pytest.mark.parametrize("n,zad,poz", [
+    (2, "Pasują dwa zadania — wybierz, które odhaczyć.", "Pasują dwie pozycje — wybierz, którą odhaczyć."),
+    (4, "Pasują cztery zadania — wybierz, które odhaczyć.", "Pasują cztery pozycje — wybierz, którą odhaczyć."),
+    (5, "Pasuje 5 zadań — wybierz, które odhaczyć.", "Pasuje 5 pozycji — wybierz, którą odhaczyć."),
+    (12, "Pasuje 12 zadań — wybierz, które odhaczyć.", "Pasuje 12 pozycji — wybierz, którą odhaczyć."),
+    (22, "Pasują 22 zadania — wybierz, które odhaczyć.", "Pasują 22 pozycje — wybierz, którą odhaczyć."),
+    (25, "Pasuje 25 zadań — wybierz, które odhaczyć.", "Pasuje 25 pozycji — wybierz, którą odhaczyć."),
+])
+def test_u9_odmiana(n, zad, poz):
+    assert asystent._kilka_pasuje(n, "zadanie_odhacz") == zad
+    assert asystent._kilka_pasuje(n, "lista_odhacz") == poz
+
+
+def test_k1_koszty_best_effort_nie_psuja_200(monkeypatch):
+    podmien_baze(monkeypatch)
+    monkeypatch.setattr(database, "get_stan_list", lambda hid: ZAKUPY)
+
+    def psuje(*a, **kw):
+        raise RuntimeError("baza padla")
+
+    monkeypatch.setattr(database, "log_api_usage", psuje)
+    _model(monkeypatch, [[("zaproponuj_pozycje_listy", {"nazwy": ["mleko"]})]])
+    odp = _wywolaj({"tekst": "dopisz mleko"})
+    assert len(odp["propozycje"]) == 1
+
+
+def test_k1_koszty_best_effort_nie_zastepuja_502(monkeypatch):
+    podmien_baze(monkeypatch)
+
+    def psuje(*a, **kw):
+        raise RuntimeError("baza padla")
+
+    monkeypatch.setattr(task_db, "szukaj", lambda *a, **kw: [])
+
+    class Psujacy(FakeKlient):
+        def create(self, **kw):
+            if type(self).krok >= 1:
+                raise KeyError("x")           # drugi krok: koszty pierwszego już są w k.koszty
+            return super().create(**kw)
+
+    Psujacy.ustaw([[("szukaj_zadania", {"fraza": "pran"})]])
+    monkeypatch.setattr(database, "log_api_usage", psuje)
+    monkeypatch.setattr(asystent.anthropic, "Anthropic", Psujacy)
+    with pytest.raises(HTTPException) as e:
+        _wywolaj({"tekst": "dopisz mleko"})
+    assert e.value.status_code == 502
+
+
+def test_k1_rozpocznij_z_bledem_to_502(monkeypatch):
+    podmien_baze(monkeypatch)
+
+    def psuje(*a):
+        raise RuntimeError("baza")
+
+    monkeypatch.setattr(asystent_db, "rozpocznij", psuje)
+    with pytest.raises(HTTPException) as e:
+        _wywolaj({"tekst": "dopisz mleko"})
+    assert e.value.status_code == 502
+
+
+def test_k1_zapisz_propozycje_z_bledem_to_502_i_slad(monkeypatch):
+    kursor = podmien_baze(monkeypatch)
+    monkeypatch.setattr(database, "get_stan_list", lambda hid: ZAKUPY)
+
+    def psuje(*a):
+        raise RuntimeError("baza")
+
+    monkeypatch.setattr(asystent_db, "zapisz_propozycje", psuje)
+    _model(monkeypatch, [[("zaproponuj_pozycje_listy", {"nazwy": ["mleko"]})]])
+    with pytest.raises(HTTPException) as e:
+        _wywolaj({"tekst": "dopisz mleko"})
+    assert e.value.status_code == 502
+    assert any(z.startswith("UPDATE asystent_log SET wynik") and p[0] == "blad"
+               for z, p in kursor.zapytania)
+
+
+def test_k1_zapisz_wynik_z_bledem_nie_zaslania_502(monkeypatch):
+    podmien_baze(monkeypatch)
+
+    def psuje(*a):
+        raise RuntimeError("baza")
+
+    class Psujacy(FakeKlient):
+        def create(self, **kw):
+            raise KeyError("x")
+
+    monkeypatch.setattr(asystent_db, "zapisz_wynik", psuje)
+    monkeypatch.setattr(asystent.anthropic, "Anthropic", Psujacy)
+    with pytest.raises(HTTPException) as e:
+        _wywolaj({"tekst": "dopisz mleko"})
+    assert e.value.status_code == 502
+
+
+def test_k2_timeout_ma_krotki_connect(monkeypatch):
+    import httpx
+    podmien_baze(monkeypatch)
+    widziane = []
+
+    class Podglad(FakeKlient):
+        def __init__(self, *a, **kw):
+            widziane.append(kw["timeout"])
+            super().__init__(*a, **kw)
+
+    Podglad.ustaw([])
+    monkeypatch.setattr(asystent.anthropic, "Anthropic", Podglad)
+    _wywolaj({"tekst": "dopisz mleko"})
+    t = widziane[0]
+    assert isinstance(t, httpx.Timeout) and t.connect <= 5 and t.read <= 45
+
+
+def test_k3_zerwanie_po_samej_uwadze_zachowuje_ja(monkeypatch):
+    podmien_baze(monkeypatch)
+    monkeypatch.setattr(database, "get_stan_list", lambda hid: [
+        {"id": 10, "nazwa": "Zakupy", "status": "aktywna",
+         "pozycje": [{"id": 1, "nazwa": "mleko", "kupione": False}]}])
+    monkeypatch.setattr(task_db, "szukaj", lambda *a, **kw: [])
+
+    class Zrywajacy(FakeKlient):
+        def create(self, **kw):
+            if type(self).krok >= 1:
+                raise _blad_sieci("timeout")
+            return super().create(**kw)
+
+    Zrywajacy.ustaw([[("zaproponuj_pozycje_listy", {"nazwy": ["mleko"]}),
+                      ("szukaj_zadania", {"fraza": "pran"})]])
+    monkeypatch.setattr(asystent.anthropic, "Anthropic", Zrywajacy)
+    odp = _wywolaj({"tekst": "dopisz mleko"})
+    assert odp["wiadomosc"] == "Mleko już jest na liście — nie dopisuję drugi raz."
+
+
+def test_k4_przerwana_petla_nie_pokazuje_zalegajacego_tekstu(monkeypatch):
+    podmien_baze(monkeypatch)
+
+    def zadanie(i):
+        return {"id": i, "tytul": "Pranie", "status": "otwarte", "powtarzaj": None,
+                "parent_id": None, "strefa_id": None, "termin": None,
+                "wykonawca_user_id": 2, "wykonawca_virtual_id": None}
+
+    monkeypatch.setattr(task_db, "pobierz", lambda h, u, i: zadanie(i) if i in (5, 6) else None)
+    monkeypatch.setattr(task_db, "ma_otwarte_dzieci", lambda h, i: False)
+    monkeypatch.setattr(task_db, "szukaj", lambda *a, **kw: [])
+    krok = [("#tekst", "Sprawdzam."), ("szukaj_zadania", {"fraza": "pran"})]
+    pierwszy = [("#tekst", "Sprawdzam."), ("zaproponuj_odhaczenie_zadania", {"zadanie_id": 5}),
+                ("zaproponuj_odhaczenie_zadania", {"zadanie_id": 6}), ("szukaj_zadania", {"fraza": "pran"})]
+    _model(monkeypatch, [pierwszy, krok, krok, krok])
+    odp = _wywolaj({"tekst": "odhacz pranie"})
+    assert FakeKlient.wywolania == asystent.MAX_ITERACJI
+    assert odp["wiadomosc"] == "Pasują dwa zadania — wybierz, które odhaczyć."
+
+
+def test_k4_przerwana_petla_bez_niczego_to_502_z_sladem(monkeypatch):
+    kursor = podmien_baze(monkeypatch)
+    monkeypatch.setattr(task_db, "szukaj", lambda *a, **kw: [])
+    krok = [("#tekst", "Sprawdzam."), ("szukaj_zadania", {"fraza": "pran"})]
+    _model(monkeypatch, [krok] * 4)
+    odp = _wywolaj({"tekst": "odhacz pranie"})
+    assert odp["wiadomosc"] == asystent.KOMUNIKAT_502
+    assert any(z.startswith("UPDATE asystent_log SET wynik") and p[0] == "blad"
+               for z, p in kursor.zapytania)
+
+
+def test_k5_log_bez_dostepu():
+    with pytest.raises(HTTPException) as e:
+        asystent.wynik_polecenia(1, {"wynik": "zapisano"}, {**ADAM, "email": "ola@example.com"})
+    assert e.value.status_code == 403
+
+
+def test_k5_log_nie_swoj_wpis_to_404(monkeypatch):
+    kursor = podmien_baze(monkeypatch)
+    kursor.rowcount = 0                       # UPDATE ... AND user_id = %s nic nie zmienił
+    with pytest.raises(HTTPException) as e:
+        asystent.wynik_polecenia(7, {"wynik": "zapisano"}, ADAM)
+    assert e.value.status_code == 404
+    assert kursor.zapytania[-1][1] == ("zapisano", 7, ADAM["user_id"])
+
+
+def test_k5_log_zla_wartosc_to_404_bez_zapytania(monkeypatch):
+    kursor = podmien_baze(monkeypatch)
+    with pytest.raises(HTTPException) as e:
+        asystent.wynik_polecenia(7, {"wynik": "cokolwiek"}, ADAM)
+    assert e.value.status_code == 404 and kursor.zapytania == []
+
+
+def test_k5_log_ok(monkeypatch):
+    podmien_baze(monkeypatch)
+    assert asystent.wynik_polecenia(7, {"wynik": "cofnieto"}, ADAM) == {"ok": True}
+
+
+def test_k5_api_me_asystent_tylko_dla_listy():
+    # main.py nie da się zaimportować w testach (init_db przy imporcie), więc
+    # pinujemy dwie połowy: wiązanie flagi w get_me i funkcję, którą wywołuje.
+    from pathlib import Path
+    zrodlo = Path("main.py").read_text(encoding="utf-8")
+    assert '"asystent": _ASYSTENT_OK and asystent.ma_dostep(current_user)' in zrodlo
+    assert asystent.ma_dostep({"email": "A.Folwarsk@gmail.com"}) is True
+    assert asystent.ma_dostep({"email": "ola@example.com"}) is False
+    assert asystent.ma_dostep({}) is False
