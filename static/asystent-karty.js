@@ -49,7 +49,7 @@
     ['gramy', 'Popraw gramy (1–5000 g), żeby zapisać.'],
     ['tytul', 'Wpisz nazwę zadania, żeby zapisać.'],
   ];
-  const BEZ_DETEKTORA = 'Ta przeglądarka nie umie czytać kodów. Zrób zdjęcie etykiety albo wpisz cyfry spod kreskówki.';
+  const BEZ_DETEKTORA = 'Ta przeglądarka nie umie czytać kodów. Zrób zdjęcie etykiety albo wpisz cyfry spod kodu kreskowego.';
 
   function el(tag, klasa, tekst) {
     const e = document.createElement(tag);
@@ -109,7 +109,8 @@
     for (const id of [...ids]) {
       try { await api(adres(id), 'DELETE'); }
       catch (e) { if (e.status !== 404) throw e; }
-      ids.splice(ids.indexOf(id), 1);
+      const i = ids.indexOf(id);
+      if (i >= 0) ids.splice(i, 1);
     }
   }
 
@@ -224,15 +225,17 @@
       const utworzone = [];
       d._dopisane = [];
       d._nieudane = [];
+      d._niewiadome = [];      // limit czasu: serwer mógł zapisać — nie wiadomo
       for (const nazwa of d.nazwy) {
         try {
-          utworzone.push((await api(`/api/listy/${d.lista_id}/pozycje`, 'POST', { nazwa })).id);
+          const id = (await api(`/api/listy/${d.lista_id}/pozycje`, 'POST', { nazwa })).id;
+          if (id != null) utworzone.push(id);
           d._dopisane.push(nazwa);
         } catch (e) {
           // Brak sieci / czas na samym początku: nic nie weszło — ten błąd
           // (z flagą) idzie do wiersza, który zaproponuje ponowienie.
           if (!utworzone.length && (e.siec || e.czas)) throw e;
-          d._nieudane.push(nazwa);
+          (e.czas ? d._niewiadome : d._nieudane).push(nazwa);
         }
       }
       if (!utworzone.length) throw new Error('Nic nie trafiło na listę.');
@@ -284,7 +287,8 @@
   // w czasie przeszłym. Stan jest w tekście, nie tylko w kolorze.
   const PO_ZAPISIE = {
     lista_dopisz: (d) => `Dopisane do „${d.lista_nazwa}”: ${wylicz(d._dopisane && d._dopisane.length ? d._dopisane : d.nazwy)}`
-      + (d._nieudane && d._nieudane.length ? ' · nie weszło: ' + wylicz(d._nieudane) : ''),
+      + (d._nieudane && d._nieudane.length ? ' · nie weszło: ' + wylicz(d._nieudane) : '')
+      + (d._niewiadome && d._niewiadome.length ? ' · nie wiem, czy weszło: ' + wylicz(d._niewiadome) : ''),
     lista_odhacz: (d) => `Odhaczone: ${d.nazwa}`,
     zadanie_odhacz: (d) => `Odhaczone: ${d.tytul}`,
     zadanie: (d) => `Zadanie dodane: ${d.tytul}`,
@@ -362,7 +366,7 @@
       wiersz.classList.add('blad');
       zapiszWynik(logId, 'blad');
       if (e.siec) {
-        // Na pewno nic się nie zapisało — ponowienie jest bezpieczne.
+        // Prawie na pewno nic się nie zapisało — ponowienie jest bezpieczne.
         opis.textContent = 'Nie zapisane — brak połączenia. Spróbuj jeszcze raz.';
         const ponow = guzik('ast-ponow', 'Spróbuj ponownie');
         ponow.addEventListener('click', () => { ponow.remove(); odRazu(p, kontener, logId, wiersz); });
