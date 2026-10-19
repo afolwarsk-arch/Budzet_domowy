@@ -880,7 +880,7 @@ def pobierz(household_id, user_id, zadanie_id):
 
 
 def ma_otwarte_dzieci(household_id: int, zadanie_id: int) -> bool:
-    """Czy zadanie ma niezrobione podzadania — WSZYSTKIE, także wstrzymane
+    """Czy zadanie ma niezrobione BEZPOŚREDNIE podzadania (jeden poziom), także wstrzymane
     i cudze prywatne. Służy tylko ostrzeżeniu „podzadania zostaną otwarte"
     przy odhaczaniu bez kaskady; treść tych podzadań nigdzie nie wychodzi."""
     with get_db() as cur:

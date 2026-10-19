@@ -13,15 +13,17 @@ bierzemy WYŁĄCZNIE z bazy — argumenty modelu mogły zostać podsunięte.
 """
 
 import time
+import traceback
+import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import ai_processor
 import database
 import eat_db
 import task_ai
 import task_db
-from asystent_reguly import (ETYKIETY_WIDOKOW, MAX_POZYCJI_LISTY, ZlaPropozycja,
+from asystent_reguly import (ETYKIETY_WIDOKOW, MAX_DNI_WSTECZ, MAX_POZYCJI_LISTY, ZlaPropozycja,
                              nazwa_w_tekscie, obetnij, pora_posilku, sprawdz_dzien,
                              sprawdz_widok)
 from task_dopasowanie import dopasuj_wykonawce, rozpoznane_miejsce, slowa
@@ -141,9 +143,44 @@ def _liczba(v):
     return f if f == f and abs(f) != float("inf") else None
 
 
+def _klucz(n: str) -> str:
+    """Porównanie nazw bez wielkości liter i polskich znaków."""
+    n = n.casefold().replace("ł", "l")
+    return "".join(c for c in unicodedata.normalize("NFD", n) if not unicodedata.combining(c))
+
+
+def _lista_tekstow(v, dlugosc: int) -> list[str] | None:
+    """Lista niepustych napisów albo None, gdy `v` nie jest listą napisów.
+    Napis nigdy nie jest rozbijany na litery."""
+    if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+        return None
+    return [x.strip()[:dlugosc] for x in v if x.strip()]
+
+
+def _posilek_i_dzien(d: dict, k: Kontekst) -> tuple[str, str, bool]:
+    """(posiłek, dzień, czy posiłek zgadnięty). Dzień sprawdzamy tu — błąd
+    zakresu mówi modelowi, jaka jest dzisiejsza data i co dozwolone. Gdy dzień
+    jest inny niż dziś i użytkownik nie nazwał posiłku, godzina telefonu nic
+    nie mówi o posiłku z tamtego dnia: dostaje domyślny, a karta zaznacza go
+    do sprawdzenia."""
+    dzis = k.teraz.date()
+    try:
+        dzien = sprawdz_dzien(d.get("data"), dzis)
+    except ZlaPropozycja as e:
+        if str(e).startswith("Nieprawidłowa"):
+            raise
+        od = (dzis - timedelta(days=MAX_DNI_WSTECZ)).isoformat()
+        raise ZlaPropozycja(f"Data spoza zakresu. Dziś jest {dzis.isoformat()}; dozwolone {od} do "
+                            f"{dzis.isoformat()}. Jeśli użytkownik naprawdę chciał starszy dzień, "
+                            "powiedz, że wpisze go w wiem.eat.")
+    podany = d.get("posilek") in eat_db.POSILKI
+    posilek = d["posilek"] if podany else pora_posilku(k.teraz)
+    return posilek, dzien, (not podany and dzien != dzis.isoformat())
+
+
 def _dodaj(k: Kontekst, typ: str, opis: str, dane: dict) -> str:
     k.propozycje.append({"typ": typ, "opis": opis, "dane": dane})
-    return "Propozycja gotowa — użytkownik zobaczy ją na karcie."
+    return "Propozycja przekazana aplikacji. Niczego jeszcze nie zapisano — nie pisz, że zapisano."
 
 
 # ── odczyt ──────────────────────────────────────────────────────────────────
@@ -151,7 +188,7 @@ def _dodaj(k: Kontekst, typ: str, opis: str, dane: dict) -> str:
 def _szukaj_produktu(d: dict, k: Kontekst) -> str:
     fraza = str(d.get("fraza") or "").strip()[:80]
     if len(fraza) < 2:
-        return "Podaj co najmniej 2 litery."
+        return "Fraza za krótka — min. 2 litery."
     wyniki = eat_db.szukaj_produktow(k.household_id, fraza, limit=10)
     return obetnij([{"id": p["id"], "nazwa": p["nazwa"], "kcal_100g": p.get("kcal"),
                      "porcja_g": p.get("porcja_g"), "opis_porcji": p.get("opis_porcji")}
@@ -178,7 +215,7 @@ def _szukaj_zadania(d: dict, k: Kontekst) -> str:
     fraza = str(d.get("fraza") or "").strip()[:80]
     wyniki = task_db.szukaj(k.household_id, k.user_id, fraza, limit=20)
     if not wyniki:
-        return "[]"
+        return "Nic nie znaleziono. Spróbuj krótszego rdzenia słowa (np. 'pran') albo powiedz, że takiego zadania nie ma."
     # `szukaj` dokłada przodków znalezionych zadań — projekt liczymy bez
     # dodatkowych zapytań. Projekt, wykonawca i termin pozwalają modelowi
     # (i karcie) odróżnić dwa zadania o tym samym tytule.
@@ -195,11 +232,18 @@ def _szukaj_zadania(d: dict, k: Kontekst) -> str:
 # ── propozycje ──────────────────────────────────────────────────────────────
 
 def _pozycje_listy(d: dict, k: Kontekst) -> str:
-    nazwy = [str(n).strip()[:200] for n in (d.get("nazwy") or []) if str(n).strip()]
-    if not nazwy:
-        return "Brak nazw do dopisania."
+    surowe = _lista_tekstow(d.get("nazwy"), 200)
+    if not surowe:
+        return "Brak nazw do dopisania — zapytaj, co dopisać."
+    # Ta sama nazwa dwa razy w jednym wywołaniu (wielkość liter, ogonki) idzie raz.
+    nazwy, widziane = [], set()
+    for n in surowe:
+        if _klucz(n) not in widziane:
+            widziane.add(_klucz(n))
+            nazwy.append(n)
     if len(nazwy) > MAX_POZYCJI_LISTY:
-        return f"Za dużo naraz — najwyżej {MAX_POZYCJI_LISTY} pozycji. Poproś o podział."
+        return (f"Za dużo naraz — najwyżej {MAX_POZYCJI_LISTY} pozycji na wywołanie. "
+                "Wywołaj narzędzie ponownie z resztą, w tej samej odpowiedzi.")
     listy = database.get_stan_list(k.household_id)
     if not listy:
         return "Gospodarstwo nie ma żadnej listy zakupów."
@@ -242,14 +286,17 @@ def _pozycje_listy(d: dict, k: Kontekst) -> str:
 def _odhacz_liste(d: dict, k: Kontekst) -> str:
     pid = _int(d.get("pozycja_id"))
     for l in database.get_stan_list(k.household_id):
+        if l.get("status") != "aktywna":
+            continue                       # jak przy dopisywaniu: tylko listy aktywne
         for p in l["pozycje"]:
             if p["id"] == pid:
                 if p["kupione"]:
-                    return "Ta pozycja jest już odhaczona — nic nie robię."
+                    return "Ta pozycja jest już odhaczona — nic nie robię. Powiedz to użytkownikowi jednym zdaniem."
                 return _dodaj(k, "lista_odhacz", f"Odhacz „{p['nazwa']}” na liście „{l['nazwa']}”",
-                              {"pozycja_id": pid, "nazwa": p["nazwa"],
+                              {"pozycja_id": pid, "nazwa": p["nazwa"], "lista_nazwa": l["nazwa"],
                                "kupione_przed": False, "kupione_po": True})
-    return "Nie ma takiej pozycji na listach tego gospodarstwa."
+    return ("Nie ma takiej pozycji (id). Sprawdź listy_zakupow albo powiedz użytkownikowi, "
+            "że jej nie ma na liście.")
 
 
 def _dopasuj_produkt(household_id: int, nazwa: str) -> dict | None:
@@ -286,18 +333,19 @@ def _dopasuj_produkt(household_id: int, nazwa: str) -> dict | None:
 def _wpis_jedzenia(d: dict, k: Kontekst) -> str:
     opis = str(d.get("opis") or "").strip()[:600]
     if len(opis) < 3:
-        return "Za mało, żeby cokolwiek policzyć — zapytaj, co było w posiłku."
-    posilek = d.get("posilek") if d.get("posilek") in eat_db.POSILKI else pora_posilku(k.teraz)
+        return "Za mało — zapytaj użytkownika zwykłym zdaniem (bez narzędzia zapytaj), co dokładnie zjadł."
     # D2: inny dzień tylko 0–7 dni wstecz. Sprawdzamy PRZED parserem — zła data
     # nie może kosztować wywołania modelu.
-    dzien = sprawdz_dzien(d.get("data"), k.teraz.date())
+    posilek, dzien, zgadniety = _posilek_i_dzien(d, k)
     czas = _czas_parsera(k, 40.0)
     if czas < MIN_CZAS_PARSERA_S:
-        return "Zabrakło czasu na oszacowanie posiłku — poproś użytkownika, żeby powtórzył polecenie."
+        return "Zabrakło czasu na oszacowanie posiłku — poproś użytkownika, żeby powtórzył polecenie. Nic nie zostało zapisane."
     pozycje, usage = ai_processor.szacuj_posilek(opis, timeout=czas, max_retries=0)
     k.koszty.append(("asystent-eat", usage))
     gotowe = []
     for p in (pozycje or [])[:20]:
+        if not isinstance(p, dict):
+            continue
         ilosc = _liczba(p.get("ilosc_g"))
         if not ilosc or ilosc <= 0:
             continue
@@ -318,20 +366,23 @@ def _wpis_jedzenia(d: dict, k: Kontekst) -> str:
                           for m in ("kcal", "bialko", "tluszcz", "wegle")})
         gotowe.append(poz)
     if not gotowe:
-        return "Nie udało się nic oszacować — zapytaj o szczegóły posiłku."
+        return "Nie udało się nic oszacować — zapytaj użytkownika zwykłym zdaniem (bez narzędzia zapytaj), co dokładnie zjadł."
     # Nazwa dania: krótka, w mianowniku, od modelu; bez niej nazwa posiłku
     # („Obiad"). Nigdy wycinek opisu — „na obiad był schabowy z ziem" w
     # dzienniku to śmieć, którego nikt potem nie poprawia.
     nazwa = str(d.get("nazwa") or "").strip()[:60] or NAZWY_POSILKOW[posilek]
     wiele = len(gotowe) > 1
     return _dodaj(k, "jedzenie", f"Wpis do dziennika: {nazwa if wiele else gotowe[0]['nazwa']}",
-                  {"data": dzien, "posilek": posilek,
+                  {"data": dzien, "posilek": posilek, "posilek_zgadniety": zgadniety,
+                   "inny_dzien": dzien != k.teraz.date().isoformat(),
                    "nazwa_grupy": nazwa if wiele else None, "pozycje": gotowe})
 
 
 def _skan(d: dict, k: Kontekst) -> str:
-    posilek = d.get("posilek") if d.get("posilek") in eat_db.POSILKI else pora_posilku(k.teraz)
-    dane = {"data": sprawdz_dzien(d.get("data"), k.teraz.date()), "posilek": posilek}
+    posilek, dzien, zgadniety = _posilek_i_dzien(d, k)
+    dane = {"data": dzien, "posilek": posilek}
+    if zgadniety:
+        dane["posilek_zgadniety"] = True
     # Porcja powiedziana w poleceniu („zjadłem dwa jogurty, zeskanuję") — karta
     # po skanie ustawi z niej gramaturę. Spoza zakresu = nie powiedziana.
     gramy, sztuk = _liczba(d.get("gramy")), _liczba(d.get("sztuk"))
@@ -346,7 +397,7 @@ def _zadanie(d: dict, k: Kontekst) -> str:
     opis = str(d.get("opis") or "").strip()
     czas = _czas_parsera(k, 30.0)
     if czas < MIN_CZAS_PARSERA_S:
-        return "Zabrakło czasu na zrozumienie zadania — poproś użytkownika, żeby powtórzył polecenie."
+        return "Zabrakło czasu na zrozumienie zadania — poproś użytkownika, żeby powtórzył polecenie. Nic nie zostało zapisane."
     try:
         z, usage = task_ai.zrozum(opis, dzis=k.teraz.date(), timeout=czas, max_retries=0)
     except task_ai.MowaError as e:
@@ -354,6 +405,13 @@ def _zadanie(d: dict, k: Kontekst) -> str:
     k.koszty.append(("asystent-task", usage))
     wyk_user, wyk_virtual = dopasuj_wykonawce(k.household_id, z.get("wykonawca"))
     cel, obszar = rozpoznane_miejsce(k.household_id, k.user_id, z.get("gdzie"))
+    # Etykieta domownika jak w gospodarstwie („Ola”), nie słowo użytkownika („Oli”).
+    wykonawca_opis = None
+    if wyk_user or wyk_virtual:
+        ludzie, wirtualni = _osoby(k.household_id)
+        wykonawca_opis = (ludzie.get(wyk_user) if wyk_user else wirtualni.get(wyk_virtual)) or z.get("wykonawca")
+    elif str(z.get("wykonawca") or "").strip():
+        k.uwagi.append(f"Nie znalazłem domownika „{str(z['wykonawca']).strip()}” — zadanie bez wykonawcy.")
     miejsce = cel["tytul"] if cel else (obszar["nazwa"] if obszar else "bez projektu")
     return _dodaj(k, "zadanie", f"Nowe zadanie: {z['tytul']}", {
         "tytul": z["tytul"], "termin": z["termin"], "pora": z["pora"],
@@ -361,7 +419,7 @@ def _zadanie(d: dict, k: Kontekst) -> str:
         "parent_id": cel["id"] if cel else None,
         "strefa_id": obszar["id"] if obszar else None,
         "wykonawca_user_id": wyk_user, "wykonawca_virtual_id": wyk_virtual,
-        "wykonawca_opis": z.get("wykonawca") if (wyk_user or wyk_virtual) else None,
+        "wykonawca_opis": wykonawca_opis,
         "miejsce_opis": miejsce,
     })
 
@@ -370,8 +428,10 @@ def _odhacz_zadanie(d: dict, k: Kontekst) -> str:
     z = task_db.pobierz(k.household_id, k.user_id, _int(d.get("zadanie_id")))
     if not z:
         return "Nie ma takiego zadania."
+    if z.get("rodzaj") == "wydarzenie":
+        return "To wydarzenie, nie zadanie — nie odhaczam."
     if z["status"] == "zrobione":
-        return "To zadanie jest już zrobione — nic nie robię."
+        return "To zadanie jest już zrobione — nic nie robię. Powiedz to użytkownikowi jednym zdaniem."
     uwagi = []
     if z.get("powtarzaj"):
         uwagi.append("Zadanie powtarzalne — odhaczenie utworzy kolejne wystąpienie.")
@@ -423,7 +483,7 @@ def _aparat(d: dict, k: Kontekst) -> str:
 
 def _zapytaj(d: dict, k: Kontekst) -> str:
     tekst = str(d.get("tekst") or "").strip()[:200]
-    opcje = [str(o).strip()[:40] for o in (d.get("opcje") or []) if str(o).strip()][:4]
+    opcje = (_lista_tekstow(d.get("opcje"), 40) or [])[:4]
     if not tekst or len(opcje) < 2:
         return "Pytanie potrzebuje treści i co najmniej 2 opcji."
     k.pytanie = {"tekst": tekst, "opcje": opcje}
@@ -465,8 +525,9 @@ def wykonaj(nazwa: str, dane: dict, k: Kontekst) -> str:
         # Parser posiłku potrafi oddać nie-JSON, baza — chwilowo nie odpowiadać.
         # Jedno narzędzie nie może wywrócić całego polecenia: model dostaje
         # komunikat i może spróbować inaczej albo powiedzieć, że się nie udało.
-        print(f"[asystent] narzedzie {nazwa} zawiodlo: {e!r}")
-        return "Narzędzie zawiodło — spróbuj inaczej albo powiedz użytkownikowi, że się nie udało."
+        print(f"[asystent] narzedzie {nazwa} zawiodlo: {e!r}\n{traceback.format_exc()}")
+        return ("Narzędzie zawiodło — spróbuj inaczej albo powiedz użytkownikowi, że się nie udało. "
+                "Nic nie zostało zapisane.")
 
 
 _POSILEK = {"type": "string", "enum": list(eat_db.POSILKI)}
@@ -483,23 +544,28 @@ TOOLS = [
      "description": "Otwarte zadania i projekty (id, tytul, parent_id, projekt).",
      "input_schema": {"type": "object", "properties": {}}},
     {"name": "szukaj_zadania",
-     "description": "Szuka zadań po tytule — potrzebne do odhaczenia. Zwraca id, tytul, status, "
-                    "termin, projekt i wykonawca (do odróżnienia zadań o tym samym tytule).",
+     "description": "Szuka zadań po tytule — potrzebne do odhaczenia. Fraza = krótki rdzeń bez końcówki "
+                    "(„pran”, nie „pranie”). Zwraca id, tytul, status, termin, projekt i wykonawca "
+                    "(do odróżnienia zadań o tym samym tytule); pomiń wyniki o statusie zrobione.",
      "input_schema": {"type": "object", "properties": {"fraza": {"type": "string"}},
                       "required": ["fraza"]}},
     {"name": "zaproponuj_pozycje_listy",
-     "description": "Dopisuje pozycje do listy zakupów (najwyżej 10). WSZYSTKIE nazwy z polecenia "
-                    "w JEDNYM wywołaniu. Nazwa = sam produkt, słowami i w formie użytkownika "
-                    "(„jajek”, nie „jajka”), bez ilości, jednostek i przymiotników, których nie "
-                    "powiedział. Nie sprawdzaj wcześniej list — duplikaty odsiewa serwer.",
+     "description": "Dopisuje pozycje do listy zakupów (najwyżej 10 na wywołanie; przy większej "
+                    "liczbie wywołaj narzędzie ponownie z resztą, w tej samej odpowiedzi). WSZYSTKIE "
+                    "nazwy z polecenia w JEDNYM wywołaniu. Nazwa = sam produkt, słowami i w formie "
+                    "użytkownika („jajek”, nie „jajka”), ilość pomiń, bez jednostek i przymiotników, "
+                    "których nie powiedział. Nie sprawdzaj wcześniej list — duplikaty odsiewa serwer.",
      "input_schema": {"type": "object", "properties": {
-         "lista_id": {"type": "integer"},
+         "lista_id": {"type": "integer",
+                      "description": "Tylko gdy użytkownik wskazał listę; inaczej pomiń (jest domyślna)."},
          "nazwy": {"type": "array", "items": {"type": "string"}, "maxItems": 10}},
          "required": ["nazwy"]}},
     {"name": "zaproponuj_odhaczenie_listy",
-     "description": "Proponuje odhaczenie pozycji listy jako kupionej. Id weź z listy_zakupow. "
+     "description": "Proponuje odhaczenie pozycji listy jako kupionej; „kupiłem X” = odhaczenie. Id weź "
+                    "z listy_zakupow. Gdy X nie ma na liście, powiedz to jednym zdaniem — nie dopisuj. "
                     "Dokładna nazwa wygrywa z częściową; gdy kilka pasuje równie dobrze, wywołaj "
-                    "dla KAŻDEJ — karty są wyborem, nie pytaj.",
+                    "dla KAŻDEJ pasującej RÓWNOLEGLE, w tej samej odpowiedzi (karty są wyborem, "
+                    "nie pytaj); pomiń zrobione.",
      "input_schema": {"type": "object", "properties": {"pozycja_id": {"type": "integer"}},
                       "required": ["pozycja_id"]}},
     {"name": "zaproponuj_wpis_jedzenia",
@@ -510,34 +576,44 @@ TOOLS = [
          "nazwa": {"type": "string",
                    "description": "Krótka nazwa dania w mianowniku, np. „Owsianka z bananem”, "
                                   "„Kanapka z serem”; gdy nie ma czego nazwać — nazwa posiłku."},
-         "posilek": _POSILEK,
+         "posilek": {**_POSILEK,
+                     "description": "Tylko gdy użytkownik go nazwał (wczoraj na kolację -> kolacja); "
+                                    "inaczej pomiń."},
          "data": {"type": "string",
                   "description": "RRRR-MM-DD — TYLKO gdy użytkownik powiedział inny dzień "
                                  "(„wczoraj”, „przedwczoraj”, „w niedzielę”); policz z TERAZ. "
+                                 "„W niedzielę” = ostatnia miniona taka niedziela, nigdy przyszła. "
                                  "Najwyżej 7 dni wstecz. Inaczej pomiń."}},
          "required": ["opis", "nazwa"]}},
     {"name": "zaproponuj_skan",
-     "description": "Proponuje zeskanowanie kodu kreskowego zjedzonego produktu. Gramy albo "
-                    "sztuki podaj tylko, jeśli użytkownik je powiedział.",
+     "description": "Proponuje zeskanowanie kodu kreskowego zjedzonego produktu. Gdy użytkownik mówi "
+                    "„zjadłem to” / „zeskanuję” albo nie nazywa produktu — od razu, bez pytania. "
+                    "Gdy produkt nazwał, użyj zaproponuj_wpis_jedzenia. Gramy albo sztuki podaj "
+                    "tylko, jeśli użytkownik je powiedział.",
      "input_schema": {"type": "object", "properties": {
-         "posilek": _POSILEK,
+         "posilek": {**_POSILEK, "description": "Tylko gdy użytkownik go nazwał; inaczej pomiń."},
          "data": {"type": "string", "description": "RRRR-MM-DD — tylko inny dzień, jak w zaproponuj_wpis_jedzenia."},
          "gramy": {"type": "number"}, "sztuk": {"type": "number"}}}},
     {"name": "zaproponuj_zadanie",
-     "description": "Proponuje nowe zadanie. Przekaż zdanie użytkownika (termin, projekt, osoba). "
-                    "Nie pytaj o projekt — karta pozwala go zmienić.",
+     "description": "Proponuje nowe zadanie. Przekaż CAŁE zdanie z terminem i osobą. Nie wołaj "
+                    "drzewo_zadan ani szukaj_zadania przed propozycją. Nie pytaj o projekt — karta "
+                    "pozwala go zmienić.",
      "input_schema": {"type": "object", "properties": {"opis": {"type": "string"}},
                       "required": ["opis"]}},
     {"name": "zaproponuj_odhaczenie_zadania",
      "description": "Proponuje oznaczenie zadania jako zrobionego. Id weź z szukaj_zadania. "
                     "Dokładny tytuł wygrywa z częściowym; gdy kilka pasuje równie dobrze, wywołaj "
-                    "dla KAŻDEGO — karty są wyborem, nie pytaj.",
+                    "dla KAŻDEGO pasującego RÓWNOLEGLE, w tej samej odpowiedzi (karty są wyborem, "
+                    "nie pytaj); pomiń zrobione.",
      "input_schema": {"type": "object", "properties": {"zadanie_id": {"type": "integer"}},
                       "required": ["zadanie_id"]}},
     {"name": "otworz_widok",
      "description": "Przechodzi do strony aplikacji — tylko gdy użytkownik prosi o otwarcie strony "
                     "albo (poza_zakresem=true) gdy pyta o coś, czego nie umiesz, a odpowiedź jest "
-                    "na tej stronie. Filtry month (YYYY-MM) i osoba (imię domownika) tylko dla pulpitu.",
+                    "na tej stronie. „Pokaż/otwórz/idź do X” to prośba o otwarcie — poza_zakresem=false. "
+                    "Widoki: pulpit=wydatki (też osoby/miesiąca), konta=salda, analiza=doradca AI, "
+                    "wplywy=przychody, cele=koperty/limity, health=wyniki badań. "
+                    "Filtry month (YYYY-MM) i osoba (imię domownika) tylko dla pulpitu.",
      "input_schema": {"type": "object", "properties": {
          "widok": {"type": "string", "enum": ["pulpit", "lista", "analiza", "konta", "cele",
                                               "wplywy", "eat", "produkty", "przepisy",
@@ -551,7 +627,9 @@ TOOLS = [
      "description": "Pokazuje przycisk do zdjęcia paragonu.",
      "input_schema": {"type": "object", "properties": {}}},
     {"name": "zapytaj",
-     "description": "Zadaje użytkownikowi pytanie z 2–4 odpowiedziami, gdy czegoś brakuje.",
+     "description": "Zadaje użytkownikowi pytanie z 2–4 odpowiedziami. Tylko gdy bez odpowiedzi nie da "
+                    "się nic zaproponować. NIE do wyboru między pasującymi zadaniami/pozycjami "
+                    "(to robią karty), NIE o projekt, NIE o listę zakupów.",
      "input_schema": {"type": "object", "properties": {
          "tekst": {"type": "string"},
          "opcje": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 4}},

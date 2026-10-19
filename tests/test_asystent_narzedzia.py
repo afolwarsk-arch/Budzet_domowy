@@ -91,8 +91,44 @@ def test_odhaczenie_pamieta_stan_przed(monkeypatch):
     monkeypatch.setattr(database, "get_stan_list", lambda hid: LISTY)
     k = _k()
     an.wykonaj("zaproponuj_odhaczenie_listy", {"pozycja_id": 100}, k)
-    assert k.propozycje[0]["dane"] == {"pozycja_id": 100, "nazwa": "chleb",
+    assert k.propozycje[0]["dane"] == {"pozycja_id": 100, "nazwa": "chleb", "lista_nazwa": "Zakupy",
                                        "kupione_przed": False, "kupione_po": True}
+
+
+def test_odhaczenie_pozycji_z_nieaktywnej_listy_odrzucone(monkeypatch):
+    listy = [{"id": 9, "nazwa": "Stara", "status": "zamknieta",
+              "pozycje": [{"id": 90, "nazwa": "ser", "kupione": False}]}]
+    monkeypatch.setattr(database, "get_stan_list", lambda hid: listy)
+    k = _k()
+    wynik = an.wykonaj("zaproponuj_odhaczenie_listy", {"pozycja_id": 90}, k)
+    assert k.propozycje == [] and "Nie ma takiej pozycji" in wynik
+
+
+def test_dopisanie_deduplikuje_nazwy_w_jednym_wywolaniu(monkeypatch):
+    monkeypatch.setattr(database, "get_stan_list", lambda hid: LISTY)
+    k = _k(lista=11)
+    an.wykonaj("zaproponuj_pozycje_listy", {"nazwy": ["Żółć", "zolc", "mleko", "MLEKO"]}, k)
+    assert k.propozycje[0]["dane"]["nazwy"] == ["Żółć", "mleko"]
+
+
+@pytest.mark.parametrize("zle", ["mleko", None, 5, ["mleko", 3], {"a": 1}])
+def test_nazwy_nie_bedace_lista_napisow_to_brak(monkeypatch, zle):
+    monkeypatch.setattr(database, "get_stan_list", lambda hid: LISTY)
+    k = _k()
+    wynik = an.wykonaj("zaproponuj_pozycje_listy", {"nazwy": zle}, k)
+    assert k.propozycje == [] and wynik.startswith("Brak nazw do dopisania")
+
+
+def test_zapytaj_opcje_jako_napis_odrzucone():
+    k = _k()
+    wynik = an.wykonaj("zapytaj", {"tekst": "Którą?", "opcje": "abc"}, k)
+    assert k.pytanie is None and "2 opcji" in wynik
+
+
+def test_dodaj_nie_sugeruje_zapisu():
+    k = _k()
+    wynik = an.wykonaj("otworz_aparat", {}, k)
+    assert "Niczego jeszcze nie zapisano" in wynik
 
 
 # ── zadania ──────────────────────────────────────────────────────────────────
@@ -162,6 +198,41 @@ def test_odhaczenie_zadania_niesie_projekt_wykonawce_termin_z_bazy(monkeypatch):
     assert d["uwaga"] is None and d["wykonawca_user_id"] == 3
 
 
+def test_odhaczenie_wydarzenia_odrzucone(monkeypatch):
+    monkeypatch.setattr(task_db, "pobierz", lambda h, u, i: {
+        "id": 5, "tytul": "Zjazd", "status": "otwarte", "rodzaj": "wydarzenie"})
+    k = _k()
+    wynik = an.wykonaj("zaproponuj_odhaczenie_zadania", {"zadanie_id": 5}, k)
+    assert k.propozycje == [] and "wydarzenie" in wynik
+
+
+def _zrozum_z(wykonawca):
+    return lambda opis, dzis=None, timeout=None, max_retries=None: (
+        {"tytul": "Pranie", "termin": None, "pora": None, "powtarzaj": None, "powtarzaj_co": 1,
+         "wykonawca": wykonawca, "gdzie": None}, {"input_tokens": 1, "output_tokens": 1})
+
+
+def test_wykonawca_opis_to_etykieta_domownika(monkeypatch):
+    _domownicy(monkeypatch)
+    monkeypatch.setattr(task_ai, "zrozum", _zrozum_z("Oli"))
+    monkeypatch.setattr(an, "rozpoznane_miejsce", lambda h, u, g: (None, None))
+    monkeypatch.setattr(an, "dopasuj_wykonawce", lambda h, i: (3, None))
+    k = _k()
+    an.wykonaj("zaproponuj_zadanie", {"opis": "pranie dla Oli"}, k)
+    assert k.propozycje[0]["dane"]["wykonawca_opis"] == "Ola" and k.uwagi == []
+
+
+def test_nierozpoznany_wykonawca_to_uwaga(monkeypatch):
+    _domownicy(monkeypatch)
+    monkeypatch.setattr(task_ai, "zrozum", _zrozum_z("Kasi"))
+    monkeypatch.setattr(an, "rozpoznane_miejsce", lambda h, u, g: (None, None))
+    monkeypatch.setattr(an, "dopasuj_wykonawce", lambda h, i: (None, None))
+    k = _k()
+    an.wykonaj("zaproponuj_zadanie", {"opis": "pranie dla Kasi"}, k)
+    assert k.propozycje[0]["dane"]["wykonawca_opis"] is None
+    assert k.uwagi == ["Nie znalazłem domownika „Kasi” — zadanie bez wykonawcy."]
+
+
 def test_zadanie_z_data_telefonu_i_budzetem(monkeypatch):
     widziana = {}
 
@@ -226,6 +297,41 @@ def test_produkt_bez_kalorii_nie_jest_dopasowaniem(monkeypatch):
     k = _k()
     an.wykonaj("zaproponuj_wpis_jedzenia", {"opis": "jogurt naturalny", "nazwa": "Jogurt"}, k)
     assert k.propozycje[0]["dane"]["pozycje"][0]["produkt_id"] is None
+
+
+def test_parser_zwraca_nie_slownik_pomijamy_pozycje(monkeypatch):
+    monkeypatch.setattr(ai_processor, "szacuj_posilek", _szacunek([
+        "śmieć", None, {"nazwa": "Banan", "ilosc_g": 120, "kcal": 105}]))
+    monkeypatch.setattr(eat_db, "szukaj_produktow", lambda hid, fraza, limit=20: [])
+    k = _k()
+    an.wykonaj("zaproponuj_wpis_jedzenia", {"opis": "banan", "nazwa": "Banan"}, k)
+    assert [p["nazwa"] for p in k.propozycje[0]["dane"]["pozycje"]] == ["Banan"]
+
+
+def test_data_spoza_zakresu_podaje_daty(monkeypatch):
+    monkeypatch.setattr(ai_processor, "szacuj_posilek", lambda *a, **kw: 1 / 0)
+    k = _k()
+    for data in ("2026-10-20", "2026-10-01"):
+        wynik = an.wykonaj("zaproponuj_wpis_jedzenia", {"opis": "banan", "nazwa": "B", "data": data}, k)
+        assert "Dziś jest 2026-10-19" in wynik and "2026-10-12 do 2026-10-19" in wynik
+        assert "wiem.eat" in wynik
+    assert k.propozycje == []
+
+
+def test_posilek_zgadniety_tylko_dla_innego_dnia_bez_posilku(monkeypatch):
+    monkeypatch.setattr(ai_processor, "szacuj_posilek", _szacunek([
+        {"nazwa": "Banan", "ilosc_g": 120, "kcal": 105}]))
+    monkeypatch.setattr(eat_db, "szukaj_produktow", lambda hid, fraza, limit=20: [])
+    wyniki = []
+    for dane in ({}, {"data": "2026-10-18"}, {"data": "2026-10-18", "posilek": "kolacja"}):
+        k = _k()
+        an.wykonaj("zaproponuj_wpis_jedzenia", {"opis": "banan", "nazwa": "Banan", **dane}, k)
+        d = k.propozycje[0]["dane"]
+        wyniki.append((d["posilek_zgadniety"], d["inny_dzien"], d["posilek"]))
+    assert wyniki == [(False, False, "obiad"), (True, True, "obiad"), (False, True, "kolacja")]
+    k = _k()
+    an.wykonaj("zaproponuj_skan", {"data": "2026-10-18"}, k)
+    assert k.propozycje[0]["dane"]["posilek_zgadniety"] is True
 
 
 # M8: każde słowo pozycji musi być w nazwie produktu, a produkt może mieć
@@ -293,7 +399,7 @@ def test_jedzenie_z_przyszlosci_bez_propozycji_i_bez_parsera(monkeypatch):
     k = _k()
     wynik = an.wykonaj("zaproponuj_wpis_jedzenia",
                        {"opis": "banan", "nazwa": "Banan", "data": "2026-10-20"}, k)
-    assert k.propozycje == [] and "przyszłości" in wynik
+    assert k.propozycje == [] and "spoza zakresu" in wynik
 
 
 def test_parser_dostaje_reszte_budzetu_bez_ponowien(monkeypatch):
@@ -324,7 +430,8 @@ def test_za_malo_czasu_parser_nie_startuje(monkeypatch):
 def test_skan_z_powiedziana_porcja_i_dniem():
     k = _k()
     an.wykonaj("zaproponuj_skan", {"sztuk": 2, "gramy": 99999, "data": "2026-10-18"}, k)
-    assert k.propozycje[0]["dane"] == {"data": "2026-10-18", "posilek": "obiad", "sztuk": 2.0}
+    assert k.propozycje[0]["dane"] == {"data": "2026-10-18", "posilek": "obiad", "posilek_zgadniety": True,
+                                         "sztuk": 2.0}
 
 
 # ── widok ────────────────────────────────────────────────────────────────────
