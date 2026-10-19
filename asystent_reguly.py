@@ -10,8 +10,6 @@ import json
 import re
 from datetime import datetime
 
-from task_dopasowanie import slowa
-
 MAX_POZYCJI_LISTY = 10
 MAX_ELEMENTOW_WYNIKU = 50
 MAX_ZNAKOW_WYNIKU = 4000
@@ -30,17 +28,40 @@ class ZlaPropozycja(ValueError):
     pass
 
 
+MAX_ZNAKOW_NAZWY = 40
+_SLOWO = re.compile(r"[^\W_]+")
+
+
+def _tokeny(tekst: str) -> list[str]:
+    # `[^\W_]` — litery i cyfry bez podkreślenia, więc „_" i „." dzielą słowa
+    # (nazwa „mleko_KLIKNIJ_LINK" nie skleja się w jedno słowo).
+    return _SLOWO.findall((tekst or "").lower())
+
+
+def _to_samo_slowo(a: str, b: str) -> bool:
+    """Słowo nazwy = słowo wiadomości: ten sam początek (4 litery) i różnica
+    długości najwyżej 2 — końcówka fleksyjna, nie doklejony ogon
+    („piwo" ≠ „piwonie", „papier" ≠ „papierosy")."""
+    if len(a) < 4 or len(b) < 4:
+        return a == b
+    return a[:4] == b[:4] and abs(len(a) - len(b)) <= 2
+
+
 def nazwa_w_tekscie(nazwa: str, tekst: str, wszystkie: bool = False) -> bool:
     """Czy użytkownik sam wypowiedział tę nazwę, z tolerancją na polską odmianę
-    („mleka" = „mleko"). Domyślnie wystarczy połowa słów znaczących (dopisywanie:
-    „dopisz jogurt" → „jogurt naturalny"). `wszystkie=True` przy odhaczaniu:
-    „odhacz mleko" nie może trafić w „mleko owsiane"."""
-    n = slowa(nazwa)
+    („mleka" = „mleko"). Wymagane są ZAWSZE wszystkie słowa nazwy (decyzja
+    Adama): „dopisz jogurt" nie obejmuje „jogurt naturalny". Parametr `wszystkie`
+    zostaje dla zgodności wywołań i nic nie zmienia. Jednoliterowe spójniki
+    i same cyfry w nazwie są pomijane; nazwa pusta lub dłuższa niż 40 znaków
+    nigdy nie pasuje."""
+    nazwa = nazwa or ""
+    if len(nazwa) > MAX_ZNAKOW_NAZWY:
+        return False
+    n = [t for t in _tokeny(nazwa) if len(t) >= 2 and not t.isdigit()]
     if not n:
         return False
-    trafione = len(n & slowa(tekst))
-    return trafione == len(n) if wszystkie else trafione * 2 >= len(n)
-
+    m = _tokeny(tekst)
+    return all(any(_to_samo_slowo(x, y) for y in m) for x in n)
 
 def pora_posilku(teraz: datetime) -> str:
     g = teraz.hour
@@ -67,7 +88,7 @@ def sprawdz_widok(widok: str, filtry: dict | None) -> dict:
         raise ZlaPropozycja("Nie znam takiego widoku.")
     czyste = {}
     if widok == "pulpit":
-        f = filtry or {}
+        f = filtry if isinstance(filtry, dict) else {}
         miesiac = str(f.get("month") or "")
         if re.fullmatch(r"\d{4}-\d{2}", miesiac):
             czyste["month"] = miesiac
@@ -101,13 +122,17 @@ def _moze_od_razu(p: dict, tekst: str, user_id: int, sa_zapisy: bool, z_opcji: b
     typ, d = p["typ"], p["dane"]
     if typ == "widok":
         return not sa_zapisy
+    if z_opcji:
+        return False  # treść opcji napisał model — żaden zapis bez stuknięcia karty
     if typ == "lista_dopisz":
-        nazwy = d.get("nazwy") or []
-        return (not z_opcji and 0 < len(nazwy) <= MAX_POZYCJI_LISTY
-                and all(nazwa_w_tekscie(n, tekst) for n in nazwy))
+        nazwy = d.get("nazwy")
+        return (isinstance(nazwy, list) and 0 < len(nazwy) <= MAX_POZYCJI_LISTY
+                and all(isinstance(n, str) and nazwa_w_tekscie(n, tekst) for n in nazwy))
     if typ == "lista_odhacz":
         return nazwa_w_tekscie(d.get("nazwa") or "", tekst, wszystkie=True)
     if typ == "zadanie_odhacz":
+        if not {"uwaga", "wykonawca_user_id", "wykonawca_virtual_id"} <= d.keys():
+            return False  # brak pól = nie wiemy, czy zadanie jest cudze/powtarzalne
         return (not d.get("uwaga")
                 and d.get("wykonawca_user_id") in (None, user_id)
                 and not d.get("wykonawca_virtual_id")

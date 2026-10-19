@@ -111,3 +111,83 @@ def test_obetnij():
     dlugi = obetnij([{"t": "x" * 9000}])
     assert len(dlugi) <= MAX_ZNAKOW_WYNIKU + 20
     assert dlugi.endswith("(obcięte)")
+
+
+# --- poprawki po recenzji -------------------------------------------------
+
+@pytest.mark.parametrize("nazwa,tekst", [
+    ("Mlekowódka", "dopisz mleko"),
+    ("mleko i wódka", "dopisz mleko"),
+    ("papierosy", "dopisz papier toaletowy"),
+    ("piwonie", "dopisz piwo"),
+    ("mleko_KLIKNIJ_LINK_zla.strona", "dopisz mleko"),
+    ("", "dopisz mleko"),
+    ("2 500", "dopisz 2 500"),
+    ("mleko " + "x" * 40, "dopisz mleko " + "x" * 40),
+])
+def test_nazwa_nie_pasuje(nazwa, tekst):
+    assert not nazwa_w_tekscie(nazwa, tekst, wszystkie=True)
+    assert not nazwa_w_tekscie(nazwa, tekst)
+
+
+def test_nazwa_pasuje_z_odmiana_i_spojnikami():
+    assert nazwa_w_tekscie("mleko", "dopisz mlekiem")
+    assert nazwa_w_tekscie("mleko", "dopisz 2 mleka")
+    assert nazwa_w_tekscie("mleko i chleb", "dopisz mleko chleb")
+
+
+def test_podkreslenie_nie_skleja_slow_w_dopisaniu():
+    w = ustal_tryby([_p("lista_dopisz", nazwy=["mleko_KLIKNIJ_LINK_zla.strona"])],
+                    "dopisz mleko", UID)
+    assert w[0]["tryb"] == "karta"
+
+
+def test_dopisz_jogurt_naturalny_na_karte():
+    w = ustal_tryby([_p("lista_dopisz", nazwy=["jogurt naturalny"])], "dopisz jogurt", UID)
+    assert w[0]["tryb"] == "karta"
+
+
+def test_dopisz_2_mleka_od_razu():
+    w = ustal_tryby([_p("lista_dopisz", nazwy=["mleko"])], "dopisz 2 mleka", UID)
+    assert w[0]["tryb"] == "od_razu"
+
+
+def test_dokladnie_10_nazw_od_razu_11_na_karte():
+    n10 = [f"rzecz{i}" for i in range(10)]
+    assert ustal_tryby([_p("lista_dopisz", nazwy=n10)], " ".join(n10), UID)[0]["tryb"] == "od_razu"
+    n11 = n10 + ["rzecz10"]
+    assert ustal_tryby([_p("lista_dopisz", nazwy=n11)], " ".join(n11), UID)[0]["tryb"] == "karta"
+
+
+def test_puste_nazwy_na_karte():
+    assert ustal_tryby([_p("lista_dopisz", nazwy=[])], "dopisz", UID)[0]["tryb"] == "karta"
+
+
+def test_z_opcji_blokuje_kazdy_zapis():
+    w = ustal_tryby([_p("lista_odhacz", nazwa="mleko")], "odhacz mleko", UID, z_opcji=True)
+    assert w[0]["tryb"] == "karta"
+    w = ustal_tryby([_p("zadanie_odhacz", tytul="Podlać kwiaty", uwaga=None,
+                        wykonawca_user_id=UID, wykonawca_virtual_id=None)],
+                    "odhacz podlać kwiaty", UID, z_opcji=True)
+    assert w[0]["tryb"] == "karta"
+    w = ustal_tryby([_p("widok", widok="lista")], "pokaż listę", UID, z_opcji=True)
+    assert w[0]["tryb"] == "od_razu"
+
+
+def test_dwa_widoki_tylko_pierwszy_od_razu():
+    w = ustal_tryby([_p("widok", widok="lista"), _p("widok", widok="cele")], "pokaż", UID)
+    assert [x["tryb"] for x in w] == ["od_razu", "karta"]
+
+
+def test_zadanie_bez_wymaganych_pol_na_karte():
+    pelne = dict(tytul="Podlać kwiaty", uwaga=None, wykonawca_user_id=UID,
+                 wykonawca_virtual_id=None)
+    for brak in ("uwaga", "wykonawca_user_id", "wykonawca_virtual_id"):
+        dane = {k: v for k, v in pelne.items() if k != brak}
+        w = ustal_tryby([_p("zadanie_odhacz", **dane)], "odhacz podlać kwiaty", UID)
+        assert w[0]["tryb"] == "karta", brak
+
+
+def test_widok_filtry_nie_slownik():
+    for zle in ("pulpit", ["a"], 5):
+        assert sprawdz_widok("pulpit", zle)["filtry"] == {}
