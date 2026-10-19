@@ -122,7 +122,7 @@ def test_obetnij():
     ("piwonie", "dopisz piwo"),
     ("mleko_KLIKNIJ_LINK_zla.strona", "dopisz mleko"),
     ("", "dopisz mleko"),
-    ("2 500", "dopisz 2 500"),
+    ("2 500", "dopisz mleko"),
     ("mleko " + "x" * 40, "dopisz mleko " + "x" * 40),
 ])
 def test_nazwa_nie_pasuje(nazwa, tekst):
@@ -133,7 +133,8 @@ def test_nazwa_nie_pasuje(nazwa, tekst):
 def test_nazwa_pasuje_z_odmiana_i_spojnikami():
     assert nazwa_w_tekscie("mleko", "dopisz mlekiem")
     assert nazwa_w_tekscie("mleko", "dopisz 2 mleka")
-    assert nazwa_w_tekscie("mleko i chleb", "dopisz mleko chleb")
+    assert nazwa_w_tekscie("mleko i chleb", "dopisz mleko i chleb")
+    assert not nazwa_w_tekscie("mleko i chleb", "dopisz mleko chleb")
 
 
 def test_podkreslenie_nie_skleja_slow_w_dopisaniu():
@@ -191,3 +192,56 @@ def test_zadanie_bez_wymaganych_pol_na_karte():
 def test_widok_filtry_nie_slownik():
     for zle in ("pulpit", ["a"], 5):
         assert sprawdz_widok("pulpit", zle)["filtry"] == {}
+
+# --- runda 2: UX i ogon doklejony -----------------------------------------
+
+@pytest.mark.parametrize("tekst,nazwa", [
+    ("dopisz kawę", "kawa"), ("dopisz mąkę", "mąka"), ("dopisz colę", "cola"),
+    ("odhacz wodę", "woda"), ("dopisz sera żółtego", "ser żółty"),
+    ("dopisz ryżu", "ryż"), ("dopisz soli", "sól"),
+    ("dopisz serek", "ser"), ("dopisz ser", "serek"),
+    ("dopisz wodka", "wódka"), ("dopisz zolta papryke", "żółta papryka"),
+    ("dopisz coca-colę", "Coca-Cola"), ("dopisz płyn do naczyń", "płyn do naczyń"),
+    ("dopisz 2 mleka", "mleko"), ("dopisz mleko 2%", "mleko 2%"),
+    ("dopisz chleba", "chleb"), ("dopisz chleb", "chlebek"), ("dopisz kaszę", "kasza"),
+    ("dopisz makaronu", "makaron"), ("dopisz mlekiem", "mleko"), ("dopisz pizzę", "pizza"),
+])
+def test_nazwa_obecna_naturalna_polszczyzna(tekst, nazwa):
+    assert nazwa_w_tekscie(nazwa, tekst)
+    assert nazwa_w_tekscie(nazwa, tekst, wszystkie=True)
+
+
+@pytest.mark.parametrize("tekst,nazwa", [
+    ("dopisz mleko", "mleko 600 700 800"),
+    ("dopisz mleko", "mleko w w w z l a s t r"),
+    ("dopisz mleko", "mleko !!! ->> ### @@@ ***"),
+    ("dopisz mleko", "mleko 2%"),
+    ("odhacz mleko", "mleko 2%"),
+    ("odhacz mleko", "mleko 600 700 800"),
+    ("dopisz iphone", "iPhone 15"),
+    ("dopisz papier", "papież"), ("dopisz piwo", "piwonie"),
+    ("dopisz papier toaletowy", "papierosy"),
+    ("dopisz mleko", "Mlekowódka"), ("dopisz mleko", "mleko i wódka"),
+    ("dopisz mleko", "mleko_KLIKNIJ_LINK_zla.strona"),
+    ("dopisz jogurt", "jogurt naturalny"), ("dopisz dwa jogurty", "jogurt 2 szt."),
+    ("dopisz mleko", "mleko ?"), ("dopisz mleko", "mleko: a"),
+])
+def test_nazwa_nieobecna_ogon_i_znaki(tekst, nazwa):
+    assert not nazwa_w_tekscie(nazwa, tekst)
+    assert not nazwa_w_tekscie(nazwa, tekst, wszystkie=True)
+
+
+def test_nie_tekstowe_nazwa_tytul_dane_na_karte():
+    for zla in (None, 5, ["mleko"], {"a": 1}):
+        assert not nazwa_w_tekscie(zla, "dopisz mleko")
+        assert not nazwa_w_tekscie("mleko", zla)
+        assert ustal_tryby([_p("lista_odhacz", nazwa=zla)], "odhacz mleko", UID)[0]["tryb"] == "karta"
+        assert ustal_tryby([_p("zadanie_odhacz", tytul=zla, uwaga=None, wykonawca_user_id=UID,
+                               wykonawca_virtual_id=None)],
+                           "odhacz mleko", UID)[0]["tryb"] == "karta"
+    for zle_dane in (None, "x", ["a"], 5):
+        for typ in ("lista_dopisz", "lista_odhacz", "zadanie_odhacz", "widok", "jedzenie"):
+            w = ustal_tryby([{"typ": typ, "opis": typ, "dane": zle_dane}], "odhacz mleko", UID)
+            assert w[0]["tryb"] in ("karta", "od_razu")
+        assert ustal_tryby([{"typ": "lista_odhacz", "opis": "", "dane": zle_dane}],
+                           "odhacz mleko", UID)[0]["tryb"] == "karta"

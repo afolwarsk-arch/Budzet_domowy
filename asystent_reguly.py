@@ -8,6 +8,7 @@ co użytkownik sam powiedział w BIEŻĄCYM poleceniu."""
 
 import json
 import re
+import unicodedata
 from datetime import datetime
 
 MAX_POZYCJI_LISTY = 10
@@ -30,35 +31,60 @@ class ZlaPropozycja(ValueError):
 
 MAX_ZNAKOW_NAZWY = 40
 _SLOWO = re.compile(r"[^\W_]+")
+# Poza słowami w nazwie wolno tylko białe znaki i te znaki; reszta (`!#@*>:;=+?&`,
+# podkreślenie) to nie nazwa produktu, tylko doklejony ogon.
+_DOZWOLONE_POZA_SLOWAMI = re.compile(r"[\s%,.\-/'\"()]*")
+
+
+def _zloz(tekst: str) -> str:
+    """Małe litery, bez znaków diakrytycznych (NFD) i ł→l (nie ma rozkładu)."""
+    rozlozony = unicodedata.normalize("NFD", tekst.lower())
+    bez = "".join(c for c in rozlozony if unicodedata.category(c) != "Mn")
+    return bez.replace("ł", "l")
 
 
 def _tokeny(tekst: str) -> list[str]:
-    # `[^\W_]` — litery i cyfry bez podkreślenia, więc „_" i „." dzielą słowa
-    # (nazwa „mleko_KLIKNIJ_LINK" nie skleja się w jedno słowo).
-    return _SLOWO.findall((tekst or "").lower())
+    # `[^\W_]` — litery i cyfry bez podkreślenia, więc „_" i „." dzielą słowa.
+    return _SLOWO.findall(_zloz(tekst))
+
+
+def _rdzen(s: str) -> str:
+    return s[:-1] if s[-1] in "aeiouy" else s
 
 
 def _to_samo_slowo(a: str, b: str) -> bool:
-    """Słowo nazwy = słowo wiadomości: ten sam początek (4 litery) i różnica
-    długości najwyżej 2 — końcówka fleksyjna, nie doklejony ogon
-    („piwo" ≠ „piwonie", „papier" ≠ „papierosy")."""
-    if len(a) < 4 or len(b) < 4:
+    """Słowo nazwy a = słowo wiadomości b. Cyfry i słowa do 2 znaków — tylko
+    identyczne. Dłuższe: rdzenie (bez jednej końcowej samogłoski) w relacji
+    przedrostka, długości różne o najwyżej 2, krótszy rdzeń ≥ 2 znaki — to
+    końcówka fleksyjna, nie doklejony ogon („piwo" ≠ „piwonie", „papier" ≠
+    „papierosy"). Znany, zaakceptowany fałszywy alarm: „cukier" ~ „cukierki"."""
+    if a.isdigit() or b.isdigit() or len(a) < 3 or len(b) < 3:
         return a == b
-    return a[:4] == b[:4] and abs(len(a) - len(b)) <= 2
+    if abs(len(a) - len(b)) > 2:
+        return False
+    sa, sb = _rdzen(a), _rdzen(b)
+    krotszy, dluzszy = (sa, sb) if len(sa) <= len(sb) else (sb, sa)
+    return len(krotszy) >= 2 and dluzszy.startswith(krotszy)
 
 
 def nazwa_w_tekscie(nazwa: str, tekst: str, wszystkie: bool = False) -> bool:
     """Czy użytkownik sam wypowiedział tę nazwę, z tolerancją na polską odmianę
-    („mleka" = „mleko"). Wymagane są ZAWSZE wszystkie słowa nazwy (decyzja
-    Adama): „dopisz jogurt" nie obejmuje „jogurt naturalny". Parametr `wszystkie`
-    zostaje dla zgodności wywołań i nic nie zmienia. Jednoliterowe spójniki
-    i same cyfry w nazwie są pomijane; nazwa pusta lub dłuższa niż 40 znaków
-    nigdy nie pasuje."""
-    nazwa = nazwa or ""
+    („mleka" = „mleko") i brak polskich znaków („wodka" = „wódka"). Wymagane
+    są ZAWSZE wszystkie słowa nazwy, także jednoliterowe i cyfry (decyzja
+    Adama): „dopisz jogurt" nie obejmuje „jogurt naturalny", a „mleko 600 700"
+    nie przejdzie na „dopisz mleko". Parametr `wszystkie` zostaje dla zgodności
+    wywołań i nic nie zmienia. Nazwa nietekstowa, pusta lub dłuższa niż 40
+    znaków nigdy nie pasuje."""
+    if not isinstance(nazwa, str) or not isinstance(tekst, str):
+        return False
     if len(nazwa) > MAX_ZNAKOW_NAZWY:
         return False
-    n = [t for t in _tokeny(nazwa) if len(t) >= 2 and not t.isdigit()]
+    zlozona = _zloz(nazwa)
+    n = _SLOWO.findall(zlozona)
     if not n:
+        return False
+    reszta = _SLOWO.sub("", zlozona)
+    if not _DOZWOLONE_POZA_SLOWAMI.fullmatch(reszta):
         return False
     m = _tokeny(tekst)
     return all(any(_to_samo_slowo(x, y) for y in m) for x in n)
@@ -119,7 +145,9 @@ def ustal_tryby(propozycje: list[dict], tekst: str, user_id: int,
 
 
 def _moze_od_razu(p: dict, tekst: str, user_id: int, sa_zapisy: bool, z_opcji: bool) -> bool:
-    typ, d = p["typ"], p["dane"]
+    typ, d = p["typ"], p.get("dane")
+    if not isinstance(d, dict):
+        d = {}
     if typ == "widok":
         return not sa_zapisy
     if z_opcji:
