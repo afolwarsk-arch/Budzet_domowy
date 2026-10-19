@@ -2,14 +2,14 @@
 do `task_db`. Reguły danych (prywatność, cykl w drzewie) siedzą w bazie danych,
 nie tutaj — inaczej rozjechałyby się między wywołaniami."""
 
-import re
-
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 
 import database
 import task_ai
 import task_db
+from task_dopasowanie import dopasuj_wykonawce as _dopasuj_wykonawce
+from task_dopasowanie import rozpoznane_miejsce
 from auth import get_current_user
 
 router = APIRouter(prefix="/api/task", tags=["task"])
@@ -335,21 +335,7 @@ async def rozumiem(dane: dict, current_user: dict = Depends(get_current_user)):
     uid = current_user["user_id"]
     wyk_user, wyk_virtual = _dopasuj_wykonawce(hid, zrozumiane.get("wykonawca"))
 
-    # To samo wypowiedziane słowo sprawdzamy DWA razy: najpierw wśród zadań,
-    # potem wśród obszarów życia. Kolejność ma znaczenie — projekt jest
-    # konkretniejszy niż obszar, więc „dopisz do remontu domu" ma trafić
-    # w projekt, a nie w szufladę „Dom". Dopiero gdy żadne zadanie nie pasuje,
-    # pytamy o obszar: „wrzuć to do domu" nie wskazuje wtedy niczego innego.
-    gdzie = zrozumiane.get("gdzie")
-    cel = _dopasuj_miejsce(task_db.drzewo_do_wyboru(hid, uid), gdzie)
-    obszar = None
-    if not cel:
-        # Tylko obszary, których ta osoba używa. Wrzucenie zadania do obszaru
-        # wyłączonego schowałoby je jej z oczu w chwili zapisania.
-        moje = [s for s in task_db.strefy(hid, uid) if s.get("moja")]
-        trafiony = _dopasuj_miejsce([{"id": s["id"], "tytul": s["nazwa"]} for s in moje], gdzie)
-        if trafiony:
-            obszar = {"id": trafiony["id"], "nazwa": trafiony["tytul"]}
+    cel, obszar = rozpoznane_miejsce(hid, uid, zrozumiane.get("gdzie"))
 
     return {
         "zadanie": zrozumiane,
@@ -361,43 +347,6 @@ async def rozumiem(dane: dict, current_user: dict = Depends(get_current_user)):
         "cel": cel,
         "obszar": obszar,
     }
-
-
-def _slowa(tekst: str) -> set:
-    """Słowa znaczące, przycięte do czterech liter.
-
-    Polska odmiana zmienia KOŃCÓWKI, więc porównywanie początków słów łapie
-    „urlopu" z „urlop" i „Maladze" z „Malaga" bez tablicy form. Cztery litery
-    to kompromis: przy trzech „dzia" zlewa się ze zbyt wieloma słowami, przy
-    pięciu „malag" i „malad" przestają być tym samym.
-    """
-    return {s[:4] for s in re.findall(r"\w+", (tekst or "").lower()) if len(s) >= 3}
-
-
-def _dopasuj_miejsce(kandydaci: list, fraza: str | None) -> dict | None:
-    """Wypowiedziana nazwa projektu → konkretne zadanie z bazy albo None.
-
-    Wymagamy, żeby trafiła POŁOWA wypowiedzianych słów znaczących. Pojedyncze
-    trafienie wystarczyłoby, żeby „kup mleko do domu" wpadło do projektu
-    „Remont domu" — a zadanie w cudzym projekcie jest gorsze niż zadanie luzem,
-    bo znika z oczu.
-    """
-    szukane = _slowa(fraza)
-    if not szukane:
-        return None
-    najlepszy, najlepiej = None, 0
-    for k in kandydaci:
-        trafione = len(szukane & _slowa(k["tytul"]))
-        if not trafione:
-            continue
-        # Projekt wygrywa remis: mówiąc „dopisz do zakupu działki" ma się na
-        # myśli przedsięwzięcie, a nie krok o podobnej nazwie w jego środku.
-        wynik = trafione * 2 + (1 if k.get("projekt") else 0)
-        if wynik > najlepiej:
-            najlepszy, najlepiej = k, wynik
-    if najlepszy and len(szukane & _slowa(najlepszy["tytul"])) * 2 >= len(szukane):
-        return {"id": najlepszy["id"], "tytul": najlepszy["tytul"]}
-    return None
 
 
 @router.post("/z-mowy")
@@ -456,27 +405,6 @@ async def zadanie_z_mowy(dane: dict, current_user: dict = Depends(get_current_us
         raise HTTPException(400, str(e))
     return {"id": nowe_id, "zadanie": zrozumiane,
             "wykonawca_dopasowany": bool(wyk_user or wyk_virtual)}
-
-
-def _dopasuj_wykonawce(household_id: int, imie: str | None):
-    """Imię z wypowiedzi → (user_id, virtual_id). Bez dopasowania: (None, None).
-
-    Porównujemy po PIERWSZYM CZŁONIE nazwy: w mowie pada „Ola", a w bazie może
-    stać „Aleksandra Kowalska" albo pseudonim. Brak trafienia zostawia zadanie
-    bez wykonawcy — zgadywanie, kogo miał na myśli, przypisałoby sprawę losowej
-    osobie z domu.
-    """
-    if not imie:
-        return None, None
-    szukane = imie.strip().lower()
-    for m in database.get_household_members(household_id):
-        for nazwa in (m.get("display_name"), m.get("name")):
-            if nazwa and nazwa.strip().lower().split(" ")[0] == szukane:
-                return m["id"], None
-    for m in database.get_virtual_members(household_id):
-        if (m.get("name") or "").strip().lower().split(" ")[0] == szukane:
-            return None, m["id"]
-    return None, None
 
 
 @router.post("/zadania")
