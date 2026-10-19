@@ -1413,6 +1413,48 @@ function _injectTip(me) {
   main.insertBefore(el, main.firstChild);
 }
 
+// Skrypty dociągane na żądanie (asystent, mikrofon, skaner) muszą mieć tę samą
+// wersję co reszta strony — inaczej service worker i cache „immutable" mogłyby
+// podać stary plik obok nowego. Wersję bierzemy z adresu samego auth.js,
+// który `_html()` po stronie serwera oznacza hashem commita.
+const _skryptyZaladowane = {};
+// Globalne, które dany plik wystawia. Strony eat/produkty/przepisy/task same
+// wczytują mikrofon i skaner — drugi egzemplarz nadpisałby ich stan (np.
+// działającą kamerę), więc gdy plik już jest, niczego nie dokładamy.
+const _GLOBALNE_SKRYPTOW = {
+  'dyktowanie.js': 'Dyktowanie', 'eat-skaner.js': 'Skaner',
+  'asystent-karty.js': 'AsystentKarty', 'asystent.js': 'Asystent',
+};
+function _wersjaStatykow() {
+  const s = document.querySelector('script[src*="/static/auth.js"]');
+  const m = s && s.src.match(/[?&]v=([^&]+)/);
+  return m ? m[1] : '';
+}
+function zaladujSkrypt(nazwa) {
+  if (!_skryptyZaladowane[nazwa]) {
+    _skryptyZaladowane[nazwa] = new Promise((ok, blad) => {
+      const glob = _GLOBALNE_SKRYPTOW[nazwa];
+      if (glob && window[glob]) { ok(); return; }
+      const nieudane = () => { delete _skryptyZaladowane[nazwa]; blad(new Error('Nie wczytano ' + nazwa)); };
+      // Plik wpisany w stronę (<script defer>), który jeszcze się nie wykonał —
+      // czekamy na niego zamiast wczytywać drugi raz.
+      const wpisany = document.querySelector('script[src*="/static/' + nazwa + '"]');
+      if (wpisany && document.readyState === 'loading') {
+        wpisany.addEventListener('load', () => ok());
+        wpisany.addEventListener('error', nieudane);
+        return;
+      }
+      const s = document.createElement('script');
+      s.src = '/static/' + nazwa + '?v=' + _wersjaStatykow();
+      s.onload = () => ok();
+      s.onerror = nieudane;
+      document.head.appendChild(s);
+    });
+  }
+  return _skryptyZaladowane[nazwa];
+}
+window.zaladujSkrypt = zaladujSkrypt;
+
 async function authRequireHousehold() {
   return new Promise((resolve, reject) => {
     _auth.onAuthStateChanged(async (user) => {
@@ -1445,6 +1487,13 @@ async function authRequireHousehold() {
         _injectProfileButton(me);
         _injectBottomNav(me);
         _injectTip(me);
+        // Asystent tylko dla kont z pilotażu — reszta nie pobiera nawet pliku.
+        if (me.asystent) {
+          zaladujSkrypt('asystent-karty.js')
+            .then(() => zaladujSkrypt('asystent.js'))
+            .then(() => window.Asystent && window.Asystent.start(me))
+            .catch((e) => console.warn('[asystent]', e));
+        }
         if (me.samouczek === false) setTimeout(() => pokazSamouczek(true), 600);
         resolve(me);
       } catch {

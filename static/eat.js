@@ -737,6 +737,10 @@ function wrocDoArkusza() {
 }
 
 window.addEventListener('popstate', () => { if (arkusz) zamknijArkusz(true); });
+// Asystent zapisał (albo cofnął) wpis jedzenia — dzień pod oknem ma to pokazać.
+window.addEventListener('asystent:zapisano', (ev) => {
+  if (ev.detail && ev.detail.typ === 'jedzenie') wczytajDzien();
+});
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && arkusz) zamknijArkusz();
 });

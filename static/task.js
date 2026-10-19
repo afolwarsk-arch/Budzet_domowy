@@ -415,6 +415,12 @@ window.addEventListener('DOMContentLoaded', () =>
     .then(wczytaj).then(lapPodepnij).then(strefyPodepnij).then(przenPodepnij)
     .then(obszaryPodepnij).then(podepnijGesty));
 
+// Asystent dodał, odhaczył albo cofnął zadanie — lista pod oknem ma to pokazać.
+window.addEventListener('asystent:zapisano', (ev) => {
+  const typ = ev.detail && ev.detail.typ;
+  if (typ === 'zadanie' || typ === 'zadanie_odhacz') wczytaj();
+});
+
 // Czy nad treścią stoi arkusz. Gest przesuwania musi wtedy milczeć: w arkuszu
 // przesuwa się listy i pola, a przeskok obszaru pod spodem byłby niespodzianką.
 const arkuszOtwarty = () => ['lap-tlo', 'przen-tlo', 'strefy-tlo'].some((id) => {
