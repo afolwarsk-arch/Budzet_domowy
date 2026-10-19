@@ -29,6 +29,8 @@
     zaDlugo: 'Nie zdążyłem odpowiedzieć. Nic nie zostało zapisane — spróbuj jeszcze raz.',
     limit: 'Na dziś to już 100 poleceń. Asystent wróci po północy — do tego czasu wszystko zrobisz zwykłymi ekranami.',
     przerwane: 'Przerwane — polecenie czeka w polu.',
+    niejasne: 'Coś poszło nie tak — spróbuj inaczej sformułować polecenie.',
+    wysylam: 'Wysyłam…',
     // Odpowiedź z opcji pytania NIE wraca do pola: wysłana stamtąd jako
     // zwykłe polecenie mogłaby zapisać od razu tekst, który napisał model.
     siecOpcja: 'Brak połączenia. Wybierz odpowiedź jeszcze raz, gdy wróci internet.',
@@ -143,7 +145,7 @@
             <button type="button" class="ast-ikonka ast-boczna ast-skan" aria-label="Skanuj kod kreskowy" hidden>${KOD}</button>
             <label class="ast-pole"><span class="ast-schowane">Polecenie</span>
               <input type="text" id="ast-tekst" autocomplete="off" maxlength="600" enterkeyhint="send"
-                     placeholder="Powiedz albo napisz…"></label>
+                     placeholder="Mów lub pisz…"></label>
             <button type="button" class="ast-ikonka ast-mik" aria-label="Mów" aria-pressed="false">${MIK}</button>
             <button type="submit" class="ast-ikonka ast-wyslij" aria-label="Wyślij" hidden>${WYSLIJ}</button>
           </div>
@@ -233,7 +235,7 @@
   function pustyStan() {
     if (okno.rozmowa.children.length) return;
     const box = el('div', 'ast-pusto');
-    box.append(el('p', null, 'Powiedz albo napisz, np.:'));
+    box.append(el('p', null, 'Powiedz albo napisz — albo stuknij przykład:'));
     const lista = el('div', 'ast-przyklady');
     for (const t of T.przyklady) {
       const b = el('button', 'ast-chip', '„' + t + '”');
@@ -258,7 +260,10 @@
     if (!okno) return;
     stopMik(); wstrzymajWysylke();
     window.AsystentKarty.zatrzymajSkan();
-    if (okno.kontroler) okno.kontroler.abort();
+    // Przerwanie z "Nowa rozmowa" jest ciche: żądanie przestaje być "bieżące",
+    // więc jego sprzątanie nie wraca do pola ani nie pokazuje "Przerwane".
+    if (okno.kontroler) { okno.kontroler.abort(); okno.kontroler = null; }
+    okno.zajete = false;
     historia = [];
     okno.rozmowa.replaceChildren();
     ukryjStan();
@@ -450,12 +455,16 @@
     }
     if (!okno || okno.ukryte) return;
     okno.mik.focus();      // fokus w oknie bez otwierania klawiatury
-    sluchaj();
+    sluchaj(true);
   }
 
-  async function sluchaj() {
+  // auto = start sam z siebie przy otwarciu okna.
+  async function sluchaj(auto) {
     try { await zaladujSkrypt('dyktowanie.js'); } catch { return; }
     if (!okno || okno.ukryte) return;
+    // K1: w czasie ładowania skryptu ktoś mógł zacząć pisać — rozpoznana mowa
+    // nie może nadpisać wpisanego tekstu ani wysłać go sama.
+    if (auto && (document.activeElement === okno.pole || okno.pole.value)) return;
     if (!window.Dyktowanie.dostepne()) { okno.bezMik = true; przyciskWyslij(); return; }
     wstrzymajWysylke();
     window.Dyktowanie.start({
@@ -559,13 +568,15 @@
     // start Railway); od 3 s jest też „Przerwij".
     const kontroler = new AbortController();
     okno.kontroler = kontroler;
+    pokazStan(T.wysylam);          // L4: stan od razu, "Myślę…" dopiero po 3 s
     const z3 = setTimeout(() => pokazStan(T.mysle, { przerwij: true }), 3000);
     const z15 = setTimeout(() => pokazStan(T.dluzej, { przerwij: true }), 15000);
+    // Bieżące = nie zastąpione przez "Nowa rozmowa" (ani nowe żądanie).
+    const biezace = () => !!okno && okno.kontroler === kontroler;
     const sprzataj = () => {
       clearTimeout(z3); clearTimeout(z15);
       mysli.remove();
-      ukryjStan();
-      if (okno) { okno.zajete = false; okno.kontroler = null; }
+      if (biezace()) { ukryjStan(); okno.zajete = false; okno.kontroler = null; }
     };
     // Polecenie wraca do pola — ale nie odpowiedź z opcji (patrz T.siecOpcja).
     const wroc = () => { if (!zOpcji) { okno.pole.value = tekst; przyciskWyslij(); } };
@@ -578,22 +589,25 @@
           z_opcji: !!zOpcji }),
         signal: kontroler.signal,
       });
-      d = await r.json().catch(() => ({}));
+      // K3: przerwanie w trakcie czytania treści to przerwanie, nie pusta odpowiedź.
+      d = await r.json().catch((e) => { if (kontroler.signal.aborted) throw e; return {}; });
     } catch (e) {
+      const zastapione = !biezace();
       sprzataj();
-      if (!okno) return false;
+      if (!okno || zastapione) return false;
       wroc();
-      if (e && e.name === 'AbortError') { pokazStan(zOpcji ? T.przerwaneOpcja : T.przerwane); return false; }
+      if (kontroler.signal.aborted || (e && e.name === 'AbortError')) { pokazStan(zOpcji ? T.przerwaneOpcja : T.przerwane); return false; }
       dymek('blad', zOpcji ? T.siecOpcja : T.siec);   // TypeError „Failed to fetch" — nigdy surowy tekst
       return false;
     }
+    const zastapione = !biezace();
     sprzataj();
-    if (!okno) return false;
+    if (!okno || zastapione) return false;
     if (!r.ok) {
       wroc();
       let t = T.zaDlugo;
       if (r.status === 429) t = T.limit;
-      else if (r.status < 500 && typeof d.detail === 'string') t = d.detail;   // 400/403 — tekst serwera
+      else if (r.status < 500) t = typeof d.detail === 'string' ? d.detail : T.niejasne;   // 400/403 — tekst serwera; 422 (lista) — ogólnie
       dymek('blad', t);
       return false;
     }
