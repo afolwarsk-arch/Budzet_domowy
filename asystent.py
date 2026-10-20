@@ -5,7 +5,7 @@ i ustala, które wykonają się od razu (`asystent_reguly.ustal_tryby`), ale sam
 nie zapisuje niczego poza dziennikiem asystenta i kosztami AI. Zapisy robi
 przeglądarka tymi samymi endpointami co formularze.
 
-Pilotaż: tylko konta z `ASYSTENT_EMAILS`."""
+Pilotaż: tylko konta administratora (`ASYSTENT_EMAILS` = `auth.ADMIN_EMAILS`)."""
 
 import time
 import traceback
@@ -22,11 +22,12 @@ import database
 from asystent_narzedzia import NARZEDZIA_PROPOZYCJI, TOOLS, Kontekst, wykonaj
 from asystent_narzedzia import _osoby as osoby
 from asystent_reguly import ETYKIETY_WIDOKOW, MAX_DNI_WSTECZ, ustal_tryby
-from auth import get_current_user
+from auth import ADMIN_EMAILS, get_current_user
 
 router = APIRouter(prefix="/api/asystent", tags=["asystent"])
 
-ASYSTENT_EMAILS = {"a.folwarsk@gmail.com"}
+# Pilotaż = konta administratora; rozszerzenie na wszystkich to osobna decyzja.
+ASYSTENT_EMAILS = ADMIN_EMAILS
 MODEL = "claude-sonnet-4-6"
 MAX_ITERACJI = 4
 MAX_CZAS_S = 55      # 5 s zapasu przed zerwaniem żądania przez proxy Railway (60 s)
