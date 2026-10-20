@@ -1481,6 +1481,7 @@ h1 .logo .lg-kropka,
     display: block; position: fixed; right: 0; bottom: 0; width: 84px; z-index: 201;
     height: calc(60px + env(safe-area-inset-bottom));
     background: #1a1d20; border-top: 1px solid #2c3036;
+    box-shadow: 0 -2px 12px rgba(0,0,0,.06);   /* jak .bottom-nav — inaczej widać szew */
   }
   .ast-guzik {
     position: absolute; right: 10px; bottom: calc(20px + env(safe-area-inset-bottom));
@@ -1524,7 +1525,12 @@ h1 .logo .lg-kropka,
      został pod nim. Ciało ma 64 px dołu, main 104 → 168 px > 156 + oddech. */
   body.ma-asystenta:has(.fab-lap) main { padding-bottom: 104px; }
   /* /eat: przyklejony pasek bilansu kończy się przed przyciskiem asystenta. */
-  body.ma-asystenta .bilans { right: 84px; }
+  /* Bilans na całą szerokość, dosunięty do zmierzonej nawigacji; kolumny
+     kończą się przed przyciskiem, który siedzi w rogu paska. Ucięty przed
+     przyciskiem wyglądał na urwany, a obok prześwitywała strona. */
+  body.ma-asystenta .bilans { right: 0; bottom: var(--pasek-h, calc(64px + env(safe-area-inset-bottom))); }
+  body.ma-asystenta .bilans-in { padding-right: 76px; }
+  body.ma-asystenta:has(.bilans) .ast-guzik { border-color: var(--surface); }
 }
 .ast-guzik:focus-visible, .ast-nav:focus-visible { outline: 2px solid var(--marka); outline-offset: 2px; }
 /* Ciemny guzik na ciemnym tle ma kontrast ~1,05:1 — w trybie ciemnym jasna

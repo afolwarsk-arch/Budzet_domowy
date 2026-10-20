@@ -100,7 +100,15 @@
     // Tło pod przyciskiem ma wysokość paska stron (z marginesem bezpiecznym).
     const wysokosc = () => {
       const pasek = document.querySelector('.bottom-nav');
-      if (pasek && pasek.offsetHeight) dok.style.height = pasek.offsetHeight + 'px';
+      // Wysokość ułamkowa, nie offsetHeight: ten zaokrągla 55,5 → 56 i górne
+      // krawędzie paska i doku rozjeżdżały się o pół piksela (widoczny schodek).
+      const h = pasek ? pasek.getBoundingClientRect().height : 0;
+      if (h) {
+        dok.style.height = h + 'px';
+        // Zmierzona wysokość dla pasków przyklejonych nad nawigacją (bilans
+        // w /eat zakładał 64 px — zostawała szpara).
+        document.documentElement.style.setProperty('--pasek-h', h + 'px');
+      }
     };
     wysokosc();
     window.addEventListener('resize', wysokosc);
@@ -115,7 +123,8 @@
         const max = pasek.scrollWidth - pasek.clientWidth;
         dok.classList.toggle('wiecej-prawo', pasek.scrollLeft < max - 2);
         cien.classList.toggle('widoczny', pasek.scrollLeft > 2);
-        if (pasek.offsetHeight) cien.style.height = (pasek.offsetHeight - 1) + 'px';
+        const hp = pasek.getBoundingClientRect().height;
+        if (hp) cien.style.height = (hp - 1) + 'px';
       };
       cienie();
       pasek.addEventListener('scroll', cienie, { passive: true });
