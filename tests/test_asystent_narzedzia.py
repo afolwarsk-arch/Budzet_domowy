@@ -233,6 +233,42 @@ def test_nierozpoznany_wykonawca_to_uwaga(monkeypatch):
     assert k.uwagi == ["Nie znalazłem domownika „Kasi” — zadanie bez wykonawcy."]
 
 
+def _dopasuj_tylko(imie_ok, wynik):
+    return lambda h, i: wynik if i == imie_ok else (None, None)
+
+
+def test_wykonawca_od_modelu_wygrywa_ze_zdrobnieniem(monkeypatch):
+    # „Ola” w bazie jako „Aleksandra”: parser ma „Oli”, model zna etykietę.
+    _domownicy(monkeypatch)
+    monkeypatch.setattr(task_ai, "zrozum", _zrozum_z("Oli"))
+    monkeypatch.setattr(an, "rozpoznane_miejsce", lambda h, u, g: (None, None))
+    monkeypatch.setattr(an, "dopasuj_wykonawce", _dopasuj_tylko("Aleksandra", (3, None)))
+    k = _k()
+    an.wykonaj("zaproponuj_zadanie", {"opis": "pranie dla Oli", "wykonawca": "Aleksandra"}, k)
+    assert k.propozycje[0]["dane"]["wykonawca_user_id"] == 3 and k.uwagi == []
+
+
+def test_bledny_wykonawca_od_modelu_spada_na_parser(monkeypatch):
+    _domownicy(monkeypatch)
+    monkeypatch.setattr(task_ai, "zrozum", _zrozum_z("Oli"))
+    monkeypatch.setattr(an, "rozpoznane_miejsce", lambda h, u, g: (None, None))
+    monkeypatch.setattr(an, "dopasuj_wykonawce", _dopasuj_tylko("Oli", (3, None)))
+    k = _k()
+    an.wykonaj("zaproponuj_zadanie", {"opis": "pranie dla Oli", "wykonawca": "Kasia"}, k)
+    assert k.propozycje[0]["dane"]["wykonawca_user_id"] == 3 and k.uwagi == []
+
+
+def test_nierozpoznany_wykonawca_tylko_od_modelu_to_uwaga(monkeypatch):
+    _domownicy(monkeypatch)
+    monkeypatch.setattr(task_ai, "zrozum", _zrozum_z(None))
+    monkeypatch.setattr(an, "rozpoznane_miejsce", lambda h, u, g: (None, None))
+    monkeypatch.setattr(an, "dopasuj_wykonawce", lambda h, i: (None, None))
+    k = _k()
+    an.wykonaj("zaproponuj_zadanie", {"opis": "pranie", "wykonawca": "Kasia"}, k)
+    assert k.propozycje[0]["dane"]["wykonawca_user_id"] is None
+    assert k.uwagi == ["Nie znalazłem domownika „Kasia” — zadanie bez wykonawcy."]
+
+
 def test_zadanie_z_data_telefonu_i_budzetem(monkeypatch):
     widziana = {}
 

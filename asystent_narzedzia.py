@@ -408,7 +408,15 @@ def _zadanie(d: dict, k: Kontekst) -> str:
     except task_ai.MowaError as e:
         return str(e)
     k.koszty.append(("asystent-task", usage))
-    wyk_user, wyk_virtual = dopasuj_wykonawce(k.household_id, z.get("wykonawca"))
+    # Model zna DOMOWNIKÓW z promptu i zamienia „Ola” na etykietę z bazy
+    # („Aleksandra”); parser zadań zna tylko słowo z wypowiedzi. Najpierw
+    # wersja modelu, potem parsera — obie i tak sprawdzane w bazie.
+    od_modelu = str(d.get("wykonawca") or "").strip() or None
+    wyk_user, wyk_virtual = dopasuj_wykonawce(k.household_id, od_modelu)
+    if not (wyk_user or wyk_virtual):
+        wyk_user, wyk_virtual = dopasuj_wykonawce(k.household_id, z.get("wykonawca"))
+    if not str(z.get("wykonawca") or "").strip() and od_modelu and not (wyk_user or wyk_virtual):
+        z["wykonawca"] = od_modelu
     cel, obszar = rozpoznane_miejsce(k.household_id, k.user_id, z.get("gdzie"))
     # Etykieta domownika jak w gospodarstwie („Ola”), nie słowo użytkownika („Oli”).
     wykonawca_opis = None
@@ -603,7 +611,12 @@ TOOLS = [
      "description": "Proponuje nowe zadanie. Przekaż CAŁE zdanie z terminem i osobą. Nie wołaj "
                     "drzewo_zadan ani szukaj_zadania przed propozycją. Nie pytaj o projekt — karta "
                     "pozwala go zmienić.",
-     "input_schema": {"type": "object", "properties": {"opis": {"type": "string"}},
+     "input_schema": {"type": "object", "properties": {
+         "opis": {"type": "string"},
+         "wykonawca": {"type": "string",
+                       "description": "Gdy zadanie jest dla konkretnej osoby: jej etykieta z DOMOWNIKÓW "
+                                      "(zdrobnienie albo odmiana → etykieta z listy, np. „Oli” → „Aleksandra”, "
+                                      "gdy to ta osoba). Nie padła osoba — pomiń."}},
                       "required": ["opis"]}},
     {"name": "zaproponuj_odhaczenie_zadania",
      "description": "Proponuje oznaczenie zadania jako zrobionego. Id weź z szukaj_zadania. "
