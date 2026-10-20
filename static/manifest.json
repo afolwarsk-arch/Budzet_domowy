@@ -29,18 +29,6 @@
   ],
   "shortcuts": [
     {
-      "name": "Asystent",
-      "short_name": "Asystent",
-      "description": "Powiedz, co zrobić — od razu słucha",
-      "url": "/?asystent=1",
-      "icons": [
-        {
-          "src": "/static/icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    },
-    {
       "name": "Skanuj paragon",
       "short_name": "Skanuj",
       "description": "Zrób zdjęcie paragonu — resztę zrobi AI",
