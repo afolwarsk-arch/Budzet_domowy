@@ -532,7 +532,6 @@ def test_k1_zapisz_wynik_z_bledem_nie_zaslania_502(monkeypatch):
 
 
 def test_k2_timeout_ma_krotki_connect(monkeypatch):
-    import httpx
     podmien_baze(monkeypatch)
     widziane = []
 
@@ -545,7 +544,8 @@ def test_k2_timeout_ma_krotki_connect(monkeypatch):
     monkeypatch.setattr(asystent.anthropic, "Anthropic", Podglad)
     _wywolaj({"tekst": "dopisz mleko"})
     t = widziane[0]
-    assert isinstance(t, httpx.Timeout) and t.connect <= 5 and t.read <= 45
+    # Klasa z SDK, nie z httpx — nowsze SDK (httpx2) odrzuca httpx.Timeout.
+    assert isinstance(t, asystent.anthropic.Timeout) and t.connect <= 5 and t.read <= 45
 
 
 def test_k3_zerwanie_po_samej_uwadze_zachowuje_ja(monkeypatch):

@@ -13,7 +13,6 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import anthropic
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 
@@ -163,8 +162,10 @@ def _rozmowa(k: Kontekst, historia: list[dict]) -> tuple[str, bool, bool]:
         zostalo = k.koniec - time.monotonic()
         if zostalo < 5:
             break
+        # anthropic.Timeout, nie httpx.Timeout: nowsze SDK stoi na httpx2
+        # i obcą klasę odrzuca TypeErrorem (2026-10-20 każde polecenie = 502).
         client = anthropic.Anthropic(
-            timeout=httpx.Timeout(min(45.0, zostalo), connect=min(5.0, zostalo)), max_retries=0)
+            timeout=anthropic.Timeout(min(45.0, zostalo), connect=min(5.0, zostalo)), max_retries=0)
         try:
             msg = client.messages.create(model=MODEL, max_tokens=1024, system=_system(k),
                                          tools=TOOLS, messages=wiadomosci)
