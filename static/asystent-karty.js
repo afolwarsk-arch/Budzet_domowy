@@ -48,6 +48,7 @@
     ['kcal', 'Wpisz kcal na 100 g, żeby zapisać.'],
     ['gramy', 'Popraw gramy (1–5000 g), żeby zapisać.'],
     ['tytul', 'Wpisz nazwę zadania, żeby zapisać.'],
+    ['obszar', 'Wybierz obszar, żeby zapisać.'],
   ];
   const BEZ_DETEKTORA = 'Ta przeglądarka nie umie czytać kodów. Zrób zdjęcie etykiety albo wpisz cyfry spod kodu kreskowego.';
 
@@ -666,6 +667,16 @@
     } catch { return []; }
   }
 
+  async function wczytajObszary() {
+    try {
+      const r = await authFetch('/api/task/strefy');
+      if (!r.ok) return [];
+      const wszystkie = (await r.json()).strefy || [];
+      const moje = wszystkie.filter((s) => s.moja);
+      return moje.length ? moje : wszystkie;
+    } catch { return []; }
+  }
+
   // Nowe zadanie: tytuł, termin i projekt poprawia się NA KARCIE — model nie
   // dopytuje o projekt (każde pytanie to kolejne wywołanie i kilka sekund).
   function rysujZadanie(d, sz, przyciski, karta) {
@@ -711,17 +722,57 @@
     const opcja = (wartosc, tekst) => { const o = el('option', null, tekst); o.value = wartosc; return o; };
     if (pierwotne.parent_id || pierwotne.strefa_id) wybor.append(opcja('rozpoznane', pierwotne.miejsce_opis));
     wybor.append(opcja('', 'Bez projektu'));
+
+    // Zadanie bez projektu i bez obszaru znikało z zakładek Praca/Dom (trafiało
+    // tylko do „Inne”) — karta dopytuje wtedy o obszar i nie zapisze bez niego.
+    // Projekt niesie własny obszar (task_db.dodaj), więc przy nim pytania nie ma.
+    const pObszar = el('div', 'ast-pole-pelne');
+    pObszar.append(el('span', 'ast-pole-etyk', 'Do którego obszaru?'));
+    const chipy = el('div', 'ast-chipy');
+    pObszar.append(chipy);
+    let wybranyObszar = null;
+    let obszaryWczytane = false;
+    const trzebaObszaru = () => !d.parent_id && !d.strefa_id;
+    const odswiezObszar = () => {
+      const pokaz = obszaryWczytane && chipy.childElementCount > 0 && (trzebaObszaru() || wybranyObszar);
+      pObszar.hidden = !pokaz || !!d.parent_id;
+      // Bez listy obszarów (błąd sieci) nie blokujemy — lepiej „Inne” niż brak zapisu.
+      blokada(karta, 'obszar', !!pokaz && trzebaObszaru());
+    };
+
     wybor.addEventListener('change', () => {
       if (wybor.value === 'rozpoznane') Object.assign(d, pierwotne);
-      else if (!wybor.value) Object.assign(d, { parent_id: null, strefa_id: null, miejsce_opis: 'bez projektu' });
+      else if (!wybor.value) Object.assign(d, { parent_id: null, strefa_id: wybranyObszar, miejsce_opis: 'bez projektu' });
       else {
         const o = wybor.selectedOptions[0];
         // Obszar dziedziczy się po projekcie (task_db.dodaj) — własnego nie podajemy.
         Object.assign(d, { parent_id: +wybor.value, strefa_id: null, miejsce_opis: o.textContent });
       }
+      odswiezObszar();
     });
     pProjekt.append(wybor);
-    sz.append(pProjekt);
+    pObszar.hidden = true;
+    sz.append(pObszar, pProjekt);
+
+    if (trzebaObszaru()) {
+      // Od razu, nie po wczytaniu — szybkie stuknięcie zapisałoby bez obszaru.
+      blokada(karta, 'obszar', true);
+      wczytajObszary().then((obszary) => {
+        for (const s of obszary) {
+          const b = guzik('ast-chip', s.nazwa);
+          b.setAttribute('aria-pressed', 'false');
+          b.addEventListener('click', () => {
+            wybranyObszar = s.id;
+            chipy.querySelectorAll('.ast-chip').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+            if (!d.parent_id) d.strefa_id = s.id;
+            odswiezObszar();
+          });
+          chipy.append(b);
+        }
+        obszaryWczytane = true;
+        odswiezObszar();
+      });
+    }
     wczytajProjekty().then((projekty) => {
       for (const z of projekty) {
         if (z.id === pierwotne.parent_id) continue;
