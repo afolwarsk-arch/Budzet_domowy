@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-anthropic
+anthropic==1.15.0
 python-multipart
 python-dotenv
 pillow
