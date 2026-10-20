@@ -734,8 +734,12 @@
     let obszaryWczytane = false;
     const trzebaObszaru = () => !d.parent_id && !d.strefa_id;
     const odswiezObszar = () => {
-      const pokaz = obszaryWczytane && chipy.childElementCount > 0 && (trzebaObszaru() || wybranyObszar);
-      pObszar.hidden = !pokaz || !!d.parent_id;
+      // Pokazane, gdy zadanie nie ma projektu i albo brak mu obszaru, albo obszar
+      // wybrano tutaj (żeby dało się zmienić zdanie). Rozpoznany obszar bez
+      // projektu stoi już w polu „Projekt” — wtedy pytania nie ma.
+      const pokaz = obszaryWczytane && chipy.childElementCount > 0 && !d.parent_id
+        && (trzebaObszaru() || (wybranyObszar && d.strefa_id === wybranyObszar));
+      pObszar.hidden = !pokaz;
       // Bez listy obszarów (błąd sieci) nie blokujemy — lepiej „Inne” niż brak zapisu.
       blokada(karta, 'obszar', !!pokaz && trzebaObszaru());
     };
@@ -754,9 +758,12 @@
     pObszar.hidden = true;
     sz.append(pObszar, pProjekt);
 
-    if (trzebaObszaru()) {
+    // Obszary wczytujemy ZAWSZE, nie tylko gdy na starcie brak miejsca: po
+    // przełączeniu z rozpoznanego miejsca na „Bez projektu” pytanie musi się
+    // pojawić (2026-10-20 nie pojawiało się — lista nie była wczytana).
+    {
       // Od razu, nie po wczytaniu — szybkie stuknięcie zapisałoby bez obszaru.
-      blokada(karta, 'obszar', true);
+      if (trzebaObszaru()) blokada(karta, 'obszar', true);
       wczytajObszary().then((obszary) => {
         for (const s of obszary) {
           const b = guzik('ast-chip', s.nazwa);
