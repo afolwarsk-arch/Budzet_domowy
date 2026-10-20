@@ -394,8 +394,8 @@ def test_prompt_u1_u2_u6_u7():
     assert ("Gdy polecenie jest niezrozumiałe albo nie ma w nim nic do zrobienia: odpowiedz jednym "
             "zdaniem „Nie zrozumiałem. Powiedz np.: „dopisz mleko”, „zjadłem jogurt”, "
             "„zadanie: zadzwonić do mechanika”.” — bez narzędzi.") in s
-    assert "Nie łącz tych dwóch odpowiedzi." in s
-    assert "ogólne" not in s and "WYŁĄCZNIE, gdy żadna" in s
+    assert ("Poza usuwaniem stosuj to zdanie wyłącznie, gdy żadna strona nie pasuje. "
+            "Nie łącz go ze zdaniem o poza zakresem.") in s
     assert "Dzień starszy niż 7 dni wstecz: powiedz jednym zdaniem, że taki wpis trzeba zrobić w wiem.eat." in s
     assert "„kupiłem X” = odhaczenie pozycji z listy zakupów." in s
     assert "Gdy X nie ma na liście: „Nie ma „X” na liście zakupów.” — nie dopisuj." in s
@@ -630,8 +630,43 @@ def test_k5_api_me_asystent_tylko_dla_listy():
     # main.py nie da się zaimportować w testach (init_db przy imporcie), więc
     # pinujemy dwie połowy: wiązanie flagi w get_me i funkcję, którą wywołuje.
     from pathlib import Path
-    zrodlo = Path("main.py").read_text(encoding="utf-8")
+    zrodlo = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
     assert '"asystent": _ASYSTENT_OK and asystent.ma_dostep(current_user)' in zrodlo
     assert asystent.ma_dostep({"email": "A.Folwarsk@gmail.com"}) is True
     assert asystent.ma_dostep({"email": "ola@example.com"}) is False
     assert asystent.ma_dostep({}) is False
+
+
+# ── ostatnia fala poprawek ──────────────────────────────────────────────────
+
+def test_lista_domyslna_id_nieskonczonosc_nie_daje_500(monkeypatch):
+    podmien_baze(monkeypatch)
+    _model(monkeypatch, [])
+    odp = _wywolaj({"tekst": "dopisz mleko", "lista_domyslna_id": float("inf")})
+    assert "wiadomosc" in odp
+    assert asystent._int(float("inf")) is None and asystent._int(float("nan")) is None
+
+
+def test_przeciazenie_529_w_drugiej_rundzie_zwraca_propozycje(monkeypatch):
+    import httpx
+    podmien_baze(monkeypatch)
+    monkeypatch.setattr(database, "get_stan_list", lambda hid: ZAKUPY)
+    monkeypatch.setattr(task_db, "szukaj", lambda *a, **kw: [])
+
+    class Przeciazony(FakeKlient):
+        def create(self, **kw):
+            if type(self).krok >= 1:
+                zadanie = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+                raise asystent.anthropic.APIStatusError(
+                    "overloaded", response=httpx.Response(529, request=zadanie), body=None)
+            return super().create(**kw)
+
+    Przeciazony.ustaw([[("zaproponuj_pozycje_listy", {"nazwy": ["mleko"]}),
+                        ("szukaj_zadania", {"fraza": "pran"})]])
+    monkeypatch.setattr(asystent.anthropic, "Anthropic", Przeciazony)
+    odp = _wywolaj({"tekst": "dopisz mleko"})
+    assert [p["typ"] for p in odp["propozycje"]] == ["lista_dopisz"]
+
+
+def test_budzet_czasu_z_zapasem_przed_ciecieem_proxy():
+    assert asystent.MAX_CZAS_S <= 55

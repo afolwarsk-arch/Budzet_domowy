@@ -454,7 +454,7 @@
       return;
     }
     if (!okno || okno.ukryte) return;
-    okno.mik.focus();      // fokus w oknie bez otwierania klawiatury
+    if (document.activeElement !== okno.pole) okno.mik.focus();      // fokus w oknie bez otwierania klawiatury
     sluchaj(true);
   }
 

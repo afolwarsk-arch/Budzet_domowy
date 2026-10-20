@@ -132,7 +132,7 @@ def _projekt(z: dict, rodzic_po_id, nazwa_strefy) -> str | None:
 def _int(v):
     try:
         return int(v)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -198,7 +198,11 @@ def _szukaj_produktu(d: dict, k: Kontekst) -> str:
 
 def _listy(d: dict, k: Kontekst) -> str:
     wynik = []
-    for l in database.get_stan_list(k.household_id):
+    # Domyślna lista pierwsza, nieaktywne pominięte — ucięcie wyniku (4000
+    # znaków) zabiera wtedy najmniej przydatne dane.
+    listy = [l for l in database.get_stan_list(k.household_id) if l.get("status") == "aktywna"]
+    listy.sort(key=lambda l: l["id"] != k.lista_domyslna_id)
+    for l in listy:
         wynik.append({"id": l["id"], "nazwa": l["nazwa"], "status": l.get("status"),
                       "domyslna": l["id"] == k.lista_domyslna_id,
                       "pozycje": [{"id": p["id"], "nazwa": p["nazwa"], "kupione": p["kupione"]}

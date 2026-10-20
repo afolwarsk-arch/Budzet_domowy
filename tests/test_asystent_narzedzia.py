@@ -488,3 +488,17 @@ def test_lista_narzedzi_propozycji():
     nazwy = {t["name"] for t in an.TOOLS}
     assert an.NARZEDZIA_PROPOZYCJI == (
         {n for n in nazwy if n.startswith(("zaproponuj_", "otworz_"))} | {"zapytaj"})
+
+
+# ── ostatnia fala poprawek ──────────────────────────────────────────────────
+
+def test_int_nieskonczonosc_to_none():
+    assert an._int(float("inf")) is None and an._int(float("-inf")) is None
+    assert an._int(float("nan")) is None
+
+
+def test_listy_domyslna_pierwsza_a_nieaktywne_pominiete(monkeypatch):
+    monkeypatch.setattr(database, "get_stan_list", lambda hid: LISTY)
+    wynik = json.loads(an.wykonaj("listy_zakupow", {}, _k(lista=11)))
+    assert [l["id"] for l in wynik] == [11, 10]
+    assert wynik[0]["domyslna"] is True
