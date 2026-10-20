@@ -1461,7 +1461,7 @@ h1 .logo .lg-kropka,
 .ast-ikona .ast-iskra { fill: #f2efe9; }
 .ast-ikona .ast-kropka { fill: var(--marka); }
 
-.ast-dok { display: none; }
+.ast-dok, .ast-cien-lewo { display: none; }
 .ast-nav {
   display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px 0 8px;
   border-radius: 18px; border: 1px solid rgba(242,239,233,.18); background: none;
@@ -1489,6 +1489,21 @@ h1 .logo .lg-kropka,
     display: flex; align-items: center; justify-content: center; cursor: pointer;
     box-shadow: 0 6px 20px rgba(0,0,0,.18);
   }
+  /* Wygaszenie końca paska stron przy przycisku (zamiast ucięcia ikony w pół).
+     Nakładka w kolorze paska, nie mask-image — maska wygasiłaby też tło paska
+     i prześwitywałaby spod niego strona. Od wnętrza doku, więc górna linia zostaje. */
+  .ast-dok::before {
+    content: ''; position: absolute; top: 0; bottom: 0; left: -40px; width: 40px;
+    background: linear-gradient(to right, rgba(26,29,32,0), #1a1d20 85%);
+    pointer-events: none; opacity: 0; transition: opacity .15s;
+  }
+  .ast-dok.wiecej-prawo::before { opacity: 1; }
+  .ast-cien-lewo {
+    display: block; position: fixed; left: 0; bottom: 0; width: 40px; z-index: 201;
+    background: linear-gradient(to left, rgba(26,29,32,0), #1a1d20 85%);
+    pointer-events: none; opacity: 0; transition: opacity .15s;
+  }
+  .ast-cien-lewo.widoczny { opacity: 1; }
   .ast-guzik:active { transform: scale(.94); }
   /* L1: iskra 38 px w kole 60 px (wnętrze obwódki) — pierścień 4 px zostaje czysty. */
   .ast-guzik .ast-ikona { width: 38px; height: 38px; }

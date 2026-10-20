@@ -104,6 +104,25 @@
     };
     wysokosc();
     window.addEventListener('resize', wysokosc);
+    // Pasek stron kończy się przy przycisku i przewija w bok — bez tego
+    // ikona za krawędzią była ucinana w pół „niewidzialną kreską”. Zamiast
+    // cięcia: wygaszenie w kolorze paska z tej strony, gdzie jest coś dalej.
+    const cien = el('div', 'ast-cien-lewo');
+    document.body.append(cien);
+    const pasek = document.querySelector('.bottom-nav');
+    if (pasek) {
+      const cienie = () => {
+        const max = pasek.scrollWidth - pasek.clientWidth;
+        dok.classList.toggle('wiecej-prawo', pasek.scrollLeft < max - 2);
+        cien.classList.toggle('widoczny', pasek.scrollLeft > 2);
+        if (pasek.offsetHeight) cien.style.height = (pasek.offsetHeight - 1) + 'px';
+      };
+      cienie();
+      pasek.addEventListener('scroll', cienie, { passive: true });
+      window.addEventListener('resize', cienie);
+      // „Admin” dochodzi do paska później (auth.js) — wtedy przybywa przewijania.
+      new MutationObserver(cienie).observe(pasek, { childList: true });
+    }
     // Komputer: przycisk w górnym pasku, obok profilu.
     const nav = document.querySelector('nav');
     if (nav) {
