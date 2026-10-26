@@ -80,6 +80,13 @@ def init_eat_db() -> None:
         # Facts po prostu nie ocenia, wracały w każdej partii uzupełniania
         # i blokowały kolejkę - reszta bazy nigdy nie doszłaby do sprawdzenia.
         cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS oceny_sprawdzone TIMESTAMP")
+        # Jednostka ILOŚCI produktu: 'g' albo 'ml'. Przy 'ml' wartości odżywcze są
+        # „na 100 ml", a opak_g/porcja_g/ilosc_g trzymają mililitry — kolumny
+        # zostają te same, zmienia się tylko podpis. Dzięki temu nic nie trzeba
+        # przeliczać przez gęstość: etykieta „na 100 ml" × wypite ml to wynik
+        # dokładny. Gęstość byłaby potrzebna tylko przy mieszaniu jednostek.
+        cur.execute("ALTER TABLE eat_produkty ADD COLUMN IF NOT EXISTS "
+                    "jednostka TEXT NOT NULL DEFAULT 'g'")
         _zapewnij_tabele_dni_niepelnych(cur)
         # Jednorazowa naprawa danych z Open Food Facts. Tam wielkość opakowania
         # i wielkość porcji wpisują ludzie i regularnie je mylą — zmierzone na
@@ -169,6 +176,10 @@ def init_eat_db() -> None:
         # poprawiony albo skasowany. Odczytywanie ich z przepisu na żywo
         # pokazywałoby historię, której nigdy nie było.
         cur.execute("ALTER TABLE eat_wpisy ADD COLUMN IF NOT EXISTS skladniki_json TEXT")
+        # Jednostka wpisu ZAMROŻONA jak reszta — „330 ml" ma zostać mililitrami,
+        # nawet gdy ktoś potem przestawi produkt w bazie.
+        cur.execute("ALTER TABLE eat_wpisy ADD COLUMN IF NOT EXISTS "
+                    "jednostka TEXT NOT NULL DEFAULT 'g'")
 
         # Produkty podstawowe — WSPÓLNE dla wszystkich gospodarstw, zasiane
         # z listy w kodzie. Open Food Facts nie ma surowców (zapytanie o pomidor
@@ -257,6 +268,10 @@ def init_eat_db() -> None:
         )""")
         cur.execute("CREATE INDEX IF NOT EXISTS eat_skladniki_przepis "
                     "ON eat_przepis_skladniki (przepis_id, kolejnosc)")
+        # Składnik w ml liczy się do wagi dania jako 1 ml = 1 g — przy płynach
+        # w potrawach błąd jest pomijalny. Jednostka służy tylko podpisowi.
+        cur.execute("ALTER TABLE eat_przepis_skladniki ADD COLUMN IF NOT EXISTS "
+                    "jednostka TEXT NOT NULL DEFAULT 'g'")
 
 
 def _zasiej_produkty_bazowe(cur) -> None:
@@ -498,7 +513,17 @@ def _oczysc_produkt(dane: dict) -> dict:
         sztuk = None
     w["sztuk_w_opak"] = sztuk if sztuk and 2 <= sztuk <= 200 else None
     w["nazwa_szukaj"] = bez_ogonkow(w["nazwa"])
+    # None = „nie wiadomo" — wtedy zapis zostawia jednostkę, jaką produkt już ma
+    # (albo 'g' dla nowego). Inaczej ponowny odczyt etykiety, który jednostki
+    # nie widzi, cofałby ręcznie ustawione „ml".
+    w["jednostka"] = jednostka(dane.get("jednostka"))
     return w
+
+
+def jednostka(v) -> str | None:
+    """'g' / 'ml' albo None, gdy nie podano niczego rozpoznawalnego."""
+    s = str(v or "").strip().lower()
+    return s if s in ("g", "ml") else None
 
 
 def zapisz_produkt(household_id: int, dane: dict) -> dict:
@@ -510,10 +535,12 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
             cur.execute("""
                 INSERT INTO eat_produkty (household_id, kod, nazwa, marka, opak_g, kcal,
                                           bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo,
-                                          nazwa_szukaj, sztuk_w_opak, porcja_g, opis_porcji, nutriscore, nova, dodatki)
+                                          nazwa_szukaj, sztuk_w_opak, porcja_g, opis_porcji, nutriscore, nova, dodatki,
+                                          jednostka)
                 VALUES (%(h)s,%(kod)s,%(nazwa)s,%(marka)s,%(opak_g)s,%(kcal)s,
                         %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s,
-                        %(nazwa_szukaj)s,%(sztuk_w_opak)s,%(porcja_g)s,%(opis_porcji)s,%(nutriscore)s,%(nova)s,%(dodatki)s)
+                        %(nazwa_szukaj)s,%(sztuk_w_opak)s,%(porcja_g)s,%(opis_porcji)s,%(nutriscore)s,%(nova)s,%(dodatki)s,
+                        COALESCE(%(jednostka)s, 'g'))
                 -- WHERE kod IS NOT NULL jest KONIECZNE: indeks unikalny jest
                 -- częściowy (ten sam warunek), a Postgres bez powtórzenia
                 -- predykatu nie potrafi go dopasować i przerywa błędem. Przez to
@@ -534,17 +561,20 @@ def zapisz_produkt(household_id: int, dane: dict) -> dict:
                        opis_porcji=COALESCE(EXCLUDED.opis_porcji, eat_produkty.opis_porcji),
                        nutriscore=COALESCE(EXCLUDED.nutriscore, eat_produkty.nutriscore),
                        nova=COALESCE(EXCLUDED.nova, eat_produkty.nova),
-                       dodatki=COALESCE(EXCLUDED.dodatki, eat_produkty.dodatki)
+                       dodatki=COALESCE(EXCLUDED.dodatki, eat_produkty.dodatki),
+                       jednostka=COALESCE(%(jednostka)s, eat_produkty.jednostka)
                 RETURNING *
             """, {"h": household_id, **w})
         else:
             cur.execute("""
                 INSERT INTO eat_produkty (household_id, nazwa, marka, opak_g, kcal,
                                           bialko, tluszcz, wegle, blonnik, cukry, sol, zrodlo,
-                                          nazwa_szukaj, sztuk_w_opak, porcja_g, opis_porcji, nutriscore, nova, dodatki)
+                                          nazwa_szukaj, sztuk_w_opak, porcja_g, opis_porcji, nutriscore, nova, dodatki,
+                                          jednostka)
                 VALUES (%(h)s,%(nazwa)s,%(marka)s,%(opak_g)s,%(kcal)s,
                         %(bialko)s,%(tluszcz)s,%(wegle)s,%(blonnik)s,%(cukry)s,%(sol)s,%(zrodlo)s,
-                        %(nazwa_szukaj)s,%(sztuk_w_opak)s,%(porcja_g)s,%(opis_porcji)s,%(nutriscore)s,%(nova)s,%(dodatki)s)
+                        %(nazwa_szukaj)s,%(sztuk_w_opak)s,%(porcja_g)s,%(opis_porcji)s,%(nutriscore)s,%(nova)s,%(dodatki)s,
+                        COALESCE(%(jednostka)s, 'g'))
                 RETURNING *
             """, {"h": household_id, **w})
         return dict(cur.fetchone())
@@ -567,7 +597,8 @@ def zmien_produkt(produkt_id: int, household_id: int, dane: dict) -> dict | None
               kod=%(kod)s, nazwa=%(nazwa)s, nazwa_szukaj=%(nazwa_szukaj)s, marka=%(marka)s,
               opak_g=%(opak_g)s, kcal=%(kcal)s, bialko=%(bialko)s, tluszcz=%(tluszcz)s,
               wegle=%(wegle)s, blonnik=%(blonnik)s, cukry=%(cukry)s, sol=%(sol)s,
-              sztuk_w_opak=%(sztuk_w_opak)s, porcja_g=%(porcja_g)s, opis_porcji=%(opis_porcji)s
+              sztuk_w_opak=%(sztuk_w_opak)s, porcja_g=%(porcja_g)s, opis_porcji=%(opis_porcji)s,
+              jednostka=COALESCE(%(jednostka)s, jednostka)
             WHERE id=%(id)s AND household_id=%(h)s
             RETURNING *""", {**w, "id": produkt_id, "h": household_id})
         row = cur.fetchone()
@@ -605,18 +636,18 @@ def get_dzien(household_id: int, user_id: int, data: str) -> dict:
 _POLA_WPISU = ("data", "posilek", "produkt_id", "nazwa", "opis_porcji", "ilosc_g",
                "kcal", "bialko", "tluszcz", "wegle",
                "grupa_id", "grupa_nazwa", "przepis_id", "porcje_zjedzone",
-               "skladniki_json")
+               "skladniki_json", "jednostka")
 
 
 _SQL_WPISU = """
     INSERT INTO eat_wpisy (household_id, user_id, data, posilek, produkt_id,
                            nazwa, opis_porcji, ilosc_g, kcal, bialko, tluszcz, wegle,
                            grupa_id, grupa_nazwa, przepis_id, porcje_zjedzone,
-                           skladniki_json)
+                           skladniki_json, jednostka)
     VALUES (%(h)s,%(u)s,%(data)s,%(posilek)s,%(produkt_id)s,
             %(nazwa)s,%(opis_porcji)s,%(ilosc_g)s,%(kcal)s,%(bialko)s,%(tluszcz)s,%(wegle)s,
             %(grupa_id)s,%(grupa_nazwa)s,%(przepis_id)s,%(porcje_zjedzone)s,
-            %(skladniki_json)s)
+            %(skladniki_json)s, COALESCE(%(jednostka)s, 'g'))
     RETURNING *
 """
 
@@ -926,6 +957,8 @@ def aktualizuj_wpis(wpis_id: int, household_id: int, user_id: int, dane: dict) -
         extra += ", skladniki_json=%(skladniki_json)s"
     if "produkt_id" in dane:
         extra += ", produkt_id=%(produkt_id)s"
+    if dane.get("jednostka") in ("g", "ml"):
+        extra += ", jednostka=%(jednostka)s"
     with get_db() as cur:
         cur.execute(f"""
             UPDATE eat_wpisy
@@ -958,7 +991,7 @@ def ostatnio_jadl(household_id: int, user_id: int, limit: int = 12) -> list[dict
     with get_db() as cur:
         cur.execute("""
             SELECT DISTINCT ON (nazwa, opis_porcji, produkt_id)
-                   nazwa, opis_porcji, produkt_id, ilosc_g,
+                   nazwa, opis_porcji, produkt_id, ilosc_g, jednostka,
                    kcal, bialko, tluszcz, wegle, data AS ostatnio,
                    COUNT(*) OVER (PARTITION BY nazwa, opis_porcji, produkt_id) AS ile
             FROM eat_wpisy
@@ -1020,10 +1053,12 @@ def _zapisz_skladniki(cur, przepis_id: int, skladniki: list[dict]) -> dict:
     for i, s in enumerate(skladniki):
         cur.execute("""
             INSERT INTO eat_przepis_skladniki
-                (przepis_id, produkt_id, nazwa, ilosc_g, kcal, bialko, tluszcz, wegle, kolejnosc)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                (przepis_id, produkt_id, nazwa, ilosc_g, kcal, bialko, tluszcz, wegle, kolejnosc,
+                 jednostka)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (przepis_id, s.get("produkt_id"), s["nazwa"], s["ilosc_g"],
-              s["kcal"], s["bialko"], s["tluszcz"], s["wegle"], i))
+              s["kcal"], s["bialko"], s["tluszcz"], s["wegle"], i,
+              jednostka(s.get("jednostka")) or "g"))
         for k in sumy:
             sumy[k] += float(s.get(k) or 0)
     return {k: round(v, 1) for k, v in sumy.items()}

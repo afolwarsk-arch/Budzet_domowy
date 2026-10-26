@@ -21,6 +21,8 @@ function e(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 const zaokr = (v) => Math.round(Number(v) || 0);
+// 'ml' dla płynów mierzonych objętością. Do wagi dania ml liczy się jak gram.
+const jm = (x) => (x && x.jednostka === 'ml' ? 'ml' : 'g');
 // Makro do dziesiątej części grama — tyle trzyma baza. Końcówka „,0" to szum.
 const dziesietne = (v) => {
   const x = Math.round((Number(v) || 0) * 10) / 10;
@@ -184,7 +186,7 @@ async function otworzPorcje(id) {
         ${p.skladniki.map((s) => `
           <div class="skl-poz">
             <span class="skl-poz-n" title="${e(s.nazwa)}">${e(s.nazwa)}</span>
-            <span class="skl-poz-g">${dziesietne(s.ilosc_g)} g</span>
+            <span class="skl-poz-g">${dziesietne(s.ilosc_g)} ${jm(s)}</span>
             <span class="skl-poz-k">${zaokr(s.kcal)} kcal</span>
           </div>`).join('')}
       </div>` : ''}
@@ -457,7 +459,7 @@ function otworzEdytor(przepis) {
     // nadążać — patrz komentarz przy odswiezWage.
     wagaRecznie: !!(przepis && przepis.waga_gotowego_g),
     skladniki: przepis ? (przepis.skladniki || []).map((s) => ({
-      produkt_id: s.produkt_id || null, nazwa: s.nazwa,
+      produkt_id: s.produkt_id || null, nazwa: s.nazwa, jednostka: jm(s),
       ilosc_g: Number(s.ilosc_g) || 0, kcal: Number(s.kcal) || 0,
       bialko: Number(s.bialko) || 0, tluszcz: Number(s.tluszcz) || 0,
       wegle: Number(s.wegle) || 0,
@@ -513,9 +515,11 @@ function otworzEdytor(przepis) {
     } else {
       box.innerHTML = stan.skladniki.map((s, i) => `
         <div class="skl">
-          <span class="skl-n" title="${e(s.nazwa)}">${e(s.nazwa)}</span>
+          <span class="skl-n" title="${e(s.nazwa)}">${e(s.nazwa)}${
+            jm(s) === 'ml' ? ' <small>(ml)</small>' : ''}</span>
           <input class="skl-g" type="text" data-g="${i}" value="${dziesietne(s.ilosc_g)}"
-                 inputmode="decimal" autocomplete="off" aria-label="Gramy: ${e(s.nazwa)}">
+                 inputmode="decimal" autocomplete="off"
+                 aria-label="${jm(s) === 'ml' ? 'Mililitry' : 'Gramy'}: ${e(s.nazwa)}">
           <span class="skl-kc" data-kc="${i}">${zaokr(s.kcal)} kcal</span>
           <button class="x" data-usun="${i}" type="button" aria-label="Usuń ${e(s.nazwa)}">&times;</button>
         </div>`).join('');
@@ -824,7 +828,7 @@ function ekranSkladnika(gotowe, stan) {
     gotowe({
       produkt_id: p.id || null,
       nazwa: [p.nazwa, p.marka].filter(Boolean).join(' · ').slice(0, 120),
-      ilosc_g: 100,
+      ilosc_g: 100, jednostka: jm(p),
       kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
       tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
     });
@@ -1021,7 +1025,7 @@ function ekranSkladnika(gotowe, stan) {
     box.innerHTML = lista.length
       ? lista.map((p, i) => `<button class="skl" data-w="${i}" type="button" style="width:100%;cursor:pointer">
           <span class="skl-n">${e(p.nazwa)}${p.marka ? ' · ' + e(p.marka) : ''}</span>
-          <span class="skl-kc">${p.kcal ? zaokr(p.kcal) + ' kcal/100 g' : 'brak wartości'}</span>
+          <span class="skl-kc">${p.kcal ? zaokr(p.kcal) + ' kcal/100 ' + jm(p) : 'brak wartości'}</span>
         </button>`).join('') + (jeszczeSzuka
           ? '<div class="komunikat">Szukam też wśród produktów z opakowań…</div>' : '')
       : `<div class="komunikat">${jeszczeSzuka ? 'Szukam…' : 'Nic nie znaleziono — wpisz wprost poniżej.'}</div>`;
@@ -1326,7 +1330,7 @@ async function ekranDziennikaSkladnika(iso, filtr, gotowe, stan) {
   const naSkladnik = (w) => ({
     produkt_id: w.produkt_id || null,
     nazwa: String(w.nazwa || '').slice(0, 120),
-    ilosc_g: Math.max(0.1, Number(w.ilosc_g) || 0.1),
+    ilosc_g: Math.max(0.1, Number(w.ilosc_g) || 0.1), jednostka: jm(w),
     kcal: Number(w.kcal) || 0, bialko: Number(w.bialko) || 0,
     tluszcz: Number(w.tluszcz) || 0, wegle: Number(w.wegle) || 0,
   });
@@ -1335,7 +1339,7 @@ async function ekranDziennikaSkladnika(iso, filtr, gotowe, stan) {
     return `<button class="szybka" data-w="${i}" type="button"
               ${wciety ? 'style="margin-left:16px"' : ''}>
       <span class="nz"><b>${e(w.nazwa)}</b><span>${e(w.opis_porcji
-        || dziesietne(w.ilosc_g) + ' g')} · ${zaokr(w.kcal)} kcal</span></span>
+        || dziesietne(w.ilosc_g) + ' ' + jm(w))} · ${zaokr(w.kcal)} kcal</span></span>
     </button>`;
   };
 

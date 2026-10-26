@@ -162,10 +162,16 @@ function etykJednostki(n, jedn) {
 function podpisWielkosci(p) {
   const porcja = Number(p.porcja_g) || 0;
   if (porcja) {
-    return '1 ' + e(p.opis_porcji || 'porcja') + ' ≈ ' + zaokr(porcja) + ' g · ';
+    return '1 ' + e(p.opis_porcji || 'porcja') + ' ≈ ' + zaokr(porcja) + ' ' + jm(p) + ' · ';
   }
-  return p.opak_g ? 'opakowanie ' + zaokr(p.opak_g) + ' g · ' : '';
+  return p.opak_g ? 'opakowanie ' + zaokr(p.opak_g) + ' ' + jm(p) + ' · ' : '';
 }
+
+// Jednostka ilości produktu albo wpisu: 'ml' dla płynów mierzonych objętością,
+// inaczej 'g'. Pola nazywają się dalej *_g (ilosc_g, opak_g) — przy 'ml'
+// trzymają mililitry, a wartości odżywcze są „na 100 ml".
+function jm(x) { return x && x.jednostka === 'ml' ? 'ml' : 'g'; }
+function ileJm(v, x) { return dziesietne(v) + ' ' + jm(x); }
 
 // Rozpiska składników zamrożona przy zjedzeniu dania z przepisu. Nie czytamy
 // jej z przepisu na żywo — ten mógł zostać potem poprawiony albo skasowany,
@@ -191,7 +197,7 @@ function wiersz(w, wSrodku) {
         aria-expanded="${otwarta}" aria-label="Pokaż składniki"><span class="strzalka">›</span></button>` : ''}
     <button class="poz-tresc" data-edytuj="${w.id}" type="button" title="Stuknij, żeby poprawić">
       <span class="nz">${e(w.nazwa)}</span>
-      <span class="il">${e(w.opis_porcji || dziesietne(w.ilosc_g) + ' g')}</span>
+      <span class="il">${e(w.opis_porcji || ileJm(w.ilosc_g, w))}</span>
       <span class="kc">${zaokr(w.kcal)}</span>
     </button>
     <button class="x" data-usun="${w.id}" title="Usuń">&times;</button>
@@ -202,7 +208,7 @@ function wiersz(w, wSrodku) {
     <div class="rozpiska"${otwarta ? '' : ' hidden'}>
       ${rozpiska.map((s) => `<div class="rz">
         <span class="rz-n">${e(s.nazwa)}</span>
-        <span class="rz-g">${dziesietne(s.ilosc_g)} g</span>
+        <span class="rz-g">${ileJm(s.ilosc_g, s)}</span>
         <span class="rz-k">${zaokr(s.kcal)} kcal</span>
       </div>`).join('')}
       <div class="rz-stopka">Tyle poszło na tę porcję. Zapisane w chwili zjedzenia —
@@ -253,7 +259,7 @@ function wierszDoScalenia(w, zaznaczony) {
     <input type="checkbox" data-scal="${w.id}" ${zaznaczony ? 'checked' : ''}
            style="margin-right:10px;width:20px;height:20px;flex:0 0 auto">
     <span class="nz">${e(w.nazwa)}</span>
-    <span class="il">${e(w.opis_porcji || dziesietne(w.ilosc_g) + ' g')}</span>
+    <span class="il">${e(w.opis_porcji || ileJm(w.ilosc_g, w))}</span>
     <span class="kc">${zaokr(w.kcal)}</span>
   </label>`;
 }
@@ -605,6 +611,7 @@ function edytujWpis(w) {
     tluszcz: Number(w.tluszcz || 0) / g * 100,
     wegle: Number(w.wegle || 0) / g * 100,
     opak_g: 0,
+    jednostka: jm(w),
   } : null;
   // Poprawianie ILOŚCI to niemal wszystko, po co się tu wchodzi, więc ekran ma
   // wyglądać tak samo jak przy dodawaniu. Ręczna korekta liczb i usunięcie
@@ -944,7 +951,7 @@ async function wczytajUlubione() {
     if (!Array.isArray(lista) || !lista.length) return;
     box.innerHTML = lista.map((p, i) => `
       <button class="szybka" data-i="${i}" type="button">
-        <span class="nz"><b>${e(p.nazwa)}</b><span>${p.marka ? e(p.marka) + ' · ' : ''}${zaokr(p.kcal)} kcal/100 g</span></span>
+        <span class="nz"><b>${e(p.nazwa)}</b><span>${p.marka ? e(p.marka) + ' · ' : ''}${zaokr(p.kcal)} kcal/100 ${jm(p)}</span></span>
       </button>`).join('');
     box.querySelectorAll('[data-i]').forEach((b) => {
       b.onclick = () => ekranProduktu(lista[b.dataset.i], 'wlasna');
@@ -968,7 +975,7 @@ async function wczytajOstatnie() {
     }
     box.innerHTML = lista.map((p, i) => `
       <button class="szybka" data-i="${i}" type="button">
-        <span class="nz"><b>${e(p.nazwa)}</b><span>${e(p.opis_porcji || dziesietne(p.ilosc_g) + ' g')}${p.ile > 1 ? ' · ' + p.ile + '×' : ''}</span></span>
+        <span class="nz"><b>${e(p.nazwa)}</b><span>${e(p.opis_porcji || ileJm(p.ilosc_g, p))}${p.ile > 1 ? ' · ' + p.ile + '×' : ''}</span></span>
         <span class="kc">${zaokr(p.kcal)}</span>
       </button>`).join('');
     box.querySelectorAll('[data-i]').forEach((b) => {
@@ -994,6 +1001,7 @@ async function dodajGotowy(p) {
       nazwa: p.nazwa, opis_porcji: p.opis_porcji, ilosc_g: 100,
       kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
       tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
+      jednostka: jm(p),
     });
     return;
   }
@@ -1003,6 +1011,7 @@ async function dodajGotowy(p) {
     tluszcz: Number(p.tluszcz || 0) / g * 100,
     wegle: Number(p.wegle || 0) / g * 100,
     opak_g: 0, sztuk: 0,
+    jednostka: jm(p),
   };
   const poz = { nazwa: p.nazwa, ilosc_g: g, marka: null, ulubiony: false };
 
@@ -1018,6 +1027,7 @@ async function dodajGotowy(p) {
         na100.sztuk = Number(prod.sztuk_w_opak) || 0;
         na100.porcja_g = Number(prod.porcja_g) || 0;
         na100.opis_porcji = prod.opis_porcji || null;
+        na100.jednostka = jm(prod);
         poz.marka = prod.marka || null;
         poz.ulubiony = !!prod.ulubiony;
       }
@@ -1100,7 +1110,7 @@ function rysujWyniki(fraza, przepisy, wlasne, podstawowe, propozycje, offPadlo, 
     const podpis = rodzaj === 'baza'
       ? (p.opis_porcji ? e(p.opis_porcji) + ' · ' : '') + zaokr(p.kcal) + ' kcal/100 g'
       : (p.marka ? e(p.marka) + ' · ' : '')
-        + (p.kcal ? zaokr(p.kcal) + ' kcal/100 g' : 'brak wartości w bazie');
+        + (p.kcal ? zaokr(p.kcal) + ' kcal/100 ' + jm(p) : 'brak wartości w bazie');
     return `<button class="szybka" data-rodzaj="${rodzaj}" data-kod="${e(p.kod || '')}"
               data-id="${p.id || ''}" type="button">
       <span class="nz"><b>${e(p.nazwa)}</b><span>${podpis}</span></span>
@@ -1168,7 +1178,7 @@ async function ekranDoprecyzowania(edycja, poz) {
       <h2 style="font-size:1rem">Doprecyzuj produkt</h2>
       <button class="x" id="zamknij2" type="button" aria-label="Zamknij">&times;</button>
     </div>
-    <div class="komunikat">Teraz: <b>${e(nazwaTeraz)}</b> — ${dziesietne(gramy)} g,
+    <div class="komunikat">Teraz: <b>${e(nazwaTeraz)}</b> — ${ileJm(gramy, poz)},
       wartości oszacowane. Znajdź prawdziwy produkt, a przeliczę je z jego etykiety.
       Gramatura zostanie Twoja.</div>
     <div class="drogi" style="margin-bottom:10px">
@@ -1210,7 +1220,7 @@ async function ekranDoprecyzowania(edycja, poz) {
       tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
       opak_g: Number(p.opak_g) || 0, sztuk: Number(p.sztuk_w_opak) || 0,
       porcja_g: Number(p.porcja_g) || 0, opis_porcji: p.opis_porcji || null,
-      produkt_id: p.id || null,
+      produkt_id: p.id || null, jednostka: jm(p),
     };
     const mn = gramy / 100;
     ekranPorcji(
@@ -1222,7 +1232,7 @@ async function ekranDoprecyzowania(edycja, poz) {
         tluszcz: Math.round(na100.tluszcz * mn * 10) / 10,
         wegle: Math.round(na100.wegle * mn * 10) / 10 },
       na100, p.id || null,
-      { g: gramy, etyk: `${dziesietne(gramy)} g · jak było`, opis: poz.opis_porcji || null },
+      { g: gramy, etyk: `${ileJm(gramy, p)} · jak było`, opis: poz.opis_porcji || null },
       edycja);
   };
 
@@ -1231,7 +1241,7 @@ async function ekranDoprecyzowania(edycja, poz) {
     box.innerHTML = lista.length
       ? lista.map((p, i) => `<button class="szybka" data-dp="${i}" type="button">
           <span class="nz"><b>${e(p.nazwa)}</b><span>${p.marka ? e(p.marka) + ' · ' : ''}${
-            p.kcal ? zaokr(p.kcal) + ' kcal/100 g' : 'brak wartości'}</span></span>
+            p.kcal ? zaokr(p.kcal) + ' kcal/100 ' + jm(p) : 'brak wartości'}</span></span>
         </button>`).join('') + (jeszcze ? '<div class="komunikat">Szukam wśród opakowań…</div>' : '')
       : `<div class="komunikat">${jeszcze ? 'Szukam…' : 'Nic nie znalazłem.'}</div>`;
     box.querySelectorAll('[data-dp]').forEach((b) => {
@@ -1393,6 +1403,7 @@ async function wyslijEtykiete(ev) {
     if (zPrzodu.nazwa) fd.append('nazwa', zPrzodu.nazwa);
     if (zPrzodu.marka) fd.append('marka', zPrzodu.marka);
     if (zPrzodu.opak_g) fd.append('opak_g', String(zPrzodu.opak_g));
+    if (zPrzodu.jednostka) fd.append('jednostka', zPrzodu.jednostka);
     if (zPrzodu.sztuk) fd.append('sztuk', String(zPrzodu.sztuk));
   }
   try {
@@ -1589,6 +1600,7 @@ function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
   const na100kcal = Number(na100.kcal) || 0;
   const g1 = (x) => Math.round(x * 10) / 10;
   const kcalZa = (g) => na100kcal * g / 100;
+  const u = jm(na100);   // 'g' albo 'ml' — liczby niżej są w tej jednostce
 
   // Danie z przepisu poprawia się W PORCJACH — „100 g jajecznicy" nic nie znaczy.
   // Skalujemy od BIEŻĄCEGO wpisu (`trybPorcji.teraz` = ile porcji tam stoi),
@@ -1628,7 +1640,9 @@ function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
       warianty.push({ etyk: 'całe opak.', g: g1(opak) });
       warianty.push({ etyk: '½ opak.', g: g1(opak / 2) });
     }
-    warianty.push({ etyk: '100 g', g: 100 }, { etyk: '50 g', g: 50 });
+    // Płyn pije się szklankami, nie „pięćdziesiątkami".
+    if (u === 'ml') warianty.push({ etyk: 'szklanka', g: 250 }, { etyk: '100 ml', g: 100 });
+    else warianty.push({ etyk: '100 g', g: 100 }, { etyk: '50 g', g: 50 });
 
     // Poprzednia porcja na samą górę, a wygenerowany duplikat o tej samej
     // gramaturze wypada — dwa wiersze z tą samą liczbą gramów tylko myliłyby.
@@ -1643,7 +1657,7 @@ function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
   }
 
   // Etykiety z „×" z przodu, bo czyta się je razem z polem obok: „2 × opak.".
-  const jednostki = wPorcjach ? [{ k: 'porcje', n: '× porcja' }] : [{ k: 'g', n: 'g' }];
+  const jednostki = wPorcjach ? [{ k: 'porcje', n: '× porcja' }] : [{ k: 'g', n: u }];
   if (!wPorcjach && opak) jednostki.push({ k: 'opak', n: '× opak.' });
   if (!wPorcjach && jednaSzt) jednostki.push({ k: 'szt', n: '× szt.' });
 
@@ -1652,7 +1666,7 @@ function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
   const wiersz = (w, i) => `
     <button class="porcja-w" data-i="${i}" type="button">
       <span class="pw-e">${e(w.etyk)}</span>
-      <span class="pw-g">${dziesietne(w.g)} g</span>
+      <span class="pw-g">${dziesietne(w.g)} ${u}</span>
       <span class="pw-k">${zaokr(w.kcal !== undefined ? w.kcal : kcalZa(w.g))} kcal</span>
       <span class="pw-s" aria-hidden="true">›</span>
     </button>`;
@@ -1704,7 +1718,7 @@ function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
       B <b>${dziesietne(Number(poz.bialko || 0) / teraz)}</b> ·
       T <b>${dziesietne(Number(poz.tluszcz || 0) / teraz)}</b> ·
       W <b>${dziesietne(Number(poz.wegle || 0) / teraz)}</b></div>` : `
-    <div class="na100">W 100 g: <b>${zaokr(na100kcal)}</b> kcal ·
+    <div class="na100">W 100 ${u}: <b>${zaokr(na100kcal)}</b> kcal ·
       B <b>${dziesietne(na100.bialko || 0)}</b> ·
       T <b>${dziesietne(na100.tluszcz || 0)}</b> ·
       W <b>${dziesietne(na100.wegle || 0)}</b></div>`}`;
@@ -1812,7 +1826,7 @@ function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
     // Przy jednostce „g" gramatura powtarzalaby to, co wlasnie wpisales — wtedy
     // zostaje sama kaloryczność.
     const pokazG = g && poleJ.value !== 'g';
-    ark.querySelector('#pw-g').textContent = pokazG ? dziesietne(g) + ' g' : '';
+    ark.querySelector('#pw-g').textContent = pokazG ? dziesietne(g) + ' ' + u : '';
     const kcal = wPorcjach ? Number(poz.kcal || 0) * n / teraz : kcalZa(g);
     ark.querySelector('#pw-k').textContent = (wPorcjach ? n > 0 : g > 0)
       ? zaokr(kcal) + ' kcal' : '—';
@@ -1857,6 +1871,7 @@ function ekranPorcji(poz, na100, produktId, poprzednia, edycja, trybPorcji) {
       const m = g / 100;
       const wprost = {
         nazwa: poz.nazwa, ilosc_g: g, opis_porcji: opis, posilek: posilekDocelowy,
+        jednostka: u,
         kcal: na100kcal * m, bialko: (na100.bialko || 0) * m,
         tluszcz: (na100.tluszcz || 0) * m, wegle: (na100.wegle || 0) * m,
       };
@@ -1932,6 +1947,7 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja, wa
                    bialko: Number(poz.bialko) || 0, tluszcz: Number(poz.tluszcz) || 0,
                    wegle: Number(poz.wegle) || 0 };
   let recznie = false;   // gdy sam poprawisz makro, przestajemy je przeliczać
+  const u = jm(na100 || poz);
 
   const porcje = [];
   // „1 sztuka" idzie PIERWSZA, bo przy pudełku pralinek to jedyna sensowna
@@ -1956,7 +1972,8 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja, wa
     porcje.push({ etyk: 'całe opak.', g: Math.round(na100.opak_g) });
     porcje.push({ etyk: '½ opak.', g: Math.round(na100.opak_g / 2) });
   }
-  porcje.push({ etyk: '100 g', g: 100 }, { etyk: '50 g', g: 50 });
+  if (u === 'ml') porcje.push({ etyk: 'szklanka', g: 250 }, { etyk: '100 ml', g: 100 });
+  else porcje.push({ etyk: '100 g', g: 100 }, { etyk: '50 g', g: 50 });
 
   ark.innerHTML = `
     <div class="ark-gl">
@@ -1973,7 +1990,7 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja, wa
     ${(na100 && na100.opak_g && !na100.sztuk && na100.produkt_id) ? `
       <div class="komunikat" id="p-sztuk-wiersz">Opakowanie zbiorcze?
         <button type="button" id="p-sztuk-btn" class="mini-btn">Podaj liczbę sztuk</button></div>` : ''}
-    <div class="sek-tyt">Ile gramów</div>
+    <div class="sek-tyt">${u === 'ml' ? 'Ile mililitrów' : 'Ile gramów'}</div>
     <input type="text" id="p-gram" value="${dziesietne(bazowe.g)}" inputmode="decimal"
            autocomplete="off" style="width:100%;margin-bottom:12px">
     <div class="sek-tyt">Wartości — możesz poprawić</div>
@@ -2151,7 +2168,7 @@ function ekranPotwierdzenia(poz, na100, produktId, naglowekDodatkowy, edycja, wa
       : (produktId && !recznie)
         ? { data: dzienISO, posilek: posilekDocelowy, produkt_id: produktId,
             nazwa, ilosc_g: v.g, opis_porcji: etyk ? etyk.textContent : null }
-        : { data: dzienISO, posilek: posilekDocelowy, nazwa, opis_porcji: opis,
+        : { data: dzienISO, posilek: posilekDocelowy, nazwa, opis_porcji: opis, jednostka: u,
             ilosc_g: v.g, kcal: v.kcal, bialko: v.bialko, tluszcz: v.tluszcz, wegle: v.wegle };
     try {
       const r = await authFetch(edycja ? '/api/eat/wpis/' + edycja.id : '/api/eat/wpis', {
@@ -2288,7 +2305,7 @@ async function ekranHistorii(iso, filtr) {
     const i = doWziecia.push(w) - 1;
     return `<button class="szybka" data-h="${i}" type="button"
               ${wcieta ? 'style="margin-left:16px"' : ''}>
-      <span class="nz"><b>${e(w.nazwa)}</b><span>${e(w.opis_porcji || dziesietne(w.ilosc_g) + ' g')} · ${zaokr(w.kcal)} kcal</span></span>
+      <span class="nz"><b>${e(w.nazwa)}</b><span>${e(w.opis_porcji || ileJm(w.ilosc_g, w))} · ${zaokr(w.kcal)} kcal</span></span>
     </button>`;
   };
 
@@ -2345,6 +2362,7 @@ async function dodajCaleDanie(g) {
           nazwa: w.nazwa,
           opis_porcji: w.opis_porcji || null,
           ilosc_g: Number(w.ilosc_g) || 0,
+          jednostka: jm(w),
           kcal: Number(w.kcal) || 0,
           bialko: Number(w.bialko) || 0,
           tluszcz: Number(w.tluszcz) || 0,
@@ -2463,7 +2481,7 @@ function ekranZPrzodu(d) {
   const wiersz = (p, rodzaj) => `<button class="szybka" data-rodzaj="${rodzaj}"
       data-kod="${e(p.kod || '')}" data-id="${p.id || ''}" type="button">
     <span class="nz"><b>${e(p.nazwa)}</b><span>${(p.marka ? e(p.marka) + ' · ' : '')
-      + (p.kcal ? zaokr(p.kcal) + ' kcal/100 g' : 'brak wartości w bazie')}</span></span>
+      + (p.kcal ? zaokr(p.kcal) + ' kcal/100 ' + jm(p) : 'brak wartości w bazie')}</span></span>
   </button>`;
 
   ark.innerHTML = `
@@ -2475,7 +2493,7 @@ function ekranZPrzodu(d) {
     <div class="prod-gora">
       <div class="marka">${e(o.marka || '')}</div>
       <h3>${e(o.nazwa || '')}</h3>
-      <div class="op">${o.opak_g ? 'opakowanie ' + zaokr(o.opak_g) + ' g' : 'gramatury nie widać'}${
+      <div class="op">${o.opak_g ? 'opakowanie ' + zaokr(o.opak_g) + ' ' + jm(o) : 'gramatury nie widać'}${
         o.sztuk ? ' · ' + zaokr(o.sztuk) + ' szt.' : ''}</div>
     </div>
     ${d.off_padlo ? '<div class="komunikat blad">Baza produktów markowych odmówiła odpowiedzi '
@@ -2760,12 +2778,12 @@ function checklistProduktu(p, skad) {
       tak: 'Kod kreskowy przypisany: ' + (p.kod || ''),
       nie: 'Bez kodu kreskowego — po zeskanowaniu tego opakowania trzeba będzie odczytać je od nowa' }] : []),
     { ok: !brak.length && !pusteMakro,
-      tak: `Wartości na 100 g: ${zaokr(p.kcal)} kcal · B ${dziesietne(p.bialko)} · T ${dziesietne(p.tluszcz)} · W ${dziesietne(p.wegle)}`,
+      tak: `Wartości na 100 ${jm(p)}: ${zaokr(p.kcal)} kcal · B ${dziesietne(p.bialko)} · T ${dziesietne(p.tluszcz)} · W ${dziesietne(p.wegle)}`,
       nie: pusteMakro ? 'Wszystkie wartości są zerowe — tabela chyba się nie odczytała'
                       : 'Brakuje wartości: ' + brak.join(', ') },
     { ok: !!wielkosc,
-      tak: Number(p.opak_g) ? `Opakowanie: ${zaokr(p.opak_g)} g`
-                            : `Porcja: ${zaokr(p.porcja_g)} g${p.opis_porcji ? ' (' + e(p.opis_porcji) + ')' : ''}`,
+      tak: Number(p.opak_g) ? `Opakowanie: ${zaokr(p.opak_g)} ${jm(p)}`
+                            : `Porcja: ${zaokr(p.porcja_g)} ${jm(p)}${p.opis_porcji ? ' (' + e(p.opis_porcji) + ')' : ''}`,
       nie: oczekujemyKodu
         ? 'Nie znamy wielkości opakowania — porcję trzeba będzie podawać w gramach'
         : 'Nie znamy wagi sztuki — porcję trzeba będzie podawać w gramach' },
@@ -2799,7 +2817,7 @@ function ekranProduktu(p, skad, niepelne) {
     <div class="prod-gora">
       <div class="marka">${e(p.marka || '')}</div>
       <h3>${e(p.nazwa)}</h3>
-      <div class="op">${podpisWielkosci(p)}${zaokr(p.kcal)} kcal / 100 g</div>
+      <div class="op">${podpisWielkosci(p)}${zaokr(p.kcal)} kcal / 100 ${jm(p)}</div>
       <div class="zrodlo">${e(zrodla[skad] || 'Wasza baza')}</div>
     </div>${ostrzezenie}${checklistProduktu(p, skad)}`;
   // Domyślnie 100 g. Wcześniej domyślną porcją było CAŁE opakowanie —
@@ -2813,8 +2831,11 @@ function ekranProduktu(p, skad, niepelne) {
   // opakowania (pomidor, marchewka) domyślna to jedna sztuka. W przeciwnym
   // razie 100 g; całe opakowanie tylko przy małych, bo zeskanowanie kilograma
   // ryżu i szybkie „Dodaj" zapisywało 3500 kcal.
+  // Płyn: butelka do pół litra wypija się zwykle cała, większa — szklanką.
+  const ml = jm(p) === 'ml';
   const domyslna = (opak && sztuk > 1) ? Math.round(opak / sztuk * 10) / 10
     : porcjaG ? porcjaG
+    : ml ? ((opak && opak <= 500) ? opak : 250)
     : (opak && opak <= 250) ? opak : 100;
   ekranPotwierdzenia(
     { nazwa: p.nazwa, ilosc_g: domyslna, opis_porcji: p.opis_porcji || null,
@@ -2825,7 +2846,7 @@ function ekranProduktu(p, skad, niepelne) {
     { kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
       tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
       opak_g: opak, sztuk: sztuk, produkt_id: p.id,
-      porcja_g: porcjaG, opis_porcji: p.opis_porcji || null },
+      porcja_g: porcjaG, opis_porcji: p.opis_porcji || null, jednostka: jm(p) },
     p.id,
     naglowek,
     undefined,

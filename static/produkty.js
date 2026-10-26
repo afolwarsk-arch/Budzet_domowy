@@ -39,6 +39,9 @@ const ZRODLA = {
 const e = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const zaokr = (v) => Math.round(Number(v) || 0);
+// 'ml' dla płynów mierzonych objętością — wtedy opak_g/porcja_g to mililitry,
+// a wartości są „na 100 ml". Ta sama funkcja co w eat.js.
+const jm = (x) => (x && x.jednostka === 'ml' ? 'ml' : 'g');
 const dziesietne = (v) => {
   const n = Number(v) || 0;
   return (Math.round(n * 10) / 10).toString().replace('.', ',');
@@ -101,7 +104,7 @@ function rysuj() {
     const z = ZRODLA[p.zrodlo] || { opis: p.zrodlo, wlasny: true };
     const opis = [
       p.marka ? e(p.marka) : '',
-      p.opak_g ? 'opak. ' + zaokr(p.opak_g) + ' g' : '',
+      p.opak_g ? 'opak. ' + zaokr(p.opak_g) + ' ' + jm(p) : '',
       p.uzyc ? 'użyć: ' + p.uzyc : 'nieużywany',
     ].filter(Boolean).join(' · ');
     return `<button class="poz" type="button" data-i="${i}">
@@ -390,7 +393,7 @@ function ekranZPrzodu(d) {
   const wiersz = (p, rodzaj) => `<button class="szybka" data-rodzaj="${rodzaj}"
       data-kod="${e(p.kod || '')}" data-id="${p.id || ''}" type="button">
     <span class="nz"><b>${e(p.nazwa)}</b><span>${(p.marka ? e(p.marka) + ' · ' : '')
-      + (p.kcal ? zaokr(p.kcal) + ' kcal/100 g' : 'brak wartości w bazie')}</span></span>
+      + (p.kcal ? zaokr(p.kcal) + ' kcal/100 ' + jm(p) : 'brak wartości w bazie')}</span></span>
   </button>`;
 
   const propozycje = d.propozycje || [];
@@ -398,7 +401,7 @@ function ekranZPrzodu(d) {
     <div class="prod-gora">
       <div class="marka">${e(o.marka || '')}</div>
       <h3>${e(o.nazwa || '')}</h3>
-      <div class="op">${o.opak_g ? 'opakowanie ' + zaokr(o.opak_g) + ' g' : 'gramatury nie widać'}${
+      <div class="op">${o.opak_g ? 'opakowanie ' + zaokr(o.opak_g) + ' ' + jm(o) : 'gramatury nie widać'}${
         o.sztuk ? ' · ' + zaokr(o.sztuk) + ' szt.' : ''}</div>
     </div>
     ${d.off_padlo ? '<div class="komunikat blad">Baza produktów markowych odmówiła odpowiedzi '
@@ -438,7 +441,7 @@ function ekranZPrzodu(d) {
   // Ręczne dokończenie startuje z tym, co model odczytał z przodu — przepisywanie
   // nazwy, którą apka przed chwilą pokazała, byłoby pracą za darmo.
   box.querySelector('#z-recznie').onclick = () => ekranReczny(null, {
-    nazwa: o.nazwa, marka: o.marka, opak_g: o.opak_g,
+    nazwa: o.nazwa, marka: o.marka, opak_g: o.opak_g, jednostka: o.jednostka,
     sztuk_w_opak: o.sztuk, kod: kontekst.kod || '',
   });
 
@@ -493,6 +496,7 @@ async function wyslijTabele(plik) {
   if (przod.nazwa) fd.append('nazwa', przod.nazwa);
   if (przod.marka) fd.append('marka', przod.marka);
   if (przod.opak_g) fd.append('opak_g', String(przod.opak_g));
+  if (przod.jednostka) fd.append('jednostka', przod.jednostka);
   if (przod.sztuk) fd.append('sztuk', String(przod.sztuk));
   const adres = '/api/eat/etykieta' + (kontekst.kod ? '?kod=' + encodeURIComponent(kontekst.kod) : '');
   let d;
@@ -621,9 +625,15 @@ function ekranReczny(edytowany, wstepne) {
       ${pole('marka', 'Marka', p.marka, 'autocomplete="off"')}
       ${pole('kod', 'Kod kreskowy', p.kod, 'inputmode="numeric" autocomplete="off"')}
     </div>
-    <div class="sek-tyt">Wartości na 100 g</div>
-    <div class="na100">Tak stoi na każdej etykiecie i tak trzyma je baza —
-      przepisz kolumnę „w 100 g", nie „w porcji".</div>
+    <div class="sek-tyt">Mierzone w</div>
+    <div class="gdzie" id="f-jednostka" role="group" aria-label="Jednostka">
+      <button type="button" data-j="g" aria-pressed="${jm(p) === 'g'}">gramach (g)</button>
+      <button type="button" data-j="ml" aria-pressed="${jm(p) === 'ml'}">mililitrach (ml)</button>
+    </div>
+    <div class="sek-tyt">Wartości na 100 <span class="jm-t">${jm(p)}</span></div>
+    <div class="na100">Przepisz kolumnę „w 100 <span class="jm-t">${jm(p)}</span>", nie „w porcji".
+      Napoje, mleko i jogurty pitne mają ją zwykle w ml — wtedy wybierz ml wyżej,
+      bez przeliczania na gramy.</div>
     <div class="pola">
       ${pole('kcal', 'Kalorie', p.kcal, num)}
       ${pole('bialko', 'Białko (g)', p.bialko, num)}
@@ -635,9 +645,9 @@ function ekranReczny(edytowany, wstepne) {
     </div>
     <div class="sek-tyt">Opakowanie</div>
     <div class="pola">
-      ${pole('opak_g', 'Całe opakowanie (g)', p.opak_g, num)}
+      ${pole('opak_g', 'Całe opakowanie (<span class="jm-t">' + jm(p) + '</span>)', p.opak_g, num)}
       ${pole('sztuk_w_opak', 'Sztuk w opakowaniu', p.sztuk_w_opak, 'inputmode="numeric"')}
-      ${pole('porcja_g', 'Waga sztuki (g)', p.porcja_g, num)}
+      ${pole('porcja_g', 'Jedna sztuka (<span class="jm-t">' + jm(p) + '</span>)', p.porcja_g, num)}
       ${pole('opis_porcji', 'Nazwa sztuki', p.opis_porcji, 'autocomplete="off" placeholder="np. kromka"')}
     </div>
     <div id="a-kom"></div>
@@ -646,8 +656,17 @@ function ekranReczny(edytowany, wstepne) {
   podepnijNaglowek(box, edytowany ? () => ekranProduktu(edytowany) : ekranDrog);
 
   const wartosc = (id) => box.querySelector('#f-' + id).value.trim();
+  let jednostka = jm(p);
+  box.querySelector('#f-jednostka').onclick = (ev) => {
+    const b = ev.target.closest('[data-j]');
+    if (!b) return;
+    jednostka = b.dataset.j;
+    box.querySelectorAll('#f-jednostka [data-j]').forEach((x) =>
+      x.setAttribute('aria-pressed', String(x === b)));
+    box.querySelectorAll('.jm-t').forEach((x) => { x.textContent = jednostka; });
+  };
   box.querySelector('#f-zapisz').onclick = async () => {
-    const dane = {};
+    const dane = { jednostka };
     ['nazwa', 'marka', 'kod', 'kcal', 'bialko', 'tluszcz', 'wegle', 'cukry', 'blonnik',
      'sol', 'opak_g', 'sztuk_w_opak', 'porcja_g', 'opis_porcji'].forEach((k) => {
       dane[k] = wartosc(k) || null;
@@ -729,7 +748,7 @@ function ekranProduktu(p, opcje = {}) {
       ${p.marka ? `<div class="marka">${e(p.marka)}</div>` : ''}
       <h3>${e(p.nazwa)}</h3>
       <div class="op">${p.kod ? 'kod ' + e(p.kod) : 'bez kodu kreskowego'}${
-        p.opak_g ? ' · opakowanie ' + zaokr(p.opak_g) + ' g' : ''}${
+        p.opak_g ? ' · opakowanie ' + zaokr(p.opak_g) + ' ' + jm(p) : ''}${
         p.sztuk_w_opak ? ' · ' + p.sztuk_w_opak + ' szt.' : ''}</div>
     </div>
     ${stan ? `<div class="komunikat">${e(stan)}</div>` : ''}
@@ -746,7 +765,7 @@ function ekranProduktu(p, opcje = {}) {
         : ocena(dodatki, dodatki ? null : '#038141', 'dodatków (E)<br>bez oceny szkodliwości')}
     </div>
 
-    <div class="sek-tyt">Wartości na 100 g</div>
+    <div class="sek-tyt">Wartości na 100 ${jm(p)}</div>
     <div class="odz"><span class="odz-pas"></span><span class="odz-n">Kalorie</span>
       <span class="odz-w">${zaokr(p.kcal)} kcal</span><span class="odz-p"></span></div>
     <div class="odz"><span class="odz-pas"></span><span class="odz-n">Białko</span>

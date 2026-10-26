@@ -520,16 +520,19 @@ def process_image(image_bytes: bytes, mime_type: str = "image/jpeg",
 _ETYKIETA_PROMPT = """Odczytujesz tabelę wartości odżywczych z etykiety produktu spożywczego.
 
 Zwróć WYŁĄCZNIE JSON, bez komentarza:
-{"nazwa": "...", "marka": "..." lub null, "opak_g": liczba lub null,
+{"nazwa": "...", "marka": "..." lub null, "jednostka": "g" lub "ml", "opak_g": liczba lub null,
  "kcal": liczba, "bialko": liczba, "tluszcz": liczba, "wegle": liczba,
  "blonnik": liczba lub null, "cukry": liczba lub null, "sol": liczba lub null}
 
 ZASADY:
-- Wszystkie wartości odżywcze podawaj PRZELICZONE NA 100 g produktu. Jeśli tabela \
-podaje je na porcję albo na 100 ml, przelicz. Gdy przeliczenie jest niemożliwe, \
-zwróć null zamiast zgadywać.
+- `jednostka`: "ml", gdy tabela podaje wartości „w 100 ml" (napoje, mleko, \
+jogurty pitne, oleje w butelce). Wtedy przepisz wartości NA 100 ml BEZ \
+przeliczania na gramy. W każdym innym przypadku "g" i wartości na 100 g.
+- Jeśli tabela podaje wartości tylko na porcję, przelicz na 100 g (albo 100 ml). \
+Gdy przeliczenie jest niemożliwe, zwróć null zamiast zgadywać.
 - Energia w kcal, nie w kJ. Jeśli widnieje tylko kJ, podziel przez 4,184.
-- `opak_g` to masa netto CAŁEGO opakowania, jeśli jest widoczna.
+- `opak_g` to zawartość CAŁEGO opakowania w tej samej jednostce co `jednostka` \
+(1 l → 1000 przy "ml"), jeśli jest widoczna.
 - Jeśli na zdjęciu nie ma tabeli wartości odżywczych, zwróć {"kcal": null}.
 - Nazwa po polsku, krótka i rozpoznawalna (np. "Serek wiejski", nie cała etykieta).
 """
@@ -566,14 +569,15 @@ def czytaj_etykiete(image_bytes: bytes, mime_type: str = "image/jpeg") -> tuple[
 _PRZOD_PROMPT = """Odczytujesz PRZEDNIĄ stronę opakowania produktu spożywczego.
 
 Zwróć WYŁĄCZNIE JSON:
-{"nazwa": "...", "marka": "...", "opak_g": liczba albo null, "sztuk": liczba albo null,
- "fraza": "..."}
+{"nazwa": "...", "marka": "...", "opak_g": liczba albo null, "jednostka": "g" albo "ml",
+ "sztuk": liczba albo null, "fraza": "..."}
 
 ZASADY:
 - `nazwa` to nazwa produktu tak, jak stoi na opakowaniu, BEZ marki.
 - `marka` to producent (Lays, Wedel, Alpro…). Gdy nie widać — null.
-- `opak_g` to masa netto CAŁEGO opakowania w gramach. Przelicz mililitry na
-  gramy 1:1 dla napojów i mleka. „500 g", „1 kg", „330 ml" → 500, 1000, 330.
+- `opak_g` to zawartość CAŁEGO opakowania, a `jednostka` to jednostka, w jakiej
+  podano ją na opakowaniu: „500 g", „1 kg" → 500/1000 i "g"; „330 ml", „1 l" →
+  330/1000 i "ml". Nie przeliczaj mililitrów na gramy.
 - `sztuk` to liczba sztuk w opakowaniu, jeśli jest podana — „24 praliny",
   „10 x 25 g", „6 batonów" → 24, 10, 6. Gdy nie ma, null.
 - `fraza` to hasło do wyszukania produktu w bazie — KRÓTKIE, najwyżej cztery

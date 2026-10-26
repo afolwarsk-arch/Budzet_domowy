@@ -30,8 +30,9 @@ _OFF_URL = "https://world.openfoodfacts.org/api/v2/product/{kod}.json"
 # `search_terms`, ale je ignoruje i oddaje całą bazę kraju (sprawdzone: każde
 # zapytanie zwracało te same 36 tys. produktów). Polska poddomena daje polskie nazwy.
 _OFF_SZUKAJ = "https://pl.openfoodfacts.org/cgi/search.pl"
-_OFF_POLA = ("product_name,product_name_pl,brands,quantity,product_quantity,"
-             "serving_size,serving_quantity,nutriscore_grade,nova_group,additives_n,nutriments")
+_OFF_POLA = ("product_name,product_name_pl,brands,quantity,product_quantity,product_quantity_unit,"
+             "serving_size,serving_quantity,serving_quantity_unit,nutriscore_grade,nova_group,"
+             "additives_n,nutriments")
 _OFF_UA = "WiemApp/1.0 (budzetdomowy-production.up.railway.app)"
 
 
@@ -119,6 +120,22 @@ def _z_produktu_off(p: dict, kod: str) -> dict:
     if opak is not None and (opak < 5 or (porcja is not None and abs(opak - porcja) < 0.01)):
         opak = None
 
+    # Mililitry rozpoznajemy WYŁĄCZNIE po pojemności opakowania („1 l", „330 ml").
+    # OFF przelicza wtedy product_quantity na ml, a wartości „_100g" są w praktyce
+    # przepisane z etykiety „w 100 ml". Porcja OFF bywa w gramach także przy
+    # napojach (skyr pitny: „1 portion (1045 g)") — taka porcja w produkcie
+    # mierzonym w ml byłaby fałszywa, więc wtedy ją pomijamy.
+    ml = _czy_ml(p)
+    # Ostatnia deska: pojemność wpisana tylko w NAZWĘ. Zmierzone na skyrze pitnym
+    # Piątnicy 5901939103273 — „Skyr Pitny Naturalny 1l", pole pojemności puste,
+    # porcja „1045 g". Bez tego produkt litrowy lądował w gramach bez opakowania.
+    if not ml and opak is None and not p.get("product_quantity_unit") and not p.get("quantity"):
+        z_nazwy = _pojemnosc_z_nazwy(nazwa)
+        if z_nazwy:
+            ml, opak = True, z_nazwy
+    if ml and str(p.get("serving_quantity_unit") or "").lower() not in ("", "ml"):
+        porcja = None
+
     return {
         "kod": kod,
         "nazwa": nazwa or f"Produkt {kod}",
@@ -140,7 +157,30 @@ def _z_produktu_off(p: dict, kod: str) -> dict:
         "sol": _liczba(n.get("salt_100g")),
         "zrodlo": "off",
         "niepelne": kcal is None,
+        "jednostka": "ml" if ml else "g",
     }
+
+
+def _czy_ml(p: dict) -> bool:
+    jedn = str(p.get("product_quantity_unit") or "").strip().lower()
+    if jedn:
+        return jedn == "ml"
+    # Starsze rekordy nie mają pola jednostki — zostaje tekst „quantity".
+    import re
+    return bool(re.search(r"\d\s*(ml|cl|dl|l|litr)\b", str(p.get("quantity") or "").lower()))
+
+
+def _pojemnosc_z_nazwy(nazwa: str) -> float | None:
+    """„Skyr pitny 1l" → 1000, „Sok 330 ml" → 330. Inaczej None."""
+    import re
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*(ml|l)\b", (nazwa or "").lower())
+    if not m:
+        return None
+    v = _liczba(m.group(1))
+    if not v:
+        return None
+    v = v * 1000 if m.group(2) == "l" else v
+    return v if 20 <= v <= 5000 else None
 
 
 def _oceny_z_off_partia(kody: list[str], proby: int = 4) -> dict:
@@ -204,8 +244,9 @@ def _szukaj_w_off_ze_statusem(fraza: str, ile: int = 12,
     parametry = urllib.parse.urlencode({
         "search_terms": fraza, "search_simple": 1, "action": "process",
         "json": 1, "page_size": ile,
-        "fields": ("code,product_name,product_name_pl,brands,product_quantity,"
-                   "serving_size,serving_quantity,nutriscore_grade,nova_group,additives_n,nutriments"),
+        "fields": ("code,product_name,product_name_pl,brands,quantity,product_quantity,product_quantity_unit,"
+                   "serving_size,serving_quantity,serving_quantity_unit,nutriscore_grade,nova_group,"
+                   "additives_n,nutriments"),
     })
     dane = None
     # Liczba prób zależy od tego, KTO czeka. Przy pisaniu w wyszukiwarce dwie —
@@ -292,6 +333,7 @@ def _produkt_z_ciala(body: dict) -> dict:
         "sol": _liczba(body.get("sol")),
         "opak_g": _liczba(body.get("opak_g")), "sztuk_w_opak": _liczba(body.get("sztuk_w_opak")),
         "porcja_g": _liczba(body.get("porcja_g")), "opis_porcji": body.get("opis_porcji"),
+        "jednostka": eat_db.jednostka(body.get("jednostka")),
     }
 
 
@@ -427,6 +469,7 @@ async def czytaj_etykiete(file: UploadFile = File(...),
                           nazwa: str = Form(default=""),
                           marka: str = Form(default=""),
                           opak_g: str = Form(default=""),
+                          jednostka: str = Form(default=""),
                           sztuk: str = Form(default="")):
     """Zdjęcie tabeli wartości odżywczych → produkt w bazie gospodarstwa.
 
@@ -459,6 +502,9 @@ async def czytaj_etykiete(file: UploadFile = File(...),
         dane["nazwa"] = nazwa.strip()
     if marka.strip():
         dane["marka"] = marka.strip()
+    # Jednostka: rozstrzyga TABELA, bo to do niej odnoszą się wartości („w 100 ml").
+    # Przód podpowiada tylko wtedy, gdy model nie podał jej wcale.
+    dane["jednostka"] = eat_db.jednostka(dane.get("jednostka")) or eat_db.jednostka(jednostka)
     if opak_g.strip() and not dane.get("opak_g"):
         dane["opak_g"] = _liczba(opak_g)
     if sztuk.strip():
@@ -502,6 +548,7 @@ async def etykieta_przod(file: UploadFile = File(...),
         "nazwa": nazwa[:120],
         "marka": (dane.get("marka") or "").strip()[:80] or None,
         "opak_g": _liczba(dane.get("opak_g")),
+        "jednostka": eat_db.jednostka(dane.get("jednostka")) or "g",
         "sztuk": _liczba(dane.get("sztuk")),
         "fraza": fraza[:120],
     }
@@ -785,7 +832,7 @@ def _sprawdz_wartosci(body: dict) -> dict:
 def _sprawdz_ilosc(wartosc) -> float:
     ilosc = _liczba(wartosc)
     if not ilosc or ilosc <= 0 or ilosc > 5000:
-        raise HTTPException(400, "Podaj sensowną ilość w gramach")
+        raise HTTPException(400, "Podaj sensowną ilość (do 5000 g / ml)")
     return round(ilosc, 1)
 
 
@@ -835,6 +882,7 @@ def dodaj_wpis(body: dict, current_user: dict = Depends(get_current_user)):
             "nazwa": (body.get("nazwa") or "").strip()[:120] or produkt["nazwa"],
             "opis_porcji": (body.get("opis_porcji") or "").strip()[:40] or None,
             "ilosc_g": round(ilosc, 1),
+            "jednostka": produkt.get("jednostka") or "g",
             **_wartosci_z_produktu(produkt, ilosc),
         }
     else:
@@ -851,6 +899,8 @@ def dodaj_wpis(body: dict, current_user: dict = Depends(get_current_user)):
             "nazwa": nazwa[:120],
             "opis_porcji": (body.get("opis_porcji") or "").strip()[:40] or None,
             "ilosc_g": round(ilosc, 1),
+            # powtórka z „ostatnio jadłeś" niesie jednostkę oryginału
+            "jednostka": eat_db.jednostka(body.get("jednostka")),
             **wartosci,
         }
     return eat_db.dodaj_wpis(hid, current_user["user_id"], wpis)
@@ -907,6 +957,7 @@ def zmien_wpis(wpis_id: int, body: dict, current_user: dict = Depends(get_curren
                     "nazwa": s.get("nazwa"),
                     "ilosc_g": round(float(s.get("ilosc_g") or 0) * wsp, 1),
                     "kcal": round(float(s.get("kcal") or 0) * wsp, 1),
+                    "jednostka": s.get("jednostka") or "g",
                 } for s in pozycje], ensure_ascii=False)
             except (ValueError, TypeError, AttributeError) as e:
                 # Nieczytelna rozpiska nie ma prawa zablokować poprawki ilości —
@@ -922,6 +973,8 @@ def zmien_wpis(wpis_id: int, body: dict, current_user: dict = Depends(get_curren
         "nazwa": nazwa[:120],
         "opis_porcji": (body.get("opis_porcji") or "").strip()[:40] or None,
         "ilosc_g": _sprawdz_ilosc(body.get("ilosc_g")),
+        # None = bez zmian; aktualizuj_wpis rusza jednostkę tylko przy g/ml
+        "jednostka": eat_db.jednostka(body.get("jednostka")),
         **_sprawdz_wartosci(body),
     }
 
@@ -938,9 +991,12 @@ def zmien_wpis(wpis_id: int, body: dict, current_user: dict = Depends(get_curren
                 nowy = int(nowy)
             except (TypeError, ValueError):
                 raise HTTPException(400, "Nieprawidłowy produkt")
-            if not eat_db.produkt_po_id(nowy, hid):
+            podpiety = eat_db.produkt_po_id(nowy, hid)
+            if not podpiety:
                 raise HTTPException(404, "Nie znaleziono produktu")
             dane["produkt_id"] = nowy
+            # Ilość z ekranu jest już w jednostce podpiętego produktu.
+            dane["jednostka"] = podpiety.get("jednostka") or "g"
 
     wynik = eat_db.aktualizuj_wpis(wpis_id, hid, current_user["user_id"], dane)
     if not wynik:
@@ -974,8 +1030,10 @@ def _pozycja_grupy(hid: int, p: dict, dzien: str, posilek: str,
         produkt = eat_db.produkt_po_id(produkt_id, hid)
         if not produkt:
             raise HTTPException(404, "Nie znam takiego produktu")
-        return {**wspolne, "produkt_id": produkt["id"], **_wartosci_z_produktu(produkt, ilosc)}
-    return {**wspolne, "produkt_id": None, **_sprawdz_wartosci(p)}
+        return {**wspolne, "produkt_id": produkt["id"], "jednostka": produkt.get("jednostka") or "g",
+                **_wartosci_z_produktu(produkt, ilosc)}
+    return {**wspolne, "produkt_id": None, "jednostka": eat_db.jednostka(p.get("jednostka")),
+            **_sprawdz_wartosci(p)}
 
 
 @router.post("/wpisy/grupa", status_code=201)
@@ -1090,6 +1148,7 @@ def _skladniki_z_ciala(body: dict) -> list[dict]:
             "produkt_id": s.get("produkt_id") or None,
             "nazwa": nazwa[:120],
             "ilosc_g": _sprawdz_ilosc(s.get("ilosc_g")),
+            "jednostka": eat_db.jednostka(s.get("jednostka")) or "g",
             **_sprawdz_wartosci(s),
         })
     return wynik
@@ -1219,6 +1278,7 @@ def przepis_do_dnia(przepis_id: int, body: dict,
         "nazwa": s["nazwa"],
         "ilosc_g": round(float(s["ilosc_g"] or 0) * udzial, 1),
         "kcal": round(float(s["kcal"] or 0) * udzial, 1),
+        "jednostka": s.get("jednostka") or "g",
     } for s in p["skladniki"]], ensure_ascii=False)
 
     wpis = eat_db.dodaj_wpis(hid, current_user["user_id"], {
@@ -1339,6 +1399,7 @@ def przepis_z_grupy(grupa_id: str, body: dict,
             "produkt_id": w.get("produkt_id"),
             "nazwa": w["nazwa"],
             "ilosc_g": round(float(w["ilosc_g"]) * mnoznik, 1),
+            "jednostka": w.get("jednostka") or "g",
             "kcal": round(float(w["kcal"] or 0) * mnoznik, 1),
             "bialko": round(float(w["bialko"] or 0) * mnoznik, 1),
             "tluszcz": round(float(w["tluszcz"] or 0) * mnoznik, 1),
