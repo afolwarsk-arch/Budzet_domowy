@@ -792,28 +792,57 @@ def produkt_z_opisu(opis: str) -> tuple[dict, dict]:
     return _json.loads(surowy), _usage(message)
 
 
-# Zdjęcie jest tu nośnikiem TEKSTU, nie widokiem jedzenia: kartka, strona
-# książki kucharskiej, ekran cudzej apki do liczenia kalorii. Kolejność zasad
-# ma znaczenie — model, któremu najpierw powie się o talerzu, zaczyna zgadywać
-# z wyglądu nawet wtedy, gdy gramatura jest wypisana wprost obok.
-_POSILEK_FOTO_PROMPT = _POSILEK_PROMPT + """
-ZDJĘCIE ZAMIAST OPISU:
-- Najczęściej to ZAPISANY OPIS posiłku: odręczna notatka, strona książki
-  kucharskiej, karta dań albo ekran innej aplikacji do liczenia kalorii.
-- ODCZYTUJ TO, CO NAPISANE. Gdy widać gotowe wartości (nazwa, gramatura, kcal,
-  makro) — przepisz je, nie szacuj od nowa. Wypisana liczba jest zawsze
-  pewniejsza niż Twoje oszacowanie.
-- Gdy podana jest sama nazwa i ilość, oszacuj wartości tak jak przy opisie
-  słowami.
-- Zdjęcie samego talerza to przypadek OSTATECZNY: dopiero gdy nie ma na nim
-  żadnego tekstu, oszacuj porcje z wielkości naczynia i sztućców.
-- Dopisz pole "opis" z jednym zdaniem o tym, co odczytałeś — trafia do
+# Osobny prompt, a nie doklejka do _POSILEK_PROMPT: tamten mówi „posiłek
+# opisany słowami" i „nie dopisuj niczego, czego nie ma w opisie", co przy
+# zdjęciu talerza (brak jakiegokolwiek opisu) wprost sobie przeczyło — model
+# raz szacował, raz zwracał pustą listę. Dwa tryby są tu RÓWNORZĘDNE.
+_POSILEK_FOTO_PROMPT = """Szacujesz wartości odżywcze posiłku ze zdjęcia.
+
+Zwróć WYŁĄCZNIE JSON:
+{"opis": "...",
+ "pozycje": [{"nazwa": "...", "ilosc_g": liczba, "opis_porcji": "...",
+              "kcal": liczba, "bialko": liczba, "tluszcz": liczba, "wegle": liczba}]}
+
+NAJPIERW ROZPOZNAJ, CO JEST NA ZDJĘCIU:
+
+A) TEKST o posiłku — odręczna notatka, strona książki kucharskiej, karta dań,
+   ekran innej aplikacji do liczenia kalorii.
+   - ODCZYTUJ TO, CO NAPISANE. Gdy widać gotowe wartości (nazwa, gramatura,
+     kcal, makro) — przepisz je, nie szacuj od nowa. Wypisana liczba jest
+     zawsze pewniejsza niż Twoje oszacowanie.
+   - Gdy podana jest sama nazwa i ilość, oszacuj wartości.
+   - Nie dopisuj składników, których w tekście nie ma.
+
+B) JEDZENIE — talerz, miska, kanapka, przekąska w ręce.
+   - Wypisz każdy WIDOCZNY składnik osobno (ziemniaki, kotlet, surówka — nie
+     „obiad"). Nazwa konkretna: „pierś z kurczaka panierowana", nie „mięso".
+   - Gramaturę oceń z tego, co widać: średnica talerza (płaski obiadowy
+     ok. 26 cm, deserowy ok. 20 cm), sztućce, dłoń, wysokość i grubość
+     kawałków, ile miejsca zajmuje składnik na talerzu.
+   - Uwzględnij to, czego nie widać, a prawie zawsze jest: tłuszcz do
+     smażenia, masło na pieczywie, sos, dressing. Dodaj jako OSOBNĄ pozycję
+     z realną ilością (np. "olej do smażenia", 10 g) — wtedy łatwo ją usunąć.
+   - `opis_porcji` opisuje, jak to wygląda („2 kopiaste łyżki", „kotlet
+     wielkości dłoni", „pół talerza").
+   - Nie zgaduj marki ani przepisu, którego nie widać.
+
+C) Ani jedno, ani drugie — zwróć {"opis": "", "pozycje": []}.
+
+ZASADY WSPÓLNE:
+- `kcal` i makroskładniki dotyczą PODANEJ ILOŚCI, nie 100 g.
+- Typowe polskie porcje: kromka chleba 35 g, jajko 55 g, łyżka oleju 10 g,
+  szklanka mleka 250 g, średni ziemniak 100 g, porcja mięsa 120 g.
+- `opis` to JEDNO zdanie o tym, co odczytałeś albo rozpoznałeś — trafia do
   dziennika jako ślad, skąd wpis pochodzi.
-- Gdy na zdjęciu nie ma jedzenia ani jego opisu, zwróć {"pozycje": []}.
+- Gdy dostaniesz WSKAZÓWKĘ od użytkownika, ma pierwszeństwo przed tym, co
+  wydaje Ci się na zdjęciu („smażone na maśle", „zjadłem połowę", „to tofu,
+  nie ser"). Stosuj ją do ilości i składników, ale nie wymyślaj na jej
+  podstawie rzeczy, o których nie mówi.
 """
 
 
-def posilek_ze_zdjecia(image_bytes: bytes, mime_type: str = "image/jpeg") -> tuple[list, str, dict]:
+def posilek_ze_zdjecia(image_bytes: bytes, mime_type: str = "image/jpeg",
+                       wskazowka: str = "") -> tuple[list, str, dict]:
     """Zdjęcie posiłku → (pozycje, jednozdaniowy opis, zużycie tokenów).
 
     Bliźniak `szacuj_posilek`, tylko wejściem jest obraz. Osobna funkcja, a nie
@@ -826,6 +855,10 @@ def posilek_ze_zdjecia(image_bytes: bytes, mime_type: str = "image/jpeg") -> tup
     client = anthropic.Anthropic()
     image_bytes, mime_type = prepare_image(image_bytes, mime_type)
     image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    polecenie = "Odczytaj posiłek ze zdjęcia i zwróć JSON."
+    wskazowka = (wskazowka or "").strip()[:300]
+    if wskazowka:
+        polecenie += "\n\nWSKAZÓWKA od użytkownika: " + wskazowka
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=2000,
@@ -834,7 +867,7 @@ def posilek_ze_zdjecia(image_bytes: bytes, mime_type: str = "image/jpeg") -> tup
             "role": "user",
             "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": image_b64}},
-                {"type": "text", "text": "Odczytaj posiłek ze zdjęcia i zwróć JSON."},
+                {"type": "text", "text": polecenie},
             ],
         }],
     )

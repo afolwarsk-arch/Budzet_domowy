@@ -805,14 +805,14 @@ function otworzArkusz(posilek) {
             <label class="zrodlo" for="ark-plik" tabindex="0" role="button">Z dysku</label>
           </span>
         </div>
-        <!-- Zdjęcie OPISU posiłku, nie talerza: notatki, strony z książki
-             kucharskiej, cudzego ekranu z wpisem. Adam jadł to samo co kolega
-             i miał przed sobą jego wpis — żeby to zapisać, musiał najpierw
-             założyć PRZEPIS, a potem zaciągnąć go do dnia. Dwa kroki i trwały
-             wpis w książce przepisów po czymś zjedzonym raz. -->
+        <!-- Dowolne zdjęcie posiłku dla AI: talerz ALBO jego opis (notatka,
+             książka kucharska, cudzy ekran z wpisem). Zaczęło się od opisu —
+             Adam jadł to samo co kolega i miał przed sobą jego wpis; talerz
+             doszedł później jako równorzędny tryb. Po wyborze zdjęcia jest
+             krok z opcjonalną wskazówką (wyslijDanie → krokWskazowki). -->
         <div class="droga droga-zrodla">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14.2 3.5V8h4.6"/><path d="M9 12.5h6M9 16h4"/></svg>
-          <span class="t">Zdjęcie kartki</span><span class="o">Notatka, książka kucharska, cudzy ekran</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="13" r="7.5"/><circle cx="11" cy="13" r="4"/><path d="M19 2.5v4M17 4.5h4"/></svg>
+          <span class="t">Zdjęcie dla AI</span><span class="o">Talerz, notatka, przepis albo cudzy ekran</span>
           <span class="zrodla">
             <label class="zrodlo" for="ark-danie-ap" tabindex="0" role="button">Aparat</label>
             <label class="zrodlo" for="ark-plik-danie" tabindex="0" role="button">Z dysku</label>
@@ -907,7 +907,7 @@ function otworzArkusz(posilek) {
     arkusz.querySelector(sel).onchange = (ev) => {
       const plik = ev.target.files && ev.target.files[0];
       ev.target.value = '';   // ten sam plik dwa razy z rzędu też ma zadziałać
-      if (plik) wyslijDanie(plik);
+      if (plik) krokWskazowki(plik);
     };
   });
   arkusz.querySelector('#ark-mik').onclick = dyktuj;
@@ -1427,14 +1427,49 @@ async function wyslijOpis(tekst) {
   } catch { komunikat('Błąd połączenia.', true); }
 }
 
+// Między zdjęciem a wysłaniem: podgląd + opcjonalna wskazówka. Wysyłka NIE
+// rusza sama — pole jest puste, więc „Odczytaj" to jedno stuknięcie więcej,
+// ale bez niego wskazówki nie dałoby się dopisać przed kosztownym odczytem.
+function krokWskazowki(plik) {
+  zatrzymajSkaner();
+  komunikat('');
+  const url = URL.createObjectURL(plik);
+  pokazWyniki(`
+    <div style="display:flex;gap:12px;align-items:flex-start">
+      <img src="${url}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:10px;flex:none">
+      <div style="flex:1;min-width:0">
+        <div class="szukaj" style="margin-bottom:8px">
+          <input type="text" id="danie-wsk" maxlength="300" enterkeyhint="go"
+                 placeholder="Wskazówka, np. smażone na maśle, zjadłem połowę">
+        </div>
+        <button type="button" class="mini-btn" id="danie-ok" style="padding:8px 14px">Odczytaj</button>
+        <button type="button" class="mini-btn" id="danie-anuluj" style="padding:8px 14px">Anuluj</button>
+      </div>
+    </div>`);
+  const box = arkusz.querySelector('#ark-wyniki');
+  box.scrollIntoView({ block: 'nearest' });
+  const zamknij = () => { URL.revokeObjectURL(url); pokazWyniki(null); };
+  const idz = () => {
+    const wsk = (box.querySelector('#danie-wsk').value || '').trim();
+    zamknij();
+    wyslijDanie(plik, wsk);
+  };
+  box.querySelector('#danie-ok').onclick = idz;
+  box.querySelector('#danie-anuluj').onclick = zamknij;
+  box.querySelector('#danie-wsk').addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); idz(); }
+  });
+}
+
 // Zdjęcie całego posiłku → te same pozycje do zatwierdzenia co przy opisie
 // słowami. Świadomie wpada w `ekranPozycji`, a nie w osobny ekran: dla
 // użytkownika to ta sama sprawa, tylko wpisana aparatem zamiast klawiaturą.
-async function wyslijDanie(plik) {
+async function wyslijDanie(plik, wskazowka) {
   zatrzymajSkaner();
   komunikat('Odczytuję posiłek ze zdjęcia…');
   const fd = new FormData();
   fd.append('file', plik);
+  if (wskazowka) fd.append('wskazowka', wskazowka);
   try {
     const r = await authFetch('/api/eat/opis-ze-zdjecia', { method: 'POST', body: fd });
     const d = await r.json().catch(() => ({}));

@@ -585,6 +585,7 @@ def z_opisu(body: dict, current_user: dict = Depends(get_current_user)):
 
 @router.post("/opis-ze-zdjecia")
 async def z_opisu_ze_zdjecia(file: UploadFile = File(...),
+                             wskazowka: str = Form(default=""),
                              current_user: dict = Depends(get_current_user)):
     """Zdjęcie posiłku → te same pozycje do zatwierdzenia co przy opisie słowami.
 
@@ -606,14 +607,15 @@ async def z_opisu_ze_zdjecia(file: UploadFile = File(...),
     import database
     try:
         pozycje, opis, uzycie = await run_in_threadpool(
-            ai_processor.posilek_ze_zdjecia, dane, file.content_type or "image/jpeg")
+            ai_processor.posilek_ze_zdjecia, dane, file.content_type or "image/jpeg", wskazowka)
     except Exception as e:
         print(f"[eat] odczyt posilku ze zdjecia nie powiodl sie: {e!r}")
         raise HTTPException(502, "Nie udało się odczytać zdjęcia. Spróbuj zrobić je z bliska.")
     database.log_api_usage(hid, "eat-opis-foto", uzycie["input_tokens"],
                            uzycie["output_tokens"], current_user["user_id"])
     if not pozycje:
-        raise HTTPException(422, "Nie widzę na tym zdjęciu jedzenia ani jego opisu.")
+        raise HTTPException(422, "Nie widzę na tym zdjęciu jedzenia ani jego opisu. "
+                                 "Spróbuj z bliska albo dopisz wskazówkę.")
     return {"pozycje": pozycje, "opis": opis}
 
 
