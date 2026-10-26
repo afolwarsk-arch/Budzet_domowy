@@ -627,7 +627,34 @@ def z_opisu(body: dict, current_user: dict = Depends(get_current_user)):
                            current_user["user_id"])
     if not pozycje:
         raise HTTPException(422, "Za mało informacji, żeby cokolwiek policzyć.")
-    return {"pozycje": pozycje}
+    return {"pozycje": _z_kandydatami(hid, pozycje)}
+
+
+_POLA_KANDYDATA = ("id", "kod", "nazwa", "marka", "kcal", "bialko", "tluszcz", "wegle",
+                   "jednostka", "opak_g", "porcja_g", "opis_porcji")
+
+
+def _z_kandydatami(hid: int, pozycje: list[dict]) -> list[dict]:
+    """Do pozycji z marką („Piątnica skyr pitny") dokłada pasujące produkty
+    z bazy gospodarstwa. Oszacowanie modelu dla markowego produktu bywa
+    chybione o 40% (zmierzone na skyrze pitnym: 165 kcal zamiast ~270), a
+    etykieta w bazie mówi prawdę. NIC nie podmieniamy — ekran pokazuje
+    podpowiedź i decyduje człowiek. Open Food Facts dociąga klient osobno,
+    bo potrafi milczeć kilkanaście sekund."""
+    for p in pozycje:
+        fraza = str(p.get("fraza") or "").strip()[:80]
+        p["fraza"] = fraza or None
+        if not fraza:
+            p["kandydaci"] = []
+            continue
+        try:
+            p["kandydaci"] = [{k: c.get(k) for k in _POLA_KANDYDATA}
+                              for c in eat_db.dopasuj_produkty(hid, fraza)]
+        except Exception as e:
+            # podpowiedź to dodatek — jej brak nie może zablokować odczytu
+            print(f"[eat] dopasowanie produktu do „{fraza}” nie powiodło się: {e!r}")
+            p["kandydaci"] = []
+    return pozycje
 
 
 @router.post("/opis-ze-zdjecia")
@@ -663,7 +690,7 @@ async def z_opisu_ze_zdjecia(file: UploadFile = File(...),
     if not pozycje:
         raise HTTPException(422, "Nie widzę na tym zdjęciu jedzenia ani jego opisu. "
                                  "Spróbuj z bliska albo dopisz wskazówkę.")
-    return {"pozycje": pozycje, "opis": opis}
+    return {"pozycje": _z_kandydatami(hid, pozycje), "opis": opis}
 
 
 @router.post("/produkty/z-opisu")

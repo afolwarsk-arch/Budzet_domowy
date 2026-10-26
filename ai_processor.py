@@ -696,10 +696,16 @@ _POSILEK_PROMPT = """Szacujesz wartości odżywcze posiłku opisanego słowami p
 
 Zwróć WYŁĄCZNIE JSON:
 {"pozycje": [{"nazwa": "...", "ilosc_g": liczba, "opis_porcji": "...",
-              "kcal": liczba, "bialko": liczba, "tluszcz": liczba, "wegle": liczba}]}
+              "kcal": liczba, "bialko": liczba, "tluszcz": liczba, "wegle": liczba,
+              "fraza": "..." albo null}]}
 
 ZASADY:
 - Rozbij opis na osobne składniki. „Kanapka z serem" to pieczywo i ser osobno.
+- `fraza`: gdy pozycja to KONKRETNY PRODUKT ZE SKLEPU z podaną marką
+  („skyr pitny Piątnica", „Danio", „Coca-Cola zero"), wpisz hasło do wyszukania
+  go w bazie produktów: marka + czym produkt jest, w mianowniku, najwyżej
+  4 słowa, BEZ ilości i BEZ smaku — np. "Piątnica skyr pitny". Wartości i tak
+  oszacuj. Dla jedzenia bez marki (jajko, chleb, domowy obiad) — null.
 - `kcal` i makroskładniki dotyczą PODANEJ ILOŚCI, nie 100 g.
 - `ilosc_g` to Twoje najlepsze oszacowanie masy w gramach; `opis_porcji` to
   sposób, w jaki człowiek to opisał (np. "2 kromki", "średnia porcja").
@@ -805,7 +811,8 @@ _POSILEK_FOTO_PROMPT = """Szacujesz wartości odżywcze posiłku ze zdjęcia.
 Zwróć WYŁĄCZNIE JSON:
 {"opis": "...",
  "pozycje": [{"nazwa": "...", "ilosc_g": liczba, "opis_porcji": "...",
-              "kcal": liczba, "bialko": liczba, "tluszcz": liczba, "wegle": liczba}]}
+              "kcal": liczba, "bialko": liczba, "tluszcz": liczba, "wegle": liczba,
+              "fraza": "..." albo null}]}
 
 NAJPIERW ROZPOZNAJ, CO JEST NA ZDJĘCIU:
 
@@ -838,6 +845,11 @@ ZASADY WSPÓLNE:
   szklanka mleka 250 g, średni ziemniak 100 g, porcja mięsa 120 g.
 - `opis` to JEDNO zdanie o tym, co odczytałeś albo rozpoznałeś — trafia do
   dziennika jako ślad, skąd wpis pochodzi.
+- `fraza`: gdy pozycja to KONKRETNY PRODUKT ZE SKLEPU, którego markę widać
+  (na opakowaniu, w tekście albo we wskazówce), wpisz hasło do wyszukania go
+  w bazie produktów: marka + czym produkt jest, w mianowniku, najwyżej 4 słowa,
+  BEZ ilości i BEZ smaku — np. "Piątnica skyr pitny". Wartości i tak oszacuj.
+  Dla jedzenia bez widocznej marki — null.
 - Gdy dostaniesz WSKAZÓWKĘ od użytkownika, ma pierwszeństwo przed tym, co
   wydaje Ci się na zdjęciu („smażone na maśle", „zjadłem połowę", „to tofu,
   nie ser"). Stosuj ją do ilości i składników, ale nie wymyślaj na jej

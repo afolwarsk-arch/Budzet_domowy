@@ -410,6 +410,37 @@ def lista_produktow(household_id: int, limit: int = 500) -> list[dict]:
         return [dict(r) for r in cur.fetchall()]
 
 
+def dopasuj_produkty(household_id: int, fraza: str, limit: int = 3) -> list[dict]:
+    """Produkty gospodarstwa pasujące do hasła z odczytu AI („Piątnica skyr pitny").
+
+    `szukaj_produktow` szuka CAŁEJ frazy w nazwie, a marka siedzi w osobnej
+    kolumnie — „Piątnica skyr pitny" nie trafiało w „Skyr jogurt pitny" marki
+    Piątnica. Tu każde słowo szukane jest osobno w nazwie+marce, po rdzeniu
+    (bez dwóch ostatnich liter), bo model podaje mianownik, a w nazwie stoi
+    „pitnego" albo „pitny". Przy trzech i więcej słowach jedno może nie trafić.
+    Baza gospodarstwa to kilkaset wierszy, więc filtr w Pythonie jest tani.
+    """
+    slowa = [s for s in bez_ogonkow(fraza or "").split() if len(s) >= 3]
+    if not slowa:
+        return []
+    rdzenie = [s[:max(4, len(s) - 2)] for s in slowa]
+    wymagane = len(rdzenie) - (1 if len(rdzenie) >= 3 else 0)
+    trafione = []
+    for p in lista_produktow(household_id):
+        tekst = bez_ogonkow(f"{p.get('nazwa') or ''} {p.get('marka') or ''}")
+        ile = sum(1 for r in rdzenie if r in tekst)
+        if ile >= wymagane:
+            trafione.append((ile, int(p.get("uzyc") or 0), p))
+    if not trafione:
+        return []
+    # Pełne trafienie wypiera częściowe: przy „Piątnica skyr pitny" sam skyr
+    # tiramisu tej marki (bez „pitny") byłby tylko szumem obok właściwego.
+    najlepszy = max(t[0] for t in trafione)
+    trafione = [t for t in trafione if t[0] == najlepszy]
+    trafione.sort(key=lambda x: x[1], reverse=True)
+    return [p for _, _, p in trafione[:limit]]
+
+
 def usun_produkt(produkt_id: int, household_id: int) -> bool:
     """Kasuje produkt z bazy. Wpisy w dzienniku ZOSTAJĄ — mają własną kopię
     nazwy i wartości, więc historia się nie zmienia (FK jest ON DELETE SET NULL)."""

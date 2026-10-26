@@ -2873,12 +2873,13 @@ function ekranPozycji(pozycje, opis) {
         <div class="poz-edyt" data-i="${i}">
           <input type="checkbox" data-zazn="${i}" checked>
           <div style="flex:1;min-width:0">
-            <div class="pe-nazwa">${e(p.nazwa)}</div>
+            <div class="pe-nazwa" data-nazwa="${i}">${e(p.nazwa)}</div>
             <div class="pe-linia">
               <input type="text" data-gram="${i}" value="${dziesietne(p.ilosc_g)}"
-                     inputmode="decimal" autocomplete="off"> g
+                     inputmode="decimal" autocomplete="off"> <span data-jm="${i}">${jm(p)}</span>
               <span class="pe-kcal" data-kcal="${i}">${zaokr(p.kcal)} kcal</span>
             </div>
+            <div class="pe-podp" data-podp="${i}"></div>
           </div>
         </div>`).join('')}
     </div>
@@ -2895,6 +2896,8 @@ function ekranPozycji(pozycje, opis) {
     g: Number(p.ilosc_g) || 100, kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
     tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
   }));
+  // Kopie wyjściowego oszacowania — „Cofnij" po podmianie na produkt z bazy.
+  const oszacowanie = pozycje.map((p, i) => ({ p: { ...p }, b: { ...bazowe[i] } }));
 
   function biezaca(i) {
     const g = zPola(ark.querySelector(`[data-gram="${i}"]`));
@@ -2923,6 +2926,86 @@ function ekranPozycji(pozycje, opis) {
   ark.querySelectorAll('[data-gram], [data-zazn]').forEach((el) => {
     el.addEventListener('input', przelicz);
     el.addEventListener('change', przelicz);
+  });
+
+  // ── podpowiedź: prawdziwy produkt zamiast oszacowania ──
+  //
+  // Gdy w opisie pada marka („skyr pitny Piątnica"), model zgaduje wartości,
+  // a etykieta jest w bazie. Zmierzone: 165 kcal z oszacowania wobec ~270
+  // z etykiety. Pokazujemy znaleziony produkt, ale NIE podmieniamy go sami —
+  // wyszukiwarka może trafić inny smak tej samej marki.
+  const podpis = (c) => [c.nazwa, c.marka].filter(Boolean).map(e).join(' · ')
+    + ' · ' + zaokr(c.kcal) + ' kcal/100 ' + jm(c);
+
+  function uzyjProduktu(i, c) {
+    const p = pozycje[i];
+    p.produkt_id = c.id;
+    p.nazwa = [c.nazwa, c.marka].filter(Boolean).join(' · ').slice(0, 120);
+    p.jednostka = jm(c);
+    // Wartości na 100 jednostek → biezaca() skaluje je do wpisanej ilości.
+    bazowe[i] = { g: 100, kcal: Number(c.kcal) || 0, bialko: Number(c.bialko) || 0,
+                  tluszcz: Number(c.tluszcz) || 0, wegle: Number(c.wegle) || 0 };
+    ark.querySelector(`[data-nazwa="${i}"]`).textContent = p.nazwa;
+    ark.querySelector(`[data-jm="${i}"]`).textContent = jm(c);
+    const box = ark.querySelector(`[data-podp="${i}"]`);
+    box.innerHTML = `<span class="pe-ok">✓ Wartości z etykiety</span>
+      <button type="button" class="mini-btn" data-cofnij="${i}">Cofnij</button>`;
+    box.querySelector('[data-cofnij]').onclick = () => {
+      pozycje[i] = { ...oszacowanie[i].p };
+      bazowe[i] = { ...oszacowanie[i].b };
+      ark.querySelector(`[data-nazwa="${i}"]`).textContent = pozycje[i].nazwa;
+      ark.querySelector(`[data-jm="${i}"]`).textContent = jm(pozycje[i]);
+      rysujPodpowiedz(i, ostatnie[i] || []);
+      przelicz();
+    };
+    przelicz();
+  }
+
+  const ostatnie = {};   // ostatnio pokazani kandydaci — do odtworzenia po „Cofnij"
+  function rysujPodpowiedz(i, kandydaci, zOff) {
+    const box = ark.querySelector(`[data-podp="${i}"]`);
+    if (!box) return;
+    ostatnie[i] = kandydaci;
+    if (!kandydaci.length) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="pe-podp-tyt">${zOff ? 'Znalezione w Open Food Facts' : 'Macie w bazie'}:</div>`
+      + kandydaci.map((c, k) => `<button type="button" class="pe-kand" data-k="${k}">
+          <span>${podpis(c)}</span><b>użyj</b></button>`).join('');
+    box.querySelectorAll('[data-k]').forEach((b) => {
+      b.onclick = async () => {
+        const c = kandydaci[Number(b.dataset.k)];
+        if (c.id) { uzyjProduktu(i, c); return; }
+        // Produkt z Open Food Facts trzeba najpierw zapisać w bazie gospodarstwa
+        // — wpis dostaje wtedy prawdziwe produkt_id, a serwer liczy z etykiety.
+        b.disabled = true;
+        try {
+          const r = await authFetch('/api/eat/produkt?kod=' + encodeURIComponent(c.kod));
+          const x = await r.json().catch(() => ({}));
+          if (!r.ok || !x.produkt) { b.disabled = false; komunikat(x.detail || 'Nie udało się pobrać produktu.', true); return; }
+          uzyjProduktu(i, x.produkt);
+        } catch { b.disabled = false; komunikat('Błąd połączenia.', true); }
+      };
+    });
+  }
+
+  pozycje.forEach((p, i) => {
+    const wlasni = p.kandydaci || [];
+    if (wlasni.length) { rysujPodpowiedz(i, wlasni); return; }
+    if (!p.fraza) return;
+    // Własna baza nic nie ma — pytamy Open Food Facts w tle. Ekran działa już
+    // teraz; podpowiedź dojdzie, kiedy (i jeśli) baza odpowie.
+    const box = ark.querySelector(`[data-podp="${i}"]`);
+    box.innerHTML = `<div class="pe-podp-tyt">Szukam „${e(p.fraza)}” w bazie produktów…</div>`;
+    authFetch('/api/eat/szukaj/off?fraza=' + encodeURIComponent(p.fraza))
+      .then((r) => r.json())
+      .then((x) => {
+        if (pozycje[i].produkt_id) return;   // w międzyczasie wybrano coś innego
+        const lista = (x.propozycje || []).filter((c) => c.kod && Number(c.kcal) > 0).slice(0, 2);
+        if (lista.length) rysujPodpowiedz(i, lista, true);
+        else box.innerHTML = `<div class="pe-podp-tyt">${x.off_padlo
+          ? 'Baza produktów nie odpowiedziała — wartości są oszacowane.'
+          : `Nie znalazłem „${e(p.fraza)}” — wartości są oszacowane. Zeskanuj kod, żeby były dokładne.`}</div>`;
+      })
+      .catch(() => { box.innerHTML = ''; });
   });
 
   ark.querySelector('#gdzie').onclick = (ev) => {
@@ -2955,7 +3038,9 @@ function ekranPozycji(pozycje, opis) {
           data: dzienISO, posilek: posilekDocelowy, nazwa_grupy: nazwaGrupy,
           pozycje: wybrane.map(({ p, i }) => {
             const v = biezaca(i);
+            // Z produktem serwer liczy wartości sam, z jego etykiety.
             return { nazwa: p.nazwa, opis_porcji: p.opis_porcji, ilosc_g: v.g,
+                     produkt_id: p.produkt_id || null, jednostka: jm(p),
                      kcal: v.kcal, bialko: v.bialko, tluszcz: v.tluszcz, wegle: v.wegle };
           }),
         }),
