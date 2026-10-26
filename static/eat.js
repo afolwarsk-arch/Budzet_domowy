@@ -1046,30 +1046,39 @@ async function dodajGotowy(p) {
 
 // ── szukanie po nazwie ──────────────────────────────────────────────────────
 
-function pokazWyniki(html) {
+// `fraza` = wpisany tekst: wtedy NAD wynikami stoi wiersz „Oszacuj przez AI".
+// Wcześniej droga do AI była tylko przy pustym wyniku albo w kaflu „Opisz
+// słowami", który na telefonie zasłaniała klawiatura — a wyszukiwarka prawie
+// zawsze coś znajduje. Wiersz siedzi tuż pod polem, nad klawiaturą.
+function pokazWyniki(html, fraza) {
   const box = arkusz && arkusz.querySelector('#ark-wyniki');
   if (!box) return;
-  box.innerHTML = html || '';
+  const ai = (html && fraza && fraza.length >= 3) ? `
+    <button type="button" class="wiersz-ai" id="w-ai">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+      <span class="wa-t"><b>Oszacuj przez AI</b><span>„${e(fraza)}”</span></span>
+      <span class="wa-s" aria-hidden="true">›</span>
+    </button>` : '';
+  box.innerHTML = html ? ai + html : '';
   box.style.display = html ? 'block' : 'none';
+  const b = box.querySelector('#w-ai');
+  if (b) b.onclick = () => wyslijOpis(fraza);
 }
 
 async function szukajProduktow(fraza) {
   zatrzymajSkaner();
   if (!fraza || fraza.length < 3) return;
   const mojeZadanie = ++licznikSzukania;
-  pokazWyniki('<div class="komunikat">Szukam…</div>');
+  pokazWyniki('<div class="komunikat">Szukam…</div>', fraza);
 
   let d;
   try {
     d = await (await authFetch('/api/eat/szukaj?fraza=' + encodeURIComponent(fraza))).json();
   } catch {
     pokazWyniki(`<div class="komunikat blad">Nie udało się poszukać.
-      <button type="button" id="w-ponow" class="mini-btn">Spróbuj ponownie</button>
-      <button type="button" id="w-opis" class="mini-btn">Oszacuj z opisu</button></div>`);
+      <button type="button" id="w-ponow" class="mini-btn">Spróbuj ponownie</button></div>`, fraza);
     const p = arkusz && arkusz.querySelector('#w-ponow');
     if (p) p.onclick = () => szukajProduktow(fraza);
-    const o = arkusz && arkusz.querySelector('#w-opis');
-    if (o) o.onclick = () => wyslijOpis(fraza);
     return;
   }
   // starsza, wolniejsza odpowiedź nie może nadpisać nowszej
@@ -1098,11 +1107,8 @@ function rysujWyniki(fraza, przepisy, wlasne, podstawowe, propozycje, offPadlo, 
     : '';
 
   if (!przepisy.length && !wlasne.length && !podstawowe.length && !propozycje.length) {
-    if (jeszczeSzuka) { pokazWyniki('<div class="komunikat">Szukam…</div>'); return; }
-    pokazWyniki(uwagaOff + `<div class="komunikat">Nic takiego nie znalazłem.
-      <button type="button" id="w-opis" class="mini-btn">Oszacuj z opisu</button></div>`);
-    const b = arkusz.querySelector('#w-opis');
-    if (b) b.onclick = () => wyslijOpis(fraza);
+    if (jeszczeSzuka) { pokazWyniki('<div class="komunikat">Szukam…</div>', fraza); return; }
+    pokazWyniki(uwagaOff + '<div class="komunikat">Nic takiego nie ma w bazach produktów.</div>', fraza);
     return;
   }
 
@@ -1131,7 +1137,8 @@ function rysujWyniki(fraza, przepisy, wlasne, podstawowe, propozycje, offPadlo, 
     + (wlasne.length ? '<div class="sek-tyt">Wasza baza</div>' + wlasne.map((p) => wiersz(p, 'wlasna')).join('') : '')
     + (podstawowe.length ? '<div class="sek-tyt">Produkty podstawowe</div>' + podstawowe.map((p) => wiersz(p, 'baza')).join('') : '')
     + (propozycje.length ? '<div class="sek-tyt">Produkty z opakowań</div>' + propozycje.map((p) => wiersz(p, 'off')).join('') : '')
-    + (jeszczeSzuka ? '<div class="komunikat">Szukam też wśród produktów z opakowań…</div>' : '')
+    + (jeszczeSzuka ? '<div class="komunikat">Szukam też wśród produktów z opakowań…</div>' : ''),
+    fraza
   );
 
   arkusz.querySelectorAll('#ark-wyniki [data-przepis]').forEach((b) => {

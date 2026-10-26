@@ -332,6 +332,19 @@
     .pe-linia input { width: 74px; padding: 5px 7px; font-size: 13px; text-align: center; }
     .pe-kcal { margin-left: auto; font-weight: 600; color: var(--text);
                font-variant-numeric: tabular-nums; }
+    /* wiersz „Oszacuj przez AI" nad wynikami wyszukiwania — tuż pod polem,
+       bo kafel „Opisz słowami" na telefonie zasłania klawiatura */
+    .wiersz-ai { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+                 font: inherit; cursor: pointer; margin-bottom: 10px; min-height: 52px;
+                 padding: 10px 12px; border-radius: 12px;
+                 border: 1.5px solid var(--primary); background: var(--surface); color: var(--text); }
+    .wiersz-ai svg { width: 22px; height: 22px; flex: none; fill: none; stroke: var(--primary);
+                     stroke-width: 1.7; stroke-linejoin: round; }
+    .wiersz-ai .wa-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .wiersz-ai .wa-t b { font-size: 14px; }
+    .wiersz-ai .wa-t span { font-size: 12px; color: var(--muted); overflow: hidden;
+                            text-overflow: ellipsis; white-space: nowrap; }
+    .wiersz-ai .wa-s { font-size: 20px; color: var(--primary); flex: none; }
     /* podpowiedź „prawdziwy produkt zamiast oszacowania" */
     .pe-podp:empty { display: none; }
     .pe-podp { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
