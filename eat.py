@@ -420,6 +420,11 @@ def szukaj(fraza: str = Query(""), current_user: dict = Depends(get_current_user
     # pamiętać, czy zapisałeś to kiedyś jako produkt, czy jako przepis.
     przepisy = eat_db.lista_przepisow(hid, fraza)[:6]
     wlasne = eat_db.szukaj_produktow(hid, fraza)
+    if not wlasne:
+        # Całe zdanie („Skur pitny piątnica 330 ml") nie trafia w nic, bo
+        # marka siedzi w osobnej kolumnie, a ilość i literówka psują dopasowanie.
+        # Wtedy szukamy po słowach — jak przy podpowiedzi w odczycie AI.
+        wlasne = eat_db.dopasuj_produkty(hid, fraza, limit=6)
     nazwy = {w["nazwa"].lower() for w in wlasne}
     podstawowe = [p for p in eat_db.szukaj_bazowych(fraza)
                   if p["nazwa"].lower() not in nazwy]

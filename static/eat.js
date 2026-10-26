@@ -2896,8 +2896,11 @@ function ekranPozycji(pozycje, opis) {
     g: Number(p.ilosc_g) || 100, kcal: Number(p.kcal) || 0, bialko: Number(p.bialko) || 0,
     tluszcz: Number(p.tluszcz) || 0, wegle: Number(p.wegle) || 0,
   }));
-  // Kopie wyjściowego oszacowania — „Cofnij" po podmianie na produkt z bazy.
+  // Wyjściowe oszacowanie modelu — jedna z opcji „Skąd wartości".
   const oszacowanie = pozycje.map((p, i) => ({ p: { ...p }, b: { ...bazowe[i] } }));
+  // Opcje źródła per pozycja: [{ rodzaj: 'ai'|'baza'|'off', c?: produkt }] i wybrana.
+  const zrodla = pozycje.map(() => [{ rodzaj: 'ai' }]);
+  const wybor = pozycje.map(() => 0);
 
   function biezaca(i) {
     const g = zPola(ark.querySelector(`[data-gram="${i}"]`));
@@ -2928,85 +2931,101 @@ function ekranPozycji(pozycje, opis) {
     el.addEventListener('change', przelicz);
   });
 
-  // ── podpowiedź: prawdziwy produkt zamiast oszacowania ──
+  // ── „Skąd wartości": oszacowanie AI albo etykieta prawdziwego produktu ──
   //
-  // Gdy w opisie pada marka („skyr pitny Piątnica"), model zgaduje wartości,
-  // a etykieta jest w bazie. Zmierzone: 165 kcal z oszacowania wobec ~270
-  // z etykiety. Pokazujemy znaleziony produkt, ale NIE podmieniamy go sami —
-  // wyszukiwarka może trafić inny smak tej samej marki.
-  const podpis = (c) => [c.nazwa, c.marka].filter(Boolean).map(e).join(' · ')
-    + ' · ' + zaokr(c.kcal) + ' kcal/100 ' + jm(c);
+  // Gdy w opisie pada marka („skyr pitny Piątnica"), model ZGADUJE, a etykieta
+  // jest w bazie. Zmierzone: 165 kcal z oszacowania wobec ~270 z etykiety.
+  // Pierwsza wersja dawała listę „użyj" + „Cofnij" i Adam uznał ją za
+  // nieczytelną: nie było widać, że to wybór ŹRÓDŁA jednej pozycji ani która
+  // liczba jest zgadywana. Teraz to jedna lista radio z metodą przy każdej
+  // opcji i kaloriami za WPISANĄ ilość, więc różnicę widać bez liczenia.
+  const METODA = { ai: 'szacunek AI', baza: 'etykieta · Wasza baza', off: 'etykieta · Open Food Facts' };
+  const nazwaProd = (c) => [c.nazwa, c.marka].filter(Boolean).join(' · ').slice(0, 120);
+  const na100z = (c) => ({ g: 100, kcal: Number(c.kcal) || 0, bialko: Number(c.bialko) || 0,
+                           tluszcz: Number(c.tluszcz) || 0, wegle: Number(c.wegle) || 0 });
 
-  function uzyjProduktu(i, c) {
+  function ustawZrodlo(i, k) {
+    wybor[i] = k;
+    const z = zrodla[i][k];
     const p = pozycje[i];
-    p.produkt_id = c.id;
-    p.nazwa = [c.nazwa, c.marka].filter(Boolean).join(' · ').slice(0, 120);
-    p.jednostka = jm(c);
-    // Wartości na 100 jednostek → biezaca() skaluje je do wpisanej ilości.
-    bazowe[i] = { g: 100, kcal: Number(c.kcal) || 0, bialko: Number(c.bialko) || 0,
-                  tluszcz: Number(c.tluszcz) || 0, wegle: Number(c.wegle) || 0 };
-    ark.querySelector(`[data-nazwa="${i}"]`).textContent = p.nazwa;
-    ark.querySelector(`[data-jm="${i}"]`).textContent = jm(c);
-    const box = ark.querySelector(`[data-podp="${i}"]`);
-    box.innerHTML = `<span class="pe-ok">✓ Wartości z etykiety</span>
-      <button type="button" class="mini-btn" data-cofnij="${i}">Cofnij</button>`;
-    box.querySelector('[data-cofnij]').onclick = () => {
-      pozycje[i] = { ...oszacowanie[i].p };
+    if (z.rodzaj === 'ai') {
+      Object.assign(p, { nazwa: oszacowanie[i].p.nazwa, produkt_id: null,
+                         jednostka: oszacowanie[i].p.jednostka, kod_off: null });
       bazowe[i] = { ...oszacowanie[i].b };
-      ark.querySelector(`[data-nazwa="${i}"]`).textContent = pozycje[i].nazwa;
-      ark.querySelector(`[data-jm="${i}"]`).textContent = jm(pozycje[i]);
-      rysujPodpowiedz(i, ostatnie[i] || []);
-      przelicz();
-    };
+    } else {
+      // Produkt z Open Food Facts nie ma jeszcze id u Was — zapisze się do bazy
+      // dopiero przy „Dodaj do dnia", nie przy samym zaznaczeniu.
+      Object.assign(p, { nazwa: nazwaProd(z.c), produkt_id: z.c.id || null,
+                         jednostka: jm(z.c), kod_off: z.c.id ? null : z.c.kod });
+      bazowe[i] = na100z(z.c);
+    }
+    ark.querySelector(`[data-nazwa="${i}"]`).textContent = p.nazwa;
+    ark.querySelector(`[data-jm="${i}"]`).textContent = jm(p);
     przelicz();
   }
 
-  const ostatnie = {};   // ostatnio pokazani kandydaci — do odtworzenia po „Cofnij"
-  function rysujPodpowiedz(i, kandydaci, zOff) {
+  // kcal opcji za ilość wpisaną w polu — odświeżane razem z resztą ekranu
+  function kcalOpcji(i, z) {
+    const g = zPola(ark.querySelector(`[data-gram="${i}"]`));
+    if (z.rodzaj === 'ai') {
+      const b = oszacowanie[i].b;
+      return b.g > 0 ? b.kcal * g / b.g : 0;
+    }
+    return (Number(z.c.kcal) || 0) * g / 100;
+  }
+  function odswiezKcalOpcji() {
+    pozycje.forEach((_, i) => {
+      zrodla[i].forEach((z, k) => {
+        const el = ark.querySelector(`[data-zk="${i}-${k}"]`);
+        if (el) el.textContent = zaokr(kcalOpcji(i, z)) + ' kcal';
+      });
+    });
+  }
+
+  function rysujZrodla(i, dopisek) {
     const box = ark.querySelector(`[data-podp="${i}"]`);
     if (!box) return;
-    ostatnie[i] = kandydaci;
-    if (!kandydaci.length) { box.innerHTML = ''; return; }
-    box.innerHTML = `<div class="pe-podp-tyt">${zOff ? 'Znalezione w Open Food Facts' : 'Macie w bazie'}:</div>`
-      + kandydaci.map((c, k) => `<button type="button" class="pe-kand" data-k="${k}">
-          <span>${podpis(c)}</span><b>użyj</b></button>`).join('');
-    box.querySelectorAll('[data-k]').forEach((b) => {
-      b.onclick = async () => {
-        const c = kandydaci[Number(b.dataset.k)];
-        if (c.id) { uzyjProduktu(i, c); return; }
-        // Produkt z Open Food Facts trzeba najpierw zapisać w bazie gospodarstwa
-        // — wpis dostaje wtedy prawdziwe produkt_id, a serwer liczy z etykiety.
-        b.disabled = true;
-        try {
-          const r = await authFetch('/api/eat/produkt?kod=' + encodeURIComponent(c.kod));
-          const x = await r.json().catch(() => ({}));
-          if (!r.ok || !x.produkt) { b.disabled = false; komunikat(x.detail || 'Nie udało się pobrać produktu.', true); return; }
-          uzyjProduktu(i, x.produkt);
-        } catch { b.disabled = false; komunikat('Błąd połączenia.', true); }
-      };
+    const opcje = zrodla[i];
+    if (opcje.length < 2) { box.innerHTML = dopisek ? `<div class="pe-podp-tyt">${dopisek}</div>` : ''; return; }
+    box.innerHTML = `<div class="pe-podp-tyt">Skąd wartości:</div>`
+      + opcje.map((z, k) => `<label class="pe-zr">
+          <input type="radio" name="zr-${i}" value="${k}"${k === wybor[i] ? ' checked' : ''}>
+          <span class="pe-zr-t"><span class="pe-zr-n">${z.rodzaj === 'ai' ? 'Oszacowanie z opisu' : e(nazwaProd(z.c))}</span>
+            <span class="pe-zr-m pe-zr-${z.rodzaj}">${METODA[z.rodzaj]}</span></span>
+          <span class="pe-zr-k" data-zk="${i}-${k}"></span>
+        </label>`).join('')
+      + (dopisek ? `<div class="pe-podp-tyt">${dopisek}</div>` : '');
+    box.querySelectorAll(`input[name="zr-${i}"]`).forEach((r) => {
+      r.onchange = () => ustawZrodlo(i, Number(r.value));
     });
+    odswiezKcalOpcji();
   }
 
   pozycje.forEach((p, i) => {
     const wlasni = p.kandydaci || [];
-    if (wlasni.length) { rysujPodpowiedz(i, wlasni); return; }
-    if (!p.fraza) return;
-    // Własna baza nic nie ma — pytamy Open Food Facts w tle. Ekran działa już
-    // teraz; podpowiedź dojdzie, kiedy (i jeśli) baza odpowie.
-    const box = ark.querySelector(`[data-podp="${i}"]`);
-    box.innerHTML = `<div class="pe-podp-tyt">Szukam „${e(p.fraza)}” w bazie produktów…</div>`;
+    wlasni.forEach((c) => zrodla[i].push({ rodzaj: 'baza', c }));
+    // Jedno trafienie u Was = to prawie na pewno ten produkt; przy kilku
+    // (różne smaki tej samej marki) wybór zostaje człowiekowi.
+    if (wlasni.length === 1) ustawZrodlo(i, 1);
+    rysujZrodla(i);
+    if (wlasni.length || !p.fraza) return;
+    // U Was nic — pytamy Open Food Facts w tle. Ekran działa już teraz.
+    rysujZrodla(i, `Szukam „${e(p.fraza)}” w Open Food Facts…`);
     authFetch('/api/eat/szukaj/off?fraza=' + encodeURIComponent(p.fraza))
       .then((r) => r.json())
       .then((x) => {
-        if (pozycje[i].produkt_id) return;   // w międzyczasie wybrano coś innego
         const lista = (x.propozycje || []).filter((c) => c.kod && Number(c.kcal) > 0).slice(0, 2);
-        if (lista.length) rysujPodpowiedz(i, lista, true);
-        else box.innerHTML = `<div class="pe-podp-tyt">${x.off_padlo
-          ? 'Baza produktów nie odpowiedziała — wartości są oszacowane.'
-          : `Nie znalazłem „${e(p.fraza)}” — wartości są oszacowane. Zeskanuj kod, żeby były dokładne.`}</div>`;
+        lista.forEach((c) => zrodla[i].push({ rodzaj: 'off', c }));
+        // Etykieta bije zgadywanie — pierwszy wynik zaznaczony, o ile człowiek
+        // nie zdążył już sam czegoś wybrać.
+        if (lista.length && wybor[i] === 0) ustawZrodlo(i, 1);
+        rysujZrodla(i, lista.length ? '' : (x.off_padlo
+          ? 'Open Food Facts nie odpowiedziało — zostaje oszacowanie.'
+          : `Nie znalazłem „${e(p.fraza)}” — zostaje oszacowanie. Zeskanuj kod, żeby było dokładnie.`));
       })
-      .catch(() => { box.innerHTML = ''; });
+      .catch(() => rysujZrodla(i));
   });
+  ark.querySelectorAll('[data-gram]').forEach((el) => el.addEventListener('input', odswiezKcalOpcji));
 
   ark.querySelector('#gdzie').onclick = (ev) => {
     const b = ev.target.closest('[data-p]');
@@ -3025,6 +3044,16 @@ function ekranPozycji(pozycje, opis) {
       .filter(({ i }) => ark.querySelector(`[data-zazn="${i}"]`).checked);
     if (!wybrane.length) { zamknijArkusz(); return; }
     komunikat('Zapisuję…');
+    // Wybrana etykieta z Open Food Facts trafia najpierw do Waszej bazy —
+    // wpis dostaje prawdziwe produkt_id, a następnym razem produkt jest „u Was".
+    for (const { p } of wybrane) {
+      if (p.produkt_id || !p.kod_off) continue;
+      try {
+        const r = await authFetch('/api/eat/produkt?kod=' + encodeURIComponent(p.kod_off));
+        const x = await r.json().catch(() => ({}));
+        if (r.ok && x.produkt) p.produkt_id = x.produkt.id;
+      } catch { /* bez id serwer zapisze wartości z ekranu — te same liczby */ }
+    }
     // Jedno wywołanie zamiast pętli po pozycjach. Wcześniej każdy składnik szedł
     // osobnym żądaniem i przerwanie w połowie zostawiało pół posiłku w dzienniku.
     // Serwer nadaje wspólny identyfikator grupy, dzięki czemu „kanapka z serem"

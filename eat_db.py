@@ -420,7 +420,12 @@ def dopasuj_produkty(household_id: int, fraza: str, limit: int = 3) -> list[dict
     „pitnego" albo „pitny". Przy trzech i więcej słowach jedno może nie trafić.
     Baza gospodarstwa to kilkaset wierszy, więc filtr w Pythonie jest tani.
     """
-    slowa = [s for s in bez_ogonkow(fraza or "").split() if len(s) >= 3]
+    import re
+    # Liczby i jednostki („330", „330ml", „ml", „g") nie należą do nazwy —
+    # „Skyr pitny Piątnica 330 ml" ma trafić tak samo jak bez ilości.
+    jednostki = {"ml", "g", "kg", "l", "dag", "szt", "sztuki", "gram", "gramow"}
+    slowa = [s for s in bez_ogonkow(fraza or "").split()
+             if len(s) >= 3 and s not in jednostki and not re.fullmatch(r"[\d.,%]+[a-z]{0,3}", s)]
     if not slowa:
         return []
     rdzenie = [s[:max(4, len(s) - 2)] for s in slowa]
